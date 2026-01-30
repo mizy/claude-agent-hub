@@ -33,6 +33,7 @@ export async function invokeClaudeCode(options: InvokeOptions): Promise<string> 
     const result = await execa('claude', args, {
       cwd: cwd || process.cwd(),
       timeout: 30 * 60 * 1000, // 30 分钟超时
+      stdin: 'ignore', // 关键：避免 execa 等待 stdin 导致挂起
       env: {
         ...process.env,
         // 可以传递额外的环境变量
