@@ -1,7 +1,13 @@
 import { Command } from 'commander'
+import chalk from 'chalk'
 import { createTask } from '../../task/createTask.js'
 import { listTasks } from '../../task/listTasks.js'
 import { getTaskDetail } from '../../task/getTaskDetail.js'
+import { deleteTask } from '../../task/deleteTask.js'
+import { clearTasks } from '../../task/clearTasks.js'
+import { stopTask } from '../../task/stopTask.js'
+import { success, error, info } from '../output.js'
+import type { TaskStatus } from '../../types/task.js'
 
 export function registerTaskCommands(program: Command) {
   const task = program
@@ -34,5 +40,56 @@ export function registerTaskCommands(program: Command) {
     .argument('<id>', '任务 ID')
     .action(async (id) => {
       await getTaskDetail(id)
+    })
+
+  task
+    .command('delete')
+    .alias('rm')
+    .description('删除任务')
+    .argument('<id>', '任务 ID')
+    .action((id) => {
+      const result = deleteTask(id)
+      if (result.success) {
+        success(`Deleted task: ${result.task?.title}`)
+        console.log(chalk.gray(`  ID: ${result.task?.id}`))
+      } else {
+        error(result.error || 'Failed to delete task')
+      }
+    })
+
+  task
+    .command('stop')
+    .alias('cancel')
+    .description('停止/取消任务')
+    .argument('<id>', '任务 ID')
+    .action((id) => {
+      const result = stopTask(id)
+      if (result.success) {
+        success(`Stopped task: ${result.task?.title}`)
+        console.log(chalk.gray(`  Status: ${result.task?.status}`))
+      } else {
+        error(result.error || 'Failed to stop task')
+      }
+    })
+
+  task
+    .command('clear')
+    .description('清除任务')
+    .option('-s, --status <status>', '按状态清除 (pending/completed/failed/cancelled)')
+    .option('-a, --all', '清除所有非运行中的任务')
+    .action((options) => {
+      const result = clearTasks({
+        status: options.status as TaskStatus | undefined,
+        all: options.all,
+      })
+      if (result.success) {
+        if (result.count === 0) {
+          info('No tasks to clear')
+        } else {
+          success(`Cleared ${result.count} task(s)`)
+        }
+      } else {
+        error(result.error || 'Failed to clear tasks')
+      }
     })
 }

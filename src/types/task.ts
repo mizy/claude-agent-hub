@@ -1,7 +1,7 @@
 import type { Plan } from './plan.js'
 
 export type TaskPriority = 'low' | 'medium' | 'high'
-export type TaskStatus = 'pending' | 'planning' | 'developing' | 'reviewing' | 'completed' | 'failed'
+export type TaskStatus = 'pending' | 'planning' | 'developing' | 'reviewing' | 'completed' | 'failed' | 'cancelled'
 
 export interface Task {
   id: string
