@@ -5,7 +5,7 @@ agents:
   - name: dev
     persona: Pragmatist
     schedule:
-      poll_interval: 5m      # 任务轮询间隔
+      poll_interval: 1m      # 任务轮询间隔
 
   # 可以添加更多 Agent
   # - name: reviewer
@@ -26,5 +26,5 @@ git:
 
 # Claude Code 配置
 claude:
-  model: sonnet             # haiku | sonnet | opus
+  model: opus             # haiku | sonnet | opus
   max_tokens: 8000
