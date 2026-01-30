@@ -16,15 +16,10 @@ agents:
 tasks:
   default_priority: medium
   max_retries: 3
-  timeout: 30m
+  timeout: 60m
 
 # Git 配置
 git:
   base_branch: main
   branch_prefix: "agent/"
   auto_push: false          # 需要人工确认才推送
-
-# Claude Code 配置
-claude:
-  model: opus             # haiku | sonnet | opus
-  max_tokens: 8000

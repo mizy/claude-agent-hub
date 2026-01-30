@@ -5,6 +5,7 @@ node_modules/
 dist/
 
 # Data files
+data/
 .claude-agent-hub/
 
 # IDE
@@ -27,5 +28,3 @@ coverage/
 # Environment
 .env
 .env.local
-outputs/
-hello.txt

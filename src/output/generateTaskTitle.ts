@@ -4,6 +4,7 @@
  */
 
 import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
+import { buildGenerateTitlePrompt } from '../prompts/index.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
 import type { Plan } from '../types/plan.js'
@@ -35,18 +36,7 @@ export function isGenericTitle(title: string): boolean {
  * Falls back to original title on error
  */
 export async function generateTaskTitle(task: Task, plan: Plan): Promise<string> {
-  const prompt = `Based on the following task description and execution plan, generate a concise, descriptive title (max 50 characters).
-
-## Task Description
-${task.description || '(No description)'}
-
-## Execution Plan Analysis
-${plan.analysis}
-
-## Steps
-${plan.steps.map(s => `- ${s.action}`).join('\n')}
-
-Return ONLY the title text, nothing else. Use the same language as the content (Chinese if content is in Chinese, English if in English).`
+  const prompt = buildGenerateTitlePrompt(task, plan)
 
   try {
     const result = await invokeClaudeCode({

@@ -4,9 +4,8 @@ import { executePlan } from './executePlan.js'
 import { generatePlan } from './generatePlan.js'
 import { createBranch } from '../git/createBranch.js'
 import { now } from '../shared/time.js'
-import { saveTaskOutput, generateTaskTitle, isGenericTitle } from '../output/index.js'
+import { generateTaskTitle, isGenericTitle } from '../output/index.js'
 import type { AgentContext } from '../types/agent.js'
-import type { TaskExecutionResult } from '../types/output.js'
 
 /**
  * Agent 主运行循环
@@ -70,26 +69,14 @@ export async function runAgent(agentName: string): Promise<void> {
     const stepOutputs = await executePlan(context, plan)
     const completedAt = now()
 
-    // 5. 保存执行结果
-    const executionResult: TaskExecutionResult = {
-      task,
-      agent,
-      branch: branchName,
-      plan,
-      stepOutputs,
-      timing: { startedAt, completedAt }
-    }
-
-    try {
-      const outputPath = await saveTaskOutput(executionResult)
-      console.log(`[${agent.name}] 输出已保存: ${outputPath}`)
-    } catch (err) {
-      console.warn(`[${agent.name}] 保存输出失败:`, err)
-      // 不影响任务完成
-    }
-
-    // 6. 完成任务
-    store.updateTask(task.id, { status: 'reviewing' })
+    // 5. 完成任务（输出保存在任务文件中）
+    store.updateTask(task.id, {
+      status: 'completed',
+      output: {
+        stepOutputs,
+        timing: { startedAt, completedAt }
+      }
+    })
     store.updateAgent(agent.name, {
       status: 'idle',
       stats: {

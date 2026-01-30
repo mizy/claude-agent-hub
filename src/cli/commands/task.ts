@@ -6,6 +6,7 @@ import { getTaskDetail } from '../../task/getTaskDetail.js'
 import { deleteTask } from '../../task/deleteTask.js'
 import { clearTasks } from '../../task/clearTasks.js'
 import { stopTask } from '../../task/stopTask.js'
+import { completeTask, rejectTask } from '../../task/completeTask.js'
 import { success, error, info } from '../output.js'
 import type { TaskStatus } from '../../types/task.js'
 
@@ -90,6 +91,40 @@ export function registerTaskCommands(program: Command) {
         }
       } else {
         error(result.error || 'Failed to clear tasks')
+      }
+    })
+
+  task
+    .command('complete')
+    .alias('done')
+    .description('完成任务 (审核通过)')
+    .argument('<id>', '任务 ID')
+    .action((id) => {
+      const result = completeTask(id)
+      if (result.success) {
+        success(`Task completed: ${result.task?.title}`)
+        console.log(chalk.gray(`  ID: ${result.task?.id}`))
+      } else {
+        error(result.error || 'Failed to complete task')
+      }
+    })
+
+  task
+    .command('reject')
+    .description('驳回任务 (退回重做)')
+    .argument('<id>', '任务 ID')
+    .option('-r, --reason <reason>', '驳回原因')
+    .action((id, options) => {
+      const result = rejectTask(id, options.reason)
+      if (result.success) {
+        success(`Task rejected: ${result.task?.title}`)
+        console.log(chalk.gray(`  Status: ${result.task?.status}`))
+        console.log(chalk.gray(`  Retry count: ${result.task?.retryCount}`))
+        if (options.reason) {
+          console.log(chalk.gray(`  Reason: ${options.reason}`))
+        }
+      } else {
+        error(result.error || 'Failed to reject task')
       }
     })
 }

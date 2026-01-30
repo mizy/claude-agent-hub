@@ -2,13 +2,13 @@
 /**
  * @entry Claude Agent Hub CLI 主入口
  *
- * 简化命令：
- *   cah "修复我的tickets"     - 直接创建任务
- *   cah ~/projects/prd.md    - 从文件创建工作流
+ * 核心命令：
+ *   cah run                  - 执行待处理任务
+ *   cah task add "描述"      - 添加任务
+ *   cah task list            - 查看任务列表
  *
  * 子命令：
  *   cah task    - 任务管理
- *   cah agent   - Agent 管理
  *   cah workflow - 工作流管理
  *   cah daemon  - 守护进程
  */
@@ -20,23 +20,27 @@ import { registerDaemonCommands } from './commands/daemon.js'
 import { registerReportCommands } from './commands/report.js'
 import { registerInitCommand } from './commands/init.js'
 import { createWorkflowCommand } from './commands/workflow.js'
-import { runDefault } from './commands/run.js'
+import { runTasks } from '../agent/runTasks.js'
+import { success, error, info } from './output.js'
 
 const program = new Command()
 
 program
   .name('cah')
-  .description('Claude Agent Hub - AI Agent 调度系统')
+  .description('Claude Agent Hub - AI 团队协作系统')
   .version('0.1.0')
-  .argument('[input]', '任务描述或文件路径')
-  .option('--no-start', '创建工作流但不自动启动')
-  .option('-a, --agent <name>', '指定执行 Agent')
-  .action(async (input: string | undefined, options) => {
-    if (input) {
-      await runDefault(input, options)
-    } else {
-      // 无参数时显示帮助
-      program.help()
+
+// cah run - 执行待处理任务
+program
+  .command('run')
+  .description('执行待处理任务')
+  .action(async () => {
+    try {
+      info('Starting task execution...')
+      await runTasks()
+      success('Task execution completed')
+    } catch (err) {
+      error(`Execution failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   })
 

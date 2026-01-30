@@ -1,11 +1,21 @@
 /**
- * Workflow 存储
- * 使用 SQLite 持久化工作流定义和实例
+ * Workflow 文件存储
+ *
+ * Structure:
+ * data/workflows/
+ * ├── definitions/
+ * │   └── {id}.json
+ * └── instances/
+ *     ├── pending/
+ *     ├── running/
+ *     ├── completed/
+ *     ├── failed/
+ *     └── cancelled/
+ *         └── {id}.json
  */
 
-import Database from 'better-sqlite3'
+import { existsSync, mkdirSync, readdirSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { existsSync, mkdirSync } from 'fs'
 import { createLogger } from '../../shared/logger.js'
 import { generateId } from '../../shared/id.js'
 import type {
@@ -13,141 +23,142 @@ import type {
   WorkflowInstance,
   WorkflowStatus,
   NodeState,
-  NodeStatus,
-  createInitialInstance,
 } from '../types.js'
 
 const logger = createLogger('workflow-store')
 
-let db: Database.Database | null = null
+// Data directories
+const DATA_DIR = join(process.cwd(), 'data')
+const WORKFLOWS_DIR = join(DATA_DIR, 'workflows')
+const DEFINITIONS_DIR = join(WORKFLOWS_DIR, 'definitions')
+const INSTANCES_DIR = join(WORKFLOWS_DIR, 'instances')
 
-function getDbPath(): string {
-  const dataDir = join(process.cwd(), '.claude-agent-hub')
-  if (!existsSync(dataDir)) {
-    mkdirSync(dataDir, { recursive: true })
+const INSTANCE_STATUS_DIRS: WorkflowStatus[] = ['pending', 'running', 'paused', 'completed', 'failed', 'cancelled']
+
+// Ensure directories exist
+function ensureDirs(): void {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
+  if (!existsSync(WORKFLOWS_DIR)) mkdirSync(WORKFLOWS_DIR, { recursive: true })
+  if (!existsSync(DEFINITIONS_DIR)) mkdirSync(DEFINITIONS_DIR, { recursive: true })
+  if (!existsSync(INSTANCES_DIR)) mkdirSync(INSTANCES_DIR, { recursive: true })
+
+  for (const status of INSTANCE_STATUS_DIRS) {
+    const dir = join(INSTANCES_DIR, status)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   }
-  return join(dataDir, 'data.db')
 }
 
-function initDb(): Database.Database {
-  if (db) return db
+// Read JSON file
+function readJson<T>(filepath: string): T | null {
+  try {
+    const content = readFileSync(filepath, 'utf-8')
+    return JSON.parse(content) as T
+  } catch {
+    return null
+  }
+}
 
-  db = new Database(getDbPath())
+// Write JSON file
+function writeJson(filepath: string, data: unknown): void {
+  const dir = join(filepath, '..')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8')
+}
 
-  // 创建工作流相关表
-  db.exec(`
-    -- 工作流定义表
-    CREATE TABLE IF NOT EXISTS workflows (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT,
-      definition TEXT NOT NULL,
-      source_file TEXT,
-      created_at TEXT NOT NULL
-    );
+// Find instance file across status directories
+function findInstanceFile(id: string): { filepath: string; status: WorkflowStatus } | null {
+  for (const status of INSTANCE_STATUS_DIRS) {
+    const dir = join(INSTANCES_DIR, status)
+    if (!existsSync(dir)) continue
 
-    -- 工作流实例表
-    CREATE TABLE IF NOT EXISTS workflow_instances (
-      id TEXT PRIMARY KEY,
-      workflow_id TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      node_states TEXT NOT NULL DEFAULT '{}',
-      variables TEXT NOT NULL DEFAULT '{}',
-      outputs TEXT NOT NULL DEFAULT '{}',
-      loop_counts TEXT NOT NULL DEFAULT '{}',
-      started_at TEXT,
-      completed_at TEXT,
-      error TEXT,
-      FOREIGN KEY (workflow_id) REFERENCES workflows(id)
-    );
+    const filepath = join(dir, `${id}.json`)
+    if (existsSync(filepath)) {
+      return { filepath, status }
+    }
 
-    -- 索引
-    CREATE INDEX IF NOT EXISTS idx_wf_instances_workflow ON workflow_instances(workflow_id);
-    CREATE INDEX IF NOT EXISTS idx_wf_instances_status ON workflow_instances(status);
-  `)
+    // Try partial match
+    const files = readdirSync(dir)
+    for (const file of files) {
+      if (file.startsWith(id) && file.endsWith('.json')) {
+        return { filepath: join(dir, file), status }
+      }
+    }
+  }
+  return null
+}
 
-  logger.debug('Workflow tables initialized')
-  return db
+// Initialize on first use
+let initialized = false
+function init(): void {
+  if (!initialized) {
+    ensureDirs()
+    initialized = true
+  }
 }
 
 // ============ Workflow CRUD ============
 
 export function saveWorkflow(workflow: Workflow): void {
-  const database = initDb()
-
-  const stmt = database.prepare(`
-    INSERT OR REPLACE INTO workflows (id, name, description, definition, source_file, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `)
-
-  const definition = JSON.stringify({
-    nodes: workflow.nodes,
-    edges: workflow.edges,
-    variables: workflow.variables,
-  })
-
-  stmt.run(
-    workflow.id,
-    workflow.name,
-    workflow.description,
-    definition,
-    workflow.sourceFile || null,
-    workflow.createdAt
-  )
-
+  init()
+  const filepath = join(DEFINITIONS_DIR, `${workflow.id}.json`)
+  writeJson(filepath, workflow)
   logger.debug(`Saved workflow: ${workflow.id}`)
 }
 
 export function getWorkflow(id: string): Workflow | null {
-  const database = initDb()
+  init()
 
-  const stmt = database.prepare('SELECT * FROM workflows WHERE id = ? OR id LIKE ?')
-  const row = stmt.get(id, `${id}%`) as Record<string, unknown> | undefined
-
-  if (!row) return null
-
-  const definition = JSON.parse(row.definition as string)
-
-  return {
-    id: row.id as string,
-    name: row.name as string,
-    description: row.description as string,
-    nodes: definition.nodes,
-    edges: definition.edges,
-    variables: definition.variables || {},
-    sourceFile: row.source_file as string | undefined,
-    createdAt: row.created_at as string,
+  // Direct lookup
+  const filepath = join(DEFINITIONS_DIR, `${id}.json`)
+  if (existsSync(filepath)) {
+    return readJson<Workflow>(filepath)
   }
+
+  // Partial match
+  if (!existsSync(DEFINITIONS_DIR)) return null
+  const files = readdirSync(DEFINITIONS_DIR)
+  for (const file of files) {
+    if (file.startsWith(id) && file.endsWith('.json')) {
+      return readJson<Workflow>(join(DEFINITIONS_DIR, file))
+    }
+  }
+
+  return null
 }
 
 export function getAllWorkflows(): Workflow[] {
-  const database = initDb()
+  init()
+  if (!existsSync(DEFINITIONS_DIR)) return []
 
-  const stmt = database.prepare('SELECT * FROM workflows ORDER BY created_at DESC')
-  const rows = stmt.all() as Record<string, unknown>[]
-
-  return rows.map(row => {
-    const definition = JSON.parse(row.definition as string)
-    return {
-      id: row.id as string,
-      name: row.name as string,
-      description: row.description as string,
-      nodes: definition.nodes,
-      edges: definition.edges,
-      variables: definition.variables || {},
-      sourceFile: row.source_file as string | undefined,
-      createdAt: row.created_at as string,
-    }
-  })
+  const files = readdirSync(DEFINITIONS_DIR).filter(f => f.endsWith('.json'))
+  return files
+    .map(f => readJson<Workflow>(join(DEFINITIONS_DIR, f)))
+    .filter((w): w is Workflow => w !== null)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 }
 
 export function deleteWorkflow(id: string): void {
-  const database = initDb()
+  init()
 
-  // 删除关联的实例
-  database.prepare('DELETE FROM workflow_instances WHERE workflow_id = ?').run(id)
-  // 删除工作流
-  database.prepare('DELETE FROM workflows WHERE id = ?').run(id)
+  // Delete definition
+  const defPath = join(DEFINITIONS_DIR, `${id}.json`)
+  if (existsSync(defPath)) {
+    rmSync(defPath)
+  }
+
+  // Delete all instances of this workflow
+  for (const status of INSTANCE_STATUS_DIRS) {
+    const dir = join(INSTANCES_DIR, status)
+    if (!existsSync(dir)) continue
+
+    const files = readdirSync(dir)
+    for (const file of files) {
+      const instance = readJson<WorkflowInstance>(join(dir, file))
+      if (instance?.workflowId === id) {
+        rmSync(join(dir, file))
+      }
+    }
+  }
 
   logger.debug(`Deleted workflow: ${id}`)
 }
@@ -155,12 +166,13 @@ export function deleteWorkflow(id: string): void {
 // ============ Instance CRUD ============
 
 export function createInstance(workflowId: string): WorkflowInstance {
+  init()
   const workflow = getWorkflow(workflowId)
   if (!workflow) {
     throw new Error(`Workflow not found: ${workflowId}`)
   }
 
-  // 初始化节点状态
+  // Initialize node states
   const nodeStates: Record<string, NodeState> = {}
   for (const node of workflow.nodes) {
     nodeStates[node.id] = {
@@ -171,7 +183,7 @@ export function createInstance(workflowId: string): WorkflowInstance {
 
   const instance: WorkflowInstance = {
     id: generateId(),
-    workflowId: workflow.id,  // 使用完整 ID，避免短 ID 外键约束失败
+    workflowId: workflow.id,
     status: 'pending',
     nodeStates,
     variables: { ...workflow.variables },
@@ -180,138 +192,84 @@ export function createInstance(workflowId: string): WorkflowInstance {
   }
 
   saveInstance(instance)
-
   logger.info(`Created instance: ${instance.id} for workflow: ${workflowId}`)
 
   return instance
 }
 
 export function saveInstance(instance: WorkflowInstance): void {
-  const database = initDb()
+  init()
 
-  const stmt = database.prepare(`
-    INSERT OR REPLACE INTO workflow_instances
-    (id, workflow_id, status, node_states, variables, outputs, loop_counts, started_at, completed_at, error)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
+  // Find and remove old file if status changed
+  const existing = findInstanceFile(instance.id)
+  if (existing && existing.status !== instance.status) {
+    try { rmSync(existing.filepath) } catch { /* ignore */ }
+  }
 
-  stmt.run(
-    instance.id,
-    instance.workflowId,
-    instance.status,
-    JSON.stringify(instance.nodeStates),
-    JSON.stringify(instance.variables),
-    JSON.stringify(instance.outputs),
-    JSON.stringify(instance.loopCounts),
-    instance.startedAt || null,
-    instance.completedAt || null,
-    instance.error || null
-  )
+  const filepath = join(INSTANCES_DIR, instance.status, `${instance.id}.json`)
+  writeJson(filepath, instance)
 }
 
 export function getInstance(id: string): WorkflowInstance | null {
-  const database = initDb()
-
-  const stmt = database.prepare('SELECT * FROM workflow_instances WHERE id = ? OR id LIKE ?')
-  const row = stmt.get(id, `${id}%`) as Record<string, unknown> | undefined
-
-  if (!row) return null
-
-  return {
-    id: row.id as string,
-    workflowId: row.workflow_id as string,
-    status: row.status as WorkflowStatus,
-    nodeStates: JSON.parse(row.node_states as string),
-    variables: JSON.parse(row.variables as string),
-    outputs: JSON.parse(row.outputs as string),
-    loopCounts: JSON.parse(row.loop_counts as string),
-    startedAt: row.started_at as string | undefined,
-    completedAt: row.completed_at as string | undefined,
-    error: row.error as string | undefined,
-  }
+  init()
+  const found = findInstanceFile(id)
+  if (!found) return null
+  return readJson<WorkflowInstance>(found.filepath)
 }
 
 export function getInstancesByWorkflow(workflowId: string): WorkflowInstance[] {
-  const database = initDb()
-
-  const stmt = database.prepare(
-    'SELECT * FROM workflow_instances WHERE workflow_id = ? ORDER BY started_at DESC'
-  )
-  const rows = stmt.all(workflowId) as Record<string, unknown>[]
-
-  return rows.map(row => ({
-    id: row.id as string,
-    workflowId: row.workflow_id as string,
-    status: row.status as WorkflowStatus,
-    nodeStates: JSON.parse(row.node_states as string),
-    variables: JSON.parse(row.variables as string),
-    outputs: JSON.parse(row.outputs as string),
-    loopCounts: JSON.parse(row.loop_counts as string),
-    startedAt: row.started_at as string | undefined,
-    completedAt: row.completed_at as string | undefined,
-    error: row.error as string | undefined,
-  }))
+  init()
+  return getAllInstances().filter(i => i.workflowId === workflowId)
 }
 
 export function getInstancesByStatus(status: WorkflowStatus): WorkflowInstance[] {
-  const database = initDb()
+  init()
+  const dir = join(INSTANCES_DIR, status)
+  if (!existsSync(dir)) return []
 
-  const stmt = database.prepare(
-    'SELECT * FROM workflow_instances WHERE status = ? ORDER BY started_at DESC'
-  )
-  const rows = stmt.all(status) as Record<string, unknown>[]
-
-  return rows.map(row => ({
-    id: row.id as string,
-    workflowId: row.workflow_id as string,
-    status: row.status as WorkflowStatus,
-    nodeStates: JSON.parse(row.node_states as string),
-    variables: JSON.parse(row.variables as string),
-    outputs: JSON.parse(row.outputs as string),
-    loopCounts: JSON.parse(row.loop_counts as string),
-    startedAt: row.started_at as string | undefined,
-    completedAt: row.completed_at as string | undefined,
-    error: row.error as string | undefined,
-  }))
+  const files = readdirSync(dir).filter(f => f.endsWith('.json'))
+  return files
+    .map(f => readJson<WorkflowInstance>(join(dir, f)))
+    .filter((i): i is WorkflowInstance => i !== null)
+    .sort((a, b) => {
+      const aTime = a.startedAt || a.id
+      const bTime = b.startedAt || b.id
+      return bTime.localeCompare(aTime)
+    })
 }
 
 export function getAllInstances(): WorkflowInstance[] {
-  const database = initDb()
+  init()
+  const instances: WorkflowInstance[] = []
 
-  const stmt = database.prepare('SELECT * FROM workflow_instances ORDER BY started_at DESC')
-  const rows = stmt.all() as Record<string, unknown>[]
+  for (const status of INSTANCE_STATUS_DIRS) {
+    instances.push(...getInstancesByStatus(status))
+  }
 
-  return rows.map(row => ({
-    id: row.id as string,
-    workflowId: row.workflow_id as string,
-    status: row.status as WorkflowStatus,
-    nodeStates: JSON.parse(row.node_states as string),
-    variables: JSON.parse(row.variables as string),
-    outputs: JSON.parse(row.outputs as string),
-    loopCounts: JSON.parse(row.loop_counts as string),
-    startedAt: row.started_at as string | undefined,
-    completedAt: row.completed_at as string | undefined,
-    error: row.error as string | undefined,
-  }))
+  return instances.sort((a, b) => {
+    const aTime = a.startedAt || a.id
+    const bTime = b.startedAt || b.id
+    return bTime.localeCompare(aTime)
+  })
 }
 
 // ============ Instance 状态更新 ============
 
 export function updateInstanceStatus(id: string, status: WorkflowStatus, error?: string): void {
-  const database = initDb()
+  init()
+  const instance = getInstance(id)
+  if (!instance) return
 
-  if (status === 'running') {
-    database.prepare(
-      'UPDATE workflow_instances SET status = ?, started_at = ? WHERE id = ?'
-    ).run(status, new Date().toISOString(), id)
+  instance.status = status
+
+  if (status === 'running' && !instance.startedAt) {
+    instance.startedAt = new Date().toISOString()
   } else if (status === 'completed' || status === 'failed' || status === 'cancelled') {
-    database.prepare(
-      'UPDATE workflow_instances SET status = ?, completed_at = ?, error = ? WHERE id = ?'
-    ).run(status, new Date().toISOString(), error || null, id)
-  } else {
-    database.prepare('UPDATE workflow_instances SET status = ? WHERE id = ?').run(status, id)
+    instance.completedAt = new Date().toISOString()
+    if (error) instance.error = error
   }
 
+  saveInstance(instance)
   logger.debug(`Updated instance ${id} status to ${status}`)
 }
 
@@ -320,6 +278,7 @@ export function updateNodeState(
   nodeId: string,
   updates: Partial<NodeState>
 ): void {
+  init()
   const instance = getInstance(instanceId)
   if (!instance) {
     throw new Error(`Instance not found: ${instanceId}`)
@@ -328,27 +287,22 @@ export function updateNodeState(
   const nodeState = instance.nodeStates[nodeId] || { status: 'pending', attempts: 0 }
   instance.nodeStates[nodeId] = { ...nodeState, ...updates }
 
-  const database = initDb()
-  database.prepare(
-    'UPDATE workflow_instances SET node_states = ? WHERE id = ?'
-  ).run(JSON.stringify(instance.nodeStates), instanceId)
+  saveInstance(instance)
 }
 
 export function setNodeOutput(instanceId: string, nodeId: string, output: unknown): void {
+  init()
   const instance = getInstance(instanceId)
   if (!instance) {
     throw new Error(`Instance not found: ${instanceId}`)
   }
 
   instance.outputs[nodeId] = output
-
-  const database = initDb()
-  database.prepare(
-    'UPDATE workflow_instances SET outputs = ? WHERE id = ?'
-  ).run(JSON.stringify(instance.outputs), instanceId)
+  saveInstance(instance)
 }
 
 export function incrementLoopCount(instanceId: string, edgeId: string): number {
+  init()
   const instance = getInstance(instanceId)
   if (!instance) {
     throw new Error(`Instance not found: ${instanceId}`)
@@ -358,10 +312,7 @@ export function incrementLoopCount(instanceId: string, edgeId: string): number {
   const newCount = currentCount + 1
   instance.loopCounts[edgeId] = newCount
 
-  const database = initDb()
-  database.prepare(
-    'UPDATE workflow_instances SET loop_counts = ? WHERE id = ?'
-  ).run(JSON.stringify(instance.loopCounts), instanceId)
+  saveInstance(instance)
 
   return newCount
 }

@@ -1,5 +1,6 @@
 import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
 import { commitChanges } from '../git/commitChanges.js'
+import { buildExecuteStepPrompt } from '../prompts/index.js'
 import type { AgentContext } from '../types/agent.js'
 import type { Plan, PlanStep } from '../types/plan.js'
 import type { StepOutput } from '../types/output.js'
@@ -35,17 +36,7 @@ async function executeStep(context: AgentContext, step: PlanStep): Promise<StepO
   const { agent, task } = context
   const startTime = Date.now()
 
-  const prompt = `
-你是 ${agent.name}，正在执行任务 "${task.title}" 的第 ${step.order} 步。
-
-## 当前步骤
-${step.action}
-
-## 涉及文件
-${step.files.join('\n')}
-
-请执行这一步骤，直接修改相关文件。
-`
+  const prompt = buildExecuteStepPrompt(agent, task, step)
 
   const output = await invokeClaudeCode({
     prompt,
