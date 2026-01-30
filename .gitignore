@@ -6,6 +6,7 @@ dist/
 
 # Data files
 data/
+outputs/
 .claude-agent-hub/
 
 # IDE

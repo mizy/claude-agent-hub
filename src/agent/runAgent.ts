@@ -4,7 +4,7 @@ import { executePlan } from './executePlan.js'
 import { generatePlan } from './generatePlan.js'
 import { createBranch } from '../git/createBranch.js'
 import { now } from '../shared/time.js'
-import { generateTaskTitle, isGenericTitle } from '../output/index.js'
+import { generateTaskTitle, isGenericTitle, saveTaskOutput } from '../output/index.js'
 import type { AgentContext } from '../types/agent.js'
 
 /**
@@ -69,7 +69,17 @@ export async function runAgent(agentName: string): Promise<void> {
     const stepOutputs = await executePlan(context, plan)
     const completedAt = now()
 
-    // 5. 完成任务（输出保存在任务文件中）
+    // 5. 保存执行输出到 markdown 文件
+    const outputPath = await saveTaskOutput({
+      task,
+      agent,
+      branch: branchName,
+      plan,
+      stepOutputs,
+      timing: { startedAt, completedAt }
+    })
+
+    // 6. 更新任务状态
     store.updateTask(task.id, {
       status: 'completed',
       output: {
@@ -86,6 +96,7 @@ export async function runAgent(agentName: string): Promise<void> {
     })
 
     console.log(`[${agent.name}] 任务完成: ${task.title}`)
+    console.log(`[${agent.name}] 输出保存至: ${outputPath}`)
 
   } catch (error) {
     console.error(`[${agent.name}] 执行出错:`, error)

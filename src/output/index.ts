@@ -1,5 +1,6 @@
 /**
- * Output module - Task title generation
+ * Output module - Task output saving and title generation
  */
 
 export { generateTaskTitle, isGenericTitle } from './generateTaskTitle.js'
+export { saveTaskOutput } from './saveTaskOutput.js'

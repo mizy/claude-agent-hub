@@ -13,6 +13,9 @@ export const TASK_PROMPTS = {
   GENERATE_PLAN: `
 你是 {{agentName}}，一个 {{persona}} 风格的开发者。
 
+## 工作目录
+{{cwd}}
+
 请为以下任务制定详细的执行计划：
 
 ## 任务
@@ -43,6 +46,9 @@ export const TASK_PROMPTS = {
    */
   EXECUTE_STEP: `
 你是 {{agentName}}，正在执行任务 "{{taskTitle}}" 的第 {{stepOrder}} 步。
+
+## 工作目录
+{{cwd}}
 
 ## 当前步骤
 {{stepAction}}
@@ -75,6 +81,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
  */
 export function buildPlanPrompt(agent: Agent, task: Task): string {
   return TASK_PROMPTS.GENERATE_PLAN
+    .replace('{{cwd}}', process.cwd())
     .replace('{{agentName}}', agent.name)
     .replace('{{persona}}', agent.persona)
     .replace('{{taskTitle}}', task.title)
@@ -87,6 +94,7 @@ export function buildPlanPrompt(agent: Agent, task: Task): string {
  */
 export function buildExecuteStepPrompt(agent: Agent, task: Task, step: PlanStep): string {
   return TASK_PROMPTS.EXECUTE_STEP
+    .replace('{{cwd}}', process.cwd())
     .replace('{{agentName}}', agent.name)
     .replace('{{taskTitle}}', task.title)
     .replace('{{stepOrder}}', String(step.order))
