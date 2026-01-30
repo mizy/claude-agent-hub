@@ -1,0 +1,223 @@
+/**
+ * 节点 Worker
+ * 基于 SQLite 队列处理节点任务
+ */
+
+import { getNextJob, completeJob, failJob, enqueueNode } from './WorkflowQueue.js'
+import { createLogger } from '../../shared/logger.js'
+import type { NodeJobData, NodeJobResult } from '../types.js'
+
+const logger = createLogger('node-worker')
+
+export type NodeProcessor = (data: NodeJobData) => Promise<NodeJobResult>
+
+export interface WorkerOptions {
+  concurrency?: number
+  pollInterval?: number  // 轮询间隔，毫秒
+  processor: NodeProcessor
+}
+
+interface WorkerState {
+  running: boolean
+  paused: boolean
+  activeJobs: number
+  pollTimer: NodeJS.Timeout | null
+}
+
+let state: WorkerState = {
+  running: false,
+  paused: false,
+  activeJobs: 0,
+  pollTimer: null,
+}
+
+let workerOptions: WorkerOptions | null = null
+
+/**
+ * 创建 Worker
+ */
+export function createNodeWorker(options: WorkerOptions): void {
+  if (workerOptions) {
+    logger.warn('Worker already exists')
+    return
+  }
+
+  workerOptions = {
+    concurrency: options.concurrency ?? 5,
+    pollInterval: options.pollInterval ?? 1000,
+    processor: options.processor,
+  }
+
+  logger.info(`Worker created with concurrency: ${workerOptions.concurrency}`)
+}
+
+/**
+ * 获取 Worker（兼容旧接口）
+ */
+export function getNodeWorker(): WorkerOptions | null {
+  return workerOptions
+}
+
+/**
+ * 启动 Worker
+ */
+export async function startWorker(): Promise<void> {
+  if (!workerOptions) {
+    throw new Error('Worker not created. Call createNodeWorker first.')
+  }
+
+  if (state.running) {
+    logger.warn('Worker already running')
+    return
+  }
+
+  state.running = true
+  state.paused = false
+
+  logger.info('Worker started')
+
+  // 开始轮询
+  pollForJobs()
+}
+
+/**
+ * 轮询处理任务
+ */
+async function pollForJobs(): Promise<void> {
+  if (!state.running || state.paused || !workerOptions) {
+    return
+  }
+
+  // 检查是否达到并发上限
+  if (state.activeJobs >= (workerOptions.concurrency ?? 5)) {
+    scheduleNextPoll()
+    return
+  }
+
+  // 获取下一个任务
+  const job = getNextJob()
+
+  if (job) {
+    // 异步处理任务，不阻塞轮询
+    processJob(job.id, job.data).catch(err => {
+      logger.error(`Error processing job ${job.id}:`, err)
+    })
+  }
+
+  scheduleNextPoll()
+}
+
+/**
+ * 调度下一次轮询
+ */
+function scheduleNextPoll(): void {
+  if (!state.running || state.paused || !workerOptions) {
+    return
+  }
+
+  state.pollTimer = setTimeout(() => {
+    pollForJobs()
+  }, workerOptions.pollInterval ?? 1000)
+}
+
+/**
+ * 处理单个任务
+ */
+async function processJob(jobId: string, data: NodeJobData): Promise<void> {
+  if (!workerOptions) return
+
+  state.activeJobs++
+
+  const { workflowId, instanceId, nodeId, attempt } = data
+  logger.info(`Processing node: ${nodeId} (instance: ${instanceId}, attempt: ${attempt})`)
+
+  try {
+    const result = await workerOptions.processor(data)
+
+    if (result.success) {
+      logger.info(`Node completed: ${nodeId}`)
+      completeJob(jobId)
+
+      // 入队下游节点
+      if (result.nextNodes && result.nextNodes.length > 0) {
+        for (const nextNodeId of result.nextNodes) {
+          await enqueueNode({
+            workflowId,
+            instanceId,
+            nodeId: nextNodeId,
+            attempt: 1,
+          })
+        }
+        logger.debug(`Enqueued ${result.nextNodes.length} downstream nodes`)
+      }
+    } else {
+      logger.warn(`Node failed: ${nodeId} - ${result.error}`)
+      failJob(jobId, result.error || 'Unknown error')
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logger.error(`Node error: ${nodeId} - ${errorMessage}`)
+    failJob(jobId, errorMessage)
+  } finally {
+    state.activeJobs--
+  }
+}
+
+/**
+ * 暂停 Worker
+ */
+export async function pauseWorker(): Promise<void> {
+  state.paused = true
+
+  if (state.pollTimer) {
+    clearTimeout(state.pollTimer)
+    state.pollTimer = null
+  }
+
+  logger.info('Worker paused')
+}
+
+/**
+ * 恢复 Worker
+ */
+export async function resumeWorker(): Promise<void> {
+  if (!state.running) {
+    logger.warn('Worker not running, use startWorker instead')
+    return
+  }
+
+  state.paused = false
+  pollForJobs()
+
+  logger.info('Worker resumed')
+}
+
+/**
+ * 关闭 Worker
+ */
+export async function closeWorker(): Promise<void> {
+  state.running = false
+  state.paused = false
+
+  if (state.pollTimer) {
+    clearTimeout(state.pollTimer)
+    state.pollTimer = null
+  }
+
+  // 等待活跃任务完成
+  while (state.activeJobs > 0) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+
+  workerOptions = null
+  state.activeJobs = 0
+
+  logger.info('Worker closed')
+}
+
+/**
+ * 检查 Worker 是否运行中
+ */
+export function isWorkerRunning(): boolean {
+  return state.running && !state.paused
+}
