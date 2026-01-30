@@ -17,7 +17,7 @@
  * └── meta.json
  */
 
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, readFileSync, writeFileSync } from 'fs'
 import { readFile, writeFile, unlink, mkdir, readdir } from 'fs/promises'
 import { join, basename } from 'path'
 import { createLogger } from '../shared/logger.js'
@@ -74,7 +74,6 @@ async function readJson<T>(filepath: string): Promise<T | null> {
 // Read JSON file sync
 function readJsonSync<T>(filepath: string): T | null {
   try {
-    const { readFileSync } = require('fs')
     const content = readFileSync(filepath, 'utf-8')
     return JSON.parse(content) as T
   } catch {
@@ -90,7 +89,6 @@ async function writeJson(filepath: string, data: unknown): Promise<void> {
 
 // Write JSON file sync
 function writeJsonSync(filepath: string, data: unknown): void {
-  const { writeFileSync } = require('fs')
   const dir = join(filepath, '..')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8')

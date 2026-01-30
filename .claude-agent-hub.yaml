@@ -5,7 +5,7 @@ agents:
   - name: dev
     persona: Pragmatist
     schedule:
-      poll_interval: 1m      # 任务轮询间隔
+      poll_interval: 5m      # 任务轮询间隔
 
   # 可以添加更多 Agent
   # - name: reviewer
@@ -16,10 +16,15 @@ agents:
 tasks:
   default_priority: medium
   max_retries: 3
-  timeout: 60m
+  timeout: 30m
 
 # Git 配置
 git:
   base_branch: main
   branch_prefix: "agent/"
   auto_push: false          # 需要人工确认才推送
+
+# Claude Code 配置
+claude:
+  model: sonnet             # haiku | sonnet | opus
+  max_tokens: 8000
