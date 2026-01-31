@@ -22,6 +22,7 @@ const logger = createLogger('spawn-task')
 export interface SpawnTaskOptions {
   taskId: string
   agentName?: string
+  resume?: boolean  // 是否为恢复模式
 }
 
 /**
@@ -29,7 +30,7 @@ export interface SpawnTaskOptions {
  * @returns Process ID
  */
 export function spawnTaskProcess(options: SpawnTaskOptions): number {
-  const { taskId, agentName = 'default' } = options
+  const { taskId, agentName = 'default', resume = false } = options
 
   // Ensure task folder exists
   const taskDir = getTaskFolder(taskId)
@@ -43,20 +44,28 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   // Find the runTaskProcess script path
   const scriptPath = join(process.cwd(), 'dist/task/runTaskProcess.js')
 
+  const args = [
+    scriptPath,
+    '--task-id',
+    taskId,
+    '--agent',
+    agentName,
+  ]
+
+  // Add resume flag if needed
+  if (resume) {
+    args.push('--resume')
+  }
+
   logger.debug(`Spawning task process: ${taskId}`)
   logger.debug(`Script: ${scriptPath}`)
   logger.debug(`Log: ${logPath}`)
+  logger.debug(`Resume mode: ${resume}`)
 
   // Spawn detached process
   const child = spawn(
     process.execPath, // node
-    [
-      scriptPath,
-      '--task-id',
-      taskId,
-      '--agent',
-      agentName,
-    ],
+    args,
     {
       detached: true,
       stdio: ['ignore', out, err],

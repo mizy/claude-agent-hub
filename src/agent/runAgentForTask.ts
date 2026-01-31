@@ -26,8 +26,10 @@ import {
 import {
   updateTask,
   getTaskWorkflow,
+  getTaskInstance,
   getOutputPath,
 } from '../store/TaskStore.js'
+import { enqueueNode } from '../workflow/index.js'
 import { saveWorkflowOutputToTask } from '../output/saveWorkflowOutputToTask.js'
 import { createLogger } from '../shared/logger.js'
 import type { Agent, AgentContext } from '../types/agent.js'
@@ -244,4 +246,152 @@ async function waitForWorkflowCompletion(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * 恢复失败的任务
+ *
+ * 与 runAgentForTask 不同，这个函数：
+ * 1. 使用已有的 workflow（不重新生成）
+ * 2. 继续执行现有的 instance
+ * 3. 从失败点恢复执行
+ */
+export async function resumeAgentForTask(agent: Agent, task: Task): Promise<void> {
+  const store = getStore()
+
+  logger.info(`[${agent.name}] 恢复任务: ${task.title}`)
+
+  // 获取已有的 workflow 和 instance
+  const workflow = getTaskWorkflow(task.id)
+  const instance = getTaskInstance(task.id)
+
+  if (!workflow) {
+    throw new Error(`No workflow found for task: ${task.id}`)
+  }
+
+  if (!instance) {
+    throw new Error(`No instance found for task: ${task.id}`)
+  }
+
+  logger.info(`[${agent.name}] 找到 Workflow: ${workflow.id}`)
+  logger.info(`[${agent.name}] Instance 状态: ${instance.status}`)
+
+  // 更新 Agent 状态
+  store.updateAgent(agent.name, { status: 'working' })
+
+  try {
+    // 更新任务状态为 developing
+    updateTask(task.id, { status: 'developing' })
+    logger.info(`[${agent.name}] 任务状态: developing`)
+
+    const startedAt = now()
+
+    // 创建并启动 NodeWorker
+    createNodeWorker({
+      concurrency: 1,
+      pollInterval: POLL_INTERVAL,
+      processor: executeNode,
+    })
+    await startWorker()
+
+    // 找到需要重新执行的节点并入队
+    // instance.status 应该已经被 recoverWorkflowInstance 设为 running
+    // 失败的节点也应该被重置
+    const pendingNodes = Object.entries(instance.nodeStates)
+      .filter(([_, state]) => state.status === 'pending' && state.attempts === 0)
+      .map(([nodeId]) => nodeId)
+
+    if (pendingNodes.length > 0) {
+      // 只入队第一个 pending 节点（通常是循环节点）
+      const nodeToResume = pendingNodes[0]!
+      logger.info(`[${agent.name}] 恢复节点: ${nodeToResume}`)
+
+      await enqueueNode({
+        workflowId: workflow.id,
+        instanceId: instance.id,
+        nodeId: nodeToResume,
+        attempt: 1,
+      })
+    }
+
+    // 等待 Workflow 完成
+    const finalInstance = await waitForWorkflowCompletion(
+      task.id,
+      workflow.id,
+      instance.id,
+      agent.name
+    )
+
+    const completedAt = now()
+
+    // 关闭 worker
+    await closeWorker()
+
+    // 保存输出到任务文件夹
+    const outputPath = await saveWorkflowOutputToTask({
+      task,
+      agent,
+      workflow,
+      instance: finalInstance,
+      timing: { startedAt, completedAt },
+    })
+
+    // 更新任务状态
+    const success = finalInstance.status === 'completed'
+
+    updateTask(task.id, {
+      status: success ? 'completed' : 'failed',
+      output: {
+        workflowId: workflow.id,
+        instanceId: finalInstance.id,
+        finalStatus: finalInstance.status,
+        timing: { startedAt, completedAt },
+      },
+    })
+
+    // 更新 Agent 统计
+    store.updateAgent(agent.name, {
+      status: 'idle',
+      stats: {
+        ...agent.stats,
+        tasksCompleted: success
+          ? agent.stats.tasksCompleted + 1
+          : agent.stats.tasksCompleted,
+        tasksFailed: success
+          ? agent.stats.tasksFailed
+          : agent.stats.tasksFailed + 1,
+      },
+    })
+
+    if (success) {
+      logger.info(`[${agent.name}] 任务完成: ${task.title}`)
+    } else {
+      logger.error(`[${agent.name}] 任务失败: ${task.title}`)
+      logger.error(`[${agent.name}] 错误: ${finalInstance.error}`)
+    }
+    logger.info(`[${agent.name}] 输出保存至: ${outputPath}`)
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logger.error(`[${agent.name}] 恢复出错: ${errorMessage}`)
+
+    // 确保关闭 worker
+    if (isWorkerRunning()) {
+      await closeWorker()
+    }
+
+    // 更新任务状态为 failed
+    updateTask(task.id, { status: 'failed' })
+
+    // 更新 Agent 状态
+    store.updateAgent(agent.name, {
+      status: 'idle',
+      stats: {
+        ...agent.stats,
+        tasksFailed: agent.stats.tasksFailed + 1,
+      },
+    })
+
+    throw error
+  }
 }

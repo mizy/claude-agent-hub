@@ -11,7 +11,10 @@ import {
   detectOrphanedTasks,
   resumeTask,
   resumeAllOrphanedTasks,
+  resumeFailedTask,
+  getFailedTasks,
 } from '../../task/resumeTask.js'
+import { getTask } from '../../store/TaskStore.js'
 import { success, error, info, warn } from '../output.js'
 import type { TaskStatus } from '../../types/task.js'
 
@@ -138,49 +141,84 @@ export function registerTaskCommands(program: Command) {
 
   task
     .command('resume')
-    .description('恢复中断的任务')
-    .argument('[id]', '任务 ID (不填则恢复所有孤立任务)')
+    .description('恢复中断/失败的任务')
+    .argument('[id]', '任务 ID (不填则显示可恢复的任务)')
     .option('-a, --all', '恢复所有孤立任务')
     .option('--agent <agent>', '指定执行的 Agent')
-    .action((id, options) => {
+    .action(async (id, options) => {
       if (id) {
         // 恢复单个任务
-        const pid = resumeTask(id, options.agent)
-        if (pid) {
-          success(`Task resumed: ${id}`)
-          console.log(chalk.gray(`  PID: ${pid}`))
-        } else {
-          error('Task is still running or not found')
-        }
-      } else {
-        // 检测并显示孤立任务
-        const orphaned = detectOrphanedTasks()
-
-        if (orphaned.length === 0) {
-          info('No orphaned tasks found')
+        const task = getTask(id)
+        if (!task) {
+          error(`Task not found: ${id}`)
           return
         }
 
-        console.log(chalk.yellow(`Found ${orphaned.length} orphaned task(s):\n`))
-        for (const { task, pid } of orphaned) {
-          const title = task.title.length > 40 ? task.title.slice(0, 37) + '...' : task.title
-          console.log(chalk.gray(`  [${task.status}] ${title}`))
-          console.log(chalk.gray(`    ID: ${task.id}`))
-          console.log(chalk.gray(`    PID: ${pid} (dead)`))
-          console.log()
+        if (task.status === 'failed') {
+          // 恢复失败的任务 (从失败点继续，自动启动进程)
+          const result = await resumeFailedTask(id)
+          if (result.success) {
+            success(`Failed task recovered and started: ${id}`)
+            console.log(chalk.gray(`  Retrying node: ${result.failedNodeId}`))
+            console.log(chalk.gray(`  PID: ${result.pid}`))
+          } else {
+            error(result.error || 'Failed to recover task')
+          }
+        } else {
+          // 恢复孤立任务 (重启进程)
+          const pid = resumeTask(id, options.agent)
+          if (pid) {
+            success(`Task resumed: ${id}`)
+            console.log(chalk.gray(`  PID: ${pid}`))
+          } else {
+            error('Task is still running or not in resumable state')
+          }
+        }
+      } else {
+        // 检测并显示可恢复的任务
+        const orphaned = detectOrphanedTasks()
+        const failed = getFailedTasks()
+
+        if (orphaned.length === 0 && failed.length === 0) {
+          info('No tasks to resume')
+          return
         }
 
-        if (options.all) {
+        if (orphaned.length > 0) {
+          console.log(chalk.yellow(`\nOrphaned tasks (${orphaned.length}):\n`))
+          for (const { task, pid } of orphaned) {
+            const title = task.title.length > 40 ? task.title.slice(0, 37) + '...' : task.title
+            console.log(chalk.gray(`  [${task.status}] ${title}`))
+            console.log(chalk.gray(`    ID: ${task.id}`))
+            console.log(chalk.gray(`    PID: ${pid} (dead)`))
+            console.log()
+          }
+        }
+
+        if (failed.length > 0) {
+          console.log(chalk.red(`\nFailed tasks (${failed.length}):\n`))
+          for (const task of failed) {
+            const title = task.title.length > 40 ? task.title.slice(0, 37) + '...' : task.title
+            console.log(chalk.gray(`  [failed] ${title}`))
+            console.log(chalk.gray(`    ID: ${task.id}`))
+            console.log()
+          }
+        }
+
+        if (options.all && orphaned.length > 0) {
           // 恢复所有孤立任务
           const resumed = resumeAllOrphanedTasks()
           if (resumed.length > 0) {
-            success(`Resumed ${resumed.length} task(s)`)
+            success(`Resumed ${resumed.length} orphaned task(s)`)
             for (const { taskId, pid } of resumed) {
               console.log(chalk.gray(`  ${taskId} → PID ${pid}`))
             }
           }
         } else {
-          warn('Use --all to resume all orphaned tasks, or specify a task ID')
+          warn('Specify a task ID to resume, or use --all to resume all orphaned tasks')
+          if (failed.length > 0) {
+            console.log(chalk.gray('  For failed tasks: cah task resume <task-id>'))
+          }
         }
       }
     })

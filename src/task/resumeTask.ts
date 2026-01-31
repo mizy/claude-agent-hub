@@ -1,17 +1,23 @@
 /**
- * Task Recovery - 检测和恢复孤立任务
+ * Task Recovery - 检测和恢复孤立/失败任务
  *
- * 当电脑关机或进程被杀死后，任务可能处于 planning/developing 状态
- * 但实际进程已不存在。这个模块负责检测这些孤立任务并恢复执行。
+ * 1. 孤立任务：电脑关机或进程被杀死后，任务处于 planning/developing 状态但进程不存在
+ * 2. 失败任务：workflow 执行失败（节点超过最大重试次数等）
+ *
+ * 这个模块负责检测并恢复这些任务。
  */
 
 import { createLogger } from '../shared/logger.js'
 import {
+  getTask,
   getTasksByStatus,
   getProcessInfo,
   isProcessRunning,
   updateProcessInfo,
+  updateTask,
+  getTaskInstance,
 } from '../store/TaskStore.js'
+import { recoverWorkflowInstance } from '../workflow/index.js'
 import { spawnTaskProcess } from './spawnTask.js'
 import type { Task, TaskStatus } from '../types/task.js'
 
@@ -108,6 +114,52 @@ export function resumeTask(taskId: string, agentName?: string): number | null {
 }
 
 /**
+ * 恢复失败的任务
+ * 从失败点继续执行 workflow
+ * 会自动启动后台进程
+ */
+export async function resumeFailedTask(taskId: string): Promise<{
+  success: boolean
+  failedNodeId?: string
+  pid?: number
+  error?: string
+}> {
+  const task = getTask(taskId)
+  if (!task) {
+    return { success: false, error: `Task not found: ${taskId}` }
+  }
+
+  if (task.status !== 'failed') {
+    return { success: false, error: `Task is not in failed status: ${task.status}` }
+  }
+
+  // 获取 workflow instance
+  const instance = getTaskInstance(taskId)
+  if (!instance) {
+    return { success: false, error: 'No workflow instance found for task' }
+  }
+
+  // 恢复 workflow instance（重置失败节点状态）
+  const result = await recoverWorkflowInstance(instance.id)
+  if (!result.success) {
+    return result
+  }
+
+  logger.info(`Failed task recovered: ${taskId}, node: ${result.failedNodeId}`)
+
+  // 启动后台进程（使用 resume 模式）
+  const pid = spawnTaskProcess({
+    taskId,
+    agentName: task.assignee || 'default',
+    resume: true,
+  })
+
+  logger.info(`Task process started: PID ${pid}`)
+
+  return { ...result, pid }
+}
+
+/**
  * 恢复所有孤立任务
  */
 export function resumeAllOrphanedTasks(): Array<{ taskId: string; pid: number }> {
@@ -136,4 +188,11 @@ export function getOrphanedTasksSummary(): string[] {
     const reasonText = reason === 'process_not_found' ? 'process dead' : 'heartbeat timeout'
     return `[${status}] ${title} (PID: ${pid}, ${reasonText})`
   })
+}
+
+/**
+ * 获取失败任务列表
+ */
+export function getFailedTasks(): Task[] {
+  return getTasksByStatus('failed')
 }

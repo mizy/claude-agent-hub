@@ -78,6 +78,61 @@ export async function cancelWorkflowInstance(instanceId: string): Promise<void> 
   logger.info(`Workflow instance cancelled: ${instanceId}`)
 }
 
+/**
+ * 恢复失败的工作流实例
+ * 重置失败节点的状态，允许从失败点继续执行
+ */
+export async function recoverWorkflowInstance(instanceId: string): Promise<{
+  success: boolean
+  failedNodeId?: string
+  error?: string
+}> {
+  const instance = getInstance(instanceId)
+  if (!instance) {
+    return { success: false, error: `Instance not found: ${instanceId}` }
+  }
+
+  if (instance.status !== 'failed') {
+    return { success: false, error: `Instance is not in failed status: ${instance.status}` }
+  }
+
+  // 找到失败的节点（状态为 pending 但 attempts > 0，或状态为 failed）
+  let failedNodeId: string | null = null
+  for (const [nodeId, state] of Object.entries(instance.nodeStates)) {
+    if (state.status === 'failed' || (state.status === 'pending' && state.attempts >= 3)) {
+      failedNodeId = nodeId
+      break
+    }
+  }
+
+  if (!failedNodeId) {
+    return { success: false, error: 'No failed node found to recover' }
+  }
+
+  // 重置失败节点的状态和 attempts
+  updateNodeState(instanceId, failedNodeId, {
+    status: 'pending',
+    attempts: 0,
+    startedAt: undefined,
+    completedAt: undefined,
+    error: undefined,
+  })
+
+  // 重置实例状态
+  const updatedInstance = getInstance(instanceId)!
+  updatedInstance.status = 'running'
+  updatedInstance.completedAt = undefined
+  updatedInstance.error = undefined
+
+  // 保存更新
+  const { saveInstance } = await import('../store/WorkflowStore.js')
+  saveInstance(updatedInstance)
+
+  logger.info(`Workflow instance recovered: ${instanceId}, will retry node: ${failedNodeId}`)
+
+  return { success: true, failedNodeId }
+}
+
 // ============ 节点状态转换 ============
 
 export async function markNodeReady(instanceId: string, nodeId: string): Promise<void> {

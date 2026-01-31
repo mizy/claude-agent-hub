@@ -4,18 +4,19 @@
  *
  * 作为独立进程运行，执行完整的任务流程：
  * 1. 加载任务
- * 2. 生成 workflow
+ * 2. 生成 workflow (或恢复已有 workflow)
  * 3. 执行 workflow
  * 4. 保存输出
  *
  * Usage:
  *   node dist/task/runTaskProcess.js --task-id <id> --agent <name>
+ *   node dist/task/runTaskProcess.js --task-id <id> --resume   # 恢复模式
  */
 
 import { parseArgs } from 'util'
 import { getStore } from '../store/index.js'
 import { getOrCreateDefaultAgent } from '../agent/getDefaultAgent.js'
-import { runAgentForTask } from '../agent/runAgentForTask.js'
+import { runAgentForTask, resumeAgentForTask } from '../agent/runAgentForTask.js'
 import {
   getTask,
   updateTask,
@@ -38,12 +39,14 @@ async function main(): Promise<void> {
     options: {
       'task-id': { type: 'string' },
       agent: { type: 'string', default: 'default' },
+      resume: { type: 'boolean', default: false },
     },
     strict: true,
   })
 
   const taskId = values['task-id']
   const agentName = values['agent'] || 'default'
+  const isResume = values['resume'] || false
 
   if (!taskId) {
     console.error('Missing --task-id argument')
@@ -52,6 +55,9 @@ async function main(): Promise<void> {
 
   logger.info(`Starting task process: ${taskId}`)
   logger.info(`Agent: ${agentName}`)
+  if (isResume) {
+    logger.info(`Mode: resume (continuing from failed state)`)
+  }
 
   // Load task
   const task = getTask(taskId)
@@ -101,8 +107,12 @@ async function main(): Promise<void> {
       agent = await getOrCreateDefaultAgent()
     }
 
-    // Run the task
-    await runAgentForTask(agent, task)
+    // Run or resume the task
+    if (isResume) {
+      await resumeAgentForTask(agent, task)
+    } else {
+      await runAgentForTask(agent, task)
+    }
 
     // Mark process as stopped
     updateProcessInfo(taskId, { status: 'stopped' })

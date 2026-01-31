@@ -27,6 +27,7 @@ export {
   completeWorkflowInstance,
   failWorkflowInstance,
   cancelWorkflowInstance,
+  recoverWorkflowInstance,
   markNodeReady,
   markNodeRunning,
   markNodeDone,

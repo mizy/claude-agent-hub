@@ -304,22 +304,35 @@ export async function handleNodeResult(
       }
     }
 
-    // 检查当前节点是否属于某个活跃循环的最后一个节点
+    // 检查当前节点是否属于某个活跃循环
     instance = getInstance(instanceId)!
     const loopNodeId = findParentLoop(nodeId, instance, workflow)
     if (loopNodeId) {
       const loopBodyNodes = instance.activeLoops?.[loopNodeId]
       if (loopBodyNodes) {
-        // 检查是否是循环体的最后一个节点（没有指向非 loop 节点的出边）
-        const outEdges = workflow.edges.filter(e => e.from === nodeId)
-        const allEdgesGoToLoop = outEdges.length === 0 ||
-          outEdges.every(e => e.to === loopNodeId)
+        const currentIndex = loopBodyNodes.indexOf(nodeId)
+        const isInBodyNodes = currentIndex !== -1
+        const isLastBody = isLastBodyNode(nodeId, loopBodyNodes, instance)
 
-        if (allEdgesGoToLoop || isLastBodyNode(nodeId, loopBodyNodes, instance)) {
-          // 循环体执行完成，重新入队 loop 节点
-          logger.debug(`Loop body completed, re-queueing loop node ${loopNodeId}`)
-          resetNodeState(instanceId, loopNodeId)
-          return [loopNodeId]
+        // 检查是否有显式的出边
+        const outEdges = workflow.edges.filter(e => e.from === nodeId)
+        const hasExplicitEdges = outEdges.length > 0 &&
+          !outEdges.every(e => e.to === loopNodeId)
+
+        if (isInBodyNodes && !hasExplicitEdges) {
+          if (isLastBody) {
+            // 循环体执行完成，重新入队 loop 节点
+            logger.debug(`Loop body completed, re-queueing loop node ${loopNodeId}`)
+            resetNodeState(instanceId, loopNodeId)
+            return [loopNodeId]
+          } else {
+            // 不是最后一个 body node，按 bodyNodes 顺序执行下一个
+            const nextBodyNode = loopBodyNodes[currentIndex + 1]
+            if (nextBodyNode) {
+              logger.debug(`Loop body continuing: ${nodeId} -> ${nextBodyNode}`)
+              return [nextBodyNode]
+            }
+          }
         }
       }
     }
