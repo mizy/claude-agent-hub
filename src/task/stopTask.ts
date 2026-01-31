@@ -3,6 +3,12 @@
  */
 
 import { getStore } from '../store/index.js'
+import {
+  getTask,
+  updateTask,
+  getProcessInfo,
+  isProcessRunning,
+} from '../store/TaskStore.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
 
@@ -20,7 +26,7 @@ export interface StopTaskResult {
  */
 export function stopTask(id: string): StopTaskResult {
   const store = getStore()
-  const task = store.getTask(id)
+  const task = getTask(id)
 
   if (!task) {
     return { success: false, error: `Task not found: ${id}` }
@@ -32,6 +38,17 @@ export function stopTask(id: string): StopTaskResult {
     return {
       success: false,
       error: `Task is already ${task.status}, cannot stop`,
+    }
+  }
+
+  // Kill the process if running
+  const processInfo = getProcessInfo(task.id)
+  if (processInfo && processInfo.status === 'running' && isProcessRunning(processInfo.pid)) {
+    try {
+      process.kill(processInfo.pid, 'SIGTERM')
+      logger.info(`Killed process: ${processInfo.pid}`)
+    } catch {
+      // Process may have already exited
     }
   }
 
@@ -48,10 +65,10 @@ export function stopTask(id: string): StopTaskResult {
   }
 
   // Update task status
-  store.updateTask(task.id, { status: 'cancelled' })
+  updateTask(task.id, { status: 'cancelled' })
   logger.info(`Stopped task: ${task.id}`)
 
   // Return updated task
-  const updatedTask = store.getTask(task.id)
+  const updatedTask = getTask(task.id)
   return { success: true, task: updatedTask ?? task }
 }

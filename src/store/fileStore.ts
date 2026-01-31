@@ -6,70 +6,44 @@
  * ├── agents/
  * │   └── {name}.json
  * ├── tasks/
- * │   ├── pending/
- * │   ├── planning/
- * │   ├── developing/
- * │   ├── completed/
- * │   │   └── {date}/
- * │   │       └── {title}_{shortId}.json
- * │   ├── failed/
- * │   └── cancelled/
+ * │   └── {taskId}/
+ * │       ├── task.json
+ * │       ├── workflow.json
+ * │       └── ...
  * └── meta.json
+ *
+ * Task 操作委托给 TaskStore（平铺结构）
  */
 
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, readFileSync, writeFileSync } from 'fs'
-import { readFile, writeFile, unlink, mkdir, readdir } from 'fs/promises'
-import { join, basename } from 'path'
+import { existsSync, mkdirSync, readdirSync, rmSync, readFileSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import { createLogger } from '../shared/logger.js'
-import { formatTime, now } from '../shared/time.js'
-import { shortenId } from '../shared/id.js'
 import type { Agent } from '../types/agent.js'
 import type { Task, TaskStatus } from '../types/task.js'
+import {
+  saveTask as taskStoreSave,
+  getTask as taskStoreGet,
+  getAllTasks as taskStoreGetAll,
+  getTasksByStatus as taskStoreGetByStatus,
+  updateTask as taskStoreUpdate,
+  deleteTask as taskStoreDelete,
+} from './TaskStore.js'
 
 const logger = createLogger('store')
 
 // Data directory
 const DATA_DIR = join(process.cwd(), 'data')
 const AGENTS_DIR = join(DATA_DIR, 'agents')
-const TASKS_DIR = join(DATA_DIR, 'tasks')
 const META_FILE = join(DATA_DIR, 'meta.json')
-
-const TASK_STATUS_DIRS: TaskStatus[] = ['pending', 'planning', 'developing', 'completed', 'failed', 'cancelled']
 
 // Ensure directories exist
 function ensureDirs(): void {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
   if (!existsSync(AGENTS_DIR)) mkdirSync(AGENTS_DIR, { recursive: true })
-  if (!existsSync(TASKS_DIR)) mkdirSync(TASKS_DIR, { recursive: true })
-
-  for (const status of TASK_STATUS_DIRS) {
-    const dir = join(TASKS_DIR, status)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  }
 }
 
 // Initialize on module load
 ensureDirs()
-
-// Sanitize filename
-function sanitizeFilename(name: string): string {
-  return name
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
-    .replace(/\s+/g, '_')
-    .replace(/_+/g, '_')
-    .slice(0, 50)
-    .replace(/^_+|_+$/g, '')
-}
-
-// Read JSON file
-async function readJson<T>(filepath: string): Promise<T | null> {
-  try {
-    const content = await readFile(filepath, 'utf-8')
-    return JSON.parse(content) as T
-  } catch {
-    return null
-  }
-}
 
 // Read JSON file sync
 function readJsonSync<T>(filepath: string): T | null {
@@ -81,62 +55,11 @@ function readJsonSync<T>(filepath: string): T | null {
   }
 }
 
-// Write JSON file
-async function writeJson(filepath: string, data: unknown): Promise<void> {
-  await mkdir(join(filepath, '..'), { recursive: true })
-  await writeFile(filepath, JSON.stringify(data, null, 2), 'utf-8')
-}
-
 // Write JSON file sync
 function writeJsonSync(filepath: string, data: unknown): void {
   const dir = join(filepath, '..')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8')
-}
-
-// Get task filepath by status
-function getTaskFilepath(task: Task): string {
-  if (task.status === 'completed') {
-    const date = formatTime(now(), 'yyyy-MM-dd')
-    const filename = `${sanitizeFilename(task.title) || 'task'}_${shortenId(task.id, 8)}.json`
-    return join(TASKS_DIR, 'completed', date, filename)
-  }
-  return join(TASKS_DIR, task.status, `${task.id}.json`)
-}
-
-// Find task file across all status directories
-function findTaskFile(id: string): { filepath: string; status: TaskStatus } | null {
-  for (const status of TASK_STATUS_DIRS) {
-    const dir = join(TASKS_DIR, status)
-    if (!existsSync(dir)) continue
-
-    if (status === 'completed') {
-      // Search in date subdirectories
-      const dateDirs = readdirSync(dir).filter(d => statSync(join(dir, d)).isDirectory())
-      for (const dateDir of dateDirs) {
-        const files = readdirSync(join(dir, dateDir))
-        for (const file of files) {
-          if (file.includes(id.slice(0, 8)) && file.endsWith('.json')) {
-            return { filepath: join(dir, dateDir, file), status: status as TaskStatus }
-          }
-        }
-      }
-    } else {
-      // Direct lookup
-      const filepath = join(dir, `${id}.json`)
-      if (existsSync(filepath)) {
-        return { filepath, status: status as TaskStatus }
-      }
-      // Try partial match
-      const files = readdirSync(dir)
-      for (const file of files) {
-        if (file.startsWith(id) && file.endsWith('.json')) {
-          return { filepath: join(dir, file), status: status as TaskStatus }
-        }
-      }
-    }
-  }
-  return null
 }
 
 // Store interface
@@ -148,7 +71,7 @@ export interface FileStore {
   updateAgent(name: string, updates: Partial<Agent>): void
   deleteAgent(name: string): void
 
-  // Task operations
+  // Task operations (delegated to TaskStore)
   saveTask(task: Task): void
   getTask(id: string): Task | null
   getAllTasks(): Task[]
@@ -199,73 +122,29 @@ function createFileStore(): FileStore {
       }
     },
 
-    // Task operations
+    // Task operations - delegate to TaskStore
     saveTask(task: Task): void {
-      // Find and remove old file if status changed
-      const existing = findTaskFile(task.id)
-      if (existing && existing.status !== task.status) {
-        try { rmSync(existing.filepath) } catch { /* ignore */ }
-      }
-
-      const filepath = getTaskFilepath(task)
-      writeJsonSync(filepath, task)
-      logger.debug(`Saved task: ${task.id} (${task.status})`)
+      taskStoreSave(task)
     },
 
     getTask(id: string): Task | null {
-      const found = findTaskFile(id)
-      if (!found) return null
-      return readJsonSync<Task>(found.filepath)
+      return taskStoreGet(id)
     },
 
     getAllTasks(): Task[] {
-      const tasks: Task[] = []
-
-      for (const status of TASK_STATUS_DIRS) {
-        const dir = join(TASKS_DIR, status)
-        if (!existsSync(dir)) continue
-
-        if (status === 'completed') {
-          // Read from date subdirectories
-          const dateDirs = readdirSync(dir).filter(d => {
-            try { return statSync(join(dir, d)).isDirectory() } catch { return false }
-          })
-          for (const dateDir of dateDirs) {
-            const files = readdirSync(join(dir, dateDir)).filter(f => f.endsWith('.json'))
-            for (const file of files) {
-              const task = readJsonSync<Task>(join(dir, dateDir, file))
-              if (task) tasks.push(task)
-            }
-          }
-        } else {
-          const files = readdirSync(dir).filter(f => f.endsWith('.json'))
-          for (const file of files) {
-            const task = readJsonSync<Task>(join(dir, file))
-            if (task) tasks.push(task)
-          }
-        }
-      }
-
-      return tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      return taskStoreGetAll()
     },
 
     getTasksByStatus(status: TaskStatus): Task[] {
-      return this.getAllTasks().filter(t => t.status === status)
+      return taskStoreGetByStatus(status)
     },
 
     updateTask(id: string, updates: Partial<Task>): void {
-      const task = this.getTask(id)
-      if (!task) return
-      const updated = { ...task, ...updates }
-      this.saveTask(updated)
+      taskStoreUpdate(id, updates)
     },
 
     deleteTask(id: string): void {
-      const found = findTaskFile(id)
-      if (found) {
-        try { rmSync(found.filepath) } catch { /* ignore */ }
-        logger.debug(`Deleted task: ${id}`)
-      }
+      taskStoreDelete(id)
     },
 
     // Meta operations

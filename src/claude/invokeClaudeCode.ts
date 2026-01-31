@@ -1,89 +1,185 @@
-import { execa } from 'execa'
+import { execa, type ResultPromise } from 'execa'
+import chalk from 'chalk'
+import { createLogger } from '../shared/logger.js'
+import { ok, err, type Result } from '../shared/result.js'
 import type { PersonaConfig } from '../types/persona.js'
 
-interface InvokeOptions {
+const logger = createLogger('claude')
+
+// ============ Types ============
+
+export interface InvokeOptions {
   prompt: string
-  mode: 'plan' | 'execute' | 'review'
+  mode?: 'plan' | 'execute' | 'review'
   persona?: PersonaConfig
-  allowedTools?: string[]
   cwd?: string
+  /** 实时输出 Claude 响应，默认 false */
+  stream?: boolean
+  /** 跳过权限确认，默认 true */
+  skipPermissions?: boolean
+  /** 超时毫秒数，默认 30 分钟 */
+  timeoutMs?: number
+  /** 流式输出回调 */
+  onChunk?: (chunk: string) => void
 }
 
-interface InvokeResult {
-  output: string
-  exitCode: number
+export interface InvokeResult {
+  prompt: string
+  response: string
+  durationMs: number
+}
+
+export type InvokeError =
+  | { type: 'timeout'; message: string }
+  | { type: 'process'; message: string; exitCode?: number }
+  | { type: 'cancelled'; message: string }
+
+// ============ Core ============
+
+/**
+ * 调用 Claude Code CLI
+ */
+export async function invokeClaudeCode(
+  options: InvokeOptions
+): Promise<Result<InvokeResult, InvokeError>> {
+  const {
+    prompt,
+    mode,
+    persona,
+    cwd = process.cwd(),
+    stream = false,
+    skipPermissions = true,
+    timeoutMs = 30 * 60 * 1000,
+    onChunk,
+  } = options
+
+  const fullPrompt = buildPrompt(prompt, persona, mode)
+  const args = buildArgs(fullPrompt, skipPermissions)
+
+  logger.info(`[${mode ?? 'default'}] 调用 Claude (${fullPrompt.length} chars)`)
+  logger.debug(`Prompt: ${truncate(fullPrompt, 100)}`)
+
+  const startTime = Date.now()
+  let response = ''
+
+  try {
+    const subprocess = execa('claude', args, {
+      cwd,
+      timeout: timeoutMs,
+      stdin: 'ignore',
+      buffer: !stream, // 流式模式不缓冲
+    })
+
+    if (stream) {
+      response = await streamOutput(subprocess, onChunk)
+    } else {
+      const result = await subprocess
+      response = result.stdout
+    }
+
+    const durationMs = Date.now() - startTime
+    logger.info(`[${mode ?? 'default'}] 完成 (${(durationMs / 1000).toFixed(1)}s)`)
+
+    return ok({ prompt: fullPrompt, response, durationMs })
+  } catch (error: unknown) {
+    return err(toInvokeError(error))
+  }
 }
 
 /**
- * 调用 Claude Code CLI 执行任务
+ * 流式读取 subprocess 输出
  */
-export async function invokeClaudeCode(options: InvokeOptions): Promise<string> {
-  const { prompt, mode, persona, allowedTools, cwd } = options
+async function streamOutput(
+  subprocess: ResultPromise,
+  onChunk?: (chunk: string) => void
+): Promise<string> {
+  const chunks: string[] = []
 
-  // 构建完整的 prompt，包含人格设定
-  const fullPrompt = buildFullPrompt(prompt, persona, mode)
+  if (subprocess.stdout) {
+    for await (const chunk of subprocess.stdout) {
+      const text = chunk.toString()
+      chunks.push(text)
 
-  // 构建 claude 命令参数
-  const args = ['--print', '--dangerously-skip-permissions']
-
-  // 添加 prompt
-  args.push(fullPrompt)
-
-  try {
-    const result = await execa('claude', args, {
-      cwd: cwd || process.cwd(),
-      timeout: 30 * 60 * 1000, // 30 分钟超时
-      stdin: 'ignore', // 关键：避免 execa 等待 stdin 导致挂起
-      env: {
-        ...process.env,
-        // 可以传递额外的环境变量
+      if (onChunk) {
+        onChunk(text)
+      } else {
+        // 默认实时输出到控制台
+        process.stdout.write(chalk.dim(text))
       }
-    })
-
-    return result.stdout
-  } catch (error: any) {
-    if (error.timedOut) {
-      throw new Error('Claude Code 执行超时')
     }
-    throw new Error(`Claude Code 执行失败: ${error.message}`)
   }
+
+  // 等待进程结束
+  await subprocess
+
+  return chunks.join('')
 }
 
-function buildFullPrompt(
-  prompt: string,
-  persona?: PersonaConfig,
-  mode?: string
-): string {
+// ============ Helpers ============
+
+function buildArgs(prompt: string, skipPermissions: boolean): string[] {
+  const args = ['--print']
+  if (skipPermissions) {
+    args.push('--dangerously-skip-permissions')
+  }
+  args.push(prompt)
+  return args
+}
+
+function buildPrompt(prompt: string, persona?: PersonaConfig, mode?: string): string {
   const parts: string[] = []
 
-  // 添加人格 system prompt
   if (persona?.systemPrompt) {
-    parts.push(persona.systemPrompt)
-    parts.push('')
+    parts.push(persona.systemPrompt, '')
   }
 
-  // 添加模式特定指令
-  if (mode === 'plan') {
-    parts.push('你现在处于计划模式，请分析任务并生成详细的执行计划。')
-    parts.push('')
-  } else if (mode === 'execute') {
-    parts.push('你现在处于执行模式，请根据计划直接修改代码。')
-    parts.push('')
-  } else if (mode === 'review') {
-    parts.push('你现在处于审查模式，请仔细审查代码变更并提出建议。')
-    parts.push('')
+  const modeInstructions: Record<string, string> = {
+    plan: '你现在处于计划模式，请分析任务并生成详细的执行计划。',
+    execute: '你现在处于执行模式，请根据计划直接修改代码。',
+    review: '你现在处于审查模式，请仔细审查代码变更并提出建议。',
   }
 
-  // 添加主 prompt
+  if (mode && modeInstructions[mode]) {
+    parts.push(modeInstructions[mode], '')
+  }
+
   parts.push(prompt)
-
   return parts.join('\n')
 }
+
+function toInvokeError(error: unknown): InvokeError {
+  if (error && typeof error === 'object') {
+    const e = error as Record<string, unknown>
+
+    if (e.timedOut) {
+      return { type: 'timeout', message: 'Claude Code 执行超时' }
+    }
+
+    if (e.isCanceled) {
+      return { type: 'cancelled', message: '执行被取消' }
+    }
+
+    return {
+      type: 'process',
+      message: String(e.message ?? e.shortMessage ?? '未知错误'),
+      exitCode: typeof e.exitCode === 'number' ? e.exitCode : undefined,
+    }
+  }
+
+  return { type: 'process', message: String(error) }
+}
+
+function truncate(text: string, maxLen: number): string {
+  const oneLine = text.replace(/\n/g, ' ').trim()
+  return oneLine.length <= maxLen ? oneLine : oneLine.slice(0, maxLen) + '...'
+}
+
+// ============ Utils ============
 
 /**
  * 检查 Claude Code CLI 是否可用
  */
-export async function checkClaudeCodeAvailable(): Promise<boolean> {
+export async function checkClaudeAvailable(): Promise<boolean> {
   try {
     await execa('claude', ['--version'])
     return true

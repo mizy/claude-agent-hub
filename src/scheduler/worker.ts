@@ -3,7 +3,7 @@
  * 可复用的后台任务执行器
  */
 
-import { type Result, ok, err, fromPromise } from '../shared/result.js'
+import { type Result, err, fromPromise } from '../shared/result.js'
 import { createLogger, type Logger } from '../shared/logger.js'
 import { emitEvent } from './eventBus.js'
 

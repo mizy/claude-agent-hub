@@ -1,5 +1,4 @@
-import type { Plan } from './plan.js'
-import type { StepOutput, ExecutionTiming } from './output.js'
+import type { ExecutionTiming } from './output.js'
 
 export type TaskPriority = 'low' | 'medium' | 'high'
 export type TaskStatus = 'pending' | 'planning' | 'developing' | 'reviewing' | 'completed' | 'failed' | 'cancelled'
@@ -12,16 +11,20 @@ export interface Task {
   status: TaskStatus
   assignee?: string
   branch?: string
-  plan?: Plan
+  workflowId?: string
   retryCount: number
   lastRejectReason?: string
   createdAt: string
 
   // Execution output (populated when task completes)
-  output?: {
-    stepOutputs: StepOutput[]
-    timing: ExecutionTiming
-  }
+  output?: TaskOutput
+}
+
+export interface TaskOutput {
+  workflowId: string
+  instanceId: string
+  finalStatus: string
+  timing: ExecutionTiming
 }
 
 export interface CreateTaskOptions {

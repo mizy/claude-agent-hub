@@ -10,13 +10,10 @@ import {
   updateInstanceStatus,
   updateNodeState,
   setNodeOutput,
-  getWorkflow,
 } from '../store/WorkflowStore.js'
 import type {
   WorkflowInstance,
-  WorkflowStatus,
   NodeState,
-  NodeStatus,
   Workflow,
 } from '../types.js'
 
@@ -142,6 +139,13 @@ export async function markNodeSkipped(instanceId: string, nodeId: string): Promi
     completedAt: now(),
   })
   logger.debug(`Node skipped: ${nodeId}`)
+}
+
+export async function markNodeWaiting(instanceId: string, nodeId: string): Promise<void> {
+  updateNodeState(instanceId, nodeId, {
+    status: 'waiting',
+  })
+  logger.debug(`Node waiting for approval: ${nodeId}`)
 }
 
 // ============ 状态查询 ============

@@ -12,27 +12,23 @@ import {
   createInstance,
   incrementLoopCount,
   resetNodeState,
+  saveInstance,
 } from '../store/WorkflowStore.js'
 import {
   startWorkflowInstance,
-  markNodeReady,
-  markNodeRunning,
   markNodeDone,
   markNodeFailed,
-  markNodeSkipped,
   completeWorkflowInstance,
   failWorkflowInstance,
   isNodeCompleted,
   checkWorkflowCompletion,
 } from './StateManager.js'
 import { evaluateCondition } from './ConditionEvaluator.js'
-import { enqueueNode, enqueueNodes } from '../queue/WorkflowQueue.js'
+import { enqueueNodes } from '../queue/WorkflowQueue.js'
 import type {
   Workflow,
-  WorkflowNode,
   WorkflowEdge,
   WorkflowInstance,
-  NodeJobData,
   EvalContext,
   ExecuteNodeResult,
 } from '../types.js'
@@ -165,7 +161,7 @@ export async function getNextNodes(
 async function shouldFollowEdge(
   edge: WorkflowEdge,
   instance: WorkflowInstance,
-  workflow: Workflow
+  _workflow: Workflow
 ): Promise<boolean> {
   // 如果有条件表达式，需要求值
   if (edge.condition) {
@@ -254,7 +250,7 @@ export async function handleNodeResult(
   result: ExecuteNodeResult
 ): Promise<string[]> {
   const workflow = getWorkflow(workflowId)
-  const instance = getInstance(instanceId)
+  let instance = getInstance(instanceId)
 
   if (!workflow || !instance) {
     return []
@@ -273,6 +269,59 @@ export async function handleNodeResult(
     if (node.type === 'end') {
       await completeWorkflowInstance(instanceId)
       return []
+    }
+
+    // 特殊处理循环节点
+    if (node.type === 'loop' && result.output) {
+      const loopOutput = result.output as {
+        shouldContinue?: boolean
+        bodyNodes?: string[]
+      }
+
+      if (loopOutput.shouldContinue && loopOutput.bodyNodes && loopOutput.bodyNodes.length > 0) {
+        // 继续循环：保存活跃循环状态，重置并入队循环体入口节点
+        instance = getInstance(instanceId)!
+        instance.activeLoops = instance.activeLoops || {}
+        instance.activeLoops[nodeId] = loopOutput.bodyNodes
+        saveInstance(instance)
+
+        // 重置循环体节点状态
+        for (const bodyNodeId of loopOutput.bodyNodes) {
+          resetNodeState(instanceId, bodyNodeId)
+        }
+
+        logger.debug(`Loop node ${nodeId}: continuing with body nodes ${loopOutput.bodyNodes.join(', ')}`)
+        // 只入队第一个节点（循环体入口），后续节点通过 edges 连接
+        return [loopOutput.bodyNodes[0]!]
+      } else {
+        // 退出循环：清除活跃循环状态，走正常的 edges
+        instance = getInstance(instanceId)!
+        if (instance.activeLoops) {
+          delete instance.activeLoops[nodeId]
+          saveInstance(instance)
+        }
+        logger.debug(`Loop node ${nodeId}: exiting loop, following normal edges`)
+      }
+    }
+
+    // 检查当前节点是否属于某个活跃循环的最后一个节点
+    instance = getInstance(instanceId)!
+    const loopNodeId = findParentLoop(nodeId, instance, workflow)
+    if (loopNodeId) {
+      const loopBodyNodes = instance.activeLoops?.[loopNodeId]
+      if (loopBodyNodes) {
+        // 检查是否是循环体的最后一个节点（没有指向非 loop 节点的出边）
+        const outEdges = workflow.edges.filter(e => e.from === nodeId)
+        const allEdgesGoToLoop = outEdges.length === 0 ||
+          outEdges.every(e => e.to === loopNodeId)
+
+        if (allEdgesGoToLoop || isLastBodyNode(nodeId, loopBodyNodes, instance)) {
+          // 循环体执行完成，重新入队 loop 节点
+          logger.debug(`Loop body completed, re-queueing loop node ${loopNodeId}`)
+          resetNodeState(instanceId, loopNodeId)
+          return [loopNodeId]
+        }
+      }
     }
 
     // 获取下游节点
@@ -302,6 +351,64 @@ export async function handleNodeResult(
 
     return []
   }
+}
+
+/**
+ * 查找节点所属的活跃循环
+ */
+function findParentLoop(
+  nodeId: string,
+  instance: WorkflowInstance,
+  workflow: Workflow
+): string | null {
+  if (!instance.activeLoops) return null
+
+  for (const [loopNodeId, bodyNodes] of Object.entries(instance.activeLoops)) {
+    if (bodyNodes.includes(nodeId)) {
+      return loopNodeId
+    }
+  }
+
+  // 检查节点是否通过边连接到某个活跃循环的 bodyNode
+  for (const [loopNodeId, bodyNodes] of Object.entries(instance.activeLoops)) {
+    const inEdges = workflow.edges.filter(e => e.to === nodeId)
+    for (const edge of inEdges) {
+      if (bodyNodes.includes(edge.from)) {
+        // 这个节点是循环体 bodyNode 的下游节点，也属于循环体
+        return loopNodeId
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * 检查节点是否是循环体的最后一个节点
+ */
+function isLastBodyNode(
+  nodeId: string,
+  bodyNodes: string[],
+  instance: WorkflowInstance
+): boolean {
+  // 如果 bodyNodes 只有一个节点，它就是最后一个
+  if (bodyNodes.length === 1 && bodyNodes[0] === nodeId) {
+    return true
+  }
+
+  // 检查是否是 bodyNodes 中的最后一个
+  const lastBodyNode = bodyNodes[bodyNodes.length - 1]
+  if (nodeId === lastBodyNode) {
+    return true
+  }
+
+  // 检查所有 bodyNodes 是否都已完成
+  const allBodyNodesCompleted = bodyNodes.every(bn => {
+    const state = instance.nodeStates[bn]
+    return state?.status === 'done' || state?.status === 'skipped'
+  })
+
+  return allBodyNodesCompleted
 }
 
 // ============ 并行网关处理 ============

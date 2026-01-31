@@ -2,7 +2,10 @@
  * Delete task by ID
  */
 
-import { getStore } from '../store/index.js'
+import {
+  getTask,
+  deleteTask as deleteTaskFromStore,
+} from '../store/TaskStore.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
 
@@ -15,11 +18,10 @@ export interface DeleteTaskResult {
 }
 
 /**
- * Delete a task by ID (supports short ID)
+ * Delete a task by ID (supports partial ID match)
  */
 export function deleteTask(id: string): DeleteTaskResult {
-  const store = getStore()
-  const task = store.getTask(id)
+  const task = getTask(id)
 
   if (!task) {
     return { success: false, error: `Task not found: ${id}` }
@@ -33,7 +35,7 @@ export function deleteTask(id: string): DeleteTaskResult {
     }
   }
 
-  store.deleteTask(task.id)
+  deleteTaskFromStore(task.id)
   logger.info(`Deleted task: ${task.id}`)
 
   return { success: true, task }

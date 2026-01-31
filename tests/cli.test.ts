@@ -47,7 +47,7 @@ describe('CLI 简化命令', () => {
 
   describe('cah "任务描述"', () => {
     it('should create task from prompt', async () => {
-      const { stdout, stderr } = await execa('node', [CLI_PATH, '修复登录bug'], {
+      const { stdout, stderr } = await execa('node', [CLI_PATH, '修复登录bug', '--no-run'], {
         cwd: TEST_DIR,
         reject: false,
       })
@@ -60,7 +60,7 @@ describe('CLI 简化命令', () => {
 
     it('should truncate long prompts in title', async () => {
       const longPrompt = 'A'.repeat(100)
-      const { stdout } = await execa('node', [CLI_PATH, longPrompt], {
+      const { stdout } = await execa('node', [CLI_PATH, longPrompt, '--no-run'], {
         cwd: TEST_DIR,
         reject: false,
       })
@@ -70,7 +70,7 @@ describe('CLI 简化命令', () => {
     })
 
     it('should support --agent option', async () => {
-      const { stdout } = await execa('node', [CLI_PATH, '优化数据库', '-a', 'architect'], {
+      const { stdout } = await execa('node', [CLI_PATH, '优化数据库', '-a', 'architect', '--no-run'], {
         cwd: TEST_DIR,
         reject: false,
       })
@@ -159,7 +159,7 @@ describe('CLI 简化命令', () => {
     it('should handle ~ home directory expansion', async () => {
       // 当文件不存在时，会回退到创建任务
       // 这是预期行为，避免用户输入错误路径时出错
-      const { stdout, stderr } = await execa('node', [CLI_PATH, '~/nonexistent.md'], {
+      const { stdout, stderr } = await execa('node', [CLI_PATH, '~/nonexistent.md', '--no-run'], {
         cwd: TEST_DIR,
         reject: false,
       })
@@ -170,15 +170,14 @@ describe('CLI 简化命令', () => {
     })
 
     it('should show error for non-existent file', async () => {
-      const { stdout, stderr } = await execa('node', [CLI_PATH, './nonexistent.md'], {
+      const { stdout, stderr } = await execa('node', [CLI_PATH, './nonexistent.md', '--no-run'], {
         cwd: TEST_DIR,
         reject: false,
       })
 
-      // 文件不存在时，由于路径格式，应该尝试当作文件处理
-      // 或者创建任务（取决于实现）
+      // 文件不存在时，由于路径格式，回退为创建任务
       const output = stdout + stderr
-      expect(output.length).toBeGreaterThan(0)
+      expect(output).toContain('Created task')
     })
   })
 

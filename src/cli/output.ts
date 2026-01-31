@@ -78,7 +78,7 @@ export function printTable(
           joinRight: '',
           joinJoin: chalk.dim('┼'),
         },
-        drawHorizontalLine: (index: number, size: number) => index === 1,
+        drawHorizontalLine: (index: number, _size: number) => index === 1,
       }
     : undefined
 

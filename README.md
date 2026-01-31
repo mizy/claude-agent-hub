@@ -1,25 +1,18 @@
 # Claude Agent Hub
 
-基于 Claude Code 的 AI 团队协作系统 —— 让多个 AI Agent 像真实团队一样协作完成任务。
+基于 Claude Code 的 AI 任务调度系统 - 让 AI Agent 自动分析、规划和执行开发任务。
 
-## 核心理念
+## 核心特性
 
-传统的 AI 工具是单一执行者，而 Claude Agent Hub 模拟真实团队协作：
-
-```
-用户需求 → 动态生成 Workflow → 分配给不同角色的 Agent → 协作完成
-```
-
-- **动态规划** - 根据任务自动生成执行计划，不是固定流程
-- **角色分工** - 不同人格的 Agent 各司其职（架构师、开发者、审查员）
-- **真实协作** - Agent 之间可以交叉审查、反馈、迭代
-- **零配置** - 直接使用 Claude Code 的认证，开箱即用
+- **一行命令** - `cah "重构登录模块"` 创建并自动执行
+- **Workflow 引擎** - 支持条件分支、循环、并行、定时等复杂流程
+- **人工审批** - 关键节点支持人工介入，集成飞书通知
+- **零配置** - 直接使用 Claude Code 认证，开箱即用
 
 ## 环境要求
 
 - **Node.js** 20.0.0+
 - **Claude Code CLI** - 已安装并完成认证
-- **Git** - 用于分支管理
 
 ```bash
 # 确认 Claude Code 已就绪
@@ -29,10 +22,7 @@ claude --version
 ## 安装
 
 ```bash
-# 全局安装
-npm install -g claude-agent-hub
-
-# 或从源码
+# 从源码安装
 git clone https://github.com/anthropics/claude-agent-hub.git
 cd claude-agent-hub
 npm install && npm run build && npm link
@@ -41,15 +31,17 @@ npm install && npm run build && npm link
 ## 快速开始
 
 ```bash
-# 添加任务
-cah task add "重构用户认证模块，支持 OAuth2"
+# 创建并执行任务
+cah "修复登录 bug"
 
-# 执行任务
-cah run
+# 前台模式（实时看日志）
+cah "添加用户认证" --foreground
 
-# 查看结果
+# 查看任务状态
 cah task list
-cah task detail <task-id>
+
+# 查看任务详情
+cah task show <task-id>
 ```
 
 ## CLI 命令
@@ -57,57 +49,144 @@ cah task detail <task-id>
 ### 核心命令
 
 ```bash
-cah run                    # 执行待处理任务
-cah task add "描述"        # 添加任务
-cah task list              # 查看任务列表
+cah "任务描述"             # 创建任务并自动执行
+cah "任务描述" -f          # 前台模式，实时输出
+cah "任务描述" -p high     # 高优先级任务
+cah run                    # 执行队列中的待处理任务
 ```
 
 ### 任务管理
 
 ```bash
-cah task add "描述" [-p high|medium|low]   # 添加任务
-cah task list                              # 列出任务
-cah task detail <id>                       # 查看详情
-cah task stop <id>                         # 停止任务
-cah task delete <id>                       # 删除任务
-cah task clear                             # 清空所有任务
+cah task list              # 列出任务
+cah task show <id>         # 查看详情（含 workflow 状态）
+cah task stop <id>         # 停止任务
+cah task delete <id>       # 删除任务
+cah task clear             # 清空所有任务
 ```
 
-### 工作流
+### Workflow 管理
 
 ```bash
-cah workflow create -f requirements.md    # 从 Markdown 创建工作流
-cah workflow list                         # 列出工作流
-cah workflow status <id>                  # 查看状态
+cah workflow list          # 列出 workflow
+cah workflow show <id>     # 查看 workflow 详情
+cah workflow run <file>    # 从 Markdown 文件运行 workflow
 ```
 
 ### 守护进程
 
 ```bash
-cah daemon start    # 启动后台调度
-cah daemon stop     # 停止
-cah daemon status   # 查看状态
+cah daemon start           # 启动后台调度
+cah daemon stop            # 停止
+cah daemon status          # 查看状态
 ```
-
-## 数据存储
-
-所有数据存储在 `data/` 文件夹，无需数据库：
-
-```
-data/tasks/
-├── pending/                   # 待处理
-├── developing/                # 执行中
-└── completed/                 # 已完成
-    └── 2026-01-30/
-        └── Refactor_auth_a1b2c3d4.json
-```
-
-任务 JSON 包含执行计划、Claude Code 输出和耗时统计。
 
 ## 工作原理
 
 ```
-用户添加任务 → 生成执行计划 → 创建分支 → 调用 Claude Code 执行 → 保存结果
+cah "任务描述"
+      │
+      ▼
+┌─────────────────────────────────────┐
+│  1. 创建任务                         │
+│     生成任务文件夹，状态: pending     │
+└─────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────┐
+│  2. 生成 Workflow (Claude)          │
+│     分析任务 → JSON Workflow         │
+│     包含节点和边的 DAG 结构          │
+└─────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────┐
+│  3. 执行 Workflow                   │
+│     NodeWorker 按拓扑顺序执行节点    │
+│     支持并行、循环、条件分支等       │
+└─────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────┐
+│  4. 保存结果                        │
+│     生成 Markdown 报告              │
+│     更新任务状态                    │
+└─────────────────────────────────────┘
+```
+
+## Workflow 节点类型
+
+| 节点类型 | 说明 | 示例用途 |
+|---------|------|---------|
+| `start` | 开始节点 | 流程入口 |
+| `end` | 结束节点 | 流程出口 |
+| `task` | 任务节点 | 调用 Claude 执行代码任务 |
+| `condition` | 条件节点 | 根据条件选择分支 |
+| `parallel` | 并行网关 | 并行执行多个分支 |
+| `join` | 汇合网关 | 等待所有并行分支完成 |
+| `human` | 人工节点 | 等待人工审批（飞书通知） |
+| `delay` | 延迟节点 | 等待指定时间 |
+| `schedule` | 定时节点 | 等待到指定时间/cron |
+| `loop` | 循环节点 | while/for/until 循环 |
+| `foreach` | 遍历节点 | 遍历集合执行 |
+| `switch` | 分支节点 | 多路条件分支 |
+| `assign` | 赋值节点 | 设置变量 |
+| `script` | 脚本节点 | 执行表达式计算 |
+
+## 数据存储
+
+任务数据按状态组织在 `data/tasks/` 下：
+
+```
+data/tasks/
+├── pending/                          # 待处理
+├── planning/                         # 规划中
+├── developing/                       # 执行中
+│   └── task-20260131-143022-abc/
+│       ├── task.json                 # 任务信息
+│       ├── workflow.json             # 执行计划
+│       ├── instance.json             # 运行状态
+│       ├── conversations.json        # AI 对话记录
+│       └── outputs/
+│           └── result.md             # 执行报告
+├── completed/                        # 已完成
+├── failed/                           # 失败
+└── cancelled/                        # 已取消
+```
+
+## 配置
+
+在项目根目录创建 `cah.config.json`：
+
+```json
+{
+  "notify": {
+    "lark": {
+      "webhookUrl": "https://open.feishu.cn/..."
+    }
+  }
+}
+```
+
+## 表达式语法
+
+在 `assign`、`script`、`condition` 等节点中使用：
+
+```javascript
+// 变量访问
+variables.count
+outputs.step1.result
+
+// 内置函数
+now()                    // 当前时间戳 (Date.now())
+floor(x), ceil(x)        // 取整
+min(a, b), max(a, b)     // 最值
+len(arr)                 // 数组长度
+str(x), num(x), bool(x)  // 类型转换
+
+// 也支持 JavaScript 风格（自动转换）
+Date.now()               // → now()
+Math.floor(x)            // → floor(x)
 ```
 
 ## 开发

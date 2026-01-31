@@ -1,17 +1,12 @@
 /**
  * Workflow 文件存储
  *
- * Structure:
- * data/workflows/
- * ├── definitions/
- * │   └── {id}.json
- * └── instances/
- *     ├── pending/
- *     ├── running/
- *     ├── completed/
- *     ├── failed/
- *     └── cancelled/
- *         └── {id}.json
+ * Workflow 保存在关联的 task 目录下：
+ * data/tasks/{taskId}/
+ * ├── workflow.json
+ * └── instance.json
+ *
+ * 向后兼容：也支持从旧的 data/workflows/ 目录读取
  */
 
 import { existsSync, mkdirSync, readdirSync, rmSync, readFileSync, writeFileSync } from 'fs'
@@ -29,23 +24,18 @@ const logger = createLogger('workflow-store')
 
 // Data directories
 const DATA_DIR = join(process.cwd(), 'data')
+const TASKS_DIR = join(DATA_DIR, 'tasks')
+// Legacy directories (for backward compatibility)
 const WORKFLOWS_DIR = join(DATA_DIR, 'workflows')
 const DEFINITIONS_DIR = join(WORKFLOWS_DIR, 'definitions')
-const INSTANCES_DIR = join(WORKFLOWS_DIR, 'instances')
 
-const INSTANCE_STATUS_DIRS: WorkflowStatus[] = ['pending', 'running', 'paused', 'completed', 'failed', 'cancelled']
+// Workflow ID -> TaskId 映射缓存
+const workflowToTaskCache: Map<string, string> = new Map()
 
 // Ensure directories exist
 function ensureDirs(): void {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
-  if (!existsSync(WORKFLOWS_DIR)) mkdirSync(WORKFLOWS_DIR, { recursive: true })
-  if (!existsSync(DEFINITIONS_DIR)) mkdirSync(DEFINITIONS_DIR, { recursive: true })
-  if (!existsSync(INSTANCES_DIR)) mkdirSync(INSTANCES_DIR, { recursive: true })
-
-  for (const status of INSTANCE_STATUS_DIRS) {
-    const dir = join(INSTANCES_DIR, status)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  }
+  if (!existsSync(TASKS_DIR)) mkdirSync(TASKS_DIR, { recursive: true })
 }
 
 // Read JSON file
@@ -65,25 +55,35 @@ function writeJson(filepath: string, data: unknown): void {
   writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8')
 }
 
-// Find instance file across status directories
-function findInstanceFile(id: string): { filepath: string; status: WorkflowStatus } | null {
-  for (const status of INSTANCE_STATUS_DIRS) {
-    const dir = join(INSTANCES_DIR, status)
-    if (!existsSync(dir)) continue
+// Instance ID -> TaskId 映射缓存
+const instanceToTaskCache: Map<string, string> = new Map()
 
-    const filepath = join(dir, `${id}.json`)
+// 查找 instance 文件
+function findInstanceFile(id: string): string | null {
+  // 1. 检查缓存
+  const cachedTaskId = instanceToTaskCache.get(id)
+  if (cachedTaskId) {
+    const filepath = join(TASKS_DIR, cachedTaskId, 'instance.json')
     if (existsSync(filepath)) {
-      return { filepath, status }
+      return filepath
     }
+  }
 
-    // Try partial match
-    const files = readdirSync(dir)
-    for (const file of files) {
-      if (file.startsWith(id) && file.endsWith('.json')) {
-        return { filepath: join(dir, file), status }
+  // 2. 搜索所有 task 目录
+  if (existsSync(TASKS_DIR)) {
+    const taskFolders = readdirSync(TASKS_DIR)
+    for (const taskId of taskFolders) {
+      const filepath = join(TASKS_DIR, taskId, 'instance.json')
+      if (existsSync(filepath)) {
+        const instance = readJson<WorkflowInstance>(filepath)
+        if (instance?.id === id) {
+          instanceToTaskCache.set(id, taskId)
+          return filepath
+        }
       }
     }
   }
+
   return null
 }
 
@@ -100,6 +100,25 @@ function init(): void {
 
 export function saveWorkflow(workflow: Workflow): void {
   init()
+
+  // 如果有 taskId，保存到 task 目录
+  if (workflow.taskId) {
+    const taskDir = join(TASKS_DIR, workflow.taskId)
+    if (!existsSync(taskDir)) {
+      mkdirSync(taskDir, { recursive: true })
+    }
+    const filepath = join(taskDir, 'workflow.json')
+    writeJson(filepath, workflow)
+    // 更新缓存
+    workflowToTaskCache.set(workflow.id, workflow.taskId)
+    logger.debug(`Saved workflow: ${workflow.id} to task ${workflow.taskId}`)
+    return
+  }
+
+  // 向后兼容：没有 taskId 时保存到旧目录
+  if (!existsSync(DEFINITIONS_DIR)) {
+    mkdirSync(DEFINITIONS_DIR, { recursive: true })
+  }
   const filepath = join(DEFINITIONS_DIR, `${workflow.id}.json`)
   writeJson(filepath, workflow)
   logger.debug(`Saved workflow: ${workflow.id}`)
@@ -108,18 +127,44 @@ export function saveWorkflow(workflow: Workflow): void {
 export function getWorkflow(id: string): Workflow | null {
   init()
 
-  // Direct lookup
-  const filepath = join(DEFINITIONS_DIR, `${id}.json`)
-  if (existsSync(filepath)) {
-    return readJson<Workflow>(filepath)
+  // 1. 检查缓存
+  const cachedTaskId = workflowToTaskCache.get(id)
+  if (cachedTaskId) {
+    const taskDir = join(TASKS_DIR, cachedTaskId)
+    const filepath = join(taskDir, 'workflow.json')
+    if (existsSync(filepath)) {
+      return readJson<Workflow>(filepath)
+    }
   }
 
-  // Partial match
-  if (!existsSync(DEFINITIONS_DIR)) return null
-  const files = readdirSync(DEFINITIONS_DIR)
-  for (const file of files) {
-    if (file.startsWith(id) && file.endsWith('.json')) {
-      return readJson<Workflow>(join(DEFINITIONS_DIR, file))
+  // 2. 搜索所有 task 目录
+  if (existsSync(TASKS_DIR)) {
+    const taskFolders = readdirSync(TASKS_DIR)
+    for (const taskId of taskFolders) {
+      const filepath = join(TASKS_DIR, taskId, 'workflow.json')
+      if (existsSync(filepath)) {
+        const workflow = readJson<Workflow>(filepath)
+        if (workflow?.id === id) {
+          workflowToTaskCache.set(id, taskId)
+          return workflow
+        }
+      }
+    }
+  }
+
+  // 3. 向后兼容：从旧目录查找
+  if (existsSync(DEFINITIONS_DIR)) {
+    const filepath = join(DEFINITIONS_DIR, `${id}.json`)
+    if (existsSync(filepath)) {
+      return readJson<Workflow>(filepath)
+    }
+
+    // Partial match
+    const files = readdirSync(DEFINITIONS_DIR)
+    for (const file of files) {
+      if (file.startsWith(id) && file.endsWith('.json')) {
+        return readJson<Workflow>(join(DEFINITIONS_DIR, file))
+      }
     }
   }
 
@@ -128,36 +173,54 @@ export function getWorkflow(id: string): Workflow | null {
 
 export function getAllWorkflows(): Workflow[] {
   init()
-  if (!existsSync(DEFINITIONS_DIR)) return []
+  const workflows: Workflow[] = []
 
-  const files = readdirSync(DEFINITIONS_DIR).filter(f => f.endsWith('.json'))
-  return files
-    .map(f => readJson<Workflow>(join(DEFINITIONS_DIR, f)))
-    .filter((w): w is Workflow => w !== null)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  // 从 task 目录收集
+  if (existsSync(TASKS_DIR)) {
+    const taskFolders = readdirSync(TASKS_DIR)
+    for (const taskId of taskFolders) {
+      const filepath = join(TASKS_DIR, taskId, 'workflow.json')
+      if (existsSync(filepath)) {
+        const workflow = readJson<Workflow>(filepath)
+        if (workflow) {
+          workflows.push(workflow)
+          workflowToTaskCache.set(workflow.id, taskId)
+        }
+      }
+    }
+  }
+
+  // 向后兼容：从旧目录收集
+  if (existsSync(DEFINITIONS_DIR)) {
+    const files = readdirSync(DEFINITIONS_DIR).filter(f => f.endsWith('.json'))
+    for (const file of files) {
+      const workflow = readJson<Workflow>(join(DEFINITIONS_DIR, file))
+      if (workflow && !workflows.find(w => w.id === workflow.id)) {
+        workflows.push(workflow)
+      }
+    }
+  }
+
+  return workflows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 }
 
 export function deleteWorkflow(id: string): void {
   init()
 
-  // Delete definition
+  // 从 task 目录删除
+  const cachedTaskId = workflowToTaskCache.get(id)
+  if (cachedTaskId) {
+    const filepath = join(TASKS_DIR, cachedTaskId, 'workflow.json')
+    if (existsSync(filepath)) {
+      rmSync(filepath)
+      workflowToTaskCache.delete(id)
+    }
+  }
+
+  // 从旧目录删除
   const defPath = join(DEFINITIONS_DIR, `${id}.json`)
   if (existsSync(defPath)) {
     rmSync(defPath)
-  }
-
-  // Delete all instances of this workflow
-  for (const status of INSTANCE_STATUS_DIRS) {
-    const dir = join(INSTANCES_DIR, status)
-    if (!existsSync(dir)) continue
-
-    const files = readdirSync(dir)
-    for (const file of files) {
-      const instance = readJson<WorkflowInstance>(join(dir, file))
-      if (instance?.workflowId === id) {
-        rmSync(join(dir, file))
-      }
-    }
   }
 
   logger.debug(`Deleted workflow: ${id}`)
@@ -186,9 +249,17 @@ export function createInstance(workflowId: string): WorkflowInstance {
     workflowId: workflow.id,
     status: 'pending',
     nodeStates,
-    variables: { ...workflow.variables },
+    variables: {
+      ...workflow.variables,
+      taskId: workflow.taskId, // 保存 taskId 供后续使用
+    },
     outputs: {},
     loopCounts: {},
+  }
+
+  // 保存到 task 目录
+  if (workflow.taskId) {
+    instanceToTaskCache.set(instance.id, workflow.taskId)
   }
 
   saveInstance(instance)
@@ -200,21 +271,43 @@ export function createInstance(workflowId: string): WorkflowInstance {
 export function saveInstance(instance: WorkflowInstance): void {
   init()
 
-  // Find and remove old file if status changed
-  const existing = findInstanceFile(instance.id)
-  if (existing && existing.status !== instance.status) {
-    try { rmSync(existing.filepath) } catch { /* ignore */ }
+  // 从 variables 获取 taskId
+  const taskId = instance.variables.taskId as string | undefined
+
+  if (taskId) {
+    const taskDir = join(TASKS_DIR, taskId)
+    if (!existsSync(taskDir)) {
+      mkdirSync(taskDir, { recursive: true })
+    }
+    const filepath = join(taskDir, 'instance.json')
+    writeJson(filepath, instance)
+    instanceToTaskCache.set(instance.id, taskId)
+    return
   }
 
-  const filepath = join(INSTANCES_DIR, instance.status, `${instance.id}.json`)
-  writeJson(filepath, instance)
+  // 向后兼容：如果没有 taskId，尝试从缓存查找
+  const cachedTaskId = instanceToTaskCache.get(instance.id)
+  if (cachedTaskId) {
+    const filepath = join(TASKS_DIR, cachedTaskId, 'instance.json')
+    writeJson(filepath, instance)
+    return
+  }
+
+  // 最后：搜索已有的 instance 文件并更新
+  const existingPath = findInstanceFile(instance.id)
+  if (existingPath) {
+    writeJson(existingPath, instance)
+    return
+  }
+
+  logger.warn(`No task directory found for instance ${instance.id}, skipping save`)
 }
 
 export function getInstance(id: string): WorkflowInstance | null {
   init()
-  const found = findInstanceFile(id)
-  if (!found) return null
-  return readJson<WorkflowInstance>(found.filepath)
+  const filepath = findInstanceFile(id)
+  if (!filepath) return null
+  return readJson<WorkflowInstance>(filepath)
 }
 
 export function getInstancesByWorkflow(workflowId: string): WorkflowInstance[] {
@@ -224,26 +317,26 @@ export function getInstancesByWorkflow(workflowId: string): WorkflowInstance[] {
 
 export function getInstancesByStatus(status: WorkflowStatus): WorkflowInstance[] {
   init()
-  const dir = join(INSTANCES_DIR, status)
-  if (!existsSync(dir)) return []
-
-  const files = readdirSync(dir).filter(f => f.endsWith('.json'))
-  return files
-    .map(f => readJson<WorkflowInstance>(join(dir, f)))
-    .filter((i): i is WorkflowInstance => i !== null)
-    .sort((a, b) => {
-      const aTime = a.startedAt || a.id
-      const bTime = b.startedAt || b.id
-      return bTime.localeCompare(aTime)
-    })
+  return getAllInstances().filter(i => i.status === status)
 }
 
 export function getAllInstances(): WorkflowInstance[] {
   init()
   const instances: WorkflowInstance[] = []
 
-  for (const status of INSTANCE_STATUS_DIRS) {
-    instances.push(...getInstancesByStatus(status))
+  // 从所有 task 目录收集
+  if (existsSync(TASKS_DIR)) {
+    const taskFolders = readdirSync(TASKS_DIR)
+    for (const taskId of taskFolders) {
+      const filepath = join(TASKS_DIR, taskId, 'instance.json')
+      if (existsSync(filepath)) {
+        const instance = readJson<WorkflowInstance>(filepath)
+        if (instance) {
+          instances.push(instance)
+          instanceToTaskCache.set(instance.id, taskId)
+        }
+      }
+    }
   }
 
   return instances.sort((a, b) => {
@@ -326,4 +419,50 @@ export function resetNodeState(instanceId: string, nodeId: string): void {
     error: undefined,
     // 保留 attempts 计数
   })
+}
+
+/**
+ * 更新实例变量
+ */
+export function updateInstanceVariables(
+  instanceId: string,
+  updates: Record<string, unknown>
+): void {
+  init()
+  const instance = getInstance(instanceId)
+  if (!instance) {
+    throw new Error(`Instance not found: ${instanceId}`)
+  }
+
+  // 合并更新
+  for (const [key, value] of Object.entries(updates)) {
+    // 支持点号表示嵌套，如 "user.name"
+    if (key.includes('.')) {
+      setNestedValue(instance.variables, key, value)
+    } else {
+      instance.variables[key] = value
+    }
+  }
+
+  saveInstance(instance)
+  logger.debug(`Updated variables for instance ${instanceId}: ${Object.keys(updates).join(', ')}`)
+}
+
+/**
+ * 设置嵌套值
+ */
+function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = path.split('.')
+  let current = obj
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i]!
+    if (!(part in current) || typeof current[part] !== 'object') {
+      current[part] = {}
+    }
+    current = current[part] as Record<string, unknown>
+  }
+
+  const lastPart = parts[parts.length - 1]!
+  current[lastPart] = value
 }

@@ -7,7 +7,6 @@ import Database from 'better-sqlite3'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import { createLogger } from '../../shared/logger.js'
-import { generateId } from '../../shared/id.js'
 import type { NodeJobData } from '../types.js'
 
 const logger = createLogger('workflow-queue')
@@ -188,7 +187,7 @@ export function completeJob(jobId: string): void {
   `).run(new Date().toISOString(), jobId)
 }
 
-// 标记任务失败
+// 标记任务失败（带重试逻辑）
 export function failJob(jobId: string, error: string): void {
   const database = getDb()
 
@@ -213,6 +212,49 @@ export function failJob(jobId: string, error: string): void {
       WHERE id = ?
     `).run(new Date().toISOString(), error, jobId)
   }
+}
+
+// 直接标记任务失败（不重试）
+export function markJobFailed(jobId: string, error: string): void {
+  const database = getDb()
+  database.prepare(`
+    UPDATE jobs SET status = 'failed', completed_at = ?, error = ?
+    WHERE id = ?
+  `).run(new Date().toISOString(), error, jobId)
+  logger.debug(`Job ${jobId} marked as failed (no retry)`)
+}
+
+// 标记任务为等待人工审批（不重试，保持等待状态）
+export function markJobWaiting(jobId: string): void {
+  const database = getDb()
+  database.prepare(`
+    UPDATE jobs SET status = 'human_waiting'
+    WHERE id = ?
+  `).run(jobId)
+  logger.debug(`Job ${jobId} marked as waiting for human approval`)
+}
+
+// 获取等待审批的任务
+export function getWaitingHumanJobs(): Array<{ id: string; data: NodeJobData }> {
+  const database = getDb()
+  const rows = database.prepare(`
+    SELECT id, data FROM jobs WHERE status = 'human_waiting'
+  `).all() as Array<{ id: string; data: string }>
+
+  return rows.map(row => ({
+    id: row.id,
+    data: JSON.parse(row.data) as NodeJobData,
+  }))
+}
+
+// 恢复等待中的任务（审批通过后）
+export function resumeWaitingJob(jobId: string): void {
+  const database = getDb()
+  database.prepare(`
+    UPDATE jobs SET status = 'completed', completed_at = ?
+    WHERE id = ? AND status = 'human_waiting'
+  `).run(new Date().toISOString(), jobId)
+  logger.debug(`Job ${jobId} resumed after approval`)
 }
 
 // 获取队列统计

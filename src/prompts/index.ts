@@ -5,4 +5,9 @@
  * 注意：Agent 人格的 prompt 定义在 src/agent/persona/builtinPersonas.ts
  */
 
-export { TASK_PROMPTS, buildPlanPrompt, buildExecuteStepPrompt, buildGenerateTitlePrompt } from './taskPrompts.js'
+export {
+  TASK_PROMPTS,
+  buildJsonWorkflowPrompt,
+  buildExecuteNodePrompt,
+  buildGenerateTitleFromWorkflowPrompt,
+} from './taskPrompts.js'

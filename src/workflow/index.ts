@@ -66,6 +66,7 @@ export {
   setNodeOutput,
   incrementLoopCount,
   resetNodeState,
+  updateInstanceVariables,
 } from './store/WorkflowStore.js'
 
 // 队列（SQLite-based）
@@ -101,3 +102,21 @@ export {
   parseMarkdown,
   validateMarkdown,
 } from './parser/parseMarkdown.js'
+
+export {
+  parseJson,
+  validateJsonWorkflow,
+  extractJson,
+} from './parser/parseJson.js'
+
+// 新节点执行器
+export {
+  evaluateExpression,
+  executeDelayNode,
+  executeScheduleNode,
+  executeSwitchNode,
+  executeAssignNode,
+  executeScriptNode,
+  executeLoopNode,
+  executeForeachNode,
+} from './engine/executeNewNodes.js'

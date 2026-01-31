@@ -2,7 +2,6 @@ import { writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import chalk from 'chalk'
-import YAML from 'yaml'
 
 interface InitOptions {
   force?: boolean

@@ -7,7 +7,7 @@ import { loadPersona } from './persona/loadPersona.js'
 import type { Agent } from '../types/agent.js'
 
 const DEFAULT_AGENT_NAME = 'default'
-const DEFAULT_PERSONA = 'Pragmatist'
+const DEFAULT_PERSONA = 'Architect'  // 默认使用架构师拆分任务
 
 /**
  * 获取默认 Agent，如果不存在则自动创建

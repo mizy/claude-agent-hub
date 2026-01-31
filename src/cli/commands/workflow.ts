@@ -13,7 +13,6 @@ import {
   saveWorkflow,
   getWorkflow,
   getAllWorkflows,
-  getInstance,
   getAllInstances,
   getInstancesByStatus,
   startWorkflow,
@@ -24,7 +23,7 @@ import {
   cancelWorkflowInstance,
   getWorkflowProgress,
 } from '../../workflow/index.js'
-import { success, error, info, printTable } from '../output.js'
+import { success, error, info } from '../output.js'
 import { withSpinner } from '../spinner.js'
 import { shortenId } from '../../shared/id.js'
 

@@ -5,7 +5,7 @@
 
 import { marked } from 'marked'
 import { createLogger } from '../../shared/logger.js'
-import { generateId, generateShortId } from '../../shared/id.js'
+import { generateId } from '../../shared/id.js'
 import type { Workflow, WorkflowNode, WorkflowEdge } from '../types.js'
 
 const logger = createLogger('md-parser')

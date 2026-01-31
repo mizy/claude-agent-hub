@@ -3,11 +3,16 @@
  * 基于 SQLite 队列处理节点任务
  */
 
-import { getNextJob, completeJob, failJob, enqueueNode } from './WorkflowQueue.js'
+import { getNextJob, completeJob, failJob, markJobFailed, markJobWaiting, enqueueNode } from './WorkflowQueue.js'
+import { getInstance } from '../store/WorkflowStore.js'
+import { failWorkflowInstance, markNodeWaiting } from '../engine/StateManager.js'
 import { createLogger } from '../../shared/logger.js'
 import type { NodeJobData, NodeJobResult } from '../types.js'
 
 const logger = createLogger('node-worker')
+
+// Maximum attempts per node (prevents infinite retry loops)
+const MAX_NODE_ATTEMPTS = 3
 
 export type NodeProcessor = (data: NodeJobData) => Promise<NodeJobResult>
 
@@ -24,7 +29,7 @@ interface WorkerState {
   pollTimer: NodeJS.Timeout | null
 }
 
-let state: WorkerState = {
+const state: WorkerState = {
   running: false,
   paused: false,
   activeJobs: 0,
@@ -129,7 +134,26 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
   state.activeJobs++
 
   const { workflowId, instanceId, nodeId, attempt } = data
-  logger.info(`Processing node: ${nodeId} (instance: ${instanceId}, attempt: ${attempt})`)
+
+  // Check node attempts from instance state (source of truth)
+  const instance = getInstance(instanceId)
+  const nodeState = instance?.nodeStates[nodeId]
+  const currentAttempts = nodeState?.attempts || 0
+
+  logger.info(`Processing node: ${nodeId} (instance: ${instanceId}, attempt: ${currentAttempts + 1})`)
+
+  // Check if max attempts exceeded
+  if (currentAttempts >= MAX_NODE_ATTEMPTS) {
+    const errorMsg = `Node ${nodeId} exceeded max attempts (${MAX_NODE_ATTEMPTS})`
+    logger.error(errorMsg)
+    markJobFailed(jobId, errorMsg)
+
+    // Fail the entire workflow
+    await failWorkflowInstance(instanceId, errorMsg)
+
+    state.activeJobs--
+    return
+  }
 
   try {
     const result = await workerOptions.processor(data)
@@ -151,13 +175,38 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
         logger.debug(`Enqueued ${result.nextNodes.length} downstream nodes`)
       }
     } else {
+      // Special handling for human approval nodes
+      if (result.error === 'WAITING_FOR_APPROVAL') {
+        logger.info(`Node ${nodeId} waiting for human approval`)
+        markJobWaiting(jobId)
+        await markNodeWaiting(instanceId, nodeId)
+        // Don't retry, just wait for manual approval
+        return
+      }
+
       logger.warn(`Node failed: ${nodeId} - ${result.error}`)
-      failJob(jobId, result.error || 'Unknown error')
+
+      // Check if we should retry or give up
+      if (currentAttempts + 1 >= MAX_NODE_ATTEMPTS) {
+        logger.error(`Node ${nodeId} failed after ${currentAttempts + 1} attempts, giving up`)
+        markJobFailed(jobId, result.error || 'Unknown error')
+        await failWorkflowInstance(instanceId, `Node ${nodeId} failed: ${result.error}`)
+      } else {
+        // Still have retries left
+        failJob(jobId, result.error || 'Unknown error')
+      }
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     logger.error(`Node error: ${nodeId} - ${errorMessage}`)
-    failJob(jobId, errorMessage)
+
+    if (currentAttempts + 1 >= MAX_NODE_ATTEMPTS) {
+      logger.error(`Node ${nodeId} errored after ${currentAttempts + 1} attempts, giving up`)
+      markJobFailed(jobId, errorMessage)
+      await failWorkflowInstance(instanceId, `Node ${nodeId} error: ${errorMessage}`)
+    } else {
+      failJob(jobId, errorMessage)
+    }
   } finally {
     state.activeJobs--
   }

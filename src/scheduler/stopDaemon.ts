@@ -5,7 +5,7 @@ interface StopOptions {
   agent?: string
 }
 
-export async function stopDaemon(options: StopOptions): Promise<void> {
+export async function stopDaemon(_options: StopOptions): Promise<void> {
   const store = getStore()
   const pid = store.getDaemonPid()
 

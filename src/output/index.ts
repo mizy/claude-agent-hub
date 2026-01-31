@@ -3,4 +3,4 @@
  */
 
 export { generateTaskTitle, isGenericTitle } from './generateTaskTitle.js'
-export { saveTaskOutput } from './saveTaskOutput.js'
+export { saveWorkflowOutput } from './saveWorkflowOutput.js'

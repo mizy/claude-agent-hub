@@ -27,15 +27,29 @@ export const claudeConfigSchema = z.object({
   max_tokens: z.number().default(8000)
 })
 
+export const larkConfigSchema = z.object({
+  webhookUrl: z.string().optional(),        // 飞书 webhook URL
+  appId: z.string().optional(),             // 飞书应用 ID（@回复用）
+  appSecret: z.string().optional(),         // 飞书应用密钥
+  serverPort: z.number().default(3000),     // 事件监听端口
+})
+
+export const notifyConfigSchema = z.object({
+  lark: larkConfigSchema.optional(),
+})
+
 export const configSchema = z.object({
   agents: z.array(agentConfigSchema).default([]),
   tasks: taskConfigSchema.default({}),
   git: gitConfigSchema.default({}),
-  claude: claudeConfigSchema.default({})
+  claude: claudeConfigSchema.default({}),
+  notify: notifyConfigSchema.optional(),
 })
 
 export type AgentConfig = z.infer<typeof agentConfigSchema>
 export type TaskConfig = z.infer<typeof taskConfigSchema>
 export type GitConfig = z.infer<typeof gitConfigSchema>
 export type ClaudeConfig = z.infer<typeof claudeConfigSchema>
+export type LarkConfig = z.infer<typeof larkConfigSchema>
+export type NotifyConfig = z.infer<typeof notifyConfigSchema>
 export type Config = z.infer<typeof configSchema>

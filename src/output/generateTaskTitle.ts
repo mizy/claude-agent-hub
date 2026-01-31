@@ -4,10 +4,10 @@
  */
 
 import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
-import { buildGenerateTitlePrompt } from '../prompts/index.js'
+import { buildGenerateTitleFromWorkflowPrompt } from '../prompts/index.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
-import type { Plan } from '../types/plan.js'
+import type { Workflow } from '../workflow/types.js'
 
 const logger = createLogger('output')
 
@@ -32,35 +32,34 @@ export function isGenericTitle(title: string): boolean {
 }
 
 /**
- * Generate a descriptive task title using Claude Code
+ * Generate a descriptive task title from workflow using Claude Code
  * Falls back to original title on error
  */
-export async function generateTaskTitle(task: Task, plan: Plan): Promise<string> {
-  const prompt = buildGenerateTitlePrompt(task, plan)
+export async function generateTaskTitle(task: Task, workflow: Workflow): Promise<string> {
+  const prompt = buildGenerateTitleFromWorkflowPrompt(task, workflow)
 
-  try {
-    const result = await invokeClaudeCode({
-      prompt,
-      mode: 'plan', // lightweight mode
-      allowedTools: [], // no tools needed
-    })
+  const result = await invokeClaudeCode({
+    prompt,
+    mode: 'plan',
+  })
 
-    // Clean the result: remove quotes, trim, limit length
-    const title = result
-      .trim()
-      .replace(/^["'`]|["'`]$/g, '') // Remove surrounding quotes
-      .replace(/\n.*/s, '') // Take only first line
-      .slice(0, 50)
-      .trim()
-
-    if (title && title.length >= 3) {
-      logger.info(`Generated title: "${title}"`)
-      return title
-    }
-
-    return task.title
-  } catch (err) {
-    logger.debug('Failed to generate title, using original', err)
+  if (!result.ok) {
+    logger.debug('Failed to generate title, using original', result.error)
     return task.title
   }
+
+  // Clean the result: remove quotes, trim, limit length
+  const title = result.value.response
+    .trim()
+    .replace(/^["'`]|["'`]$/g, '') // Remove surrounding quotes
+    .replace(/\n.*/s, '') // Take only first line
+    .slice(0, 50)
+    .trim()
+
+  if (title && title.length >= 3) {
+    logger.info(`Generated title: "${title}"`)
+    return title
+  }
+
+  return task.title
 }

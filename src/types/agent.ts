@@ -30,5 +30,4 @@ export interface CreateAgentOptions {
 export interface AgentContext {
   agent: Agent
   task: Task
-  branch: string
 }

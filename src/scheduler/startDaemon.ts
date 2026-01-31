@@ -3,10 +3,13 @@ import chalk from 'chalk'
 import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { runAgent } from '../agent/runAgent.js'
+import { startLarkServer, stopLarkServer } from '../notify/larkServer.js'
 
 interface DaemonOptions {
   agent?: string
   foreground?: boolean
+  lark?: boolean
+  larkPort?: number
 }
 
 let scheduledJobs: cron.ScheduledTask[] = []
@@ -49,6 +52,16 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
     scheduledJobs.push(job)
   }
 
+  // 启动飞书事件监听服务器
+  if (options.lark || config.notify?.lark?.webhookUrl) {
+    try {
+      await startLarkServer(options.larkPort)
+      console.log(chalk.green('  ✓ 飞书事件监听服务器已启动'))
+    } catch (error) {
+      console.error(chalk.red('  ✗ 飞书服务器启动失败:'), error)
+    }
+  }
+
   // 保存 PID
   store.setDaemonPid(process.pid)
 
@@ -56,11 +69,15 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
 
   if (options.foreground) {
     // 前台运行，等待信号
-    process.on('SIGINT', () => {
+    const cleanup = async () => {
       console.log(chalk.yellow('\n收到中断信号，停止守护进程...'))
       stopAllJobs()
+      await stopLarkServer()
       process.exit(0)
-    })
+    }
+
+    process.on('SIGINT', cleanup)
+    process.on('SIGTERM', cleanup)
   }
 }
 

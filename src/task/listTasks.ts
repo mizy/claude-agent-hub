@@ -1,6 +1,11 @@
 import chalk from 'chalk'
 import { table } from 'table'
-import { getStore } from '../store/index.js'
+import {
+  getAllTasks,
+  getTasksByStatus,
+  getProcessInfo,
+  isProcessRunning,
+} from '../store/TaskStore.js'
 
 interface ListOptions {
   status?: string
@@ -8,13 +13,12 @@ interface ListOptions {
 }
 
 export async function listTasks(options: ListOptions): Promise<void> {
-  const store = getStore()
-  let tasks = store.getAllTasks()
+  // Get tasks from new TaskStore
+  let tasks = options.status
+    ? getTasksByStatus(options.status as import('../types/task.js').TaskStatus)
+    : getAllTasks()
 
-  // 筛选
-  if (options.status) {
-    tasks = tasks.filter(t => t.status === options.status)
-  }
+  // Filter by agent
   if (options.agent) {
     tasks = tasks.filter(t => t.assignee === options.agent)
   }
@@ -30,29 +34,49 @@ export async function listTasks(options: ListOptions): Promise<void> {
     developing: chalk.blue,
     reviewing: chalk.yellow,
     completed: chalk.green,
-    failed: chalk.red
+    failed: chalk.red,
+    cancelled: chalk.gray,
   }
 
   const priorityColors: Record<string, (s: string) => string> = {
     low: chalk.gray,
     medium: chalk.white,
-    high: chalk.red
+    high: chalk.red,
   }
 
   const data = [
-    ['ID', '标题', '状态', '优先级', '执行者', '创建时间']
+    ['ID', '标题', '状态', 'PID', '优先级', '创建时间']
   ]
 
   for (const task of tasks) {
     const statusFn = statusColors[task.status] || chalk.white
     const priorityFn = priorityColors[task.priority] || chalk.white
 
+    // Get process info for running tasks
+    let pidDisplay = '-'
+    if (task.status === 'planning' || task.status === 'developing') {
+      const processInfo = getProcessInfo(task.id)
+      if (processInfo) {
+        const running = isProcessRunning(processInfo.pid)
+        if (running) {
+          pidDisplay = chalk.green(String(processInfo.pid))
+        } else {
+          pidDisplay = chalk.red(`${processInfo.pid} (dead)`)
+        }
+      }
+    }
+
+    // Format ID for display (timestamp-based IDs are longer)
+    const idDisplay = task.id.length > 24
+      ? task.id.slice(0, 24) + '...'
+      : task.id
+
     data.push([
-      task.id.slice(0, 8),
-      task.title.slice(0, 30) + (task.title.length > 30 ? '...' : ''),
+      idDisplay,
+      task.title.slice(0, 25) + (task.title.length > 25 ? '...' : ''),
       statusFn(task.status),
+      pidDisplay,
       priorityFn(task.priority),
-      task.assignee || '-',
       task.createdAt.split('T')[0] ?? ''
     ])
   }
