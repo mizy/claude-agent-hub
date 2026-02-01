@@ -18,8 +18,8 @@ export async function stopDaemon(_options: StopOptions): Promise<void> {
     process.kill(pid, 'SIGTERM')
     store.setDaemonPid(null)
     console.log(chalk.green(`✓ 已发送停止信号到进程 ${pid}`))
-  } catch (error: any) {
-    if (error.code === 'ESRCH') {
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') {
       console.log(chalk.yellow('进程已不存在'))
       store.setDaemonPid(null)
     } else {

@@ -33,7 +33,7 @@ export async function generateReport(options: ReportOptions): Promise<void> {
 
   // 获取 Agent 信息
   const agents = options.agent
-    ? [store.getAgent(options.agent)].filter(Boolean)
+    ? [store.getAgent(options.agent)].filter((a): a is NonNullable<typeof a> => a !== null)
     : store.getAllAgents()
 
   // 统计数据
@@ -57,7 +57,11 @@ export async function generateReport(options: ReportOptions): Promise<void> {
   // 生成报告
   const report = formatReport({
     period: { days, since: since.toISOString() },
-    agents: agents as any[],
+    agents: agents.map(a => ({
+      name: a.name,
+      persona: a.persona,
+      stats: a.stats,
+    })),
     tasks,
     stats,
     pendingBranches

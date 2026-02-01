@@ -1,5 +1,6 @@
 import chalk from 'chalk'
 import { getStore } from '../store/index.js'
+import type { Agent } from '../types/agent.js'
 
 export async function getAgentStatus(name?: string): Promise<void> {
   const store = getStore()
@@ -20,7 +21,7 @@ export async function getAgentStatus(name?: string): Promise<void> {
   }
 }
 
-function printAgentDetail(agent: any) {
+function printAgentDetail(agent: Agent) {
   console.log(chalk.bold(`Agent: ${agent.name}`))
   console.log(chalk.gray(`  状态: ${agent.status}`))
   console.log(chalk.gray(`  人格: ${agent.persona}`))
