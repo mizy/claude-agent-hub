@@ -14,9 +14,7 @@
  */
 
 import { parseArgs } from 'util'
-import { getStore } from '../store/index.js'
-import { getOrCreateDefaultAgent } from '../agent/getDefaultAgent.js'
-import { runAgentForTask, resumeAgentForTask } from '../agent/runAgentForTask.js'
+import { runTask, resumeTask } from '../agent/runAgentForTask.js'
 import {
   getTask,
   updateTask,
@@ -38,14 +36,12 @@ async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       'task-id': { type: 'string' },
-      agent: { type: 'string', default: 'default' },
       resume: { type: 'boolean', default: false },
     },
     strict: true,
   })
 
   const taskId = values['task-id']
-  const agentName = values['agent'] || 'default'
   const isResume = values['resume'] || false
 
   if (!taskId) {
@@ -54,7 +50,6 @@ async function main(): Promise<void> {
   }
 
   logger.info(`Starting task process: ${taskId}`)
-  logger.info(`Agent: ${agentName}`)
   if (isResume) {
     logger.info(`Mode: resume (continuing from failed state)`)
   }
@@ -82,6 +77,8 @@ async function main(): Promise<void> {
     updateProcessInfo(taskId, {
       status: 'crashed',
       error: 'Task exceeded maximum duration (2 hours)',
+      stopReason: 'timeout',
+      exitCode: 1,
     })
     clearInterval(heartbeat)
     process.exit(1)
@@ -92,30 +89,30 @@ async function main(): Promise<void> {
     logger.info(`Received ${signal}, cleaning up...`)
     clearInterval(heartbeat)
     clearTimeout(timeoutTimer)
-    updateProcessInfo(taskId, { status: 'stopped' })
+    updateProcessInfo(taskId, {
+      status: 'stopped',
+      stopReason: 'killed',
+      exitCode: 0,
+    })
   }
 
   process.on('SIGTERM', () => cleanup('SIGTERM'))
   process.on('SIGINT', () => cleanup('SIGINT'))
 
   try {
-    // Get or create agent
-    const store = getStore()
-    let agent = store.getAgent(agentName)
-    if (!agent) {
-      logger.info(`Agent "${agentName}" not found, using default`)
-      agent = await getOrCreateDefaultAgent()
-    }
-
     // Run or resume the task
     if (isResume) {
-      await resumeAgentForTask(agent, task)
+      await resumeTask(task)
     } else {
-      await runAgentForTask(agent, task)
+      await runTask(task)
     }
 
-    // Mark process as stopped
-    updateProcessInfo(taskId, { status: 'stopped' })
+    // Mark process as completed
+    updateProcessInfo(taskId, {
+      status: 'stopped',
+      stopReason: 'completed',
+      exitCode: 0,
+    })
     logger.info(`Task completed: ${taskId}`)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
@@ -128,6 +125,8 @@ async function main(): Promise<void> {
     updateProcessInfo(taskId, {
       status: 'crashed',
       error: errorMessage,
+      stopReason: 'error',
+      exitCode: 1,
     })
 
     process.exit(1)

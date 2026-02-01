@@ -11,10 +11,6 @@ export type ErrorCode =
   | 'STORE_INIT_FAILED'
   | 'STORE_QUERY_FAILED'
   | 'STORE_NOT_FOUND'
-  // Agent 错误
-  | 'AGENT_NOT_FOUND'
-  | 'AGENT_ALREADY_EXISTS'
-  | 'AGENT_BUSY'
   // Task 错误
   | 'TASK_NOT_FOUND'
   | 'TASK_INVALID_STATE'
@@ -52,14 +48,6 @@ export class AppError extends Error {
 
   static storeNotFound(entity: string, id: string): AppError {
     return new AppError('STORE_NOT_FOUND', `${entity} not found: ${id}`)
-  }
-
-  static agentNotFound(name: string): AppError {
-    return new AppError('AGENT_NOT_FOUND', `Agent not found: ${name}`)
-  }
-
-  static agentExists(name: string): AppError {
-    return new AppError('AGENT_ALREADY_EXISTS', `Agent already exists: ${name}`)
   }
 
   static taskNotFound(id: string): AppError {

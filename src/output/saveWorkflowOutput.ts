@@ -11,14 +11,12 @@ import { dirname, join } from 'path'
 import { createLogger } from '../shared/logger.js'
 import { getResultFilePath } from '../store/paths.js'
 import type { Task } from '../types/task.js'
-import type { Agent } from '../types/agent.js'
 import type { Workflow, WorkflowInstance, NodeState } from '../workflow/types.js'
 
 const logger = createLogger('output')
 
 export interface WorkflowExecutionResult {
   task: Task
-  agent: Agent
   workflow: Workflow
   instance: WorkflowInstance
   timing: {
@@ -81,7 +79,7 @@ export function calculateTotalDuration(startedAt: string, completedAt: string): 
 /**
  * Format node state for markdown
  */
-export function formatNodeState(nodeId: string, name: string, state: NodeState): string {
+export function formatNodeState(nodeId: string, name: string, state: NodeState, output?: unknown): string {
   const statusEmoji = {
     pending: '⏳',
     ready: '🟡',
@@ -111,10 +109,10 @@ export function formatNodeState(nodeId: string, name: string, state: NodeState):
     lines.push('', '**Error:**', '```', state.error, '```')
   }
 
-  if (state.result) {
-    const resultStr = typeof state.result === 'string'
-      ? state.result
-      : JSON.stringify(state.result, null, 2)
+  if (output !== undefined) {
+    const resultStr = typeof output === 'string'
+      ? output
+      : JSON.stringify(output, null, 2)
 
     // Truncate long results
     const truncated = resultStr.length > 2000
@@ -132,7 +130,7 @@ export function formatNodeState(nodeId: string, name: string, state: NodeState):
  * Format workflow execution result as markdown
  */
 export function formatWorkflowOutput(result: WorkflowExecutionResult): string {
-  const { task, agent, workflow, instance, timing } = result
+  const { task, workflow, instance, timing } = result
 
   // Count node states
   const taskNodes = workflow.nodes.filter(n => n.type !== 'start' && n.type !== 'end')
@@ -148,7 +146,6 @@ export function formatWorkflowOutput(result: WorkflowExecutionResult): string {
     `- **Workflow:** ${workflow.name} (${workflow.id.slice(0, 8)})`,
     `- **Instance:** ${instance.id.slice(0, 8)}`,
     `- **Status:** ${instance.status}`,
-    `- **Agent:** ${agent.name} (${agent.persona})`,
     `- **Priority:** ${task.priority}`,
     `- **Started:** ${timing.startedAt}`,
     `- **Completed:** ${timing.completedAt}`,
@@ -173,7 +170,8 @@ export function formatWorkflowOutput(result: WorkflowExecutionResult): string {
 
     const state = instance.nodeStates[node.id]
     if (state) {
-      sections.push(formatNodeState(node.id, node.name, state))
+      const output = instance.outputs[node.id]
+      sections.push(formatNodeState(node.id, node.name, state, output))
     }
   }
 

@@ -174,7 +174,6 @@ export function registerTaskCommands(program: Command) {
     .description('恢复中断/失败的任务')
     .argument('[id]', '任务 ID (不填则显示可恢复的任务)')
     .option('-a, --all', '恢复所有孤立任务')
-    .option('--agent <agent>', '指定执行的 Agent')
     .action(async (id, options) => {
       if (id) {
         // 恢复单个任务
@@ -196,7 +195,7 @@ export function registerTaskCommands(program: Command) {
           }
         } else {
           // 恢复孤立任务 (重启进程)
-          const pid = resumeTask(id, options.agent)
+          const pid = resumeTask(id)
           if (pid) {
             success(`Task resumed: ${id}`)
             console.log(chalk.gray(`  PID: ${pid}`))

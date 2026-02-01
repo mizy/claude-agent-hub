@@ -92,7 +92,12 @@ export interface WorkflowNode {
 }
 
 export interface TaskConfig {
-  agent: string         // Agent 名称或 "auto"
+  /**
+   * Persona 名称引用，用于指定执行此任务时的 AI 角色配置
+   * 可以是内置 persona 名称（如 "coder", "reviewer"）或 "auto" 自动选择
+   * 对应 PersonaConfig 中的 name 字段
+   */
+  persona: string
   prompt: string        // 任务描述
   timeout?: number      // 超时（毫秒），默认 30 分钟
   retries?: number      // 重试次数，默认 3
@@ -219,9 +224,21 @@ export interface NodeState {
   status: NodeStatus
   startedAt?: string
   completedAt?: string
-  result?: unknown
   error?: string
   attempts: number
+  /** 执行耗时（毫秒），用于历史分析和时间预估 */
+  durationMs?: number
+  /** 最后一次错误的分类（transient/recoverable/permanent） */
+  lastErrorCategory?: 'transient' | 'recoverable' | 'permanent' | 'unknown'
+  /** 执行上下文快照，用于断点续跑诊断 */
+  context?: {
+    /** 执行时的 workflow 变量快照 */
+    variables?: Record<string, unknown>
+    /** 上游节点输出快照 */
+    inputs?: Record<string, unknown>
+    /** 最后一次重试的延迟时间 */
+    lastRetryDelayMs?: number
+  }
 }
 
 // ============ BullMQ Job 数据 ============

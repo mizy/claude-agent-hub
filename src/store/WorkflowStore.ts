@@ -236,7 +236,6 @@ export function resetNodeState(instanceId: string, nodeId: string): void {
     status: 'pending',
     startedAt: undefined,
     completedAt: undefined,
-    result: undefined,
     error: undefined,
     // 保留 attempts 计数
   })

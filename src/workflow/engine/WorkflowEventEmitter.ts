@@ -167,8 +167,11 @@ class WorkflowEventEmitter extends EventEmitter {
   }
 
   emitNodeFailed(event: Omit<NodeFailedEvent, 'type' | 'timestamp'>): void {
+    // 确保错误信息不为空
+    const errorMessage = event.error || 'Unknown error (no error message provided)'
     const fullEvent: NodeFailedEvent = {
       ...event,
+      error: errorMessage,
       type: 'node:failed',
       timestamp: new Date().toISOString(),
     }
@@ -182,7 +185,7 @@ class WorkflowEventEmitter extends EventEmitter {
       nodeType: event.nodeType,
       status: event.willRetry ? 'running' : 'failed',
       attempts: event.attempt,
-      error: event.error,
+      error: errorMessage,
     })
 
     logger.debug(`Event: node:failed - ${event.nodeId} (attempt ${event.attempt}, retry: ${event.willRetry})`)
@@ -264,8 +267,11 @@ class WorkflowEventEmitter extends EventEmitter {
   }
 
   emitWorkflowFailed(event: Omit<WorkflowFailedEvent, 'type' | 'timestamp'>): void {
+    // 确保错误信息不为空
+    const errorMessage = event.error || 'Unknown error (no error message provided)'
     const fullEvent: WorkflowFailedEvent = {
       ...event,
+      error: errorMessage,
       type: 'workflow:failed',
       timestamp: new Date().toISOString(),
     }
@@ -280,7 +286,7 @@ class WorkflowEventEmitter extends EventEmitter {
       stats.totalDurationMs = event.totalDurationMs
     }
 
-    logger.error(`Event: workflow:failed - ${event.workflowName}: ${event.error}`)
+    logger.error(`Event: workflow:failed - ${event.workflowName}: ${errorMessage}`)
   }
 
   // ============ 进度事件 ============

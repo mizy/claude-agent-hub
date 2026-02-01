@@ -15,20 +15,14 @@ export async function getDaemonStatus(): Promise<void> {
     process.kill(pid, 0) // 不发送信号，只检查
     console.log(chalk.green(`守护进程运行中 (PID: ${pid})`))
 
-    // 显示 Agent 状态
-    const agents = store.getAllAgents()
-    console.log('')
-    console.log(chalk.bold('Agent 状态:'))
-    for (const agent of agents) {
-      const statusIcon = {
-        idle: '⚪',
-        working: '🔵',
-        waiting: '🟡'
-      }[agent.status] || '⚪'
-
-      console.log(`  ${statusIcon} ${agent.name}: ${agent.status}`)
-      if (agent.currentTask) {
-        console.log(chalk.gray(`     当前任务: ${agent.currentTask}`))
+    // 显示运行中的任务
+    const runningTasks = store.getTasksByStatus('planning')
+      .concat(store.getTasksByStatus('developing'))
+    if (runningTasks.length > 0) {
+      console.log('')
+      console.log(chalk.bold('运行中的任务:'))
+      for (const task of runningTasks) {
+        console.log(`  🔵 ${task.title}`)
       }
     }
   } catch {

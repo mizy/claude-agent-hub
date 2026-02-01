@@ -29,7 +29,8 @@ describe('projectContext', () => {
       expect(prompt).toContain('语言: typescript')
       expect(prompt).toContain('包管理器: pnpm')
       expect(prompt).toContain('框架: express, vitest')
-      expect(prompt).toContain('## 目录结构')
+      // 目录结构已被注释，不再输出
+      // expect(prompt).toContain('## 目录结构')
       expect(prompt).toContain('## 可用脚本')
       expect(prompt).toContain('pnpm run build')
     })

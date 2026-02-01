@@ -93,7 +93,7 @@ export function detectOrphanedTasks(): OrphanedTask[] {
  * 1. 检查是否已有 workflow - 如果有，使用 resume 模式继续执行
  * 2. 检查 workflow instance 状态 - 决定从哪个节点继续
  */
-export function resumeTask(taskId: string, agentName?: string): number | null {
+export function resumeTask(taskId: string): number | null {
   const processInfo = getProcessInfo(taskId)
 
   // 如果进程仍在运行，不需要恢复
@@ -108,9 +108,6 @@ export function resumeTask(taskId: string, agentName?: string): number | null {
     logger.error(`Task not found: ${taskId}`)
     return null
   }
-
-  // 获取 agent name
-  const agent = agentName || task.assignee || 'default'
 
   // 检查是否已有 workflow - 决定是否使用 resume 模式
   const existingWorkflow = getTaskWorkflow(taskId)
@@ -129,7 +126,6 @@ export function resumeTask(taskId: string, agentName?: string): number | null {
   // 重新启动后台进程
   const pid = spawnTaskProcess({
     taskId,
-    agentName: agent,
     resume: shouldResume,
   })
 
@@ -174,7 +170,6 @@ export async function resumeFailedTask(taskId: string): Promise<{
   // 启动后台进程（使用 resume 模式）
   const pid = spawnTaskProcess({
     taskId,
-    agentName: task.assignee || 'default',
     resume: true,
   })
 
@@ -191,7 +186,7 @@ export function resumeAllOrphanedTasks(): Array<{ taskId: string; pid: number }>
   const resumed: Array<{ taskId: string; pid: number }> = []
 
   for (const { task } of orphaned) {
-    const pid = resumeTask(task.id, task.assignee)
+    const pid = resumeTask(task.id)
     if (pid) {
       resumed.push({ taskId: task.id, pid })
     }

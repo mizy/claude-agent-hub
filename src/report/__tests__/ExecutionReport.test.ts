@@ -71,8 +71,8 @@ describe('ExecutionReport', () => {
         description: 'Test workflow',
         nodes: [
           { id: 'start', type: 'start', name: 'Start' },
-          { id: 'node-1', type: 'task', name: 'Task Node 1', task: { agent: 'dev', prompt: 'Do something' } },
-          { id: 'node-2', type: 'task', name: 'Task Node 2', task: { agent: 'dev', prompt: 'Do something else' } },
+          { id: 'node-1', type: 'task', name: 'Task Node 1', task: { persona: 'dev', prompt: 'Do something' } },
+          { id: 'node-2', type: 'task', name: 'Task Node 2', task: { persona: 'dev', prompt: 'Do something else' } },
           { id: 'end', type: 'end', name: 'End' },
         ],
         edges: [
@@ -92,12 +92,15 @@ describe('ExecutionReport', () => {
         completedAt: '2026-02-01T10:05:00Z',
         nodeStates: {
           'start': { status: 'done', attempts: 0 },
-          'node-1': { status: 'done', attempts: 1, result: 'Result 1' },
-          'node-2': { status: 'done', attempts: 1, result: 'Result 2' },
+          'node-1': { status: 'done', attempts: 1 },
+          'node-2': { status: 'done', attempts: 1 },
           'end': { status: 'done', attempts: 0 },
         },
         variables: {},
-        outputs: {},
+        outputs: {
+          'node-1': 'Result 1',
+          'node-2': 'Result 2',
+        },
         loopCounts: {},
       })
 
@@ -110,11 +113,13 @@ describe('ExecutionReport', () => {
           status: 'completed',
           startedAt: '2026-02-01T10:00:00Z',
           completedAt: '2026-02-01T10:05:00Z',
+          lastUpdatedAt: '2026-02-01T10:05:00Z',
           totalDurationMs: 300000,
           totalCostUsd: 0.15,
           nodesTotal: 2,
           nodesCompleted: 2,
           nodesFailed: 0,
+          nodesRunning: 0,
           avgNodeDurationMs: 150000,
         },
         nodes: [
@@ -165,7 +170,7 @@ describe('ExecutionReport', () => {
         description: 'Workflow that fails',
         nodes: [
           { id: 'start', type: 'start', name: 'Start' },
-          { id: 'node-1', type: 'task', name: 'Failing Node', task: { agent: 'dev', prompt: 'Fail' } },
+          { id: 'node-1', type: 'task', name: 'Failing Node', task: { persona: 'dev', prompt: 'Fail' } },
           { id: 'end', type: 'end', name: 'End' },
         ],
         edges: [

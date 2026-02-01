@@ -3,11 +3,12 @@
  */
 
 import { existsSync, mkdirSync } from 'fs'
-import { createLogger } from '../shared/logger.js'
+import { createLogger, formatISOTimestamp } from '../shared/logger.js'
 import {
   getTaskLogsDir,
   getExecutionLogPath,
   getConversationLogFilePath,
+  getJsonlLogPath,
   getResultFilePath,
   getStepFilePath,
 } from './paths.js'
@@ -70,6 +71,9 @@ export function getConversationLogPath(taskId: string): string {
 /**
  * Append a log entry to the execution log
  * Used for tracking stop/resume and other lifecycle events
+ *
+ * 日志格式: ISO 8601 时间戳 + 级别 + 消息
+ * 示例: 2026-02-01T13:02:47.739Z INF [RESUME] Task resumed
  */
 export function appendExecutionLog(taskId: string, message: string): void {
   const logPath = getExecutionLogPath(taskId)
@@ -79,14 +83,63 @@ export function appendExecutionLog(taskId: string, message: string): void {
     mkdirSync(logDir, { recursive: true })
   }
 
-  const timestamp = new Date().toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-
+  const timestamp = formatISOTimestamp()
   const logLine = `${timestamp} INF ${message}\n`
+  appendToFile(logPath, logLine)
+}
+
+// ============ JSON Lines 结构化日志 ============
+
+/** JSON Lines 日志事件类型 */
+export type LogEventType =
+  | 'task_started'
+  | 'task_completed'
+  | 'task_failed'
+  | 'task_resumed'
+  | 'task_stopped'
+  | 'node_started'
+  | 'node_completed'
+  | 'node_failed'
+  | 'node_retrying'
+  | 'workflow_generated'
+  | 'custom'
+
+/** JSON Lines 日志条目 */
+export interface JsonlLogEntry {
+  timestamp: string
+  event: LogEventType
+  taskId: string
+  nodeId?: string
+  nodeName?: string
+  message?: string
+  data?: Record<string, unknown>
+  durationMs?: number
+  error?: string
+}
+
+/**
+ * 追加 JSON Lines 格式的结构化日志
+ *
+ * JSON Lines 格式每行一个 JSON 对象，便于：
+ * - 流式读取和处理
+ * - 日志分析工具解析
+ * - 追加写入不影响已有数据
+ */
+export function appendJsonlLog(taskId: string, entry: Omit<JsonlLogEntry, 'timestamp' | 'taskId'>): void {
+  const logPath = getJsonlLogPath(taskId)
+  const logDir = getTaskLogsDir(taskId)
+
+  if (!existsSync(logDir)) {
+    mkdirSync(logDir, { recursive: true })
+  }
+
+  const fullEntry: JsonlLogEntry = {
+    timestamp: formatISOTimestamp(),
+    taskId,
+    ...entry,
+  }
+
+  const logLine = JSON.stringify(fullEntry) + '\n'
   appendToFile(logPath, logLine)
 }
 

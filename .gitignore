@@ -5,7 +5,7 @@ node_modules/
 dist/
 
 # Data files
-data/
+.cah-data/
 outputs/
 .claude-agent-hub/
 

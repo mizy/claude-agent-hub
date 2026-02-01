@@ -13,6 +13,11 @@ import {
   deleteTemplate,
   applyTemplate,
   searchTemplates,
+  suggestTemplates,
+  createTemplateFromTask,
+  getTasksAvailableForTemplate,
+  getTemplateRanking,
+  recalculateAllEffectivenessScores,
   CATEGORY_LABELS,
 } from '../../template/TaskTemplate.js'
 import type { TemplateCategory, TaskTemplate } from '../../template/TaskTemplate.js'
@@ -244,5 +249,141 @@ export function registerTemplateCommands(program: Command) {
       } else {
         error(`模板不存在: ${id}`)
       }
+    })
+
+  // 基于任务描述推荐模板
+  template
+    .command('suggest')
+    .description('基于任务描述推荐模板')
+    .argument('<description>', '任务描述')
+    .option('-n, --limit <num>', '返回数量', '5')
+    .action((description, options) => {
+      const limit = parseInt(options.limit, 10) || 5
+      const suggestions = suggestTemplates(description, limit)
+
+      if (suggestions.length === 0) {
+        warn('没有找到匹配的模板')
+        info('运行 `cah template init` 初始化内置模板')
+        return
+      }
+
+      console.log('')
+      console.log(chalk.cyan.bold(`  推荐模板 (基于: "${description.slice(0, 30)}${description.length > 30 ? '...' : ''}")`))
+      console.log('')
+
+      suggestions.forEach((suggestion, i) => {
+        const { template: tpl, score, reason } = suggestion
+        const scoreBar = '█'.repeat(Math.round(score / 10)) + '░'.repeat(10 - Math.round(score / 10))
+        const effectiveness = tpl.effectivenessScore !== undefined
+          ? chalk.dim(` [有效性: ${tpl.effectivenessScore}%]`)
+          : ''
+
+        console.log(`  ${chalk.yellow(`${i + 1}.`)} ${chalk.green(tpl.id)}${effectiveness}`)
+        console.log(`     ${tpl.description}`)
+        console.log(`     ${chalk.dim('匹配度:')} ${scoreBar} ${chalk.cyan(score)}`)
+        console.log(`     ${chalk.dim('原因:')} ${reason}`)
+        console.log('')
+      })
+
+      console.log(chalk.dim('  使用 `cah template use <id>` 应用模板'))
+      console.log('')
+    })
+
+  // 从历史任务创建模板
+  template
+    .command('from-task')
+    .description('从历史任务创建模板')
+    .argument('[taskId]', '任务 ID (可选，不指定则列出可用任务)')
+    .action((taskId) => {
+      if (!taskId) {
+        // 列出可用于生成模板的任务
+        const tasks = getTasksAvailableForTemplate()
+
+        if (tasks.length === 0) {
+          warn('没有已完成的任务')
+          return
+        }
+
+        console.log('')
+        console.log(chalk.cyan.bold('  可用于生成模板的任务'))
+        console.log('')
+
+        for (const task of tasks.slice(0, 20)) {
+          console.log(`  ${chalk.green(task.id)}`)
+          console.log(`    ${task.title}`)
+          console.log(`    ${chalk.dim(`创建于: ${new Date(task.createdAt).toLocaleString()}`)}`)
+          console.log('')
+        }
+
+        if (tasks.length > 20) {
+          console.log(chalk.dim(`  ... 还有 ${tasks.length - 20} 个任务`))
+        }
+
+        console.log(chalk.dim('  使用 `cah template from-task <taskId>` 创建模板'))
+        console.log('')
+        return
+      }
+
+      // 从指定任务创建模板
+      const tpl = createTemplateFromTask(taskId)
+
+      if (!tpl) {
+        error(`无法从任务创建模板: ${taskId}`)
+        info('请确保任务已完成 (status: completed)')
+        return
+      }
+
+      success(`模板已创建: ${tpl.id}`)
+      console.log('')
+      console.log(`  ${chalk.dim('来源任务:')} ${taskId}`)
+      console.log(`  ${chalk.dim('描述:')} ${tpl.description}`)
+      console.log(`  ${chalk.dim('分类:')} ${CATEGORY_LABELS[tpl.category]}`)
+      if (tpl.tags) {
+        console.log(`  ${chalk.dim('标签:')} ${tpl.tags.join(', ')}`)
+      }
+      console.log('')
+      console.log(chalk.dim(`  使用 \`cah template show ${tpl.id}\` 查看详情`))
+      console.log('')
+    })
+
+  // 查看模板排行榜（按有效性评分）
+  template
+    .command('ranking')
+    .description('查看模板有效性排行榜')
+    .action(() => {
+      const ranking = getTemplateRanking()
+
+      if (ranking.length === 0) {
+        warn('没有带有效性评分的模板')
+        info('模板使用后会自动计算有效性评分')
+        return
+      }
+
+      console.log('')
+      console.log(chalk.cyan.bold('  模板有效性排行榜'))
+      console.log('')
+
+      ranking.forEach((tpl, i) => {
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`
+        const total = (tpl.successCount || 0) + (tpl.failureCount || 0)
+        const scoreColor = (tpl.effectivenessScore || 0) >= 80 ? chalk.green
+          : (tpl.effectivenessScore || 0) >= 50 ? chalk.yellow
+          : chalk.red
+
+        console.log(`  ${medal} ${chalk.green(tpl.id)}`)
+        console.log(`     ${tpl.description}`)
+        console.log(`     ${chalk.dim('有效性:')} ${scoreColor(`${tpl.effectivenessScore}%`)} ${chalk.dim(`(${tpl.successCount || 0}成功/${tpl.failureCount || 0}失败, 共${total}次)`)}`)
+        console.log('')
+      })
+    })
+
+  // 重新计算所有模板的有效性评分
+  template
+    .command('recalculate')
+    .description('从历史数据重新计算模板有效性评分')
+    .action(() => {
+      recalculateAllEffectivenessScores()
+      success('已重新计算所有模板的有效性评分')
+      info('运行 `cah template ranking` 查看排行榜')
     })
 }

@@ -139,6 +139,9 @@ cah "重构认证系统" --workflow   # 复杂：显式控制流程
 - [x] 相似任务匹配
 - [x] 成功模式提取
 - [x] 失败教训总结
+- [x] 任务类型分类（git/refactor/feature/fix/docs/test/iteration）
+- [x] 节点模式提取与分析
+- [x] 按类型推荐节点数量
 - [ ] 跨任务上下文记忆
 - [ ] 项目知识库积累
 - [ ] 最佳实践库
@@ -156,6 +159,13 @@ cah "重构认证系统" --workflow   # 复杂：显式控制流程
 - [x] 趋势分析报告 (`TrendAnalyzer.ts`)
 - [x] 实时状态监控 (`LiveSummary.ts`)
 - [x] 结构化错误提示 (`errors.ts`)
+- [x] 时间预估系统 (`timeEstimator.ts`)
+- [x] ETA 显示（带置信度标识）
+- [x] 执行对比分析 (`ExecutionComparison.ts`)
+- [x] 性能退化检测
+- [x] 任务类型维度统计
+- [x] 节点组合热力图
+- [x] 成本优化建议
 
 **里程碑**: AI 能够做出高质量的技术决策
 
@@ -173,6 +183,8 @@ cah "重构认证系统" --workflow   # 复杂：显式控制流程
 
 #### 3.2 Self-Improvement 自我改进
 - [x] 从失败中学习 (`executionHistory.ts`)
+- [x] 节点设计最佳实践（Prompt 优化）
+- [x] 常见失败模式规避
 - [ ] 执行效率优化
 - [ ] Prompt 自动优化
 - [ ] Workflow 模板进化
@@ -187,6 +199,10 @@ cah "重构认证系统" --workflow   # 复杂：显式控制流程
 - [x] 任务模板系统 (`TaskTemplate.ts`) - 12 个内置模板
 - [x] 自定义模板创建
 - [x] 模板变量替换
+- [x] 智能模板推荐（多维度评分）
+- [x] 模板有效性评分（基于历史成功率）
+- [x] 从历史任务自动创建模板
+- [x] 模板排行榜
 - [ ] 模板市场/共享
 
 **里程碑**: AI 能够主动改进代码库
@@ -359,7 +375,7 @@ CAH 的架构设计与这些趋势高度契合：
 
 ---
 
-**Version**: 1.1
+**Version**: 1.2
 **Created**: 2026-02-01
-**Updated**: 2026-02-01
+**Updated**: 2026-02-01 (v0.3.0 - 基于历史任务分析优化)
 **Author**: CAH (Yes, this document was created and updated using CAH itself)

@@ -5,8 +5,8 @@
 
 import { getStore } from '../store/index.js'
 import { createLogger } from '../shared/logger.js'
-import { getOrCreateDefaultAgent } from '../agent/getDefaultAgent.js'
-import { runAgent } from '../agent/runAgent.js'
+import { executeTask } from '../agent/executeAgent.js'
+import { pollPendingTask } from '../task/pollTask.js'
 import type { Task, TaskPriority } from '../types/task.js'
 
 const logger = createLogger('task')
@@ -73,11 +73,11 @@ export async function createAndRunTask(options: CreateAndRunOptions): Promise<Ta
   // 没有运行中的任务，立即执行
   logger.info('No running tasks, starting immediately')
 
-  // 确保默认 Agent 存在
-  const agent = await getOrCreateDefaultAgent()
-
-  // 执行任务
-  await runAgent(agent.name)
+  // 轮询并执行任务
+  const nextTask = await pollPendingTask()
+  if (nextTask) {
+    await executeTask(nextTask, { concurrency: 1, saveToTaskFolder: true, useConsole: false })
+  }
 
   // 返回更新后的任务
   return store.getTask(task.id) || task

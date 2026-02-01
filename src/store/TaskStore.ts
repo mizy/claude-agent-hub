@@ -53,6 +53,9 @@ function toSummary(task: Task): TaskSummary {
   }
 }
 
+// Stop reason for process termination
+export type ProcessStopReason = 'completed' | 'killed' | 'timeout' | 'error'
+
 // Process info for background execution
 export interface ProcessInfo {
   pid: number
@@ -60,6 +63,12 @@ export interface ProcessInfo {
   status: 'running' | 'stopped' | 'crashed'
   lastHeartbeat?: string
   error?: string
+  /** Process exit code (0 = success) */
+  exitCode?: number
+  /** Reason for stopping */
+  stopReason?: ProcessStopReason
+  /** Path to stderr log file if errors occurred */
+  stderrLogPath?: string
 }
 
 // Ensure directories exist

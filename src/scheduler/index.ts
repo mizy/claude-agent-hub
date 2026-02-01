@@ -28,10 +28,7 @@ export {
   type Worker,
   type WorkerContext,
   type TaskHandler,
-  type AgentTask,
-  type AgentTaskResult,
   createWorker,
-  createAgentWorker,
 } from './worker.js'
 
 // 守护进程（原有）

@@ -11,26 +11,53 @@ import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
 import { buildJsonWorkflowPrompt } from '../prompts/index.js'
 import { parseJson, validateJsonWorkflow, extractJson } from '../workflow/index.js'
 import { appendConversation } from '../store/TaskLogStore.js'
-import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { createLogger } from '../shared/logger.js'
 import { analyzeProjectContext, formatProjectContextForPrompt } from './projectContext.js'
 import { learnFromHistory, formatInsightsForPrompt } from './executionHistory.js'
-import type { AgentContext } from '../types/agent.js'
+import { BUILTIN_PERSONAS } from './persona/builtinPersonas.js'
+import type { Task } from '../types/task.js'
 import type { Workflow } from '../workflow/types.js'
 
 const logger = createLogger('workflow-gen')
 
 /**
+ * 创建直接回答的 Workflow
+ * 当 AI 没有返回 JSON 而是直接回答问题时使用
+ */
+function createDirectAnswerWorkflow(
+  task: { id: string; title: string },
+  answer: string,
+  claudeSessionId?: string
+): Workflow {
+  return {
+    id: `workflow-direct-${Date.now()}`,
+    name: '直接回答',
+    description: 'AI 直接回答了问题',
+    createdAt: new Date().toISOString(),
+    nodes: [
+      { id: 'start', type: 'start', name: '开始' },
+      { id: 'end', type: 'end', name: '结束' },
+    ],
+    edges: [{ id: 'e1', from: 'start', to: 'end' }],
+    variables: {
+      taskId: task.id,
+      taskTitle: task.title,
+      claudeSessionId,
+      directAnswer: answer, // 保存直接回答
+      isDirectAnswer: true, // 标记为直接回答类型
+    },
+  }
+}
+
+/**
  * 根据任务生成 Workflow (JSON 格式)
  * 集成项目上下文和历史学习
  */
-export async function generateWorkflow(context: AgentContext): Promise<Workflow> {
-  const { task } = context
+export async function generateWorkflow(task: Task): Promise<Workflow> {
 
-  // 获取可用 agent 列表（完整对象，包含能力描述）
-  const store = getStore()
-  const availableAgents = store.getAllAgents()
+  // 获取可用 persona 列表
+  const availablePersonas = Object.values(BUILTIN_PERSONAS)
 
   // 智能化增强：并行获取项目上下文和历史学习
   logger.info('分析项目上下文和历史记录...')
@@ -48,7 +75,12 @@ export async function generateWorkflow(context: AgentContext): Promise<Workflow>
 
   // 构建 prompt（生成 Workflow 固定使用"软件架构师"角色）
   logger.debug('构建 prompt...')
-  const prompt = buildJsonWorkflowPrompt(task, availableAgents, projectContextPrompt, learningPrompt)
+  const prompt = buildJsonWorkflowPrompt(
+    task,
+    availablePersonas,
+    projectContextPrompt,
+    learningPrompt
+  )
   logger.debug(`Prompt 长度: ${prompt.length} 字符`)
 
   // 调用 Claude (不传 persona，因为模板中已定义"软件架构师"角色)
@@ -94,9 +126,9 @@ export async function generateWorkflow(context: AgentContext): Promise<Workflow>
   logger.info('解析 JSON Workflow...')
   const jsonContent = extractJson(invokeResult.response)
   if (!jsonContent) {
-    logger.error('无法从响应中提取 JSON')
-    logger.error(`响应内容 (前500字): ${invokeResult.response.slice(0, 500)}`)
-    throw new Error('Failed to extract JSON workflow from response')
+    // JSON 提取失败 - 可能是简单问答，AI 直接给出了答案
+    logger.info('AI 直接返回了答案，创建简单回答 workflow')
+    return createDirectAnswerWorkflow(task, invokeResult.response, claudeSessionId)
   }
   logger.debug(`提取到 JSON 对象`)
 

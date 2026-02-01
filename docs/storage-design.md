@@ -2,8 +2,10 @@
 
 ## 1. 目录结构
 
+数据目录默认为 `.cah-data/`，可通过环境变量 `CAH_DATA_DIR` 覆盖。
+
 ```
-data/
+.cah-data/
 ├── tasks/                     # 任务存储
 │   ├── index.json             # 任务索引 (缓存)
 │   └── {taskId}/
@@ -33,8 +35,8 @@ data/
 统一定义所有存储路径，其他模块从这里导入。
 
 ```typescript
-// 基础目录
-export const DATA_DIR = join(process.cwd(), 'data')
+// 基础目录 (支持 CAH_DATA_DIR 环境变量覆盖)
+export const DATA_DIR = getDataDir()  // 默认 '.cah-data'
 export const TASKS_DIR = join(DATA_DIR, 'tasks')
 export const AGENTS_DIR = join(DATA_DIR, 'agents')
 
@@ -93,19 +95,19 @@ interface IndexedStore<T, TFilter> extends Store<T> {
 
 | 模块 | 职责 | 数据位置 |
 |------|------|----------|
-| TaskStore | 任务 CRUD、索引管理、进程管理 | data/tasks/ |
-| WorkflowStore | Workflow/Instance CRUD (代理到 TaskStore) | data/tasks/{taskId}/ |
-| fileStore (AgentStore) | Agent CRUD、全局元数据 | data/agents/, data/meta.json |
+| TaskStore | 任务 CRUD、索引管理、进程管理 | .cah-data/tasks/ |
+| WorkflowStore | Workflow/Instance CRUD (代理到 TaskStore) | .cah-data/tasks/{taskId}/ |
+| fileStore (AgentStore) | Agent CRUD、全局元数据 | .cah-data/agents/, .cah-data/meta.json |
 
 ## 4. 数据流
 
 ```
 TaskStore ─────────────────────────────────────┐
     │                                          │
-    ├── saveTask() ──> data/tasks/{id}/task.json
-    ├── saveTaskWorkflow() ──> data/tasks/{id}/workflow.json
-    ├── saveTaskInstance() ──> data/tasks/{id}/instance.json
-    └── updateIndexEntry() ──> data/tasks/index.json
+    ├── saveTask() ──> .cah-data/tasks/{id}/task.json
+    ├── saveTaskWorkflow() ──> .cah-data/tasks/{id}/workflow.json
+    ├── saveTaskInstance() ──> .cah-data/tasks/{id}/instance.json
+    └── updateIndexEntry() ──> .cah-data/tasks/index.json
                                                │
 WorkflowStore ─────────────────────────────────┤
     │                                          │
@@ -114,8 +116,8 @@ WorkflowStore ──────────────────────
                                                │
 fileStore (AgentStore) ────────────────────────┘
     │
-    ├── saveAgent() ──> data/agents/{name}.json
-    └── setDaemonPid() ──> data/meta.json
+    ├── saveAgent() ──> .cah-data/agents/{name}.json
+    └── setDaemonPid() ──> .cah-data/meta.json
 ```
 
 ## 5. 改进计划

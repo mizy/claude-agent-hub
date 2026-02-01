@@ -2,11 +2,11 @@
  * Stop/cancel a running task
  */
 
-import { getStore } from '../store/index.js'
 import {
   getTask,
   updateTask,
   getProcessInfo,
+  updateProcessInfo,
   isProcessRunning,
 } from '../store/TaskStore.js'
 import { getTaskInstance } from '../store/TaskWorkflowStore.js'
@@ -27,7 +27,6 @@ export interface StopTaskResult {
  * Changes status to 'cancelled' and releases the agent
  */
 export function stopTask(id: string): StopTaskResult {
-  const store = getStore()
   const task = getTask(id)
 
   if (!task) {
@@ -49,20 +48,13 @@ export function stopTask(id: string): StopTaskResult {
     try {
       process.kill(processInfo.pid, 'SIGTERM')
       logger.info(`Killed process: ${processInfo.pid}`)
+      // Update process info - the process may not have time to update itself
+      updateProcessInfo(task.id, {
+        status: 'stopped',
+        stopReason: 'killed',
+      })
     } catch {
       // Process may have already exited
-    }
-  }
-
-  // Release the agent if assigned
-  if (task.assignee) {
-    const agent = store.getAgent(task.assignee)
-    if (agent && agent.currentTask === task.id) {
-      store.updateAgent(task.assignee, {
-        status: 'idle',
-        currentTask: undefined,
-      })
-      logger.info(`Released agent: ${task.assignee}`)
     }
   }
 

@@ -35,14 +35,12 @@ import {
   saveStepOutput,
   appendConversation,
   type ConversationEntry,
+  // From paths
+  TASKS_DIR,
 } from '../src/store/index.js'
 
 import type { Task } from '../src/types/task.js'
 import type { Workflow, WorkflowInstance } from '../src/workflow/types.js'
-
-// 使用项目实际的 data 目录
-const DATA_DIR = join(process.cwd(), 'data')
-const TASKS_DIR = join(DATA_DIR, 'tasks')
 
 // 测试用的唯一前缀，避免与真实数据冲突
 const TEST_PREFIX = `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`

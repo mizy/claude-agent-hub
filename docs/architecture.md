@@ -57,8 +57,8 @@ Claude Agent Hub 是一个基于 Claude Code CLI 的任务执行系统。通过 
 │                             Storage Layer                                    │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  TaskStore (文件系统)                                                 │   │
-│  │  data/tasks/{status}/task-{id}/                                      │   │
+│  │  TaskStore (文件系统, 默认 .cah-data/, 可通过 CAH_DATA_DIR 配置)       │   │
+│  │  .cah-data/tasks/task-{id}/                                          │   │
 │  │    ├── task.json          # 任务信息                                  │   │
 │  │    ├── workflow.json      # 执行计划                                  │   │
 │  │    ├── instance.json      # 运行状态                                  │   │
@@ -146,7 +146,7 @@ cah "修复登录 bug"
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  createTaskWithFolder()                                          │
-│  创建: data/tasks/pending/task-20260131-143022-abc/task.json    │
+│  创建: .cah-data/tasks/task-20260131-143022-abc/task.json       │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼

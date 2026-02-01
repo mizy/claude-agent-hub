@@ -1,11 +1,30 @@
 /**
- * 内置 Agent 人格定义
+ * 内置 Persona 定义
  * 包含人格特征、偏好和系统提示词
+ * Persona 在节点执行时用于定制 Claude Code 的行为风格
  */
 
 import type { PersonaConfig } from '../../types/persona.js'
 
 export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
+  /** 空角色 - 无额外 prompt，让 Claude 原生响应 */
+  None: {
+    name: 'None',
+    description: '空角色，无额外提示词',
+    traits: {
+      codeStyle: 'minimal',
+      commentLevel: 'sparse',
+      errorHandling: 'essential',
+      namingConvention: 'concise',
+    },
+    preferences: {
+      preferAbstraction: false,
+      preferPatterns: false,
+      preferDocumentation: false,
+    },
+    systemPrompt: '',
+  },
+
   Architect: {
     name: 'Architect',
     description: '软件架构师，负责系统架构设计和技术决策',

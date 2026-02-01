@@ -140,12 +140,13 @@ function buildNodeReports(
     const state = instance?.nodeStates[node.id]
     const stats = nodeStats?.find(s => s.nodeId === node.id)
 
-    // 截断输出（太长的话只保留前200字符）
+    // 从 outputs 读取节点输出（截断太长的内容）
     let output: string | undefined
-    if (state?.result) {
-      const resultStr = typeof state.result === 'string'
-        ? state.result
-        : JSON.stringify(state.result)
+    const nodeOutput = instance?.outputs[node.id]
+    if (nodeOutput) {
+      const resultStr = typeof nodeOutput === 'string'
+        ? nodeOutput
+        : JSON.stringify(nodeOutput)
       output = resultStr.length > 200 ? resultStr.slice(0, 200) + '...' : resultStr
     }
 

@@ -217,7 +217,7 @@ function buildWorkflow(
         type: 'task',
         name: task.name,
         task: {
-          agent: task.agent || 'auto',
+          persona: task.agent || 'auto',
           prompt: task.description || task.name,
         },
       })

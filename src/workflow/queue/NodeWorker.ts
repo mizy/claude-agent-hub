@@ -52,7 +52,7 @@ export function createNodeWorker(options: WorkerOptions): void {
   }
 
   workerOptions = {
-    concurrency: options.concurrency ?? 5,
+    concurrency: options.concurrency ?? 3,
     pollInterval: options.pollInterval ?? 1000,
     processor: options.processor,
     instanceId: options.instanceId,
@@ -212,13 +212,22 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
       await handleNodeFailure(
         jobId,
         data,
-        result.error || 'Unknown error',
+        result.error || 'Node execution failed (no error message provided)',
         currentAttempts,
         nodeRetryConfig
       )
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
+    // 捕获完整的错误信息，包括堆栈
+    let errorMessage: string
+    if (error instanceof Error) {
+      // 包含堆栈以便调试
+      errorMessage = error.stack || error.message || 'Unknown error'
+    } else if (error === undefined || error === null) {
+      errorMessage = 'Unknown error (undefined/null error object)'
+    } else {
+      errorMessage = String(error)
+    }
 
     // Use smart retry strategy
     await handleNodeFailure(
@@ -245,27 +254,47 @@ async function handleNodeFailure(
 ): Promise<void> {
   const { workflowId, instanceId, nodeId } = data
 
-  // 使用智能重试策略判断是否应该重试
-  const retryDecision = shouldRetry(errorMessage, currentAttempts + 1, nodeRetryConfig)
+  // 确保错误信息不为空
+  const safeErrorMessage = errorMessage || 'Unknown error (no error message provided)'
 
-  logger.warn(`Node ${nodeId} failed: ${errorMessage}`)
+  // 使用智能重试策略判断是否应该重试
+  const retryDecision = shouldRetry(safeErrorMessage, currentAttempts + 1, nodeRetryConfig)
+
+  logger.warn(`Node ${nodeId} failed: ${safeErrorMessage}`)
   logger.info(formatRetryInfo(retryDecision))
 
   // 分类错误用于日志和分析
   const classified = classifyError(errorMessage)
   logger.debug(`Error category: ${classified.category}, retryable: ${classified.retryable}`)
 
+  // 保存错误上下文到节点状态（用于断点续跑诊断）
+  const { updateNodeState } = await import('../../store/WorkflowStore.js')
+  const instance = getInstance(instanceId)
+  if (instance) {
+    const currentState = instance.nodeStates[nodeId]
+    updateNodeState(instanceId, nodeId, {
+      ...currentState,
+      error: safeErrorMessage,
+      lastErrorCategory: classified.category,
+      context: {
+        ...currentState?.context,
+        lastRetryDelayMs: retryDecision.delayMs,
+        variables: instance.variables,
+      },
+    })
+  }
+
   if (!retryDecision.shouldRetry) {
     // 不再重试，标记为永久失败
     logger.error(`Node ${nodeId} permanently failed: ${retryDecision.reason}`)
-    markJobFailed(jobId, errorMessage)
-    await failWorkflowInstance(instanceId, `Node ${nodeId} failed: ${errorMessage}`)
+    markJobFailed(jobId, safeErrorMessage)
+    await failWorkflowInstance(instanceId, `Node ${nodeId} failed: ${safeErrorMessage}`)
   } else {
     // 需要重试
     logger.info(`Scheduling retry for node ${nodeId} in ${retryDecision.delayMs}ms`)
 
     // 标记当前 job 失败（会自动增加 attempt 计数）
-    failJob(jobId, errorMessage)
+    failJob(jobId, safeErrorMessage)
 
     // 如果有延迟，使用 setTimeout 延迟入队
     if (retryDecision.delayMs > 0) {

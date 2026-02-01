@@ -4,28 +4,27 @@
  * @entry Claude Agent Hub CLI 主入口
  *
  * 核心命令：
- *   cah "任务描述"           - 创建任务并自动执行
- *   cah run                  - 执行待处理任务
+ *   cah "任务描述"           - 创建任务（加入队列）
+ *   cah "任务描述" -F        - 创建并立即执行（前台）
+ *   cah run                  - 执行队列中的待处理任务
  *   cah task list            - 查看任务列表
  *
  * 子命令：
  *   cah task      - 任务管理
- *   cah agent     - Agent 管理
+ *   cah template  - 模板管理
  *   cah daemon    - 守护进程
  */
 
 import { Command } from 'commander'
 import chalk from 'chalk'
-import { registerAgentCommands } from './commands/agent.js'
 import { registerTaskCommands } from './commands/task.js'
 import { registerDaemonCommands } from './commands/daemon.js'
 import { registerReportCommands } from './commands/report.js'
 import { registerTemplateCommands } from './commands/template.js'
 import { registerInitCommand } from './commands/init.js'
-import { runAgentForTask } from '../agent/runAgentForTask.js'
-import { runAgent } from '../agent/runAgent.js'
-import { getOrCreateDefaultAgent } from '../agent/getDefaultAgent.js'
-import { getStore } from '../store/index.js'
+import { runTask } from '../agent/runAgentForTask.js'
+import { executeTask } from '../agent/executeAgent.js'
+import { pollPendingTask } from '../task/pollTask.js'
 import { getTaskFolder } from '../store/TaskStore.js'
 import { getLogPath } from '../store/TaskLogStore.js'
 import { existsSync } from 'fs'
@@ -33,7 +32,6 @@ import { spawn } from 'child_process'
 // TODO: 支持前台模式的流式输出 (stream option in invokeClaudeCode)
 import { setLogLevel } from '../shared/logger.js'
 import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
-import { spawnTaskProcess } from '../task/spawnTask.js'
 import { detectOrphanedTasks, resumeAllOrphanedTasks } from '../task/resumeTask.js'
 import { success, error, info, warn } from './output.js'
 
@@ -46,9 +44,8 @@ program
   .argument('[input]', '任务描述')
   .option('-p, --priority <priority>', '优先级 (low/medium/high)', 'medium')
   .option('-a, --agent <agent>', '指定执行的 Agent')
-  .option('-F, --foreground', '前台运行 (便于调试，可看到完整日志)')
+  .option('-F, --foreground', '立即前台执行（默认只创建任务）')
   .option('-v, --verbose', '显示详细日志 (debug 级别)')
-  .option('--no-run', '仅创建任务，不自动执行')
   .action(async (input, options) => {
     if (input) {
       await handleTaskDescription(input, options)
@@ -82,36 +79,22 @@ async function handleTaskDescription(
     success(`Created task: ${displayTitle}`)
     console.log(`  ID: ${task.id}`)
 
-    // 2. 如果不是 --no-run，执行任务
-    if (options.run !== false) {
-      if (options.foreground) {
-        // 前台运行 - 直接执行，可以看到完整日志
-        info('Running in foreground mode (Ctrl+C to cancel)...')
-        console.log()
+    // 2. 执行任务
+    if (options.foreground) {
+      // -F 前台运行 - 直接执行，可以看到完整日志
+      info('Running in foreground mode (Ctrl+C to cancel)...')
+      console.log()
 
-        // 前台模式启用 debug 日志
-        setLogLevel('debug')
+      // 前台模式启用 debug 日志
+      setLogLevel('debug')
 
-        const store = getStore()
-        const agentName = options.agent || 'default'
-        let agent = store.getAgent(agentName)
-        if (!agent) {
-          agent = await getOrCreateDefaultAgent()
-        }
-
-        await runAgentForTask(agent, task)
-        success('Task completed!')
-      } else {
-        // 后台运行
-        const pid = spawnTaskProcess({
-          taskId: task.id,
-          agentName: options.agent || 'default',
-        })
-        info(`Task started in background (PID: ${pid})`)
-        info(`Check status: cah task show ${task.id.slice(0, 16)}`)
-      }
+      await runTask(task)
+      success('Task completed!')
     } else {
-      info('Task queued (use cah run to execute)')
+      // 默认：创建任务后立即触发队列执行（后台）
+      const { spawnTaskRunner } = await import('../task/spawnTask.js')
+      spawnTaskRunner()
+      info('Task queued and runner started.')
     }
   } catch (err) {
     error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -125,8 +108,23 @@ program
   .action(async () => {
     try {
       info('Starting task execution...')
-      const agent = await getOrCreateDefaultAgent()
-      await runAgent(agent.name)
+
+      // 轮询获取任务
+      const task = await pollPendingTask()
+      if (!task) {
+        info('No pending tasks')
+        return
+      }
+
+      info(`Executing task: ${task.title}`)
+
+      // 执行任务
+      await executeTask(task, {
+        concurrency: 1,
+        saveToTaskFolder: false, // 保存到全局 outputs/
+        useConsole: true, // 使用 console.log
+      })
+
       success('Task execution completed')
     } catch (err) {
       error(`Execution failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -135,7 +133,6 @@ program
 
 // 注册子命令
 registerInitCommand(program)
-registerAgentCommands(program)
 registerTaskCommands(program)
 registerDaemonCommands(program)
 registerReportCommands(program)

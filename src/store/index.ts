@@ -40,6 +40,7 @@ export {
   // Types
   type TaskSummary,
   type ProcessInfo,
+  type ProcessStopReason,
 } from './TaskStore.js'
 
 // TaskWorkflowStore - Task 的 Workflow 和 Instance 存储

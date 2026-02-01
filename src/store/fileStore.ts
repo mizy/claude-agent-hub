@@ -5,10 +5,7 @@
  * DefaultFileStore 代理到 TaskStore 和 WorkflowQueue 实现。
  */
 
-import { existsSync, readdirSync, unlinkSync } from 'fs'
-import { join } from 'path'
 import type { Task, TaskStatus } from '../types/task.js'
-import type { Agent } from '../types/agent.js'
 import type { Workflow, WorkflowInstance, NodeJobData } from '../workflow/types.js'
 import {
   saveTask as _saveTask,
@@ -36,8 +33,8 @@ import {
   getQueueStats,
 } from '../workflow/queue/WorkflowQueue.js'
 import { FileStore as GenericFileStore, type FileStoreOptions } from './GenericFileStore.js'
-import { AGENTS_DIR, META_FILE, getAgentFilePath } from './paths.js'
-import { readJson, writeJson, ensureDir } from './json.js'
+import { META_FILE } from './paths.js'
+import { readJson, writeJson } from './json.js'
 
 // Re-export generic FileStore
 export { GenericFileStore as FileStore, type FileStoreOptions }
@@ -67,7 +64,7 @@ export interface QueueStatus {
 
 /**
  * 统一存储接口
- * 提供 Task, Agent, Workflow, Queue 的完整操作方法
+ * 提供 Task, Workflow, Queue 的完整操作方法
  */
 export interface UnifiedStore {
   // ============ Task 相关 ============
@@ -77,13 +74,6 @@ export interface UnifiedStore {
   saveTask(task: Task): void
   updateTask(id: string, updates: Partial<Task>): void
   deleteTask(id: string): void
-
-  // ============ Agent 相关 ============
-  getAgent(name: string): Agent | null
-  getAllAgents(): Agent[]
-  saveAgent(agent: Agent): void
-  updateAgent(name: string, updates: Partial<Agent>): void
-  deleteAgent(name: string): void
 
   // ============ Workflow 相关 ============
   saveWorkflow(taskId: string, workflow: Workflow): void
@@ -134,48 +124,6 @@ class DefaultFileStore implements UnifiedStore {
 
   deleteTask(id: string): void {
     _deleteTask(id)
-  }
-
-  // ============ Agent 相关 ============
-
-  getAgent(name: string): Agent | null {
-    return readJson<Agent>(getAgentFilePath(name))
-  }
-
-  getAllAgents(): Agent[] {
-    if (!existsSync(AGENTS_DIR)) return []
-
-    const files = readdirSync(AGENTS_DIR).filter(f => f.endsWith('.json'))
-    const agents: Agent[] = []
-
-    for (const file of files) {
-      const agent = readJson<Agent>(join(AGENTS_DIR, file))
-      if (agent) {
-        agents.push(agent)
-      }
-    }
-
-    return agents
-  }
-
-  saveAgent(agent: Agent): void {
-    ensureDir(AGENTS_DIR)
-    writeJson(getAgentFilePath(agent.name), agent)
-  }
-
-  updateAgent(name: string, updates: Partial<Agent>): void {
-    const agent = this.getAgent(name)
-    if (!agent) return
-
-    const updated = { ...agent, ...updates }
-    this.saveAgent(updated)
-  }
-
-  deleteAgent(name: string): void {
-    const filepath = getAgentFilePath(name)
-    if (existsSync(filepath)) {
-      unlinkSync(filepath)
-    }
   }
 
   // ============ Workflow 相关 ============

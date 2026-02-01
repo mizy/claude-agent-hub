@@ -26,6 +26,7 @@ export interface TaskOutput {
   instanceId: string
   finalStatus: string
   timing: ExecutionTiming
+  error?: string
 }
 
 export interface CreateTaskOptions {

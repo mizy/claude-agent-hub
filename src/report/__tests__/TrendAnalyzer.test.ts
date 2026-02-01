@@ -80,6 +80,46 @@ const mockTrendReport: TrendReport = {
     '成功率显著提升: 80% → 90% (+10%)',
     '执行效率提升: 平均时间减少 16%',
   ],
+  categoryStats: [
+    {
+      category: 'feature',
+      taskCount: 15,
+      successRate: 87,
+      avgDurationMs: 90000,
+      totalCostUsd: 0.8,
+      avgNodeCount: 4,
+    },
+    {
+      category: 'fix',
+      taskCount: 10,
+      successRate: 90,
+      avgDurationMs: 60000,
+      totalCostUsd: 0.5,
+      avgNodeCount: 3,
+    },
+  ],
+  nodeHeatmap: [
+    {
+      combination: '分析代码 → 实现功能',
+      count: 8,
+      successRate: 88,
+      avgDurationMs: 45000,
+    },
+    {
+      combination: '实现功能 → 运行测试',
+      count: 6,
+      successRate: 83,
+      avgDurationMs: 50000,
+    },
+  ],
+  costOptimizations: [
+    {
+      type: 'high_cost_node',
+      suggestion: '以下节点成本高于平均水平: complex-analysis',
+      potentialSavingUsd: 0.1,
+      affectedItems: ['complex-analysis'],
+    },
+  ],
 }
 
 describe('TrendAnalyzer', () => {
@@ -135,6 +175,82 @@ describe('TrendAnalyzer', () => {
       expect(output).toContain('## 节点性能')
       expect(output).toContain('build-step')
       expect(output).toContain('test-step')
+    })
+  })
+
+  describe('categoryStats', () => {
+    it('should include category statistics in terminal output', () => {
+      const output = formatTrendReportForTerminal(mockTrendReport)
+      expect(output).toContain('feature')
+      expect(output).toContain('fix')
+    })
+
+    it('should include category statistics in markdown output', () => {
+      const output = formatTrendReportForMarkdown(mockTrendReport)
+      expect(output).toContain('feature')
+      expect(output).toContain('fix')
+    })
+
+    it('should show success rate by category', () => {
+      const output = formatTrendReportForTerminal(mockTrendReport)
+      expect(output).toContain('87%')  // feature success rate
+      expect(output).toContain('90%')  // fix success rate
+    })
+  })
+
+  describe('nodeHeatmap', () => {
+    it('should include node combination heatmap', () => {
+      const output = formatTrendReportForTerminal(mockTrendReport)
+      expect(output).toContain('分析代码 → 实现功能')
+      expect(output).toContain('实现功能 → 运行测试')
+    })
+
+    it('should show combination statistics', () => {
+      const output = formatTrendReportForTerminal(mockTrendReport)
+      expect(output).toContain('8')  // count for first combination
+      expect(output).toContain('88%')  // success rate for first combination
+    })
+  })
+
+  describe('costOptimizations', () => {
+    it('should include cost optimization suggestions', () => {
+      const output = formatTrendReportForTerminal(mockTrendReport)
+      expect(output).toContain('complex-analysis')
+    })
+
+    it('should show cost optimization section in markdown', () => {
+      const output = formatTrendReportForMarkdown(mockTrendReport)
+      expect(output).toContain('成本优化建议')
+      expect(output).toContain('complex-analysis')
+    })
+  })
+
+  describe('empty report handling', () => {
+    it('should handle report with no category stats', () => {
+      const emptyReport: TrendReport = {
+        ...mockTrendReport,
+        categoryStats: [],
+      }
+      const output = formatTrendReportForTerminal(emptyReport)
+      expect(output).toContain('趋势分析报告')
+    })
+
+    it('should handle report with no node heatmap', () => {
+      const emptyReport: TrendReport = {
+        ...mockTrendReport,
+        nodeHeatmap: [],
+      }
+      const output = formatTrendReportForTerminal(emptyReport)
+      expect(output).toContain('趋势分析报告')
+    })
+
+    it('should handle report with no cost optimizations', () => {
+      const emptyReport: TrendReport = {
+        ...mockTrendReport,
+        costOptimizations: [],
+      }
+      const output = formatTrendReportForTerminal(emptyReport)
+      expect(output).toContain('趋势分析报告')
     })
   })
 })

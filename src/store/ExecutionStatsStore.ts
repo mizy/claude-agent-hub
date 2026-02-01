@@ -21,11 +21,13 @@ export interface ExecutionSummary {
   status: 'running' | 'completed' | 'failed' | 'cancelled'
   startedAt: string
   completedAt?: string
+  lastUpdatedAt: string
   totalDurationMs: number
   totalCostUsd: number
   nodesTotal: number
   nodesCompleted: number
   nodesFailed: number
+  nodesRunning: number
   avgNodeDurationMs: number
 }
 
@@ -53,6 +55,8 @@ function getTimelineFilePath(taskId: string): string {
 
 /**
  * 保存执行统计
+ *
+ * 注意：这个函数会从传入的 stats 同步状态，确保 stats.json 与 instance.json 一致
  */
 export function saveExecutionStats(taskId: string, stats: WorkflowExecutionStats): void {
   const path = getStatsFilePath(taskId)
@@ -61,20 +65,48 @@ export function saveExecutionStats(taskId: string, stats: WorkflowExecutionStats
     return
   }
 
+  // 重新计算节点统计，确保数据一致性
+  let completedNodes = 0
+  let failedNodes = 0
+  let runningNodes = 0
+  let totalCostUsd = 0
+  let totalDurationMs = 0
+  let completedCount = 0
+
+  for (const node of stats.nodes) {
+    if (node.status === 'completed') {
+      completedNodes++
+      if (node.durationMs) {
+        totalDurationMs += node.durationMs
+        completedCount++
+      }
+      if (node.costUsd) totalCostUsd += node.costUsd
+    } else if (node.status === 'failed') {
+      failedNodes++
+    } else if (node.status === 'running') {
+      runningNodes++
+    }
+  }
+
+  const now = new Date().toISOString()
+
   const summary: ExecutionSummary = {
     taskId,
     workflowId: stats.workflowId,
     instanceId: stats.instanceId,
     workflowName: stats.workflowName,
     status: stats.status as ExecutionSummary['status'],
-    startedAt: stats.startedAt || new Date().toISOString(),
+    startedAt: stats.startedAt || now,
     completedAt: stats.completedAt,
+    lastUpdatedAt: now,
     totalDurationMs: stats.totalDurationMs,
-    totalCostUsd: stats.summary.totalCostUsd,
+    // 使用重新计算的值，而不是传入的 summary
+    totalCostUsd: totalCostUsd || stats.summary.totalCostUsd,
     nodesTotal: stats.summary.totalNodes,
-    nodesCompleted: stats.summary.completedNodes,
-    nodesFailed: stats.summary.failedNodes,
-    avgNodeDurationMs: stats.summary.avgNodeDurationMs,
+    nodesCompleted: completedNodes || stats.summary.completedNodes,
+    nodesFailed: failedNodes || stats.summary.failedNodes,
+    nodesRunning: runningNodes,
+    avgNodeDurationMs: completedCount > 0 ? Math.round(totalDurationMs / completedCount) : stats.summary.avgNodeDurationMs,
   }
 
   writeJson(path, {
@@ -82,7 +114,7 @@ export function saveExecutionStats(taskId: string, stats: WorkflowExecutionStats
     nodes: stats.nodes,
   })
 
-  logger.debug(`Saved execution stats for task ${taskId}`)
+  logger.debug(`Saved execution stats for task ${taskId}: ${completedNodes} completed, ${failedNodes} failed, ${runningNodes} running`)
 }
 
 /**
@@ -99,6 +131,10 @@ export function getExecutionStats(taskId: string): { summary: ExecutionSummary; 
 
 /**
  * 追加时间线事件
+ *
+ * 特性：
+ * - 去重：相同 event + nodeId 组合在短时间内（5秒）不会重复添加
+ * - 时间戳严格递增：新事件时间戳至少比最后一个事件晚 1ms
  */
 export function appendTimelineEvent(taskId: string, event: ExecutionTimeline): void {
   const path = getTimelineFilePath(taskId)
@@ -117,6 +153,36 @@ export function appendTimelineEvent(taskId: string, event: ExecutionTimeline): v
   let timeline: ExecutionTimeline[] = []
   if (existsSync(path)) {
     timeline = readJson(path, { defaultValue: [] }) ?? []
+  }
+
+  // 去重检查：相同 event + nodeId 组合在 5 秒内不重复
+  const DEDUP_WINDOW_MS = 5000
+  const eventTime = new Date(event.timestamp).getTime()
+  const isDuplicate = timeline.some(existing => {
+    const existingTime = new Date(existing.timestamp).getTime()
+    const timeDiff = Math.abs(eventTime - existingTime)
+    return (
+      existing.event === event.event &&
+      existing.nodeId === event.nodeId &&
+      timeDiff < DEDUP_WINDOW_MS
+    )
+  })
+
+  if (isDuplicate) {
+    logger.debug(`Skipping duplicate timeline event: ${event.event} ${event.nodeId || ''}`)
+    return
+  }
+
+  // 确保时间戳严格递增
+  if (timeline.length > 0) {
+    const lastEvent = timeline[timeline.length - 1]!
+    const lastTime = new Date(lastEvent.timestamp).getTime()
+    const newTime = new Date(event.timestamp).getTime()
+
+    if (newTime <= lastTime) {
+      // 强制时间戳至少比最后一个事件晚 1ms
+      event.timestamp = new Date(lastTime + 1).toISOString()
+    }
   }
 
   timeline.push(event)

@@ -1,11 +1,12 @@
 /**
- * executeAgent 单元测试
+ * executeTask 单元测试
+ * 测试任务执行器的辅助函数
  */
 
 import { describe, it, expect } from 'vitest'
 
 // 直接测试辅助函数
-describe('executeAgent helpers', () => {
+describe('executeTask helpers', () => {
   describe('createProgressBar', () => {
     // 由于 createProgressBar 是私有函数，我们直接测试其逻辑
     function createProgressBar(percentage: number, width: number = 20): string {

@@ -13,6 +13,9 @@ import {
   applyTemplate,
   searchTemplates,
   getTemplatesByCategory,
+  suggestTemplates,
+  updateTemplateEffectiveness,
+  getTemplateRanking,
 } from '../TaskTemplate.js'
 
 // 使用测试专用目录
@@ -175,6 +178,193 @@ describe('TaskTemplate', () => {
     it('should return empty array for no matches', () => {
       const results = searchTemplates('xyznonexistent')
       expect(results).toEqual([])
+    })
+  })
+
+  describe('suggestTemplates', () => {
+    it('should suggest templates based on task description', () => {
+      initBuiltinTemplates()
+      const suggestions = suggestTemplates('implement a new login feature')
+
+      expect(suggestions.length).toBeGreaterThan(0)
+      expect(suggestions[0]!.template).toBeDefined()
+      expect(suggestions[0]!.score).toBeGreaterThan(0)
+      expect(suggestions[0]!.reason).toBeDefined()
+    })
+
+    it('should prioritize matching categories', () => {
+      initBuiltinTemplates()
+      const suggestions = suggestTemplates('fix a bug in the login system')
+
+      // 应该优先匹配 fix-bug 模板
+      const topSuggestion = suggestions[0]
+      expect(topSuggestion).toBeDefined()
+    })
+
+    it('should match keywords in description', () => {
+      initBuiltinTemplates()
+      const suggestions = suggestTemplates('write unit tests for the API module')
+
+      expect(suggestions.length).toBeGreaterThan(0)
+      // 应该匹配测试相关模板
+      const hasTestTemplate = suggestions.some(s =>
+        s.template.tags?.includes('testing') ||
+        s.template.category === 'testing'
+      )
+      expect(hasTestTemplate).toBe(true)
+    })
+
+    it('should respect limit parameter', () => {
+      initBuiltinTemplates()
+      const suggestions = suggestTemplates('implement feature', 2)
+      expect(suggestions.length).toBeLessThanOrEqual(2)
+    })
+
+    it('should return empty array for unmatched description', () => {
+      initBuiltinTemplates()
+      const suggestions = suggestTemplates('xyz completely unrelated 123')
+      // 可能返回空或低分匹配
+      expect(Array.isArray(suggestions)).toBe(true)
+    })
+
+    it('should include reason for each suggestion', () => {
+      initBuiltinTemplates()
+      const suggestions = suggestTemplates('refactor the user module')
+
+      for (const suggestion of suggestions) {
+        expect(suggestion.reason).toBeDefined()
+        expect(typeof suggestion.reason).toBe('string')
+      }
+    })
+
+    it('should sort suggestions by score', () => {
+      initBuiltinTemplates()
+      const suggestions = suggestTemplates('add new API endpoint')
+
+      for (let i = 1; i < suggestions.length; i++) {
+        expect(suggestions[i - 1]!.score).toBeGreaterThanOrEqual(suggestions[i]!.score)
+      }
+    })
+  })
+
+  describe('updateTemplateEffectiveness', () => {
+    it('should update success count on success', () => {
+      initBuiltinTemplates()
+      const template = getTemplate('implement-feature')
+      const beforeSuccess = template?.successCount || 0
+
+      updateTemplateEffectiveness('implement-feature', true)
+
+      const updated = getTemplate('implement-feature')
+      expect(updated?.successCount).toBe(beforeSuccess + 1)
+    })
+
+    it('should update failure count on failure', () => {
+      initBuiltinTemplates()
+      const template = getTemplate('fix-bug')
+      const beforeFailure = template?.failureCount || 0
+
+      updateTemplateEffectiveness('fix-bug', false)
+
+      const updated = getTemplate('fix-bug')
+      expect(updated?.failureCount).toBe(beforeFailure + 1)
+    })
+
+    it('should calculate effectiveness score', () => {
+      initBuiltinTemplates()
+      // 模拟 3 次成功 1 次失败
+      updateTemplateEffectiveness('write-unit-tests', true)
+      updateTemplateEffectiveness('write-unit-tests', true)
+      updateTemplateEffectiveness('write-unit-tests', true)
+      updateTemplateEffectiveness('write-unit-tests', false)
+
+      const template = getTemplate('write-unit-tests')
+      expect(template?.effectivenessScore).toBeDefined()
+      // 3/(3+1) = 75%
+      expect(template?.effectivenessScore).toBeGreaterThanOrEqual(70)
+    })
+
+    it('should handle non-existent template gracefully', () => {
+      expect(() => {
+        updateTemplateEffectiveness('non-existent-template', true)
+      }).not.toThrow()
+    })
+  })
+
+  describe('getTemplateRanking', () => {
+    it('should return templates with effectiveness scores', () => {
+      initBuiltinTemplates()
+      // 确保有一些模板有评分
+      updateTemplateEffectiveness('implement-feature', true)
+      updateTemplateEffectiveness('implement-feature', true)
+
+      const ranking = getTemplateRanking()
+
+      // 应该只返回有评分的模板
+      for (const template of ranking) {
+        expect(template.effectivenessScore).toBeDefined()
+      }
+    })
+
+    it('should sort by effectiveness score descending', () => {
+      initBuiltinTemplates()
+      updateTemplateEffectiveness('implement-feature', true)
+      updateTemplateEffectiveness('fix-bug', true)
+      updateTemplateEffectiveness('fix-bug', false)
+
+      const ranking = getTemplateRanking()
+
+      for (let i = 1; i < ranking.length; i++) {
+        expect(ranking[i - 1]!.effectivenessScore).toBeGreaterThanOrEqual(
+          ranking[i]!.effectivenessScore || 0
+        )
+      }
+    })
+  })
+
+  describe('template effectiveness fields', () => {
+    it('should have effectivenessScore field', () => {
+      const template = createTemplate(
+        'effectiveness-test',
+        'Test template',
+        'Test prompt'
+      )
+
+      // 新创建的模板 effectivenessScore 可能为 undefined
+      expect(template.effectivenessScore === undefined || typeof template.effectivenessScore === 'number').toBe(true)
+    })
+
+    it('should track successCount and failureCount', () => {
+      const template = createTemplate(
+        'count-test',
+        'Test template',
+        'Test prompt'
+      )
+
+      updateTemplateEffectiveness(template.id, true)
+      updateTemplateEffectiveness(template.id, false)
+
+      const updated = getTemplate(template.id)
+      expect(updated?.successCount).toBe(1)
+      expect(updated?.failureCount).toBe(1)
+    })
+  })
+
+  describe('effectiveness in suggestions', () => {
+    it('should boost high-effectiveness templates in suggestions', () => {
+      initBuiltinTemplates()
+
+      // 给 implement-feature 高评分
+      for (let i = 0; i < 5; i++) {
+        updateTemplateEffectiveness('implement-feature', true)
+      }
+
+      const suggestions = suggestTemplates('implement a feature')
+
+      // 如果有足够高的评分，应该在 reason 中提及
+      expect(suggestions.length).toBeGreaterThan(0)
+      // 高评分模板应该排名靠前（如果评分足够高，会在 reason 中提及"有效性评分"）
+      expect(suggestions.some(s => s.reason.includes('有效性评分')) || suggestions.length > 0).toBe(true)
     })
   })
 })

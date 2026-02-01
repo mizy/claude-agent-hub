@@ -47,12 +47,12 @@ describe('CLI 简化命令', () => {
 
   describe('cah "任务描述"', () => {
     it('should create task from prompt', async () => {
-      const { stdout, stderr } = await execa('node', [CLI_PATH, '修复登录bug', '--no-run'], {
+      const { stdout } = await execa('node', [CLI_PATH, '修复登录bug'], {
         cwd: TEST_DIR,
         reject: false,
       })
 
-      // 应该显示创建成功信息
+      // 应该显示创建成功信息（默认行为是创建任务并启动后台执行器）
       expect(stdout).toContain('Created task')
       expect(stdout).toContain('修复登录bug')
       expect(stdout).toContain('ID:')
@@ -60,7 +60,7 @@ describe('CLI 简化命令', () => {
 
     it('should truncate long prompts in title', async () => {
       const longPrompt = 'A'.repeat(100)
-      const { stdout } = await execa('node', [CLI_PATH, longPrompt, '--no-run'], {
+      const { stdout } = await execa('node', [CLI_PATH, longPrompt], {
         cwd: TEST_DIR,
         reject: false,
       })
@@ -69,12 +69,13 @@ describe('CLI 简化命令', () => {
       expect(stdout).toContain('...')
     })
 
-    it('should support --agent option', async () => {
-      const { stdout } = await execa('node', [CLI_PATH, '优化数据库', '-a', 'architect', '--no-run'], {
+    it('should support --agent option (persona)', async () => {
+      const { stdout } = await execa('node', [CLI_PATH, '优化数据库', '-a', 'architect'], {
         cwd: TEST_DIR,
         reject: false,
       })
 
+      // -a 选项指定 persona，任务仍应成功创建
       expect(stdout).toContain('Created task')
     })
   })

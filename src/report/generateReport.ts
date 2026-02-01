@@ -31,11 +31,6 @@ export async function generateReport(options: ReportOptions): Promise<void> {
     tasks = tasks.filter(t => t.assignee === options.agent)
   }
 
-  // 获取 Agent 信息
-  const agents = options.agent
-    ? [store.getAgent(options.agent)].filter((a): a is NonNullable<typeof a> => a !== null)
-    : store.getAllAgents()
-
   // 统计数据
   const stats = {
     totalTasks: tasks.length,
@@ -57,11 +52,7 @@ export async function generateReport(options: ReportOptions): Promise<void> {
   // 生成报告
   const report = formatReport({
     period: { days, since: since.toISOString() },
-    agents: agents.map(a => ({
-      name: a.name,
-      persona: a.persona,
-      stats: a.stats,
-    })),
+    agents: [],
     tasks,
     stats,
     pendingBranches

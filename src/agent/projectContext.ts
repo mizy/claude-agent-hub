@@ -329,13 +329,13 @@ export function formatProjectContextForPrompt(context: ProjectContext): string {
     parts.push(`- 框架: ${context.frameworks.join(', ')}`)
   }
 
-  // 目录结构
-  if (context.directoryStructure) {
-    parts.push(`\n## 目录结构`)
-    parts.push('```')
-    parts.push(context.directoryStructure)
-    parts.push('```')
-  }
+  // 目录结构 - 不输出，让 AI 自行探索
+  // if (context.directoryStructure) {
+  //   parts.push(`\n## 目录结构`)
+  //   parts.push('```')
+  //   parts.push(context.directoryStructure)
+  //   parts.push('```')
+  // }
 
   // 可用脚本
   const scriptEntries = Object.entries(context.scripts)

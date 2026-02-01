@@ -1,10 +1,9 @@
 /**
- * Agent 核心执行逻辑
+ * Task 核心执行逻辑
  *
- * 提取 runAgent, runAgentForTask, resumeAgentForTask 的公共逻辑
+ * 统一的任务执行入口
  */
 
-import { getStore } from '../store/index.js'
 import { generateWorkflow } from './generateWorkflow.js'
 import { executeNode } from './executeWorkflowNode.js'
 import { now } from '../shared/time.js'
@@ -34,22 +33,22 @@ import { saveWorkflowOutput } from '../output/saveWorkflowOutput.js'
 import { saveExecutionStats, appendTimelineEvent } from '../store/ExecutionStatsStore.js'
 import { workflowEvents } from '../workflow/engine/WorkflowEventEmitter.js'
 import { createLogger } from '../shared/logger.js'
-import type { Agent, AgentContext } from '../types/agent.js'
+import { estimateRemainingTime, formatTimeEstimate } from './timeEstimator.js'
 import type { Task } from '../types/task.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 
-const logger = createLogger('execute-agent')
+const logger = createLogger('execute-task')
 
 // 轮询间隔（毫秒）
 const POLL_INTERVAL = 500
 
-// 默认并发数
+// 默认并发数（workflow 内的节点可并行）
 const DEFAULT_CONCURRENCY = 3
 
 /**
  * 执行选项
  */
-export interface ExecuteAgentOptions {
+export interface ExecuteTaskOptions {
   /** 节点并发数 */
   concurrency?: number
   /** 是否为恢复模式 */
@@ -63,7 +62,7 @@ export interface ExecuteAgentOptions {
 /**
  * 执行结果
  */
-export interface ExecuteAgentResult {
+export interface ExecuteTaskResult {
   success: boolean
   workflow: Workflow
   instance: WorkflowInstance
@@ -75,18 +74,17 @@ export interface ExecuteAgentResult {
 }
 
 /**
- * Agent 核心执行函数
+ * Task 核心执行函数
  *
  * 统一的执行逻辑，支持：
  * - 新任务执行（生成 workflow）
  * - 恢复执行（使用已有 workflow）
  * - 保存到任务文件夹或全局 outputs/
  */
-export async function executeAgent(
-  agent: Agent,
+export async function executeTask(
   task: Task,
-  options: ExecuteAgentOptions = {}
-): Promise<ExecuteAgentResult> {
+  options: ExecuteTaskOptions = {}
+): Promise<ExecuteTaskResult> {
   const {
     concurrency = DEFAULT_CONCURRENCY,
     resume = false,
@@ -94,14 +92,10 @@ export async function executeAgent(
     useConsole = false,
   } = options
 
-  const store = getStore()
   const log = useConsole ? console.log.bind(console) : logger.info.bind(logger)
   const logError = useConsole ? console.error.bind(console) : logger.error.bind(logger)
 
-  log(`[${agent.name}] ${resume ? '恢复任务' : '开始执行任务'}: ${task.title}`)
-
-  // 更新 Agent 状态
-  store.updateAgent(agent.name, { status: 'working' })
+  log(`${resume ? '恢复任务' : '开始执行任务'}: ${task.title}`)
 
   try {
     let workflow: Workflow
@@ -109,17 +103,38 @@ export async function executeAgent(
 
     if (resume) {
       // 恢复模式：使用已有的 workflow 和 instance
-      const result = await prepareResume(task, agent.name, log)
+      const result = await prepareResume(task, log)
       workflow = result.workflow
       instance = result.instance
     } else {
       // 新任务模式：检查是否已有 workflow 或生成新的
-      const result = await prepareNewExecution(task, agent, log, saveToTaskFolder)
+      const result = await prepareNewExecution(task, log, saveToTaskFolder)
       workflow = result.workflow
 
       // 启动 workflow
       instance = await startWorkflow(workflow.id)
-      log(`[${agent.name}] Workflow 启动: ${instance.id}`)
+      log(`Workflow 启动: ${instance.id}`)
+
+      // 检查是否为直接回答类型 - 不需要执行节点，直接输出
+      if (workflow.variables?.isDirectAnswer && workflow.variables?.directAnswer) {
+        const answer = workflow.variables.directAnswer as string
+        log(`\n${answer}\n`)
+
+        // 直接完成任务
+        updateTask(task.id, { status: 'completed' })
+        await updateInstanceStatus(instance.id, 'completed')
+
+        return {
+          success: true,
+          workflow,
+          instance,
+          outputPath: '',
+          timing: {
+            startedAt: now(),
+            completedAt: now(),
+          },
+        }
+      }
 
       // 发射工作流开始事件
       const taskNodes = workflow.nodes.filter(n => n.type !== 'start' && n.type !== 'end')
@@ -142,7 +157,7 @@ export async function executeAgent(
       status: 'developing',
       workflowId: workflow.id,
     })
-    log(`[${agent.name}] 任务状态: developing`)
+    log(`任务状态: developing`)
 
     const startedAt = now()
 
@@ -164,7 +179,7 @@ export async function executeAgent(
     if (resume) {
       const readyNodes = getReadyNodes(workflow, instance)
       if (readyNodes.length > 0) {
-        log(`[${agent.name}] 恢复执行节点: ${readyNodes.join(', ')}`)
+        log(`恢复执行节点: ${readyNodes.join(', ')}`)
         appendExecutionLog(task.id, `[RESUME] Enqueuing ready nodes: ${readyNodes.join(', ')}`)
         await enqueueNodes(
           readyNodes.map(nodeId => ({
@@ -177,7 +192,7 @@ export async function executeAgent(
           }))
         )
       } else {
-        log(`[${agent.name}] 警告：没有可执行的节点`)
+        log(`警告：没有可执行的节点`)
         appendExecutionLog(task.id, `[RESUME] Warning: No ready nodes found`)
       }
     }
@@ -186,7 +201,6 @@ export async function executeAgent(
     const finalInstance = await waitForWorkflowCompletion(
       workflow,
       instance.id,
-      agent.name,
       log
     )
 
@@ -202,7 +216,6 @@ export async function executeAgent(
     const outputPath = await saveWorkflowOutput(
       {
         task,
-        agent,
         workflow,
         instance: finalInstance,
         timing: { startedAt, completedAt },
@@ -270,36 +283,36 @@ export async function executeAgent(
       },
     })
 
-    // 更新 Agent 统计
-    store.updateAgent(agent.name, {
-      status: 'idle',
-      stats: {
-        ...agent.stats,
-        tasksCompleted: success
-          ? agent.stats.tasksCompleted + 1
-          : agent.stats.tasksCompleted,
-        tasksFailed: success ? agent.stats.tasksFailed : agent.stats.tasksFailed + 1,
-      },
-    })
+    log(`输出保存至: ${outputPath}`)
 
     if (success) {
-      log(`[${agent.name}] 任务完成: ${task.title}`)
+      log(`任务完成: ${task.title}`)
+      return {
+        success,
+        workflow,
+        instance: finalInstance,
+        outputPath,
+        timing: { startedAt, completedAt },
+      }
     } else {
-      logError(`[${agent.name}] 任务失败: ${task.title}`)
-      logError(`[${agent.name}] 错误: ${finalInstance.error}`)
-    }
-    log(`[${agent.name}] 输出保存至: ${outputPath}`)
-
-    return {
-      success,
-      workflow,
-      instance: finalInstance,
-      outputPath,
-      timing: { startedAt, completedAt },
+      logError(`任务失败: ${task.title}`)
+      // 确保错误信息不会显示为 undefined
+      const errorMsg = finalInstance.error || 'Unknown error (check logs for details)'
+      logError(`错误: ${errorMsg}`)
+      // 失败时抛出错误，让调用方知道
+      throw new Error(errorMsg)
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logError(`[${agent.name}] 执行出错: ${errorMessage}`)
+    // 捕获完整的错误信息，包括堆栈
+    let errorMessage: string
+    if (error instanceof Error) {
+      errorMessage = error.stack || error.message || 'Unknown error'
+    } else if (error === undefined || error === null) {
+      errorMessage = 'Unknown error (undefined/null error object)'
+    } else {
+      errorMessage = String(error)
+    }
+    logError(`执行出错: ${errorMessage}`)
 
     // 确保关闭 worker
     if (isWorkerRunning()) {
@@ -308,15 +321,6 @@ export async function executeAgent(
 
     // 更新任务状态为 failed
     updateTask(task.id, { status: 'failed' })
-
-    // 更新 Agent 状态
-    store.updateAgent(agent.name, {
-      status: 'idle',
-      stats: {
-        ...agent.stats,
-        tasksFailed: agent.stats.tasksFailed + 1,
-      },
-    })
 
     throw error
   }
@@ -327,7 +331,6 @@ export async function executeAgent(
  */
 async function prepareNewExecution(
   task: Task,
-  agent: Agent,
   log: (...args: unknown[]) => void,
   saveToTaskFolder: boolean
 ): Promise<{ workflow: Workflow }> {
@@ -335,20 +338,18 @@ async function prepareNewExecution(
   let workflow = saveToTaskFolder ? getTaskWorkflow(task.id) : null
 
   if (workflow) {
-    log(`[${agent.name}] 发现已有 Workflow: ${workflow.id}，跳过 planning`)
-    log(`[${agent.name}] Workflow 节点数: ${workflow.nodes.length}`)
+    log(`发现已有 Workflow: ${workflow.id}，跳过 planning`)
+    log(`Workflow 节点数: ${workflow.nodes.length}`)
   } else {
     // 更新任务状态为 planning
     updateTask(task.id, {
       status: 'planning',
-      assignee: agent.name,
     })
-    log(`[${agent.name}] 任务状态: planning`)
+    log(`任务状态: planning`)
 
     // 生成 Workflow
-    const context: AgentContext = { agent, task }
-    log(`[${agent.name}] 生成执行计划...`)
-    workflow = await generateWorkflow(context)
+    log(`生成执行计划...`)
+    workflow = await generateWorkflow(task)
 
     // 设置 taskId 以便保存到正确位置
     if (saveToTaskFolder) {
@@ -357,14 +358,14 @@ async function prepareNewExecution(
 
     // 保存 workflow
     saveWorkflow(workflow)
-    log(`[${agent.name}] Workflow 已保存: ${workflow.nodes.length - 2} 个任务节点`)
+    log(`Workflow 已保存: ${workflow.nodes.length - 2} 个任务节点`)
 
     // 如果标题是通用的，生成一个描述性标题
     if (isGenericTitle(task.title)) {
       const generatedTitle = await generateTaskTitle(task, workflow)
       task.title = generatedTitle
       updateTask(task.id, { title: generatedTitle })
-      log(`[${agent.name}] 生成标题: ${generatedTitle}`)
+      log(`生成标题: ${generatedTitle}`)
     }
   }
 
@@ -376,7 +377,6 @@ async function prepareNewExecution(
  */
 async function prepareResume(
   task: Task,
-  agentName: string,
   log: (...args: unknown[]) => void
 ): Promise<{ workflow: Workflow; instance: WorkflowInstance }> {
   // 获取已有的 workflow 和 instance
@@ -391,8 +391,8 @@ async function prepareResume(
     throw new Error(`No instance found for task: ${task.id}`)
   }
 
-  log(`[${agentName}] 找到 Workflow: ${workflow.id}`)
-  log(`[${agentName}] Instance 状态: ${instance.status}`)
+  log(`找到 Workflow: ${workflow.id}`)
+  log(`Instance 状态: ${instance.status}`)
 
   // 记录 resume 到执行日志
   appendExecutionLog(task.id, `[RESUME] Resuming from instance status: ${instance.status}`)
@@ -403,7 +403,7 @@ async function prepareResume(
     .map(([nodeId]) => nodeId)
 
   if (runningNodes.length > 0) {
-    log(`[${agentName}] 重置被中断的节点: ${runningNodes.join(', ')}`)
+    log(`重置被中断的节点: ${runningNodes.join(', ')}`)
     for (const nodeId of runningNodes) {
       resetNodeState(instance.id, nodeId)
     }
@@ -413,7 +413,7 @@ async function prepareResume(
   // 如果 instance 状态不是 running，更新为 running
   if (instance.status !== 'running') {
     updateInstanceStatus(instance.id, 'running')
-    log(`[${agentName}] 更新 instance 状态为 running`)
+    log(`更新 instance 状态为 running`)
   }
 
   // 重新获取更新后的 instance
@@ -428,11 +428,13 @@ async function prepareResume(
 async function waitForWorkflowCompletion(
   workflow: Workflow,
   instanceId: string,
-  agentName: string,
   log: (...args: unknown[]) => void
 ): Promise<WorkflowInstance> {
   let lastProgress = -1
   let lastRunningNodes: string[] = []
+  const startTime = Date.now()
+  let lastLogTime = 0
+  const MIN_LOG_INTERVAL = 3000 // 至少间隔 3 秒才更新进度
 
   while (true) {
     await sleep(POLL_INTERVAL)
@@ -459,20 +461,42 @@ async function waitForWorkflowCompletion(
         return node?.name || nodeId
       })
 
-    // 打印进度（进度变化或运行节点变化时）
+    // 打印进度（进度变化或运行节点变化时，但限制频率）
     const progress = getWorkflowProgress(instance, workflow)
     const runningNodesChanged =
       runningNodes.length !== lastRunningNodes.length ||
       runningNodes.some((n, i) => n !== lastRunningNodes[i])
+    const currentTime = Date.now()
+    const shouldLog = (progress.percentage !== lastProgress || runningNodesChanged) &&
+                      (currentTime - lastLogTime >= MIN_LOG_INTERVAL)
 
-    if (progress.percentage !== lastProgress || runningNodesChanged) {
+    if (shouldLog) {
+      // 计算时间预估
+      const elapsedMs = currentTime - startTime
+      const nodeStates = workflow.nodes
+        .filter(n => n.type !== 'start' && n.type !== 'end')
+        .map(n => {
+          const state = instance.nodeStates[n.id]
+          return {
+            name: n.name,
+            type: n.type,
+            status: (state?.status || 'pending') as 'pending' | 'running' | 'completed' | 'failed' | 'skipped',
+            durationMs: state?.durationMs,
+            startedAt: state?.startedAt,
+          }
+        })
+
+      const estimate = estimateRemainingTime(nodeStates, elapsedMs)
       const progressBar = createProgressBar(progress.percentage)
       const runningInfo = runningNodes.length > 0
         ? ` [${runningNodes.join(', ')}]`
         : ''
-      log(`[${agentName}] ${progressBar} ${progress.completed}/${progress.total}${runningInfo}`)
+      const timeInfo = estimate.remainingMs > 0 ? ` ETA: ${formatTimeEstimate(estimate)}` : ''
+
+      log(`${progressBar} ${progress.completed}/${progress.total}${runningInfo}${timeInfo}`)
       lastProgress = progress.percentage
       lastRunningNodes = runningNodes
+      lastLogTime = currentTime
     }
   }
 }
@@ -493,15 +517,15 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * 设置增量统计保存
- * 在每个节点完成时保存中间状态的统计，用于任务失败时的诊断
+ * 在节点状态变化时保存统计，用于实时监控和任务失败时的诊断
  */
 function setupIncrementalStatsSaving(taskId: string, instanceId: string): () => void {
   let lastSaveTime = 0
-  const SAVE_DEBOUNCE_MS = 2000 // 防止频繁写入，至少间隔 2 秒
+  const SAVE_DEBOUNCE_MS = 1000 // 防止频繁写入，至少间隔 1 秒
 
-  const saveHandler = () => {
+  const saveHandler = (force = false) => {
     const now = Date.now()
-    if (now - lastSaveTime < SAVE_DEBOUNCE_MS) {
+    if (!force && now - lastSaveTime < SAVE_DEBOUNCE_MS) {
       return
     }
     lastSaveTime = now
@@ -517,12 +541,24 @@ function setupIncrementalStatsSaving(taskId: string, instanceId: string): () => 
     }
   }
 
-  // 订阅节点完成和失败事件
-  const unsubscribeCompleted = workflowEvents.onNodeEvent((event) => {
-    if (event.type === 'node:completed' || event.type === 'node:failed') {
-      saveHandler()
+  // 订阅所有节点事件：started, completed, failed
+  const unsubscribe = workflowEvents.onNodeEvent((event) => {
+    // 节点开始时立即保存（记录 running 状态）
+    // 节点完成/失败时也保存
+    if (event.type === 'node:started') {
+      saveHandler(true) // 强制保存，确保 running 状态被记录
+    } else if (event.type === 'node:completed' || event.type === 'node:failed') {
+      saveHandler(true) // 强制保存，确保状态立即更新
     }
   })
 
-  return unsubscribeCompleted
+  return unsubscribe
 }
+
+// 向后兼容的别名
+/** @deprecated 使用 executeTask 代替 */
+export const executeAgent = executeTask
+/** @deprecated 使用 ExecuteTaskOptions 代替 */
+export type ExecuteAgentOptions = ExecuteTaskOptions
+/** @deprecated 使用 ExecuteTaskResult 代替 */
+export type ExecuteAgentResult = ExecuteTaskResult

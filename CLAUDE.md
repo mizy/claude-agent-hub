@@ -12,6 +12,9 @@ cah task list            # 查看任务列表
 cah task logs <id> -f    # 实时查看任务日志
 cah task resume <id>     # 恢复中断的任务
 cah template use <id>    # 使用模板创建任务
+cah template suggest <d> # 根据描述推荐模板
+cah template from-task   # 从历史任务创建模板
+cah template ranking     # 模板有效性排行榜
 cah report trend         # 趋势分析报告
 cah report live          # 实时状态监控
 ```
@@ -27,16 +30,19 @@ src/
 │       ├── task.ts          # 任务管理
 │       ├── template.ts      # 模板系统
 │       ├── report.ts        # 报告分析
-│       ├── agent.ts         # Agent 管理
 │       └── daemon.ts        # 守护进程
 │
-├── agent/                    # Agent 核心
+├── agent/                    # 任务执行核心
 │   ├── runAgentForTask.ts   # 任务执行入口
-│   ├── executeAgent.ts      # Agent 执行器（进度条、统计）
+│   ├── executeAgent.ts      # 任务执行器（进度条、ETA、统计）
 │   ├── generateWorkflow.ts  # AI 生成 Workflow
-│   ├── executeWorkflowNode.ts # 执行节点
+│   ├── executeWorkflowNode.ts # 执行节点（使用 Persona）
 │   ├── projectContext.ts    # 项目上下文分析
-│   └── executionHistory.ts  # 历史学习
+│   ├── executionHistory.ts  # 历史学习（任务分类、节点模式）
+│   ├── timeEstimator.ts     # 时间预估（基于历史数据）
+│   └── persona/             # Persona 人格系统
+│       ├── builtinPersonas.ts  # 内置 Persona 定义
+│       └── loadPersona.ts      # Persona 加载
 │
 ├── workflow/                 # Workflow 引擎 (内部使用)
 │   ├── types.ts             # 类型定义
@@ -52,8 +58,9 @@ src/
 │
 ├── report/                   # 报告分析
 │   ├── generateReport.ts    # 工作报告
-│   ├── TrendAnalyzer.ts     # 趋势分析
-│   ├── LiveSummary.ts       # 实时摘要
+│   ├── TrendAnalyzer.ts     # 趋势分析（类型统计、热力图、成本优化）
+│   ├── LiveSummary.ts       # 实时摘要（队列预览、ETA）
+│   ├── ExecutionComparison.ts # 执行对比（退化检测）
 │   └── ExecutionReport.ts   # 执行报告
 │
 ├── claude/                   # Claude Code 集成
@@ -80,8 +87,10 @@ src/
 
 ## 数据结构
 
+数据目录默认为 `.cah-data/`，可通过环境变量 `CAH_DATA_DIR` 覆盖。
+
 ```
-data/tasks/
+.cah-data/tasks/
 └── task-20260201-HHMMSS-xxx/
     ├── task.json          # 任务元数据
     ├── workflow.json      # 生成的 workflow
@@ -108,13 +117,16 @@ data/tasks/
 | `cli/index.ts` | CLI 主入口 |
 | `cli/errors.ts` | 结构化错误提示（9种分类） |
 | `agent/runAgentForTask.ts` | 任务执行主流程 |
-| `agent/executeAgent.ts` | 进度条、增量统计 |
+| `agent/executeAgent.ts` | 任务执行器（进度条、ETA、统计） |
+| `agent/executeWorkflowNode.ts` | 节点执行（Persona 在此应用） |
 | `agent/generateWorkflow.ts` | AI 生成 Workflow |
 | `agent/projectContext.ts` | 项目类型/框架/结构分析 |
-| `agent/executionHistory.ts` | 历史任务学习 |
-| `template/TaskTemplate.ts` | 任务模板系统 |
-| `report/TrendAnalyzer.ts` | 趋势分析报告 |
-| `report/LiveSummary.ts` | 实时状态监控 |
+| `agent/executionHistory.ts` | 历史学习（任务分类、节点模式、失败分析） |
+| `agent/timeEstimator.ts` | 时间预估（历史分析、置信度） |
+| `template/TaskTemplate.ts` | 模板系统（推荐、有效性评分、从任务创建） |
+| `report/TrendAnalyzer.ts` | 趋势分析（类型统计、热力图、成本优化） |
+| `report/LiveSummary.ts` | 实时监控（队列预览、ETA） |
+| `report/ExecutionComparison.ts` | 执行对比（退化检测、趋势对比） |
 | `claude/invokeClaudeCode.ts` | Claude CLI 封装 |
 | `store/TaskStore.ts` | 任务文件操作 |
 | `store/ExecutionStatsStore.ts` | 执行统计存储 |

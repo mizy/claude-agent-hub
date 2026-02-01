@@ -63,8 +63,7 @@ export async function initProject(options: InitOptions): Promise<void> {
 
   console.log('')
   console.log(chalk.bold('下一步:'))
-  console.log(chalk.gray('  1. 编辑 .claude-agent-hub.yaml 配置 Agent'))
-  console.log(chalk.gray('  2. 运行 `cah agent create -n <name>` 创建 Agent'))
-  console.log(chalk.gray('  3. 运行 `cah task add -t <title>` 添加任务'))
-  console.log(chalk.gray('  4. 运行 `cah start` 启动守护进程'))
+  console.log(chalk.gray('  1. 编辑 .claude-agent-hub.yaml 配置执行参数'))
+  console.log(chalk.gray('  2. 运行 `cah "任务描述"` 创建并执行任务'))
+  console.log(chalk.gray('  3. 运行 `cah task list` 查看任务状态'))
 }

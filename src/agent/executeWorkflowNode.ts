@@ -5,11 +5,10 @@
 
 import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
 import { buildExecuteNodePrompt } from '../prompts/index.js'
-import { getStore } from '../store/index.js'
 import { appendConversation, appendExecutionLog } from '../store/TaskLogStore.js'
-import { BUILTIN_PERSONAS } from './persona/builtinPersonas.js'
-import { DEFAULT_PERSONA_NAME } from './getDefaultAgent.js'
+import { BUILTIN_PERSONAS, getBuiltinPersona } from './persona/builtinPersonas.js'
 import { personaNeedsMcp } from './persona/personaMcpConfig.js'
+import type { PersonaConfig } from '../types/persona.js'
 import {
   getWorkflow,
   getInstance,
@@ -40,7 +39,6 @@ import type {
   WorkflowInstance,
   EvalContext,
 } from '../workflow/types.js'
-import type { Agent } from '../types/agent.js'
 
 const logger = createLogger('execute-node')
 
@@ -403,20 +401,20 @@ async function executeTaskNode(
     return { success: false, error: 'Task config missing' }
   }
 
-  const { agent: agentName, prompt: taskPrompt } = node.task
+  const { persona: personaName, prompt: taskPrompt } = node.task
 
-  // 获取 agent (找不到会回退到默认)
-  const agent = resolveAgent(agentName)
+  // 获取 persona (找不到会回退到默认 Pragmatist)
+  const persona = resolvePersona(personaName)
 
   // 构建上下文
   const context = buildNodeContext(instance)
 
   // 构建 prompt
-  const prompt = buildExecuteNodePrompt(agent, workflow, node.name, taskPrompt, context)
+  const prompt = buildExecuteNodePrompt(persona, workflow, node.name, taskPrompt, context)
 
   // 根据角色决定是否启用 MCP
   // 不需要外部集成的角色禁用 MCP，加速启动
-  const disableMcp = !personaNeedsMcp(agent.persona)
+  const disableMcp = !personaNeedsMcp(persona.name)
 
   // 获取 taskId 用于日志写入
   const logTaskId = instance.variables?.taskId as string | undefined
@@ -433,7 +431,7 @@ async function executeTaskNode(
   const result = await invokeClaudeCode({
     prompt,
     mode: 'execute',
-    persona: agent.personaConfig,
+    persona,
     stream: true,
     disableMcp,
     sessionId: existingSessionId,
@@ -486,46 +484,34 @@ async function executeTaskNode(
   }
 }
 
+/** 默认 Persona 名称 */
+const DEFAULT_PERSONA_NAME = 'Pragmatist'
+
 /**
- * 解析 Agent
+ * 解析 Persona
  *
  * 选择逻辑：
- * 1. 指定具体 agent 名字 → 优先使用该 agent
- * 2. 'auto' 或空值 → 遍历所有 Agent，优先选择状态为 'idle' 的
- * 3. 没有 idle 的 Agent → 返回内置默认 Agent
+ * 1. 指定具体 persona 名字 → 使用该 persona
+ * 2. 空值或 'auto' → 使用默认 Pragmatist
+ * 3. 找不到指定的 persona → 回退到默认
  */
-function resolveAgent(agentName: string): Agent {
-  const store = getStore()
+function resolvePersona(personaName?: string): PersonaConfig {
+  // 默认 persona 一定存在（在 builtinPersonas.ts 中定义）
+  const defaultPersona = BUILTIN_PERSONAS[DEFAULT_PERSONA_NAME]!
 
-  const defaultAgent: Agent = {
-    id: 'default',
-    name: 'default',
-    persona: DEFAULT_PERSONA_NAME,
-    personaConfig: BUILTIN_PERSONAS[DEFAULT_PERSONA_NAME],
-    description: '内置默认 Agent',
-    status: 'idle',
-    stats: { tasksCompleted: 0, tasksFailed: 0, totalWorkTime: 0 },
-    createdAt: new Date().toISOString(),
+  // 未指定或 auto，使用默认
+  if (!personaName || personaName === 'auto') {
+    return defaultPersona
   }
 
-  // 指定了具体 agent 名字，优先使用
-  if (agentName && agentName !== 'auto') {
-    const agent = store.getAgent(agentName)
-    if (agent) {
-      return agent
-    }
-    logger.warn(`Agent "${agentName}" not found, falling back to auto selection`)
+  // 尝试获取指定的 persona
+  const persona = getBuiltinPersona(personaName)
+  if (persona) {
+    return persona
   }
 
-  // auto 模式：找一个空闲的 Agent
-  const agents = store.getAllAgents()
-  const idleAgent = agents.find(a => a.status === 'idle')
-  if (idleAgent) {
-    return idleAgent
-  }
-
-  // 没有空闲 Agent，返回默认
-  return defaultAgent
+  logger.warn(`Persona "${personaName}" not found, falling back to ${DEFAULT_PERSONA_NAME}`)
+  return defaultPersona
 }
 
 /**
@@ -534,7 +520,7 @@ function resolveAgent(agentName: string): Agent {
 function buildNodeContext(instance: WorkflowInstance): string {
   const completedNodes = Object.entries(instance.nodeStates)
     .filter(([, state]) => state.status === 'done')
-    .map(([nodeId, state]) => `- ${nodeId}: ${JSON.stringify(state.result || 'completed')}`)
+    .map(([nodeId]) => `- ${nodeId}: ${JSON.stringify(instance.outputs[nodeId] || 'completed')}`)
 
   if (completedNodes.length === 0) {
     return ''

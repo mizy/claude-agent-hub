@@ -3,10 +3,13 @@
  * 提供常用任务的快速创建能力
  */
 
-import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, unlinkSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { readJson, writeJson } from '../store/json.js'
-import { DATA_DIR } from '../store/paths.js'
+import { DATA_DIR, TASKS_DIR } from '../store/paths.js'
 import { createLogger } from '../shared/logger.js'
+import { getAllTaskSummaries, type TaskSummary, getTask } from '../store/TaskStore.js'
+import type { Workflow } from '../workflow/types.js'
 
 const logger = createLogger('task-template')
 
@@ -27,6 +30,16 @@ export interface TaskTemplate {
   createdAt: string
   updatedAt?: string
   usageCount: number
+  /** 有效性评分 (0-100)，基于使用该模板的任务成功率 */
+  effectivenessScore?: number
+  /** 成功使用次数 */
+  successCount?: number
+  /** 失败使用次数 */
+  failureCount?: number
+  /** 从历史任务自动生成的标记 */
+  generatedFromTask?: string
+  /** 关联的任务类型 */
+  taskCategory?: string
 }
 
 export type TemplateCategory =
@@ -414,4 +427,313 @@ export const CATEGORY_LABELS: Record<TemplateCategory, string> = {
   devops: 'DevOps',
   analysis: '分析',
   custom: '自定义',
+}
+
+// ============ 历史数据分析 ============
+
+/**
+ * 任务分类（与 executionHistory 保持一致）
+ */
+type TaskCategory = 'git' | 'refactor' | 'feature' | 'fix' | 'docs' | 'test' | 'iteration' | 'other'
+
+/**
+ * 分类任务类型
+ */
+function categorizeTask(title: string, description?: string): TaskCategory {
+  const text = `${title} ${description || ''}`.toLowerCase()
+
+  if (/commit|push|pull|merge|提交|推送|合并/.test(text)) return 'git'
+  if (/迭代|进化|iteration|evolution|cycle|周期/.test(text)) return 'iteration'
+  if (/refactor|重构|优化|整理|reorganize/.test(text)) return 'refactor'
+  if (/fix|bug|修复|修正|repair/.test(text)) return 'fix'
+  if (/test|测试|spec|unittest/.test(text)) return 'test'
+  if (/doc|文档|readme|changelog/.test(text)) return 'docs'
+  if (/add|feature|implement|新增|添加|实现|功能/.test(text)) return 'feature'
+
+  return 'other'
+}
+
+/**
+ * 模板推荐结果
+ */
+export interface TemplateSuggestion {
+  template: TaskTemplate
+  score: number
+  reason: string
+}
+
+/**
+ * 基于任务描述推荐模板
+ */
+export function suggestTemplates(taskDescription: string, limit: number = 5): TemplateSuggestion[] {
+  const allTemplates = getAllTemplates()
+  if (allTemplates.length === 0) return []
+
+  const taskCategory = categorizeTask(taskDescription, taskDescription)
+  const keywords = extractKeywords(taskDescription)
+  const suggestions: TemplateSuggestion[] = []
+
+  for (const template of allTemplates) {
+    let score = 0
+    const reasons: string[] = []
+
+    // 1. 关键词匹配 (最高 40 分)
+    const templateKeywords = extractKeywords(`${template.name} ${template.description} ${template.prompt}`)
+    const matchedKeywords = keywords.filter(k => templateKeywords.includes(k))
+    const keywordScore = Math.min(40, matchedKeywords.length * 10)
+    if (keywordScore > 0) {
+      score += keywordScore
+      reasons.push(`关键词匹配: ${matchedKeywords.slice(0, 3).join(', ')}`)
+    }
+
+    // 2. 标签匹配 (最高 20 分)
+    if (template.tags) {
+      const matchedTags = template.tags.filter(tag =>
+        keywords.some(k => tag.toLowerCase().includes(k) || k.includes(tag.toLowerCase()))
+      )
+      if (matchedTags.length > 0) {
+        score += Math.min(20, matchedTags.length * 10)
+        reasons.push(`标签匹配: ${matchedTags.join(', ')}`)
+      }
+    }
+
+    // 3. 任务类型匹配 (最高 25 分)
+    const categoryMapping: Record<TaskCategory, TemplateCategory[]> = {
+      git: ['development', 'devops'],
+      refactor: ['refactoring'],
+      feature: ['development'],
+      fix: ['development'],
+      docs: ['documentation'],
+      test: ['testing'],
+      iteration: ['development', 'refactoring'],
+      other: ['custom'],
+    }
+    if (categoryMapping[taskCategory]?.includes(template.category)) {
+      score += 25
+      reasons.push(`类型匹配: ${taskCategory}`)
+    }
+
+    // 4. 有效性评分加成 (最高 15 分)
+    if (template.effectivenessScore !== undefined && template.effectivenessScore > 0) {
+      const effectivenessBonus = Math.round(template.effectivenessScore * 0.15)
+      score += effectivenessBonus
+      reasons.push(`有效性评分: ${template.effectivenessScore}%`)
+    }
+
+    // 5. 使用频率加成 (最高 10 分)
+    if (template.usageCount > 0) {
+      const usageBonus = Math.min(10, Math.round(Math.log10(template.usageCount + 1) * 5))
+      score += usageBonus
+      if (usageBonus > 3) {
+        reasons.push(`使用${template.usageCount}次`)
+      }
+    }
+
+    if (score > 0) {
+      suggestions.push({
+        template,
+        score,
+        reason: reasons.join('; '),
+      })
+    }
+  }
+
+  // 按分数排序并限制数量
+  return suggestions
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+}
+
+/**
+ * 提取关键词
+ */
+function extractKeywords(text: string): string[] {
+  const words = text
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fff\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 1)
+
+  const stopWords = new Set([
+    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
+    'and', 'or', 'but', 'if', 'then', 'else', 'when', 'at', 'by',
+    'for', 'with', 'about', 'to', 'from', 'in', 'on', 'of', 'as',
+    '的', '是', '在', '和', '了', '有', '个', '这', '那', '我', '你', '他',
+    '请', '把', '让', '给', '做', '用', '到', '会', '要', '能', '可以',
+  ])
+
+  return [...new Set(words.filter(w => !stopWords.has(w)))]
+}
+
+// ============ 模板有效性评分 ============
+
+/**
+ * 更新模板有效性评分（基于任务执行结果）
+ */
+export function updateTemplateEffectiveness(templateId: string, success: boolean): void {
+  const template = getTemplate(templateId)
+  if (!template) return
+
+  // 更新成功/失败计数
+  if (success) {
+    template.successCount = (template.successCount || 0) + 1
+  } else {
+    template.failureCount = (template.failureCount || 0) + 1
+  }
+
+  // 计算有效性评分
+  const total = (template.successCount || 0) + (template.failureCount || 0)
+  if (total > 0) {
+    template.effectivenessScore = Math.round(((template.successCount || 0) / total) * 100)
+  }
+
+  template.updatedAt = new Date().toISOString()
+  writeJson(getTemplateFilePath(templateId), template)
+  logger.debug(`Updated template effectiveness: ${templateId} -> ${template.effectivenessScore}%`)
+}
+
+/**
+ * 从历史任务数据重新计算所有模板的有效性评分
+ */
+export function recalculateAllEffectivenessScores(): void {
+  const allTemplates = getAllTemplates()
+  const allTasks = getAllTaskSummaries()
+
+  // 从任务历史中查找使用了模板的任务
+  // 目前简单实现：基于任务标题和模板名的匹配
+  for (const template of allTemplates) {
+    const relatedTasks = findTasksRelatedToTemplate(template, allTasks)
+
+    if (relatedTasks.length === 0) continue
+
+    const successTasks = relatedTasks.filter(t => t.status === 'completed')
+    const failedTasks = relatedTasks.filter(t => t.status === 'failed')
+
+    template.successCount = successTasks.length
+    template.failureCount = failedTasks.length
+
+    const total = successTasks.length + failedTasks.length
+    if (total > 0) {
+      template.effectivenessScore = Math.round((successTasks.length / total) * 100)
+    }
+
+    template.updatedAt = new Date().toISOString()
+    writeJson(getTemplateFilePath(template.id), template)
+  }
+
+  logger.info('Recalculated effectiveness scores for all templates')
+}
+
+/**
+ * 查找与模板相关的任务
+ */
+function findTasksRelatedToTemplate(template: TaskTemplate, tasks: TaskSummary[]): TaskSummary[] {
+  const templateKeywords = extractKeywords(`${template.name} ${template.description}`)
+
+  return tasks.filter(task => {
+    const taskKeywords = extractKeywords(task.title)
+    const overlap = templateKeywords.filter(k => taskKeywords.includes(k))
+    return overlap.length >= 2 // 至少 2 个关键词匹配
+  })
+}
+
+// ============ 从历史任务生成模板 ============
+
+/**
+ * 从成功的历史任务生成模板
+ */
+export function createTemplateFromTask(taskId: string): TaskTemplate | null {
+  const task = getTask(taskId)
+  if (!task) {
+    logger.warn(`Task not found: ${taskId}`)
+    return null
+  }
+
+  if (task.status !== 'completed') {
+    logger.warn(`Task not completed: ${taskId} (status: ${task.status})`)
+    return null
+  }
+
+  // 读取 workflow 获取节点信息
+  const workflowPath = join(TASKS_DIR, taskId, 'workflow.json')
+  let nodeInfo = ''
+  if (existsSync(workflowPath)) {
+    try {
+      const workflow: Workflow = JSON.parse(readFileSync(workflowPath, 'utf-8'))
+      const taskNodes = workflow.nodes?.filter(n => n.type === 'task') || []
+      if (taskNodes.length > 0) {
+        nodeInfo = `\n\n执行步骤参考：\n${taskNodes.map((n, i) => `${i + 1}. ${n.name}`).join('\n')}`
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 生成模板
+  const taskCategory = categorizeTask(task.title, task.description)
+  const categoryToTemplateCategory: Record<TaskCategory, TemplateCategory> = {
+    git: 'devops',
+    refactor: 'refactoring',
+    feature: 'development',
+    fix: 'development',
+    docs: 'documentation',
+    test: 'testing',
+    iteration: 'development',
+    other: 'custom',
+  }
+
+  const templateCategory = categoryToTemplateCategory[taskCategory]
+
+  // 提取变量（简单实现：从描述中提取常见占位符模式）
+  const variables: TemplateVariable[] = []
+  const descText = task.description || ''
+
+  // 检测可能的变量部分（文件名、路径、功能名等）
+  if (/文件|file|path|路径/.test(descText.toLowerCase())) {
+    variables.push({ name: 'target_path', description: '目标路径', required: false })
+  }
+  if (/功能|feature|function|模块/.test(descText.toLowerCase())) {
+    variables.push({ name: 'feature_name', description: '功能名称', required: false })
+  }
+
+  const template = createTemplate(
+    `from-${task.id}`,
+    `基于任务「${task.title}」生成`,
+    `${task.description || task.title}${nodeInfo}`,
+    {
+      category: templateCategory,
+      variables: variables.length > 0 ? variables : undefined,
+      tags: [taskCategory, 'auto-generated'],
+    }
+  )
+
+  // 标记为从任务生成
+  const savedTemplate = getTemplate(template.id)
+  if (savedTemplate) {
+    savedTemplate.generatedFromTask = taskId
+    savedTemplate.taskCategory = taskCategory
+    savedTemplate.effectivenessScore = 100 // 从成功任务生成，初始评分 100
+    savedTemplate.successCount = 1
+    writeJson(getTemplateFilePath(savedTemplate.id), savedTemplate)
+  }
+
+  logger.info(`Created template from task: ${taskId} -> ${template.id}`)
+  return getTemplate(template.id)
+}
+
+/**
+ * 获取可用于生成模板的成功任务列表
+ */
+export function getTasksAvailableForTemplate(): TaskSummary[] {
+  const allTasks = getAllTaskSummaries()
+  return allTasks.filter(t => t.status === 'completed')
+}
+
+/**
+ * 获取模板排行榜（按有效性评分排序）
+ */
+export function getTemplateRanking(): TaskTemplate[] {
+  return getAllTemplates()
+    .filter(t => t.effectivenessScore !== undefined)
+    .sort((a, b) => (b.effectivenessScore || 0) - (a.effectivenessScore || 0))
 }

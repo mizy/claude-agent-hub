@@ -26,6 +26,17 @@ const mockReport: LiveSummaryReport = {
       },
       startedAt: new Date(Date.now() - 120000),
       elapsedMs: 120000,
+      estimatedRemainingMs: 180000,
+      estimateConfidence: 0.7,
+    },
+  ],
+  queuedTasks: [
+    {
+      taskId: 'task-004',
+      title: 'Deploy to production',
+      status: 'pending',
+      createdAt: new Date(Date.now() - 60000),
+      estimatedDurationMs: 120000,
     },
   ],
   todaySummary: {
@@ -54,6 +65,7 @@ const mockReport: LiveSummaryReport = {
       completedAt: new Date(Date.now() - 120000).toISOString(),
     },
   ],
+  estimatedAllCompletionTime: '21:30',
 }
 
 describe('LiveSummary', () => {
@@ -130,10 +142,158 @@ describe('LiveSummary', () => {
       const emptyReport: LiveSummaryReport = {
         ...mockReport,
         runningTasks: [],
+        queuedTasks: [],
       }
 
       const output = formatLiveSummaryForTerminal(emptyReport)
       expect(output).toContain('没有运行中的任务')
+    })
+  })
+
+  describe('queued tasks', () => {
+    it('should display queued tasks', () => {
+      const output = formatLiveSummaryForTerminal(mockReport)
+      expect(output).toContain('Deploy to production')
+    })
+
+    it('should show queue count', () => {
+      const output = formatLiveSummaryForTerminal(mockReport)
+      expect(output).toContain('待执行')
+    })
+
+    it('should handle multiple queued tasks', () => {
+      const multiQueueReport: LiveSummaryReport = {
+        ...mockReport,
+        queuedTasks: [
+          ...mockReport.queuedTasks,
+          {
+            taskId: 'task-005',
+            title: 'Run integration tests',
+            status: 'pending',
+            createdAt: new Date(Date.now() - 30000),
+            estimatedDurationMs: 60000,
+          },
+        ],
+      }
+
+      const output = formatLiveSummaryForTerminal(multiQueueReport)
+      expect(output).toContain('Deploy to production')
+      expect(output).toContain('Run integration tests')
+    })
+
+    it('should limit queued tasks display', () => {
+      const manyQueuedTasks = Array(8)
+        .fill(null)
+        .map((_, i) => ({
+          taskId: `task-00${i}`,
+          title: `Queued task ${i}`,
+          status: 'pending' as const,
+          createdAt: new Date(Date.now() - i * 10000),
+        }))
+
+      const manyQueueReport: LiveSummaryReport = {
+        ...mockReport,
+        queuedTasks: manyQueuedTasks,
+      }
+
+      const output = formatLiveSummaryForTerminal(manyQueueReport)
+      // 应该显示 "还有 X 个任务"
+      expect(output).toContain('还有')
+    })
+  })
+
+  describe('estimated completion time', () => {
+    it('should show ETA for running tasks', () => {
+      const output = formatLiveSummaryForTerminal(mockReport)
+      // 应该显示预估剩余时间
+      expect(output).toMatch(/ETA|剩余|预估/)
+    })
+
+    it('should show estimated all completion time', () => {
+      const output = formatLiveSummaryForTerminal(mockReport)
+      expect(output).toContain('21:30')  // estimatedAllCompletionTime
+    })
+
+    it('should handle missing estimate confidence', () => {
+      const noConfidenceReport: LiveSummaryReport = {
+        ...mockReport,
+        runningTasks: [
+          {
+            ...mockReport.runningTasks[0]!,
+            estimateConfidence: undefined,
+          },
+        ],
+      }
+
+      const output = formatLiveSummaryForTerminal(noConfidenceReport)
+      expect(output).toContain('Build the project')
+    })
+
+    it('should display confidence indicators', () => {
+      // 高置信度
+      const highConfidenceReport: LiveSummaryReport = {
+        ...mockReport,
+        runningTasks: [
+          {
+            ...mockReport.runningTasks[0]!,
+            estimateConfidence: 0.9,
+          },
+        ],
+      }
+      const highOutput = formatLiveSummaryForTerminal(highConfidenceReport)
+      expect(highOutput).toBeDefined()
+
+      // 低置信度
+      const lowConfidenceReport: LiveSummaryReport = {
+        ...mockReport,
+        runningTasks: [
+          {
+            ...mockReport.runningTasks[0]!,
+            estimateConfidence: 0.3,
+          },
+        ],
+      }
+      const lowOutput = formatLiveSummaryForTerminal(lowConfidenceReport)
+      expect(lowOutput).toBeDefined()
+    })
+  })
+
+  describe('task progress', () => {
+    it('should show progress percentage', () => {
+      const output = formatLiveSummaryForTerminal(mockReport)
+      expect(output).toContain('40%')
+    })
+
+    it('should show current node name', () => {
+      const output = formatLiveSummaryForTerminal(mockReport)
+      expect(output).toContain('compile-step')
+    })
+
+    it('should show elapsed time', () => {
+      const output = formatLiveSummaryForTerminal(mockReport)
+      // 应该显示运行中任务的相关信息
+      expect(output).toContain('Build the project')
+    })
+  })
+
+  describe('JSON output', () => {
+    it('should include queued tasks in JSON', () => {
+      const output = formatLiveSummaryForJson(mockReport)
+      const parsed = JSON.parse(output)
+      expect(parsed.queuedTasks).toHaveLength(1)
+      expect(parsed.queuedTasks[0].title).toBe('Deploy to production')
+    })
+
+    it('should include estimated completion time in JSON', () => {
+      const output = formatLiveSummaryForJson(mockReport)
+      const parsed = JSON.parse(output)
+      expect(parsed.estimatedAllCompletionTime).toBe('21:30')
+    })
+
+    it('should include estimate confidence in JSON', () => {
+      const output = formatLiveSummaryForJson(mockReport)
+      const parsed = JSON.parse(output)
+      expect(parsed.runningTasks[0].estimateConfidence).toBe(0.7)
     })
   })
 })

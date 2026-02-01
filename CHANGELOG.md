@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-01
+
+### Added
+- **时间预估系统** (`src/agent/timeEstimator.ts`) - 基于历史数据预估任务剩余时间
+  - 历史执行时间分析（从 stats.json 加载）
+  - 多层次预估：同名节点 → 同类型节点 → 全局平均
+  - 置信度计算（高/中/低）
+  - 60 秒 TTL 缓存机制
+- **执行对比分析** (`src/report/ExecutionComparison.ts`) - 性能退化检测
+  - 任务执行对比 (`compareTasksById`)
+  - 性能退化报告 (`generateRegressionReport`)
+  - 自动识别相似任务进行对比
+  - 检测时间/成本退化（>20%/30%）和改进
+  - 终端和 Markdown 格式化输出
+- **模板推荐系统** - 智能模板匹配
+  - `cah template suggest <description>` - 基于任务描述推荐模板
+  - 多维度评分：关键词匹配、标签匹配、任务类型、有效性、使用频率
+- **模板有效性评分** - 基于历史成功率的模板排名
+  - `cah template ranking` - 查看模板有效性排行榜
+  - `cah template recalculate` - 重新计算有效性评分
+  - `effectivenessScore`、`successCount`、`failureCount` 字段
+- **从历史任务创建模板** - 自动提取成功模式
+  - `cah template from-task [taskId]` - 从已完成任务创建模板
+  - 自动提取执行步骤作为参考
+  - 识别任务类型并映射分类
+- **任务类型分类** (`TaskCategory`) - git/refactor/feature/fix/docs/test/iteration/other
+- **节点模式提取** - 记录成功任务的节点序列模式
+- **按类型推荐节点数** - 根据同类型成功任务计算推荐
+- 新增 `timeEstimator.test.ts` 测试（26 个用例）
+- 新增 `ExecutionComparison.test.ts` 测试（26 个用例）
+
+### Changed
+- **进度条显示增强** (`src/agent/executeAgent.ts`)
+  - 添加 ETA 显示 `ETA: ~2m30s`
+  - 降低更新频率（至少间隔 3 秒）
+  - 置信度标识：高无标识，中用 `~`，低用 `≈`
+- **错误恢复能力增强** (`src/workflow/engine/RetryStrategy.ts`)
+  - 更多暂时性错误识别：`temporarily unavailable`、`connection reset`、`epipe`、`enotfound`、`etimedout`
+  - API 过载时建议等待 15 秒
+  - 更多可恢复错误：`capacity`、`please try again`、`retry later`、`too many requests`
+- **断点续跑上下文保存增强** (`src/workflow/types.ts`, `NodeState`)
+  - `durationMs` - 执行耗时
+  - `lastErrorCategory` - 错误分类
+  - `context` - 执行上下文快照（variables、inputs、lastRetryDelayMs）
+- **Workflow 生成 prompt 优化** (`src/prompts/taskPrompts.ts`)
+  - 添加节点设计最佳实践
+  - 推荐节点数量指南（简单 2-3，中等 5-7，复杂 8-10）
+  - 需要合并的节点模式
+  - 常见失败模式规避
+- **执行历史学习增强** (`src/agent/executionHistory.ts`)
+  - 智能任务分类函数 (`categorizeTask`)
+  - 节点模式提取 (`extractSuccessfulNodePatterns`)
+  - 按类型推荐节点数 (`getRecommendedNodeCountByCategory`)
+  - 类型特定建议 (`addCategorySpecificAdvice`)
+  - 增强的历史条目（category、nodeNames、failureReasons）
+- **趋势分析报告增强** (`src/report/TrendAnalyzer.ts`)
+  - 任务类型维度分析 (`CategoryStats`)
+  - 节点组合热力图 (`NodeCombination`)
+  - 成本优化建议 (`CostOptimization`)
+- **实时状态监控增强** (`src/report/LiveSummary.ts`)
+  - 任务队列预览 (`QueuedTaskInfo`)
+  - 预估完成时间（集成 timeEstimator）
+  - 全部任务预估完成时间
+
+### Fixed
+- 修复 stats.json 保存功能（增量保存时间戳）
+- 修复节点完成时自动保存 `durationMs`
+
+### Tests
+- 测试用例从 264 个增加到 366 个（+102）
+- 新增约 100 个测试覆盖所有新功能
+- 所有 19 个测试文件全部通过
+
 ## [0.2.2] - 2026-02-01
 
 ### Added

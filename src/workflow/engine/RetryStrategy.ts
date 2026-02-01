@@ -43,16 +43,25 @@ export function classifyError(error: unknown): ClassifiedError {
     lowerMessage.includes('429') ||
     lowerMessage.includes('503') ||
     lowerMessage.includes('502') ||
-    lowerMessage.includes('overloaded')
+    lowerMessage.includes('overloaded') ||
+    lowerMessage.includes('temporarily unavailable') ||
+    lowerMessage.includes('connection reset') ||
+    lowerMessage.includes('epipe') ||
+    lowerMessage.includes('enotfound') ||
+    lowerMessage.includes('etimedout')
   ) {
+    let suggestedDelayMs: number | undefined
+    if (lowerMessage.includes('rate limit') || lowerMessage.includes('429')) {
+      suggestedDelayMs = 30000  // rate limit 需要更长等待
+    } else if (lowerMessage.includes('overloaded')) {
+      suggestedDelayMs = 15000  // API 过载等 15 秒
+    }
     return {
       category: 'transient',
       message,
       originalError: error,
       retryable: true,
-      suggestedDelayMs: lowerMessage.includes('rate limit') || lowerMessage.includes('429')
-        ? 30000  // rate limit 需要更长等待
-        : undefined,
+      suggestedDelayMs,
     }
   }
 
@@ -62,7 +71,11 @@ export function classifyError(error: unknown): ClassifiedError {
     lowerMessage.includes('internal server error') ||
     lowerMessage.includes('service unavailable') ||
     lowerMessage.includes('temporarily') ||
-    lowerMessage.includes('busy')
+    lowerMessage.includes('busy') ||
+    lowerMessage.includes('capacity') ||
+    lowerMessage.includes('please try again') ||
+    lowerMessage.includes('retry later') ||
+    lowerMessage.includes('too many requests')
   ) {
     return {
       category: 'recoverable',

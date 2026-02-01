@@ -2,12 +2,12 @@ import cron from 'node-cron'
 import chalk from 'chalk'
 import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
-import { runAgent } from '../agent/runAgent.js'
+import { executeTask } from '../agent/executeAgent.js'
+import { pollPendingTask } from '../task/pollTask.js'
 import { startLarkServer, stopLarkServer } from '../notify/larkServer.js'
 import { startLarkWsClient, stopLarkWsClient } from '../notify/larkWsClient.js'
 
 interface DaemonOptions {
-  agent?: string
   foreground?: boolean
   lark?: boolean
   larkWs?: boolean
@@ -20,39 +20,33 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   const config = await loadConfig()
   const store = getStore()
 
-  const agents = options.agent
-    ? [store.getAgent(options.agent)].filter(Boolean)
-    : store.getAllAgents()
+  // 获取轮询间隔配置（从 agents 配置中获取第一个，或使用默认值）
+  const agentConfig = config.agents?.[0]
+  const pollInterval = agentConfig?.schedule?.poll_interval || '5m'
 
-  if (agents.length === 0) {
-    console.log(chalk.yellow('没有可用的 Agent'))
-    return
-  }
+  console.log(chalk.green('启动守护进程...'))
 
-  console.log(chalk.green('启动 Agent 守护进程...'))
+  // 转换间隔为 cron 表达式
+  const cronExpr = intervalToCron(pollInterval)
 
-  for (const agent of agents) {
-    if (!agent) continue
+  console.log(chalk.gray(`  轮询间隔: ${pollInterval}`))
 
-    const agentConfig = config.agents?.find(a => a.name === agent.name)
-    const pollInterval = agentConfig?.schedule?.poll_interval || '5m'
-
-    // 转换间隔为 cron 表达式
-    const cronExpr = intervalToCron(pollInterval)
-
-    console.log(chalk.gray(`  [${agent.name}] 轮询间隔: ${pollInterval}`))
-
-    const job = cron.schedule(cronExpr, async () => {
-      console.log(chalk.blue(`[${new Date().toISOString()}] [${agent.name}] 开始轮询...`))
-      try {
-        await runAgent(agent.name)
-      } catch (error) {
-        console.error(chalk.red(`[${agent.name}] 执行出错:`), error)
+  const job = cron.schedule(cronExpr, async () => {
+    console.log(chalk.blue(`[${new Date().toISOString()}] 开始轮询...`))
+    try {
+      const task = await pollPendingTask()
+      if (!task) {
+        console.log(chalk.gray('  没有待处理任务'))
+        return
       }
-    })
+      console.log(chalk.blue(`  执行任务: ${task.title}`))
+      await executeTask(task, { concurrency: 1, saveToTaskFolder: true, useConsole: false })
+    } catch (error) {
+      console.error(chalk.red(`执行出错:`), error)
+    }
+  })
 
-    scheduledJobs.push(job)
-  }
+  scheduledJobs.push(job)
 
   // 启动飞书事件监听
   if (options.larkWs) {

@@ -1,5 +1,6 @@
 /**
- * Agent 人格加载
+ * Persona 加载
+ * 支持内置 Persona 和自定义 Persona 文件
  */
 
 import { readFile } from 'fs/promises'

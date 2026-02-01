@@ -17,14 +17,9 @@ interface EventBus {
 export type SchedulerEvents = {
   // 任务事件
   'task:created': { taskId: string }
-  'task:started': { taskId: string; agentName: string }
-  'task:completed': { taskId: string; agentName: string }
-  'task:failed': { taskId: string; agentName: string; error: string }
-
-  // Agent 事件
-  'agent:started': { agentName: string }
-  'agent:stopped': { agentName: string }
-  'agent:idle': { agentName: string }
+  'task:started': { taskId: string }
+  'task:completed': { taskId: string }
+  'task:failed': { taskId: string; error: string }
 
   // 调度器事件
   'scheduler:started': { pid: number }

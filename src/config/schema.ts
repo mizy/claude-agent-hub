@@ -38,12 +38,17 @@ export const notifyConfigSchema = z.object({
   lark: larkConfigSchema.optional(),
 })
 
+export const daemonConfigSchema = z.object({
+  poll_interval: z.string().default('5m'),
+})
+
 export const configSchema = z.object({
   agents: z.array(agentConfigSchema).default([]),
   tasks: taskConfigSchema.default({}),
   git: gitConfigSchema.default({}),
   claude: claudeConfigSchema.default({}),
   notify: notifyConfigSchema.optional(),
+  daemon: daemonConfigSchema.optional(),
 })
 
 export type AgentConfig = z.infer<typeof agentConfigSchema>
@@ -52,4 +57,5 @@ export type GitConfig = z.infer<typeof gitConfigSchema>
 export type ClaudeConfig = z.infer<typeof claudeConfigSchema>
 export type LarkConfig = z.infer<typeof larkConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>
+export type DaemonConfig = z.infer<typeof daemonConfigSchema>
 export type Config = z.infer<typeof configSchema>

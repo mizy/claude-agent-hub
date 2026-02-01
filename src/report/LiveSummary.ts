@@ -3,10 +3,11 @@
  * 显示当前运行的任务状态和今日统计
  */
 
-import { readdirSync, existsSync } from 'fs'
+import { readdirSync, existsSync, readFileSync } from 'fs'
 import { TASKS_DIR } from '../store/paths.js'
 import { readJson } from '../store/json.js'
 import { formatDuration } from '../store/ExecutionStatsStore.js'
+import { estimateRemainingTime } from '../agent/timeEstimator.js'
 import chalk from 'chalk'
 import type { Task } from '../types/task.js'
 import type { WorkflowInstance } from '../workflow/types.js'
@@ -26,6 +27,20 @@ export interface RunningTaskInfo {
   }
   startedAt: Date
   elapsedMs: number
+  /** 预估剩余时间（毫秒） */
+  estimatedRemainingMs?: number
+  /** 预估置信度 (0-1) */
+  estimateConfidence?: number
+}
+
+/** 待执行任务队列项 */
+export interface QueuedTaskInfo {
+  taskId: string
+  title: string
+  status: string
+  createdAt: Date
+  /** 预估执行时间（毫秒） */
+  estimatedDurationMs?: number
 }
 
 export interface TodaySummary {
@@ -42,6 +57,8 @@ export interface TodaySummary {
 export interface LiveSummaryReport {
   generatedAt: string
   runningTasks: RunningTaskInfo[]
+  /** 待执行任务队列 */
+  queuedTasks: QueuedTaskInfo[]
   todaySummary: TodaySummary
   recentCompleted: Array<{
     taskId: string
@@ -50,6 +67,8 @@ export interface LiveSummaryReport {
     durationMs: number
     completedAt: string
   }>
+  /** 预估全部任务完成时间 */
+  estimatedAllCompletionTime?: string
 }
 
 // ============ 数据收集 ============
@@ -72,6 +91,7 @@ function getRunningTasks(): RunningTaskInfo[] {
     const taskPath = `${TASKS_DIR}/${folder}`
     const taskJsonPath = `${taskPath}/task.json`
     const instancePath = `${taskPath}/instance.json`
+    const workflowPath = `${taskPath}/workflow.json`
 
     if (!existsSync(taskJsonPath)) continue
 
@@ -93,6 +113,26 @@ function getRunningTasks(): RunningTaskInfo[] {
     let completed = 0
     let total = 0
 
+    // 收集节点状态用于时间预估
+    const nodeStatesForEstimate: Array<{
+      name: string
+      type: string
+      status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+      durationMs?: number
+      startedAt?: string
+    }> = []
+
+    // 读取 workflow 获取节点名称
+    let workflowNodes: Array<{ id: string; name: string; type: string }> = []
+    if (existsSync(workflowPath)) {
+      try {
+        const workflow = JSON.parse(readFileSync(workflowPath, 'utf-8'))
+        workflowNodes = workflow.nodes || []
+      } catch {
+        // ignore
+      }
+    }
+
     if (instance?.nodeStates) {
       const states = Object.entries(instance.nodeStates)
       total = states.filter(([_, s]) => s.status !== 'pending' || s.attempts > 0).length
@@ -100,11 +140,30 @@ function getRunningTasks(): RunningTaskInfo[] {
       for (const [nodeId, state] of states) {
         if (state.status === 'done') completed++
         if (state.status === 'running') currentNode = nodeId
+
+        // 构建节点状态用于时间预估
+        const workflowNode = workflowNodes.find(n => n.id === nodeId)
+        nodeStatesForEstimate.push({
+          name: workflowNode?.name || nodeId,
+          type: workflowNode?.type || 'task',
+          status: state.status === 'done' ? 'completed' : state.status as 'pending' | 'running' | 'failed' | 'skipped',
+          durationMs: state.durationMs,
+          startedAt: state.startedAt,
+        })
       }
     }
 
     const startedAt = instance?.startedAt ? new Date(instance.startedAt) : new Date(task.createdAt)
     const elapsedMs = Date.now() - startedAt.getTime()
+
+    // 计算时间预估
+    let estimatedRemainingMs: number | undefined
+    let estimateConfidence: number | undefined
+    if (nodeStatesForEstimate.length > 0) {
+      const estimate = estimateRemainingTime(nodeStatesForEstimate, elapsedMs)
+      estimatedRemainingMs = estimate.remainingMs
+      estimateConfidence = estimate.confidence
+    }
 
     running.push({
       taskId: task.id,
@@ -118,10 +177,54 @@ function getRunningTasks(): RunningTaskInfo[] {
       },
       startedAt,
       elapsedMs,
+      estimatedRemainingMs,
+      estimateConfidence,
     })
   }
 
   return running.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+}
+
+/**
+ * 获取待执行任务队列
+ */
+function getQueuedTasks(): QueuedTaskInfo[] {
+  if (!existsSync(TASKS_DIR)) {
+    return []
+  }
+
+  const taskFolders = readdirSync(TASKS_DIR, { withFileTypes: true })
+    .filter(d => d.isDirectory() && d.name.startsWith('task-'))
+    .map(d => d.name)
+
+  const queued: QueuedTaskInfo[] = []
+
+  for (const folder of taskFolders) {
+    const taskPath = `${TASKS_DIR}/${folder}`
+    const taskJsonPath = `${taskPath}/task.json`
+
+    if (!existsSync(taskJsonPath)) continue
+
+    const task = readJson<Task>(taskJsonPath, { defaultValue: null })
+    if (!task) continue
+
+    // 检查是否是待执行状态 (created/pending)
+    const queuedStatuses: string[] = ['created', 'pending']
+    if (!queuedStatuses.includes(task.status)) {
+      continue
+    }
+
+    queued.push({
+      taskId: task.id,
+      title: task.title,
+      status: task.status,
+      createdAt: new Date(task.createdAt),
+      // 预估执行时间基于历史平均值（简化处理）
+      estimatedDurationMs: 180000, // 默认 3 分钟
+    })
+  }
+
+  return queued.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
 }
 
 /**
@@ -265,11 +368,31 @@ function getRecentCompleted(limit: number = 5): LiveSummaryReport['recentComplet
  * 生成实时摘要报告
  */
 export function generateLiveSummary(): LiveSummaryReport {
+  const runningTasks = getRunningTasks()
+  const queuedTasks = getQueuedTasks()
+
+  // 计算全部任务预估完成时间
+  let estimatedAllCompletionTime: string | undefined
+  const totalRemainingMs =
+    runningTasks.reduce((sum, t) => sum + (t.estimatedRemainingMs || 60000), 0) +
+    queuedTasks.reduce((sum, t) => sum + (t.estimatedDurationMs || 180000), 0)
+
+  if (runningTasks.length > 0 || queuedTasks.length > 0) {
+    const estimatedCompletion = new Date(Date.now() + totalRemainingMs)
+    estimatedAllCompletionTime = estimatedCompletion.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
+
   return {
     generatedAt: new Date().toISOString(),
-    runningTasks: getRunningTasks(),
+    runningTasks,
+    queuedTasks,
     todaySummary: getTodaySummary(),
     recentCompleted: getRecentCompleted(),
+    estimatedAllCompletionTime,
   }
 }
 
@@ -295,8 +418,17 @@ export function formatLiveSummaryForTerminal(report: LiveSummaryReport): string 
       const elapsed = formatDuration(task.elapsedMs)
       const title = task.title.length > 30 ? task.title.slice(0, 27) + '...' : task.title
 
+      // 预估剩余时间
+      let etaStr = ''
+      if (task.estimatedRemainingMs !== undefined && task.estimatedRemainingMs > 0) {
+        const confidencePrefix = task.estimateConfidence !== undefined
+          ? (task.estimateConfidence >= 0.7 ? '' : task.estimateConfidence >= 0.4 ? '~' : '≈')
+          : '≈'
+        etaStr = chalk.cyan(` ETA: ${confidencePrefix}${formatDuration(task.estimatedRemainingMs)}`)
+      }
+
       lines.push(`    ${chalk.white(title)}`)
-      lines.push(`    ${progressBar} ${task.progress.completed}/${task.progress.total} (${elapsed})`)
+      lines.push(`    ${progressBar} ${task.progress.completed}/${task.progress.total} (${elapsed})${etaStr}`)
       if (task.currentNode) {
         lines.push(chalk.dim(`    当前节点: ${task.currentNode}`))
       }
@@ -304,6 +436,27 @@ export function formatLiveSummaryForTerminal(report: LiveSummaryReport): string 
     }
   } else {
     lines.push(chalk.dim('  当前没有运行中的任务'))
+    lines.push('')
+  }
+
+  // 待执行任务队列
+  if (report.queuedTasks.length > 0) {
+    lines.push(chalk.blue.bold('  📋 待执行队列'))
+    lines.push('')
+    for (const task of report.queuedTasks.slice(0, 5)) {
+      const title = task.title.length > 40 ? task.title.slice(0, 37) + '...' : task.title
+      const waiting = formatDuration(Date.now() - task.createdAt.getTime())
+      lines.push(`    • ${title}  ${chalk.dim(`等待 ${waiting}`)}`)
+    }
+    if (report.queuedTasks.length > 5) {
+      lines.push(chalk.dim(`    ... 还有 ${report.queuedTasks.length - 5} 个任务`))
+    }
+    lines.push('')
+  }
+
+  // 预估全部完成时间
+  if (report.estimatedAllCompletionTime && (report.runningTasks.length > 0 || report.queuedTasks.length > 0)) {
+    lines.push(chalk.cyan(`  ⏰ 预计全部完成: ${report.estimatedAllCompletionTime}`))
     lines.push('')
   }
 

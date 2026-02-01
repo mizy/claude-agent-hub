@@ -72,7 +72,7 @@ describe('parseMarkdown', () => {
   })
 
   describe('任务属性解析', () => {
-    it('should parse agent property', () => {
+    it('should parse agent property as persona', () => {
       const md = `# 工作流
 
 ## 任务
@@ -85,7 +85,7 @@ describe('parseMarkdown', () => {
       const workflow = parseMarkdown(md)
 
       const taskNode = workflow.nodes.find(n => n.name === '架构设计')
-      expect(taskNode?.task?.agent).toBe('architect')
+      expect(taskNode?.task?.persona).toBe('architect')
     })
 
     it('should parse human type', () => {
@@ -133,19 +133,19 @@ describe('parseMarkdown', () => {
       expect(edgesToC.length).toBe(2)
     })
 
-    it('should use default agent when not specified', () => {
+    it('should use default persona when not specified', () => {
       const md = `# 工作流
 
 ## 任务
 
 ### 1. 默认任务
 
-- 描述: 没有指定agent
+- 描述: 没有指定persona
 `
       const workflow = parseMarkdown(md)
 
       const taskNode = workflow.nodes.find(n => n.name === '默认任务')
-      expect(taskNode?.task?.agent).toBe('auto')
+      expect(taskNode?.task?.persona).toBe('auto')
     })
   })
 

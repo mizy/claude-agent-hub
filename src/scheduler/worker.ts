@@ -185,28 +185,27 @@ export function createWorker<T, R>(
   }
 }
 
-// Agent Worker 类型定义
-export interface AgentTask {
-  agentName: string
+// Task Worker 类型定义
+export interface TaskWorkerInput {
   taskId: string
 }
 
-export interface AgentTaskResult {
+export interface TaskWorkerResult {
   taskId: string
   success: boolean
   commitHash?: string
   error?: string
 }
 
-// 创建 Agent 专用 Worker
-export function createAgentWorker(
-  agentName: string,
-  handler: TaskHandler<AgentTask, AgentTaskResult>
-): Worker<AgentTask, AgentTaskResult> {
-  const worker = createWorker<AgentTask, AgentTaskResult>(
+// 创建 Task 专用 Worker
+export function createTaskWorker(
+  name: string,
+  handler: TaskHandler<TaskWorkerInput, TaskWorkerResult>
+): Worker<TaskWorkerInput, TaskWorkerResult> {
+  const worker = createWorker<TaskWorkerInput, TaskWorkerResult>(
     {
-      name: `agent:${agentName}`,
-      concurrency: 1, // Agent 一次只处理一个任务
+      name: `task:${name}`,
+      concurrency: 1, // 一次只处理一个任务
       timeout: 30 * 60 * 1000, // 30 分钟超时
       maxRetries: 2,
       retryDelay: 5000,
@@ -216,18 +215,17 @@ export function createAgentWorker(
 
   // 包装以添加事件发射
   const originalExecute = worker.execute.bind(worker)
-  worker.execute = async (task: AgentTask) => {
-    await emitEvent('task:started', { taskId: task.taskId, agentName: task.agentName })
+  worker.execute = async (task: TaskWorkerInput) => {
+    await emitEvent('task:started', { taskId: task.taskId })
 
     const result = await originalExecute(task)
 
     if (result.ok && result.value.success) {
-      await emitEvent('task:completed', { taskId: task.taskId, agentName: task.agentName })
+      await emitEvent('task:completed', { taskId: task.taskId })
     } else {
       const errorMsg = result.ok ? result.value.error : result.error.message
       await emitEvent('task:failed', {
         taskId: task.taskId,
-        agentName: task.agentName,
         error: errorMsg ?? 'Unknown error',
       })
     }

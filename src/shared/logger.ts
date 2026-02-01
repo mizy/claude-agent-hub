@@ -57,6 +57,51 @@ function formatMessage(level: Exclude<LogLevel, 'silent'>, scope: string, messag
   return `${formatTime()} ${color(label)} ${scopeStr} ${message}`
 }
 
+// ============ 文件日志格式化（无 ANSI 颜色） ============
+
+/** ISO 8601 时间戳 */
+export function formatISOTimestamp(): string {
+  return new Date().toISOString()
+}
+
+/** 格式化文件日志行（无颜色） */
+export function formatFileLogLine(
+  level: Exclude<LogLevel, 'silent'>,
+  scope: string,
+  message: string
+): string {
+  const timestamp = formatISOTimestamp()
+  const label = LEVEL_LABELS[level]
+  const scopeStr = scope ? `[${scope}]` : ''
+  return `${timestamp} ${label} ${scopeStr} ${message}`
+}
+
+/** JSON Lines 格式日志条目 */
+export interface JsonLogEntry {
+  timestamp: string
+  level: Exclude<LogLevel, 'silent'>
+  scope?: string
+  message: string
+  data?: Record<string, unknown>
+}
+
+/** 格式化为 JSON Lines 格式 */
+export function formatJsonLogEntry(
+  level: Exclude<LogLevel, 'silent'>,
+  scope: string,
+  message: string,
+  data?: Record<string, unknown>
+): string {
+  const entry: JsonLogEntry = {
+    timestamp: formatISOTimestamp(),
+    level,
+    message,
+  }
+  if (scope) entry.scope = scope
+  if (data) entry.data = data
+  return JSON.stringify(entry)
+}
+
 export interface Logger {
   debug(message: string, ...args: unknown[]): void
   info(message: string, ...args: unknown[]): void

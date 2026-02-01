@@ -2,7 +2,7 @@
  * 任务相关 Prompt 定义
  */
 
-import type { Agent } from '../types/agent.js'
+import type { PersonaConfig } from '../types/persona.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from '../workflow/types.js'
 
@@ -78,6 +78,29 @@ Return ONLY the title text, nothing else. Use the same language as the content (
    - 太粗：一个节点做太多事，难以定位问题
    - 太细：节点过多，增加协调成本
    - 建议：每个节点 5-15 分钟可完成的工作量
+
+## 节点设计最佳实践（基于历史数据）
+
+### 推荐的节点数量
+- **简单任务**（如 Git 提交、单文件修改）：2-3 个 task 节点
+- **中等任务**（如功能开发、重构）：5-7 个 task 节点
+- **复杂任务**（如迭代开发、多模块改动）：8-10 个 task 节点
+
+### 需要合并的节点模式
+以下场景应该合并为单个节点，避免过度拆分：
+
+1. **Git 提交流程**：不要拆分为 check-status → review → stage → commit → verify
+   - 应合并为：analyze-changes → commit-and-verify（2 节点）
+
+2. **迭代+文档更新**：不要将每次迭代和 changelog 分开
+   - 应合并为：每个迭代节点内包含相关文档更新
+
+3. **验证类任务**：typecheck、lint、test 可合并为单个验证节点
+
+### 应该保持独立的节点
+1. **代码修改类**：需要理解和修改代码的核心任务
+2. **风险操作**：可能失败需要单独重试的操作（如发布、部署）
+3. **需要人工确认的步骤**：前置条件验证
 
 ## 可用 Agent
 
@@ -207,23 +230,40 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 3. 条件边使用 condition 属性
 4. 只输出 JSON，不要有其他文字
 
+## 常见失败模式（请规避）
+
+1. **节点过细导致协调开销大**
+   - 反例：5 个节点完成 Git 提交（check → review → stage → commit → verify）
+   - 正例：2 个节点（analyze-changes → commit-and-verify）
+
+2. **缺少错误处理节点**
+   - 复杂任务应在关键步骤后添加验证节点
+   - 如代码修改后添加 typecheck 验证
+
+3. **迭代任务重复创建相似节点**
+   - 反例：iteration-1, changelog-1, iteration-2, changelog-2...
+   - 正例：每个 iteration 节点内完成迭代 + 文档更新
+
+4. **忽略并行执行机会**
+   - 独立的验证任务（如不同模块的测试）可以并行执行
+   - 使用 edges 定义多个从同一节点出发的边实现并行
+
 现在请生成 JSON Workflow：
 `,
 }
 
 /**
- * 构建 Agent 描述列表
- * 只显示 agent 名称、角色(persona)和描述，职责由 persona 决定
+ * 构建 Persona 描述列表
  */
-function formatAgentDescriptions(agents: Agent[]): string {
-  if (agents.length === 0) {
-    return '- 无可用 Agent，使用 "auto" 自动选择默认 Agent'
+function formatPersonaDescriptions(personas: PersonaConfig[]): string {
+  if (personas.length === 0) {
+    return '- 无可用 Persona，使用 "auto" 自动选择默认 Persona'
   }
 
-  return agents
-    .map(a => {
-      const desc = a.description ? `: ${a.description}` : ''
-      return `- **${a.name}** (${a.persona})${desc}`
+  return personas
+    .map(p => {
+      const desc = p.description ? `: ${p.description}` : ''
+      return `- **${p.name}**${desc}`
     })
     .join('\n')
 }
@@ -234,19 +274,19 @@ function formatAgentDescriptions(agents: Agent[]): string {
  */
 export function buildJsonWorkflowPrompt(
   task: Task,
-  availableAgents: Agent[] = [],
+  availablePersonas: PersonaConfig[] = [],
   projectContext: string = '',
   learningInsights: string = ''
 ): string {
-  const agentDescriptions = formatAgentDescriptions(availableAgents)
+  const personaDescriptions = formatPersonaDescriptions(availablePersonas)
 
-  // 生成 Workflow 固定使用"软件架构师"角色，不受 agent 参数影响
+  // 生成 Workflow 固定使用"软件架构师"角色，不受 persona 参数影响
   return TASK_PROMPTS.GENERATE_JSON_WORKFLOW.replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
     .replace('{{taskTitle}}', task.title)
     .replace('{{taskDescription}}', task.description || '无')
     .replace('{{priority}}', task.priority)
-    .replace('{{agentDescriptions}}', agentDescriptions)
+    .replace('{{agentDescriptions}}', personaDescriptions)
     .replace('{{projectContext}}', projectContext)
     .replace('{{learningInsights}}', learningInsights)
 }
@@ -255,7 +295,7 @@ export function buildJsonWorkflowPrompt(
  * 构建执行节点的 prompt
  */
 export function buildExecuteNodePrompt(
-  agent: Agent,
+  persona: PersonaConfig,
   workflow: Workflow,
   nodeName: string,
   nodePrompt: string,
@@ -263,7 +303,7 @@ export function buildExecuteNodePrompt(
 ): string {
   return TASK_PROMPTS.EXECUTE_NODE.replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
-    .replace('{{agentName}}', agent.name)
+    .replace('{{agentName}}', persona.name)
     .replace('{{workflowName}}', workflow.name)
     .replace('{{nodeName}}', nodeName)
     .replace('{{nodePrompt}}', nodePrompt)

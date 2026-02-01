@@ -69,8 +69,10 @@ export async function completeWorkflowInstance(instanceId: string): Promise<void
 }
 
 export async function failWorkflowInstance(instanceId: string, error: string): Promise<void> {
-  updateInstanceStatus(instanceId, 'failed', error)
-  logger.error(`Workflow instance failed: ${instanceId} - ${error}`)
+  // 确保错误信息不为空
+  const errorMessage = error || 'Unknown error (no error message provided)'
+  updateInstanceStatus(instanceId, 'failed', errorMessage)
+  logger.error(`Workflow instance failed: ${instanceId} - ${errorMessage}`)
 }
 
 export async function cancelWorkflowInstance(instanceId: string): Promise<void> {
@@ -162,17 +164,27 @@ export async function markNodeDone(
   nodeId: string,
   output?: unknown
 ): Promise<void> {
+  const instance = getInstance(instanceId)
+  const nodeState = instance?.nodeStates[nodeId]
+  const completedAt = now()
+
+  // 计算执行时间
+  let durationMs: number | undefined
+  if (nodeState?.startedAt) {
+    durationMs = new Date(completedAt).getTime() - new Date(nodeState.startedAt).getTime()
+  }
+
   updateNodeState(instanceId, nodeId, {
     status: 'done',
-    completedAt: now(),
-    result: output,
+    completedAt,
+    durationMs,
   })
 
   if (output !== undefined) {
     setNodeOutput(instanceId, nodeId, output)
   }
 
-  logger.debug(`Node done: ${nodeId}`)
+  logger.debug(`Node done: ${nodeId}${durationMs ? ` (${durationMs}ms)` : ''}`)
 }
 
 export async function markNodeFailed(
@@ -180,12 +192,14 @@ export async function markNodeFailed(
   nodeId: string,
   error: string
 ): Promise<void> {
+  // 确保错误信息不为空
+  const errorMessage = error || 'Unknown error (no error message provided)'
   updateNodeState(instanceId, nodeId, {
     status: 'failed',
     completedAt: now(),
-    error,
+    error: errorMessage,
   })
-  logger.debug(`Node failed: ${nodeId} - ${error}`)
+  logger.debug(`Node failed: ${nodeId} - ${errorMessage}`)
 }
 
 export async function markNodeSkipped(instanceId: string, nodeId: string): Promise<void> {

@@ -1,26 +1,17 @@
 import { getStore } from '../store/index.js'
-import type { Agent } from '../types/agent.js'
 import type { Task } from '../types/task.js'
 
 /**
- * Agent 轮询获取下一个待处理任务
+ * 轮询获取下一个待处理任务
  * 优先级顺序: high > medium > low
  * 同优先级按创建时间排序
  */
-export async function pollTask(agent: Agent): Promise<Task | null> {
+export async function pollPendingTask(): Promise<Task | null> {
   const store = getStore()
   const tasks = store.getAllTasks()
 
   // 筛选待处理任务
-  const pendingTasks = tasks.filter(t => {
-    // 状态必须是 pending
-    if (t.status !== 'pending') return false
-
-    // 如果有指定执行者，必须匹配
-    if (t.assignee && t.assignee !== agent.name) return false
-
-    return true
-  })
+  const pendingTasks = tasks.filter(t => t.status === 'pending')
 
   if (pendingTasks.length === 0) {
     return null
@@ -40,3 +31,7 @@ export async function pollTask(agent: Agent): Promise<Task | null> {
 
   return pendingTasks[0] ?? null
 }
+
+// 向后兼容
+/** @deprecated 使用 pollPendingTask 代替 */
+export const pollTask = pollPendingTask

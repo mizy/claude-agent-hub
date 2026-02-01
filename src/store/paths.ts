@@ -2,21 +2,36 @@
  * 统一存储路径常量
  *
  * 所有存储相关的路径都从这里导出，确保一致性。
- * 使用 process.cwd() 作为基础路径。
+ *
+ * 数据目录优先级：
+ * 1. 环境变量 CAH_DATA_DIR
+ * 2. 默认值 .cah-data
  */
 
 import { join } from 'path'
 
+// ============ 数据目录配置 ============
+
+/** 默认数据目录名 */
+const DEFAULT_DATA_DIR_NAME = '.cah-data'
+
+/** 获取数据目录路径 */
+function getDataDir(): string {
+  const envDir = process.env.CAH_DATA_DIR
+  if (envDir) {
+    // 如果是绝对路径直接使用，否则相对于 cwd
+    return envDir.startsWith('/') ? envDir : join(process.cwd(), envDir)
+  }
+  return join(process.cwd(), DEFAULT_DATA_DIR_NAME)
+}
+
 // ============ 基础目录 ============
 
 /** 主数据目录 */
-export const DATA_DIR = join(process.cwd(), 'data')
+export const DATA_DIR = getDataDir()
 
 /** 任务目录 */
 export const TASKS_DIR = join(DATA_DIR, 'tasks')
-
-/** Agent 目录 */
-export const AGENTS_DIR = join(DATA_DIR, 'agents')
 
 // ============ 全局文件 ============
 
@@ -25,6 +40,9 @@ export const META_FILE = join(DATA_DIR, 'meta.json')
 
 /** 队列文件（替代 SQLite） */
 export const QUEUE_FILE = join(DATA_DIR, 'queue.json')
+
+/** 队列运行器锁文件 */
+export const RUNNER_LOCK_FILE = join(DATA_DIR, 'runner.lock')
 
 /** 任务索引文件 */
 export const TASKS_INDEX_FILE = join(TASKS_DIR, 'index.json')
@@ -59,6 +77,9 @@ export const EXECUTION_LOG_FILE = 'execution.log'
 
 /** 对话日志文件名 */
 export const CONVERSATION_LOG_FILE = 'conversation.log'
+
+/** JSON Lines 结构化日志文件名 */
+export const JSONL_LOG_FILE = 'events.jsonl'
 
 /** 输出结果文件名 */
 export const RESULT_FILE = 'result.md'
@@ -115,6 +136,11 @@ export function getConversationLogFilePath(taskId: string): string {
   return join(TASKS_DIR, taskId, TASK_LOGS_DIR, CONVERSATION_LOG_FILE)
 }
 
+/** 获取 JSON Lines 结构化日志文件路径 */
+export function getJsonlLogPath(taskId: string): string {
+  return join(TASKS_DIR, taskId, TASK_LOGS_DIR, JSONL_LOG_FILE)
+}
+
 /** 获取输出结果文件路径 */
 export function getResultFilePath(taskId: string): string {
   return join(TASKS_DIR, taskId, TASK_OUTPUTS_DIR, RESULT_FILE)
@@ -126,7 +152,3 @@ export function getStepFilePath(taskId: string, stepNumber: number): string {
   return join(TASKS_DIR, taskId, TASK_STEPS_DIR, `step-${paddedNumber}.json`)
 }
 
-/** 获取 Agent 文件路径 */
-export function getAgentFilePath(agentName: string): string {
-  return join(AGENTS_DIR, `${agentName}.json`)
-}
