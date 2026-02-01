@@ -1,6 +1,10 @@
 /**
  * 生成 Workflow
  * 调用 Claude 生成 JSON 格式的执行计划，支持完整的控制流
+ *
+ * 智能化增强：
+ * - 项目上下文感知：自动分析项目结构，让 AI 生成更精准的 workflow
+ * - 执行历史学习：从历史任务中学习，避免重复错误
  */
 
 import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
@@ -10,6 +14,8 @@ import { appendConversation } from '../store/TaskLogStore.js'
 import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { createLogger } from '../shared/logger.js'
+import { analyzeProjectContext, formatProjectContextForPrompt } from './projectContext.js'
+import { learnFromHistory, formatInsightsForPrompt } from './executionHistory.js'
 import type { AgentContext } from '../types/agent.js'
 import type { Workflow } from '../workflow/types.js'
 
@@ -17,6 +23,7 @@ const logger = createLogger('workflow-gen')
 
 /**
  * 根据任务生成 Workflow (JSON 格式)
+ * 集成项目上下文和历史学习
  */
 export async function generateWorkflow(context: AgentContext): Promise<Workflow> {
   const { task } = context
@@ -25,9 +32,23 @@ export async function generateWorkflow(context: AgentContext): Promise<Workflow>
   const store = getStore()
   const availableAgents = store.getAllAgents()
 
+  // 智能化增强：并行获取项目上下文和历史学习
+  logger.info('分析项目上下文和历史记录...')
+  const [projectContext, learningInsights] = await Promise.all([
+    analyzeProjectContext(),
+    learnFromHistory(task.description || task.title),
+  ])
+
+  // 格式化上下文
+  const projectContextPrompt = formatProjectContextForPrompt(projectContext)
+  const learningPrompt = formatInsightsForPrompt(learningInsights)
+
+  logger.debug(`项目类型: ${projectContext.projectType}, 语言: ${projectContext.mainLanguage}`)
+  logger.debug(`相关历史任务: ${learningInsights.relatedTasks.length} 个`)
+
   // 构建 prompt（生成 Workflow 固定使用"软件架构师"角色）
   logger.debug('构建 prompt...')
-  const prompt = buildJsonWorkflowPrompt(task, availableAgents)
+  const prompt = buildJsonWorkflowPrompt(task, availableAgents, projectContextPrompt, learningPrompt)
   logger.debug(`Prompt 长度: ${prompt.length} 字符`)
 
   // 调用 Claude (不传 persona，因为模板中已定义"软件架构师"角色)

@@ -63,6 +63,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
   /**
    * 生成 JSON Workflow 的 prompt 模板
+   * 支持项目上下文和历史学习
    */
   GENERATE_JSON_WORKFLOW: `
 你是一位软件架构师，负责将任务拆分为可独立执行的子任务，并分配给合适的 agent。
@@ -82,6 +83,9 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
 {{agentDescriptions}}
 
+{{projectContext}}
+
+{{learningInsights}}
 
 ## 当前时间
 {{currentTime}}
@@ -226,10 +230,13 @@ function formatAgentDescriptions(agents: Agent[]): string {
 
 /**
  * 构建生成 JSON Workflow 的 prompt
+ * 支持项目上下文和历史学习
  */
 export function buildJsonWorkflowPrompt(
   task: Task,
-  availableAgents: Agent[] = []
+  availableAgents: Agent[] = [],
+  projectContext: string = '',
+  learningInsights: string = ''
 ): string {
   const agentDescriptions = formatAgentDescriptions(availableAgents)
 
@@ -240,6 +247,8 @@ export function buildJsonWorkflowPrompt(
     .replace('{{taskDescription}}', task.description || '无')
     .replace('{{priority}}', task.priority)
     .replace('{{agentDescriptions}}', agentDescriptions)
+    .replace('{{projectContext}}', projectContext)
+    .replace('{{learningInsights}}', learningInsights)
 }
 
 /**

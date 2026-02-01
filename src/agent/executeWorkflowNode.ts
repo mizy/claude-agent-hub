@@ -30,6 +30,8 @@ import {
   executeLoopNode,
   executeForeachNode,
 } from '../workflow/engine/executeNewNodes.js'
+import { workflowEvents } from '../workflow/engine/WorkflowEventEmitter.js'
+import { appendTimelineEvent } from '../store/ExecutionStatsStore.js'
 import type {
   NodeJobData,
   NodeJobResult,
@@ -72,10 +74,59 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
   // 标记节点运行中
   await markNodeRunning(instanceId, nodeId)
 
+  // 发射节点开始事件
+  const nodeStartTime = Date.now()
+  const currentAttempt = instance.nodeStates[nodeId]?.attempts ?? 1
+  const taskId = instance.variables?.taskId as string | undefined
+
+  workflowEvents.emitNodeStarted({
+    workflowId,
+    instanceId,
+    nodeId,
+    nodeName: node.name,
+    nodeType: node.type,
+    attempt: currentAttempt,
+  })
+
+  // 记录时间线
+  if (taskId) {
+    appendTimelineEvent(taskId, {
+      timestamp: new Date().toISOString(),
+      event: 'node:started',
+      nodeId,
+      nodeName: node.name,
+    })
+  }
+
   try {
     const result = await executeNodeByType(node, workflow, instance)
 
+    const durationMs = Date.now() - nodeStartTime
+    const costUsd = (result as { costUsd?: number }).costUsd
+
     if (result.success) {
+      // 发射节点完成事件
+      workflowEvents.emitNodeCompleted({
+        workflowId,
+        instanceId,
+        nodeId,
+        nodeName: node.name,
+        nodeType: node.type,
+        durationMs,
+        output: result.output,
+        costUsd,
+      })
+
+      // 记录时间线
+      if (taskId) {
+        appendTimelineEvent(taskId, {
+          timestamp: new Date().toISOString(),
+          event: 'node:completed',
+          nodeId,
+          nodeName: node.name,
+        })
+      }
+
       // 处理节点结果，获取下游节点
       const nextNodes = await handleNodeResult(workflowId, instanceId, nodeId, result)
 
@@ -85,6 +136,32 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
         nextNodes,
       }
     } else {
+      // 发射节点失败事件
+      const maxAttempts = node.retry?.maxAttempts ?? 3
+      const willRetry = currentAttempt < maxAttempts
+
+      workflowEvents.emitNodeFailed({
+        workflowId,
+        instanceId,
+        nodeId,
+        nodeName: node.name,
+        nodeType: node.type,
+        error: result.error || 'Unknown error',
+        attempt: currentAttempt,
+        willRetry,
+      })
+
+      // 记录时间线
+      if (taskId) {
+        appendTimelineEvent(taskId, {
+          timestamp: new Date().toISOString(),
+          event: 'node:failed',
+          nodeId,
+          nodeName: node.name,
+          details: result.error,
+        })
+      }
+
       await markNodeFailed(instanceId, nodeId, result.error || 'Unknown error')
       return {
         success: false,
@@ -93,7 +170,35 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
+
     logger.error(`Node ${nodeId} failed:`, errorMessage)
+
+    // 发射节点失败事件
+    const maxAttempts = node.retry?.maxAttempts ?? 3
+    const willRetry = currentAttempt < maxAttempts
+
+    workflowEvents.emitNodeFailed({
+      workflowId,
+      instanceId,
+      nodeId,
+      nodeName: node.name,
+      nodeType: node.type,
+      error: errorMessage,
+      attempt: currentAttempt,
+      willRetry,
+    })
+
+    // 记录时间线
+    if (taskId) {
+      appendTimelineEvent(taskId, {
+        timestamp: new Date().toISOString(),
+        event: 'node:failed',
+        nodeId,
+        nodeName: node.name,
+        details: errorMessage,
+      })
+    }
+
     await markNodeFailed(instanceId, nodeId, errorMessage)
     return {
       success: false,
@@ -287,7 +392,13 @@ async function executeTaskNode(
   node: WorkflowNode,
   workflow: Workflow,
   instance: WorkflowInstance
-): Promise<{ success: boolean; output?: unknown; error?: string; sessionId?: string }> {
+): Promise<{
+  success: boolean
+  output?: unknown
+  error?: string
+  sessionId?: string
+  costUsd?: number
+}> {
   if (!node.task) {
     return { success: false, error: 'Task config missing' }
   }
@@ -327,7 +438,7 @@ async function executeTaskNode(
     disableMcp,
     sessionId: existingSessionId,
     model,
-    timeoutMs: 5 * 60 * 1000, // 5 分钟超时
+    timeoutMs: 30 * 60 * 1000, // 30 分钟超时
     onChunk: chunk => {
       // 流式输出到执行日志
       if (logTaskId) {
@@ -371,6 +482,7 @@ async function executeTaskNode(
     success: true,
     output: result.value.response,
     sessionId: newSessionId,
+    costUsd: result.value.costUsd,
   }
 }
 

@@ -20,11 +20,16 @@ import { registerAgentCommands } from './commands/agent.js'
 import { registerTaskCommands } from './commands/task.js'
 import { registerDaemonCommands } from './commands/daemon.js'
 import { registerReportCommands } from './commands/report.js'
+import { registerTemplateCommands } from './commands/template.js'
 import { registerInitCommand } from './commands/init.js'
 import { runAgentForTask } from '../agent/runAgentForTask.js'
 import { runAgent } from '../agent/runAgent.js'
 import { getOrCreateDefaultAgent } from '../agent/getDefaultAgent.js'
 import { getStore } from '../store/index.js'
+import { getTaskFolder } from '../store/TaskStore.js'
+import { getLogPath } from '../store/TaskLogStore.js'
+import { existsSync } from 'fs'
+import { spawn } from 'child_process'
 // TODO: 支持前台模式的流式输出 (stream option in invokeClaudeCode)
 import { setLogLevel } from '../shared/logger.js'
 import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
@@ -134,6 +139,44 @@ registerAgentCommands(program)
 registerTaskCommands(program)
 registerDaemonCommands(program)
 registerReportCommands(program)
+registerTemplateCommands(program)
+
+// cah logs <id> - 查看任务日志的快捷命令
+program
+  .command('logs')
+  .description('查看任务执行日志 (cah task logs 的快捷方式)')
+  .argument('<id>', '任务 ID')
+  .option('-f, --follow', '持续跟踪 (类似 tail -f)')
+  .option('-n, --lines <n>', '显示最后 N 行', '50')
+  .action((id, options) => {
+    const taskFolder = getTaskFolder(id)
+    if (!taskFolder) {
+      error(`Task not found: ${id}`)
+      return
+    }
+
+    const logPath = getLogPath(id)
+    if (!existsSync(logPath)) {
+      warn(`No logs yet for task: ${id}`)
+      console.log(`  Log path: ${logPath}`)
+      return
+    }
+
+    info(`Tailing logs for task: ${id}`)
+    console.log(`  Path: ${logPath}`)
+    console.log(`  Press Ctrl+C to stop\n`)
+
+    const tailArgs = ['-n', options.lines]
+    if (options.follow) {
+      tailArgs.push('-f')
+    }
+    tailArgs.push(logPath)
+
+    const tail = spawn('tail', tailArgs, { stdio: 'inherit' })
+    tail.on('error', (err) => {
+      error(`Failed to tail logs: ${err.message}`)
+    })
+  })
 
 /**
  * 检测并自动恢复孤立任务

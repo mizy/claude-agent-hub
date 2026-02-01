@@ -1,11 +1,18 @@
 {
-  "name": "claude-agent-hub",
+  "name": "@mizy/claude-agent-hub",
   "version": "0.1.0",
   "description": "Claude Code Agent Hub",
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
     "cah": "dist/cli/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mizy/claude-agent-hub.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "scripts": {
     "build": "tsc",

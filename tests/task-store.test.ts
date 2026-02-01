@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 import {
+  // From TaskStore
   generateTaskId,
   createTaskFolder,
   getTaskFolder,
@@ -19,22 +20,25 @@ import {
   getTasksByStatus,
   updateTask,
   deleteTask,
-  saveTaskWorkflow,
-  getTaskWorkflow,
-  saveTaskInstance,
-  getTaskInstance,
   saveProcessInfo,
   getProcessInfo,
   updateProcessInfo,
   isProcessRunning,
-  saveStepOutput,
+  type ProcessInfo,
+  // From TaskWorkflowStore
+  saveTaskWorkflow,
+  getTaskWorkflow,
+  saveTaskInstance,
+  getTaskInstance,
   loadTaskFolder,
+  // From TaskLogStore
+  saveStepOutput,
   appendConversation,
-} from '../src/store/TaskStore.js'
+  type ConversationEntry,
+} from '../src/store/index.js'
 
 import type { Task } from '../src/types/task.js'
 import type { Workflow, WorkflowInstance } from '../src/workflow/types.js'
-import type { ProcessInfo, ConversationEntry } from '../src/store/TaskStore.js'
 
 // 使用项目实际的 data 目录
 const DATA_DIR = join(process.cwd(), 'data')

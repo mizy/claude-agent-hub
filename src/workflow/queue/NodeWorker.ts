@@ -4,15 +4,18 @@
  */
 
 import { getNextJob, completeJob, failJob, markJobFailed, markJobWaiting, enqueueNode } from './WorkflowQueue.js'
-import { getInstance } from '../../store/WorkflowStore.js'
+import { getInstance, getWorkflow } from '../../store/WorkflowStore.js'
 import { failWorkflowInstance, markNodeWaiting } from '../engine/StateManager.js'
 import { createLogger } from '../../shared/logger.js'
-import type { NodeJobData, NodeJobResult } from '../types.js'
+import {
+  shouldRetry,
+  classifyError,
+  formatRetryInfo,
+  DEFAULT_RETRY_CONFIG,
+} from '../engine/RetryStrategy.js'
+import type { NodeJobData, NodeJobResult, WorkflowNode } from '../types.js'
 
 const logger = createLogger('node-worker')
-
-// Maximum attempts per node (prevents infinite retry loops)
-const MAX_NODE_ATTEMPTS = 3
 
 export type NodeProcessor = (data: NodeJobData) => Promise<NodeJobResult>
 
@@ -132,6 +135,17 @@ function scheduleNextPoll(): void {
 }
 
 /**
+ * 获取节点的重试配置
+ */
+function getNodeRetryConfig(workflowId: string, nodeId: string): WorkflowNode['retry'] | undefined {
+  const workflow = getWorkflow(workflowId)
+  if (!workflow) return undefined
+
+  const node = workflow.nodes.find(n => n.id === nodeId)
+  return node?.retry
+}
+
+/**
  * 处理单个任务
  */
 async function processJob(jobId: string, data: NodeJobData): Promise<void> {
@@ -146,11 +160,15 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
   const nodeState = instance?.nodeStates[nodeId]
   const currentAttempts = nodeState?.attempts || 0
 
-  logger.info(`Processing node: ${nodeId} (instance: ${instanceId}, attempt: ${currentAttempts + 1})`)
+  // Get node-specific retry config
+  const nodeRetryConfig = getNodeRetryConfig(workflowId, nodeId)
+  const maxAttempts = nodeRetryConfig?.maxAttempts ?? DEFAULT_RETRY_CONFIG.maxAttempts
+
+  logger.info(`Processing node: ${nodeId} (instance: ${instanceId}, attempt: ${currentAttempts + 1}/${maxAttempts})`)
 
   // Check if max attempts exceeded
-  if (currentAttempts >= MAX_NODE_ATTEMPTS) {
-    const errorMsg = `Node ${nodeId} exceeded max attempts (${MAX_NODE_ATTEMPTS})`
+  if (currentAttempts >= maxAttempts) {
+    const errorMsg = `Node ${nodeId} exceeded max attempts (${maxAttempts})`
     logger.error(errorMsg)
     markJobFailed(jobId, errorMsg)
 
@@ -190,31 +208,86 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
         return
       }
 
-      logger.warn(`Node failed: ${nodeId} - ${result.error}`)
-
-      // Check if we should retry or give up
-      if (currentAttempts + 1 >= MAX_NODE_ATTEMPTS) {
-        logger.error(`Node ${nodeId} failed after ${currentAttempts + 1} attempts, giving up`)
-        markJobFailed(jobId, result.error || 'Unknown error')
-        await failWorkflowInstance(instanceId, `Node ${nodeId} failed: ${result.error}`)
-      } else {
-        // Still have retries left
-        failJob(jobId, result.error || 'Unknown error')
-      }
+      // Use smart retry strategy
+      await handleNodeFailure(
+        jobId,
+        data,
+        result.error || 'Unknown error',
+        currentAttempts,
+        nodeRetryConfig
+      )
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
-    logger.error(`Node error: ${nodeId} - ${errorMessage}`)
 
-    if (currentAttempts + 1 >= MAX_NODE_ATTEMPTS) {
-      logger.error(`Node ${nodeId} errored after ${currentAttempts + 1} attempts, giving up`)
-      markJobFailed(jobId, errorMessage)
-      await failWorkflowInstance(instanceId, `Node ${nodeId} error: ${errorMessage}`)
-    } else {
-      failJob(jobId, errorMessage)
-    }
+    // Use smart retry strategy
+    await handleNodeFailure(
+      jobId,
+      data,
+      errorMessage,
+      currentAttempts,
+      nodeRetryConfig
+    )
   } finally {
     state.activeJobs--
+  }
+}
+
+/**
+ * 处理节点失败，使用智能重试策略
+ */
+async function handleNodeFailure(
+  jobId: string,
+  data: NodeJobData,
+  errorMessage: string,
+  currentAttempts: number,
+  nodeRetryConfig?: WorkflowNode['retry']
+): Promise<void> {
+  const { workflowId, instanceId, nodeId } = data
+
+  // 使用智能重试策略判断是否应该重试
+  const retryDecision = shouldRetry(errorMessage, currentAttempts + 1, nodeRetryConfig)
+
+  logger.warn(`Node ${nodeId} failed: ${errorMessage}`)
+  logger.info(formatRetryInfo(retryDecision))
+
+  // 分类错误用于日志和分析
+  const classified = classifyError(errorMessage)
+  logger.debug(`Error category: ${classified.category}, retryable: ${classified.retryable}`)
+
+  if (!retryDecision.shouldRetry) {
+    // 不再重试，标记为永久失败
+    logger.error(`Node ${nodeId} permanently failed: ${retryDecision.reason}`)
+    markJobFailed(jobId, errorMessage)
+    await failWorkflowInstance(instanceId, `Node ${nodeId} failed: ${errorMessage}`)
+  } else {
+    // 需要重试
+    logger.info(`Scheduling retry for node ${nodeId} in ${retryDecision.delayMs}ms`)
+
+    // 标记当前 job 失败（会自动增加 attempt 计数）
+    failJob(jobId, errorMessage)
+
+    // 如果有延迟，使用 setTimeout 延迟入队
+    if (retryDecision.delayMs > 0) {
+      setTimeout(async () => {
+        // 重新入队以触发重试
+        await enqueueNode({
+          workflowId,
+          instanceId,
+          nodeId,
+          attempt: retryDecision.nextAttempt,
+        })
+        logger.debug(`Retry job enqueued for node ${nodeId}`)
+      }, retryDecision.delayMs)
+    } else {
+      // 立即重试
+      await enqueueNode({
+        workflowId,
+        instanceId,
+        nodeId,
+        attempt: retryDecision.nextAttempt,
+      })
+    }
   }
 }
 

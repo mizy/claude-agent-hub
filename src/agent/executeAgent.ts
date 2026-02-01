@@ -31,6 +31,8 @@ import { updateTask } from '../store/TaskStore.js'
 import { getTaskWorkflow, getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { appendExecutionLog } from '../store/TaskLogStore.js'
 import { saveWorkflowOutput } from '../output/saveWorkflowOutput.js'
+import { saveExecutionStats, appendTimelineEvent } from '../store/ExecutionStatsStore.js'
+import { workflowEvents } from '../workflow/engine/WorkflowEventEmitter.js'
 import { createLogger } from '../shared/logger.js'
 import type { Agent, AgentContext } from '../types/agent.js'
 import type { Task } from '../types/task.js'
@@ -118,6 +120,21 @@ export async function executeAgent(
       // 启动 workflow
       instance = await startWorkflow(workflow.id)
       log(`[${agent.name}] Workflow 启动: ${instance.id}`)
+
+      // 发射工作流开始事件
+      const taskNodes = workflow.nodes.filter(n => n.type !== 'start' && n.type !== 'end')
+      workflowEvents.emitWorkflowStarted({
+        workflowId: workflow.id,
+        instanceId: instance.id,
+        workflowName: workflow.name,
+        totalNodes: taskNodes.length,
+      })
+
+      // 记录时间线
+      appendTimelineEvent(task.id, {
+        timestamp: new Date().toISOString(),
+        event: 'workflow:started',
+      })
     }
 
     // 更新任务状态为 developing
@@ -137,6 +154,11 @@ export async function executeAgent(
       instanceId: instance.id,
     })
     await startWorker()
+
+    // 订阅节点事件，保存中间状态统计（用于任务失败时的诊断）
+    const unsubscribeStats = saveToTaskFolder
+      ? setupIncrementalStatsSaving(task.id, instance.id)
+      : null
 
     // 如果是恢复模式，需要手动入队可执行节点
     if (resume) {
@@ -173,6 +195,9 @@ export async function executeAgent(
     // 关闭 worker
     await closeWorker()
 
+    // 取消订阅中间状态保存
+    unsubscribeStats?.()
+
     // 保存输出
     const outputPath = await saveWorkflowOutput(
       {
@@ -184,6 +209,53 @@ export async function executeAgent(
       },
       { toTaskFolder: saveToTaskFolder }
     )
+
+    // 计算执行时间
+    const totalDurationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime()
+
+    // 获取执行统计并发射完成事件
+    const executionStats = workflowEvents.getExecutionStats(finalInstance.id)
+    const totalCostUsd = executionStats?.summary.totalCostUsd ?? 0
+    const nodesCompleted = executionStats?.summary.completedNodes ?? 0
+    const nodesFailed = executionStats?.summary.failedNodes ?? 0
+
+    if (finalInstance.status === 'completed') {
+      workflowEvents.emitWorkflowCompleted({
+        workflowId: workflow.id,
+        instanceId: finalInstance.id,
+        workflowName: workflow.name,
+        totalDurationMs,
+        nodesCompleted,
+        nodesFailed,
+        totalCostUsd,
+      })
+      appendTimelineEvent(task.id, {
+        timestamp: completedAt,
+        event: 'workflow:completed',
+      })
+    } else {
+      workflowEvents.emitWorkflowFailed({
+        workflowId: workflow.id,
+        instanceId: finalInstance.id,
+        workflowName: workflow.name,
+        error: finalInstance.error || 'Unknown error',
+        totalDurationMs,
+        nodesCompleted,
+      })
+      appendTimelineEvent(task.id, {
+        timestamp: completedAt,
+        event: 'workflow:failed',
+        details: finalInstance.error,
+      })
+    }
+
+    // 保存执行统计到任务文件夹
+    if (executionStats && saveToTaskFolder) {
+      executionStats.status = finalInstance.status
+      executionStats.completedAt = completedAt
+      executionStats.totalDurationMs = totalDurationMs
+      saveExecutionStats(task.id, executionStats)
+    }
 
     // 更新任务状态
     const success = finalInstance.status === 'completed'
@@ -360,6 +432,7 @@ async function waitForWorkflowCompletion(
   log: (...args: unknown[]) => void
 ): Promise<WorkflowInstance> {
   let lastProgress = -1
+  let lastRunningNodes: string[] = []
 
   while (true) {
     await sleep(POLL_INTERVAL)
@@ -378,15 +451,78 @@ async function waitForWorkflowCompletion(
       return instance
     }
 
-    // 打印进度
+    // 获取当前运行中的节点
+    const runningNodes = Object.entries(instance.nodeStates)
+      .filter(([, state]) => state.status === 'running')
+      .map(([nodeId]) => {
+        const node = workflow.nodes.find(n => n.id === nodeId)
+        return node?.name || nodeId
+      })
+
+    // 打印进度（进度变化或运行节点变化时）
     const progress = getWorkflowProgress(instance, workflow)
-    if (progress.percentage !== lastProgress) {
-      log(`[${agentName}] 进度: ${progress.completed}/${progress.total} (${progress.percentage}%)`)
+    const runningNodesChanged =
+      runningNodes.length !== lastRunningNodes.length ||
+      runningNodes.some((n, i) => n !== lastRunningNodes[i])
+
+    if (progress.percentage !== lastProgress || runningNodesChanged) {
+      const progressBar = createProgressBar(progress.percentage)
+      const runningInfo = runningNodes.length > 0
+        ? ` [${runningNodes.join(', ')}]`
+        : ''
+      log(`[${agentName}] ${progressBar} ${progress.completed}/${progress.total}${runningInfo}`)
       lastProgress = progress.percentage
+      lastRunningNodes = runningNodes
     }
   }
 }
 
+/**
+ * 创建进度条字符串
+ */
+function createProgressBar(percentage: number, width: number = 20): string {
+  const filled = Math.round((percentage / 100) * width)
+  const empty = width - filled
+  const bar = '█'.repeat(filled) + '░'.repeat(empty)
+  return `[${bar}] ${percentage}%`
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * 设置增量统计保存
+ * 在每个节点完成时保存中间状态的统计，用于任务失败时的诊断
+ */
+function setupIncrementalStatsSaving(taskId: string, instanceId: string): () => void {
+  let lastSaveTime = 0
+  const SAVE_DEBOUNCE_MS = 2000 // 防止频繁写入，至少间隔 2 秒
+
+  const saveHandler = () => {
+    const now = Date.now()
+    if (now - lastSaveTime < SAVE_DEBOUNCE_MS) {
+      return
+    }
+    lastSaveTime = now
+
+    const stats = workflowEvents.getExecutionStats(instanceId)
+    if (stats) {
+      // 计算当前执行时间
+      const startTime = stats.startedAt ? new Date(stats.startedAt).getTime() : now
+      stats.totalDurationMs = now - startTime
+
+      saveExecutionStats(taskId, stats)
+      logger.debug(`Saved incremental stats for task ${taskId}`)
+    }
+  }
+
+  // 订阅节点完成和失败事件
+  const unsubscribeCompleted = workflowEvents.onNodeEvent((event) => {
+    if (event.type === 'node:completed' || event.type === 'node:failed') {
+      saveHandler()
+    }
+  })
+
+  return unsubscribeCompleted
 }

@@ -66,3 +66,19 @@ export {
   type LoopResult,
   type ForeachResult,
 } from './engine/executeNewNodes.js'
+
+// 重试策略
+export {
+  classifyError,
+  shouldRetry,
+  calculateRetryDelay,
+  withRetry,
+  formatRetryInfo,
+  DEFAULT_RETRY_CONFIG,
+  RETRY_CONFIG_BY_CATEGORY,
+  type ErrorCategory,
+  type ClassifiedError,
+  type RetryConfig,
+  type RetryDecision,
+  type RetryResult,
+} from './engine/RetryStrategy.js'

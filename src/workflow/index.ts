@@ -94,3 +94,19 @@ export {
   validateJsonWorkflow,
   extractJson,
 } from './parser/parseJson.js'
+
+// ============ 事件系统 ============
+
+export {
+  workflowEvents,
+  type WorkflowEventEmitter,
+  type NodeStartedEvent,
+  type NodeCompletedEvent,
+  type NodeFailedEvent,
+  type WorkflowStartedEvent,
+  type WorkflowCompletedEvent,
+  type WorkflowFailedEvent,
+  type WorkflowProgressEvent,
+  type NodeExecutionStats,
+  type WorkflowExecutionStats,
+} from './engine/WorkflowEventEmitter.js'

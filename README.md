@@ -1,18 +1,56 @@
 # Claude Agent Hub
 
-基于 Claude Code 的 AI 任务调度系统 - 让 AI Agent 自动分析、规划和执行开发任务。
+> **成为开发者的自主进化伙伴 — 让每个开发者都拥有一支永不疲倦的 AI 工程团队**
 
-## 核心特性
+基于 Claude Code CLI 的自举式 AI 任务系统。用自己来维护和开发自己。
 
-- **一行命令** - `cah "重构登录模块"` 创建并自动执行
-- **Workflow 引擎** - 支持条件分支、循环、并行、定时等复杂流程
-- **人工审批** - 关键节点支持人工介入，集成飞书通知
-- **零配置** - 直接使用 Claude Code 认证，开箱即用
+## 特性
+
+- **一行命令** — `cah "重构登录模块"` 自动分析、规划、执行
+- **智能 Workflow** — AI 生成执行计划，支持条件、循环、并行等复杂流程
+- **项目感知** — 自动分析项目结构、框架、规范，生成更精准的任务计划
+- **历史学习** — 从过去任务中学习成功模式，避免重复错误
+- **趋势分析** — 成功率追踪、性能分析、成本统计
+- **模板系统** — 12 个内置模板，快速创建常见任务
+- **实时监控** — 可视化进度条，实时状态监控
+- **零配置** — 直接使用 Claude Code 认证，开箱即用
+
+## 架构
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Claude Agent Hub                          │
+├─────────────────────────────────────────────────────────────────────┤
+│  CLI Layer                                                          │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  cah "task"    task    template    report    daemon          │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────────┤
+│  Agent Layer                                                        │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐        │
+│  │ Project        │  │ Execution      │  │ Workflow       │        │
+│  │ Context        │  │ History        │  │ Generator      │        │
+│  │ (项目分析)     │  │ (历史学习)      │  │ (计划生成)     │        │
+│  └────────────────┘  └────────────────┘  └────────────────┘        │
+├─────────────────────────────────────────────────────────────────────┤
+│  Workflow Engine                                                    │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐        │
+│  │ State Manager  │  │ Node Worker    │  │ Event Emitter  │        │
+│  │ (状态管理)     │  │ (节点执行)      │  │ (事件驱动)     │        │
+│  └────────────────┘  └────────────────┘  └────────────────┘        │
+├─────────────────────────────────────────────────────────────────────┤
+│  Infrastructure                                                     │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐        │
+│  │ Claude Code    │  │ Task Store     │  │ Report         │        │
+│  │ Integration    │  │ (文件存储)      │  │ (报告分析)     │        │
+│  └────────────────┘  └────────────────┘  └────────────────┘        │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ## 环境要求
 
 - **Node.js** 20.0.0+
-- **Claude Code CLI** - 已安装并完成认证
+- **Claude Code CLI** — 已安装并完成认证
 
 ```bash
 # 确认 Claude Code 已就绪
@@ -22,7 +60,6 @@ claude --version
 ## 安装
 
 ```bash
-# 从源码安装
 git clone https://github.com/anthropics/claude-agent-hub.git
 cd claude-agent-hub
 npm install && npm run build && npm link
@@ -35,45 +72,69 @@ npm install && npm run build && npm link
 cah "修复登录 bug"
 
 # 前台模式（实时看日志）
-cah "添加用户认证" --foreground
+cah "添加用户认证" -F
 
-# 查看任务状态
-cah task list
-
-# 查看任务详情
-cah task show <task-id>
+# 使用模板快速创建任务
+cah template use feature --var name="用户认证"
 ```
 
-## CLI 命令
+## 命令参考
 
 ### 核心命令
 
 ```bash
 cah "任务描述"             # 创建任务并自动执行
-cah "任务描述" -f          # 前台模式，实时输出
-cah "任务描述" -p high     # 高优先级任务
-cah run                    # 执行队列中的待处理任务
+cah "任务描述" -F          # 前台模式，实时输出
+cah "任务描述" --no-run    # 仅创建不执行
 ```
 
-### 任务管理
+### 任务管理 (task)
 
 ```bash
 cah task list              # 列出任务
-cah task show <id>         # 查看详情（含 workflow 状态）
+cah task show <id>         # 查看详情
+cah task logs <id> -f      # 实时查看日志
+cah task resume <id>       # 恢复中断的任务
 cah task stop <id>         # 停止任务
 cah task delete <id>       # 删除任务
-cah task clear             # 清空所有任务
+cah task stats <id>        # 查看执行统计
 ```
 
-### Workflow 管理
+### 模板系统 (template)
 
 ```bash
-cah workflow list          # 列出 workflow
-cah workflow show <id>     # 查看 workflow 详情
-cah workflow run <file>    # 从 Markdown 文件运行 workflow
+cah template list          # 列出所有模板
+cah template show <id>     # 查看模板详情
+cah template use <id>      # 使用模板创建任务
+  --var name=value         # 传入变量
+cah template search <q>    # 搜索模板
+cah template create        # 创建自定义模板
 ```
 
-### 守护进程
+**内置模板**：
+| 类型 | 模板 |
+|------|------|
+| 开发 | feature, fix-bug, api-endpoint |
+| 测试 | unit-test, integration-test |
+| 重构 | refactor, extract-component |
+| 文档 | docs, readme |
+| DevOps | ci-cd, docker |
+| 分析 | performance, code-review |
+
+### 报告分析 (report)
+
+```bash
+cah report work            # 工作报告（日报/周报）
+  --type daily/weekly
+cah report trend           # 趋势分析
+  --days 30                # 分析天数
+  --period day/week/month  # 统计周期
+  --markdown               # 输出 Markdown
+cah report live            # 实时状态监控
+  --watch                  # 持续监控模式
+```
+
+### 守护进程 (daemon)
 
 ```bash
 cah daemon start           # 启动后台调度
@@ -88,29 +149,34 @@ cah "任务描述"
       │
       ▼
 ┌─────────────────────────────────────┐
-│  1. 创建任务                         │
-│     生成任务文件夹，状态: pending     │
+│  1. 分析项目上下文                   │
+│     检测项目类型、框架、规范         │
 └─────────────────────────────────────┘
       │
       ▼
 ┌─────────────────────────────────────┐
-│  2. 生成 Workflow (Claude)          │
-│     分析任务 → JSON Workflow         │
-│     包含节点和边的 DAG 结构          │
+│  2. 学习历史经验                     │
+│     分析相似任务、成功模式、失败教训  │
 └─────────────────────────────────────┘
       │
       ▼
 ┌─────────────────────────────────────┐
-│  3. 执行 Workflow                   │
+│  3. 生成 Workflow (Claude)          │
+│     基于上下文生成精准执行计划        │
+└─────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────┐
+│  4. 执行 Workflow                   │
 │     NodeWorker 按拓扑顺序执行节点    │
-│     支持并行、循环、条件分支等       │
+│     支持并行、循环、条件分支         │
+│     [████████░░░░] 40% [当前节点]    │
 └─────────────────────────────────────┘
       │
       ▼
 ┌─────────────────────────────────────┐
-│  4. 保存结果                        │
-│     生成 Markdown 报告              │
-│     更新任务状态                    │
+│  5. 保存结果                        │
+│     执行统计 + 成本分析 + 报告生成   │
 └─────────────────────────────────────┘
 ```
 
@@ -135,23 +201,16 @@ cah "任务描述"
 
 ## 数据存储
 
-任务数据按状态组织在 `data/tasks/` 下：
-
 ```
 data/tasks/
-├── pending/                          # 待处理
-├── planning/                         # 规划中
-├── developing/                       # 执行中
-│   └── task-20260131-143022-abc/
-│       ├── task.json                 # 任务信息
-│       ├── workflow.json             # 执行计划
-│       ├── instance.json             # 运行状态
-│       ├── conversations.json        # AI 对话记录
-│       └── outputs/
-│           └── result.md             # 执行报告
-├── completed/                        # 已完成
-├── failed/                           # 失败
-└── cancelled/                        # 已取消
+└── task-20260201-HHMMSS-xxx/
+    ├── task.json          # 任务元数据
+    ├── workflow.json      # 生成的 workflow
+    ├── instance.json      # 执行状态
+    ├── stats.json         # 执行统计
+    ├── process.json       # 进程信息
+    └── logs/
+        └── execution.log  # 执行日志
 ```
 
 ## 配置
@@ -168,27 +227,6 @@ data/tasks/
 }
 ```
 
-## 表达式语法
-
-在 `assign`、`script`、`condition` 等节点中使用：
-
-```javascript
-// 变量访问
-variables.count
-outputs.step1.result
-
-// 内置函数
-now()                    // 当前时间戳 (Date.now())
-floor(x), ceil(x)        // 取整
-min(a, b), max(a, b)     // 最值
-len(arr)                 // 数组长度
-str(x), num(x), bool(x)  // 类型转换
-
-// 也支持 JavaScript 风格（自动转换）
-Date.now()               // → now()
-Math.floor(x)            // → floor(x)
-```
-
 ## 开发
 
 ```bash
@@ -198,6 +236,12 @@ npm run typecheck    # 类型检查
 npm run lint         # 代码检查
 npm test             # 测试
 ```
+
+## 相关文档
+
+- [VISION.md](./VISION.md) — 项目愿景、使命和路线图
+- [CLAUDE.md](./CLAUDE.md) — AI 开发指南
+- [CHANGELOG.md](./CHANGELOG.md) — 版本变更记录
 
 ## License
 
