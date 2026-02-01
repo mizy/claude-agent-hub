@@ -82,8 +82,6 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
 {{agentDescriptions}}
 
-选择 agent 时可使用 "auto"（自动选择）或具体名称
-
 
 ## 当前时间
 {{currentTime}}
@@ -230,16 +228,14 @@ function formatAgentDescriptions(agents: Agent[]): string {
  * 构建生成 JSON Workflow 的 prompt
  */
 export function buildJsonWorkflowPrompt(
-  agent: Agent,
   task: Task,
   availableAgents: Agent[] = []
 ): string {
   const agentDescriptions = formatAgentDescriptions(availableAgents)
 
+  // 生成 Workflow 固定使用"软件架构师"角色，不受 agent 参数影响
   return TASK_PROMPTS.GENERATE_JSON_WORKFLOW.replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
-    .replace('{{agentName}}', agent.name)
-    .replace('{{persona}}', agent.persona)
     .replace('{{taskTitle}}', task.title)
     .replace('{{taskDescription}}', task.description || '无')
     .replace('{{priority}}', task.priority)

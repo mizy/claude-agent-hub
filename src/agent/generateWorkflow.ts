@@ -24,9 +24,9 @@ export async function generateWorkflow(context: AgentContext): Promise<Workflow>
   const store = getStore()
   const availableAgents = store.getAllAgents()
 
-  // 构建 prompt
+  // 构建 prompt（生成 Workflow 固定使用"软件架构师"角色）
   logger.debug('构建 prompt...')
-  const prompt = buildJsonWorkflowPrompt(agent, task, availableAgents)
+  const prompt = buildJsonWorkflowPrompt(task, availableAgents)
   logger.debug(`Prompt 长度: ${prompt.length} 字符`)
 
   // 调用 Claude (不使用 mode，避免触发 Claude Code 的 Plan Mode)
