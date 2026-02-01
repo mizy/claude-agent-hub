@@ -7,6 +7,7 @@ import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
 import { buildExecuteNodePrompt } from '../prompts/index.js'
 import { getStore } from '../store/index.js'
 import { appendConversation } from '../store/TaskStore.js'
+import { BUILTIN_PERSONAS } from './persona/builtinPersonas.js'
 import {
   getWorkflow,
   getInstance,
@@ -284,11 +285,8 @@ async function executeTaskNode(
 
   const { agent: agentName, prompt: taskPrompt } = node.task
 
-  // 获取 agent
+  // 获取 agent (找不到会回退到默认)
   const agent = resolveAgent(agentName)
-  if (!agent) {
-    return { success: false, error: `Agent not found: ${agentName}` }
-  }
 
   // 构建上下文
   const context = buildNodeContext(instance)
@@ -333,46 +331,35 @@ async function executeTaskNode(
 /**
  * 解析 Agent
  */
-function resolveAgent(agentName: string): Agent | null {
+function resolveAgent(agentName: string): Agent {
   const store = getStore()
 
-  // "auto" 表示使用默认 agent
-  if (agentName === 'auto' || !agentName) {
-    // 获取第一个可用的 agent，或创建一个临时的
-    const agents = store.getAllAgents()
-    if (agents.length > 0) {
-      return agents[0]!
-    }
-
-    // 返回一个默认配置
-    return {
-      id: 'default',
-      name: 'default',
-      persona: 'efficient',
-      personaConfig: {
-        name: 'efficient',
-        description: 'Default efficient agent',
-        traits: {
-          codeStyle: 'minimal',
-          commentLevel: 'sparse',
-          errorHandling: 'essential',
-          namingConvention: 'concise',
-        },
-        preferences: {
-          preferAbstraction: false,
-          preferPatterns: false,
-          preferDocumentation: false,
-        },
-        systemPrompt: 'You are an efficient developer.',
-      },
-      description: 'Default agent',
-      status: 'working',
-      stats: { tasksCompleted: 0, tasksFailed: 0, totalWorkTime: 0 },
-      createdAt: new Date().toISOString(),
-    }
+  // 默认使用 Pragmatist (务实开发者)
+  const defaultAgent: Agent = {
+    id: 'default',
+    name: 'default',
+    persona: 'Pragmatist',
+    personaConfig: BUILTIN_PERSONAS.Pragmatist,
+    description: '内置默认 Agent',
+    status: 'working',
+    stats: { tasksCompleted: 0, tasksFailed: 0, totalWorkTime: 0 },
+    createdAt: new Date().toISOString(),
   }
 
-  return store.getAgent(agentName) || null
+  // "auto" 或空值使用默认 agent
+  if (agentName === 'auto' || !agentName) {
+    const agents = store.getAllAgents()
+    return agents.length > 0 ? agents[0]! : defaultAgent
+  }
+
+  // 尝试获取指定的 agent，找不到则回退到默认
+  const agent = store.getAgent(agentName)
+  if (!agent) {
+    logger.warn(`Agent "${agentName}" not found, using default agent`)
+    return defaultAgent
+  }
+
+  return agent
 }
 
 /**

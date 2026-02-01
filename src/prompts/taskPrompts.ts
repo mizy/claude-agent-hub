@@ -86,6 +86,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
    \`\`\`json
    { "id": "唯一ID", "type": "task", "name": "节点名称", "task": { "agent": "auto", "prompt": "任务描述" } }
    \`\`\`
+   agent 可选值: {{availableAgents}}
 
 2. **delay** - 延迟节点
    \`\`\`json
@@ -194,7 +195,16 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 /**
  * 构建生成 JSON Workflow 的 prompt
  */
-export function buildJsonWorkflowPrompt(agent: Agent, task: Task): string {
+export function buildJsonWorkflowPrompt(
+  agent: Agent,
+  task: Task,
+  availableAgents: string[] = []
+): string {
+  // 构建可用 agent 列表说明
+  const agentList = availableAgents.length > 0
+    ? `"auto" (自动选择) 或具体名称: ${availableAgents.map(a => `"${a}"`).join(', ')}`
+    : '"auto" (使用默认 agent)'
+
   return TASK_PROMPTS.GENERATE_JSON_WORKFLOW
     .replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
@@ -203,6 +213,7 @@ export function buildJsonWorkflowPrompt(agent: Agent, task: Task): string {
     .replace('{{taskTitle}}', task.title)
     .replace('{{taskDescription}}', task.description || '无')
     .replace('{{priority}}', task.priority)
+    .replace('{{availableAgents}}', agentList)
 }
 
 /**

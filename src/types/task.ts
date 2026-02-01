@@ -15,6 +15,7 @@ export interface Task {
   retryCount: number
   lastRejectReason?: string
   createdAt: string
+  updatedAt?: string
 
   // Execution output (populated when task completes)
   output?: TaskOutput

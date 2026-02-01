@@ -7,6 +7,7 @@ import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
 import { buildJsonWorkflowPrompt } from '../prompts/index.js'
 import { parseJson, validateJsonWorkflow, extractJson } from '../workflow/index.js'
 import { appendConversation } from '../store/TaskStore.js'
+import { getStore } from '../store/index.js'
 import { createLogger } from '../shared/logger.js'
 import type { AgentContext } from '../types/agent.js'
 import type { Workflow } from '../workflow/types.js'
@@ -19,16 +20,19 @@ const logger = createLogger('workflow-gen')
 export async function generateWorkflow(context: AgentContext): Promise<Workflow> {
   const { agent, task } = context
 
+  // 获取可用 agent 列表
+  const store = getStore()
+  const availableAgents = store.getAllAgents().map(a => a.name)
+
   // 构建 prompt
   logger.debug('构建 prompt...')
-  const prompt = buildJsonWorkflowPrompt(agent, task)
+  const prompt = buildJsonWorkflowPrompt(agent, task, availableAgents)
   logger.debug(`Prompt 长度: ${prompt.length} 字符`)
 
-  // 调用 Claude
+  // 调用 Claude (不使用 mode，避免触发 Claude Code 的 Plan Mode)
   logger.info('调用 Claude 生成执行计划...')
   const result = await invokeClaudeCode({
     prompt,
-    mode: 'plan',
     persona: agent.personaConfig,
     stream: true,
   })

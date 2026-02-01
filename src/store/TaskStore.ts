@@ -3,6 +3,7 @@
  *
  * 目录结构:
  * data/tasks/
+ * ├── index.json                          # 任务索引 (缓存，文件夹为准)
  * └── task-20260131-HHMMSS-xxx/
  *     ├── task.json                       # 任务元数据 (包含 status)
  *     ├── workflow.json                   # 生成的 workflow
@@ -28,6 +29,122 @@ const logger = createLogger('task-store')
 // Data directory
 const DATA_DIR = join(process.cwd(), 'data')
 const TASKS_DIR = join(DATA_DIR, 'tasks')
+const INDEX_PATH = join(TASKS_DIR, 'index.json')
+
+// ============ Task Index (缓存层，文件夹为权威数据) ============
+
+export interface TaskSummary {
+  id: string
+  title: string
+  status: TaskStatus
+  priority: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface TaskIndex {
+  tasks: TaskSummary[]
+  updatedAt: string
+}
+
+// 从 Task 提取 Summary
+function toSummary(task: Task): TaskSummary {
+  return {
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+  }
+}
+
+// 读取索引
+function readIndex(): TaskIndex | null {
+  if (!existsSync(INDEX_PATH)) return null
+  try {
+    const content = readFileSync(INDEX_PATH, 'utf-8')
+    return JSON.parse(content) as TaskIndex
+  } catch {
+    return null
+  }
+}
+
+// 写入索引
+function writeIndex(index: TaskIndex): void {
+  ensureDirs()
+  const tempPath = `${INDEX_PATH}.tmp`
+  writeFileSync(tempPath, JSON.stringify(index, null, 2), 'utf-8')
+  renameSync(tempPath, INDEX_PATH)
+}
+
+// 更新索引中的单个任务
+function updateIndexEntry(task: Task): void {
+  const index = readIndex() || { tasks: [], updatedAt: '' }
+  const idx = index.tasks.findIndex(t => t.id === task.id)
+
+  if (idx >= 0) {
+    index.tasks[idx] = toSummary(task)
+  } else {
+    index.tasks.push(toSummary(task))
+  }
+
+  index.updatedAt = new Date().toISOString()
+  writeIndex(index)
+}
+
+// 从索引删除任务
+function removeIndexEntry(taskId: string): void {
+  const index = readIndex()
+  if (!index) return
+
+  index.tasks = index.tasks.filter(t => t.id !== taskId)
+  index.updatedAt = new Date().toISOString()
+  writeIndex(index)
+}
+
+// 重建索引 (扫描所有文件夹)
+export function rebuildTaskIndex(): TaskIndex {
+  ensureDirs()
+  logger.info('Rebuilding task index...')
+
+  const tasks: TaskSummary[] = []
+
+  if (existsSync(TASKS_DIR)) {
+    const folders = readdirSync(TASKS_DIR).filter(f => {
+      if (f === 'index.json' || f.endsWith('.tmp')) return false
+      const fullPath = join(TASKS_DIR, f)
+      return existsSync(join(fullPath, 'task.json'))
+    })
+
+    for (const folder of folders) {
+      const task = readJsonSync<Task>(join(TASKS_DIR, folder, 'task.json'))
+      if (task) {
+        tasks.push(toSummary(task))
+      }
+    }
+  }
+
+  // 按创建时间倒序
+  tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+  const index: TaskIndex = {
+    tasks,
+    updatedAt: new Date().toISOString(),
+  }
+
+  writeIndex(index)
+  logger.info(`Task index rebuilt: ${tasks.length} tasks`)
+
+  return index
+}
+
+// 获取索引 (不存在则重建)
+export function getTaskIndex(): TaskIndex {
+  const index = readIndex()
+  if (index) return index
+  return rebuildTaskIndex()
+}
 
 // Process info for background execution
 export interface ProcessInfo {
@@ -138,8 +255,14 @@ export function saveTask(task: Task): void {
     createTaskFolder(task.id)
   }
 
+  // Update timestamp
+  task.updatedAt = new Date().toISOString()
+
   // Save task.json
   writeJsonSync(join(taskDir, 'task.json'), task)
+
+  // Update index
+  updateIndexEntry(task)
 
   logger.debug(`Saved task: ${task.id} (status: ${task.status})`)
 }
@@ -167,28 +290,36 @@ function findTaskByPartialId(partialId: string): string | null {
   return match || null
 }
 
-// Get all tasks
+// Get all tasks (从索引获取完整 Task，索引不存在则重建)
 export function getAllTasks(): Task[] {
-  ensureDirs()
+  const index = getTaskIndex()
 
-  if (!existsSync(TASKS_DIR)) return []
-
-  const folders = readdirSync(TASKS_DIR).filter(f => {
-    const fullPath = join(TASKS_DIR, f)
-    return existsSync(join(fullPath, 'task.json'))
-  })
-
-  const tasks = folders
-    .map(f => readJsonSync<Task>(join(TASKS_DIR, f, 'task.json')))
+  // 从索引中的 id 加载完整 Task
+  const tasks = index.tasks
+    .map(summary => getTask(summary.id))
     .filter((t): t is Task => t !== null)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
   return tasks
 }
 
-// Get tasks by status (filter from all tasks)
+// 获取任务摘要列表 (仅从索引，不加载完整 Task)
+export function getAllTaskSummaries(): TaskSummary[] {
+  return getTaskIndex().tasks
+}
+
+// Get tasks by status (从索引过滤，再加载完整 Task)
 export function getTasksByStatus(status: TaskStatus): Task[] {
-  return getAllTasks().filter(t => t.status === status)
+  const index = getTaskIndex()
+  const filtered = index.tasks.filter(t => t.status === status)
+
+  return filtered
+    .map(summary => getTask(summary.id))
+    .filter((t): t is Task => t !== null)
+}
+
+// 获取指定状态的任务摘要 (仅从索引)
+export function getTaskSummariesByStatus(status: TaskStatus): TaskSummary[] {
+  return getTaskIndex().tasks.filter(t => t.status === status)
 }
 
 // Update task
@@ -208,6 +339,7 @@ export function deleteTask(taskId: string): void {
   const taskDir = getTaskFolder(taskId)
   if (taskDir && existsSync(taskDir)) {
     rmSync(taskDir, { recursive: true, force: true })
+    removeIndexEntry(taskId)
     logger.debug(`Deleted task: ${taskId}`)
   }
 }
