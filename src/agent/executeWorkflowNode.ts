@@ -8,6 +8,8 @@ import { buildExecuteNodePrompt } from '../prompts/index.js'
 import { getStore } from '../store/index.js'
 import { appendConversation } from '../store/TaskStore.js'
 import { BUILTIN_PERSONAS } from './persona/builtinPersonas.js'
+import { DEFAULT_PERSONA_NAME } from './getDefaultAgent.js'
+import { personaNeedsMcp } from './persona/personaMcpConfig.js'
 import {
   getWorkflow,
   getInstance,
@@ -294,11 +296,16 @@ async function executeTaskNode(
   // 构建 prompt
   const prompt = buildExecuteNodePrompt(agent, workflow, node.name, taskPrompt, context)
 
+  // 根据角色决定是否启用 MCP
+  // 不需要外部集成的角色禁用 MCP，加速启动
+  const disableMcp = !personaNeedsMcp(agent.persona)
+
   const result = await invokeClaudeCode({
     prompt,
     mode: 'execute',
     persona: agent.personaConfig,
     stream: true,
+    disableMcp,
   })
 
   if (!result.ok) {
@@ -330,36 +337,44 @@ async function executeTaskNode(
 
 /**
  * 解析 Agent
+ *
+ * 选择逻辑：
+ * 1. 指定具体 agent 名字 → 优先使用该 agent
+ * 2. 'auto' 或空值 → 遍历所有 Agent，优先选择状态为 'idle' 的
+ * 3. 没有 idle 的 Agent → 返回内置默认 Agent
  */
 function resolveAgent(agentName: string): Agent {
   const store = getStore()
 
-  // 默认使用 Pragmatist (务实开发者)
   const defaultAgent: Agent = {
     id: 'default',
     name: 'default',
-    persona: 'Pragmatist',
-    personaConfig: BUILTIN_PERSONAS.Pragmatist,
+    persona: DEFAULT_PERSONA_NAME,
+    personaConfig: BUILTIN_PERSONAS[DEFAULT_PERSONA_NAME],
     description: '内置默认 Agent',
-    status: 'working',
+    status: 'idle',
     stats: { tasksCompleted: 0, tasksFailed: 0, totalWorkTime: 0 },
     createdAt: new Date().toISOString(),
   }
 
-  // "auto" 或空值使用默认 agent
-  if (agentName === 'auto' || !agentName) {
-    const agents = store.getAllAgents()
-    return agents.length > 0 ? agents[0]! : defaultAgent
+  // 指定了具体 agent 名字，优先使用
+  if (agentName && agentName !== 'auto') {
+    const agent = store.getAgent(agentName)
+    if (agent) {
+      return agent
+    }
+    logger.warn(`Agent "${agentName}" not found, falling back to auto selection`)
   }
 
-  // 尝试获取指定的 agent，找不到则回退到默认
-  const agent = store.getAgent(agentName)
-  if (!agent) {
-    logger.warn(`Agent "${agentName}" not found, using default agent`)
-    return defaultAgent
+  // auto 模式：找一个空闲的 Agent
+  const agents = store.getAllAgents()
+  const idleAgent = agents.find(a => a.status === 'idle')
+  if (idleAgent) {
+    return idleAgent
   }
 
-  return agent
+  // 没有空闲 Agent，返回默认
+  return defaultAgent
 }
 
 /**

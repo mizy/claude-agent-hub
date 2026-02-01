@@ -65,7 +65,25 @@ Return ONLY the title text, nothing else. Use the same language as the content (
    * 生成 JSON Workflow 的 prompt 模板
    */
   GENERATE_JSON_WORKFLOW: `
-你是 {{agentName}}，一个 {{persona}} 风格的开发者。
+你是一位软件架构师，负责将任务拆分为可独立执行的子任务，并分配给合适的 agent。
+
+## 任务拆分原则
+
+1. **单一职责**：每个节点只做一件事，职责明确
+2. **边界清晰**：节点之间通过明确的输入/输出交互，避免职责重叠
+3. **原子性**：每个节点要么完全成功，要么完全失败，便于重试
+4. **顺序依赖**：有依赖关系的任务串行执行，无依赖的可以并行
+5. **合理粒度**：
+   - 太粗：一个节点做太多事，难以定位问题
+   - 太细：节点过多，增加协调成本
+   - 建议：每个节点 5-15 分钟可完成的工作量
+
+## 可用 Agent
+
+{{agentDescriptions}}
+
+选择 agent 时可使用 "auto"（自动选择）或具体名称
+
 
 ## 当前时间
 {{currentTime}}
@@ -73,7 +91,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 ## 工作目录
 {{cwd}}
 
-请为以下任务制定详细的执行计划，以 JSON 格式输出 Workflow 定义：
+请为以下任务制定执行计划，以 JSON 格式输出 Workflow：
 
 ## 任务
 标题: {{taskTitle}}
@@ -86,7 +104,6 @@ Return ONLY the title text, nothing else. Use the same language as the content (
    \`\`\`json
    { "id": "唯一ID", "type": "task", "name": "节点名称", "task": { "agent": "auto", "prompt": "任务描述" } }
    \`\`\`
-   agent 可选值: {{availableAgents}}
 
 2. **delay** - 延迟节点
    \`\`\`json
@@ -193,27 +210,40 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 }
 
 /**
+ * 构建 Agent 描述列表
+ * 只显示 agent 名称、角色(persona)和描述，职责由 persona 决定
+ */
+function formatAgentDescriptions(agents: Agent[]): string {
+  if (agents.length === 0) {
+    return '- 无可用 Agent，使用 "auto" 自动选择默认 Agent'
+  }
+
+  return agents
+    .map(a => {
+      const desc = a.description ? `: ${a.description}` : ''
+      return `- **${a.name}** (${a.persona})${desc}`
+    })
+    .join('\n')
+}
+
+/**
  * 构建生成 JSON Workflow 的 prompt
  */
 export function buildJsonWorkflowPrompt(
   agent: Agent,
   task: Task,
-  availableAgents: string[] = []
+  availableAgents: Agent[] = []
 ): string {
-  // 构建可用 agent 列表说明
-  const agentList = availableAgents.length > 0
-    ? `"auto" (自动选择) 或具体名称: ${availableAgents.map(a => `"${a}"`).join(', ')}`
-    : '"auto" (使用默认 agent)'
+  const agentDescriptions = formatAgentDescriptions(availableAgents)
 
-  return TASK_PROMPTS.GENERATE_JSON_WORKFLOW
-    .replace('{{currentTime}}', getCurrentTime())
+  return TASK_PROMPTS.GENERATE_JSON_WORKFLOW.replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
     .replace('{{agentName}}', agent.name)
     .replace('{{persona}}', agent.persona)
     .replace('{{taskTitle}}', task.title)
     .replace('{{taskDescription}}', task.description || '无')
     .replace('{{priority}}', task.priority)
-    .replace('{{availableAgents}}', agentList)
+    .replace('{{agentDescriptions}}', agentDescriptions)
 }
 
 /**
@@ -226,8 +256,7 @@ export function buildExecuteNodePrompt(
   nodePrompt: string,
   context: string = ''
 ): string {
-  return TASK_PROMPTS.EXECUTE_NODE
-    .replace('{{currentTime}}', getCurrentTime())
+  return TASK_PROMPTS.EXECUTE_NODE.replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
     .replace('{{agentName}}', agent.name)
     .replace('{{workflowName}}', workflow.name)
@@ -243,8 +272,10 @@ export function buildGenerateTitleFromWorkflowPrompt(task: Task, workflow: Workf
   const taskNodes = workflow.nodes.filter(n => n.type === 'task')
   const steps = taskNodes.map(n => `- ${n.name}`).join('\n')
 
-  return TASK_PROMPTS.GENERATE_TITLE
-    .replace('{{description}}', task.description || '(No description)')
+  return TASK_PROMPTS.GENERATE_TITLE.replace(
+    '{{description}}',
+    task.description || '(No description)'
+  )
     .replace('{{analysis}}', workflow.description || '')
     .replace('{{steps}}', steps)
 }

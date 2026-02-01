@@ -21,6 +21,8 @@ export interface InvokeOptions {
   timeoutMs?: number
   /** 流式输出回调 */
   onChunk?: (chunk: string) => void
+  /** 禁用 MCP 服务器，加速启动，默认 false */
+  disableMcp?: boolean
 }
 
 export interface InvokeResult {
@@ -51,10 +53,11 @@ export async function invokeClaudeCode(
     skipPermissions = true,
     timeoutMs = 30 * 60 * 1000,
     onChunk,
+    disableMcp = false,
   } = options
 
   const fullPrompt = buildPrompt(prompt, persona, mode)
-  const args = buildArgs(fullPrompt, skipPermissions)
+  const args = buildArgs(fullPrompt, skipPermissions, disableMcp)
 
   logger.info(`[${mode ?? 'default'}] 调用 Claude (${fullPrompt.length} chars)`)
   logger.debug(`Prompt: ${truncate(fullPrompt, 100)}`)
@@ -117,10 +120,14 @@ async function streamOutput(
 
 // ============ Helpers ============
 
-function buildArgs(prompt: string, skipPermissions: boolean): string[] {
+function buildArgs(prompt: string, skipPermissions: boolean, disableMcp: boolean): string[] {
   const args = ['--print']
   if (skipPermissions) {
     args.push('--dangerously-skip-permissions')
+  }
+  if (disableMcp) {
+    // 传入空的 MCP 配置禁用所有 MCP 服务器，加速启动
+    args.push('--mcp-config', '{}')
   }
   args.push(prompt)
   return args

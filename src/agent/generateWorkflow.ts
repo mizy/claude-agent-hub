@@ -20,9 +20,9 @@ const logger = createLogger('workflow-gen')
 export async function generateWorkflow(context: AgentContext): Promise<Workflow> {
   const { agent, task } = context
 
-  // 获取可用 agent 列表
+  // 获取可用 agent 列表（完整对象，包含能力描述）
   const store = getStore()
-  const availableAgents = store.getAllAgents().map(a => a.name)
+  const availableAgents = store.getAllAgents()
 
   // 构建 prompt
   logger.debug('构建 prompt...')

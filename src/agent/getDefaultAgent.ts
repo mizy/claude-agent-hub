@@ -7,7 +7,9 @@ import { loadPersona } from './persona/loadPersona.js'
 import type { Agent } from '../types/agent.js'
 
 const DEFAULT_AGENT_NAME = 'default'
-const DEFAULT_PERSONA = 'Architect'  // 默认使用架构师拆分任务
+
+/** 默认 Persona 名称，务实开发者更适合通用任务执行 */
+export const DEFAULT_PERSONA_NAME = 'Pragmatist'
 
 /**
  * 获取默认 Agent，如果不存在则自动创建
@@ -20,12 +22,12 @@ export async function getOrCreateDefaultAgent(): Promise<Agent> {
 
   if (!agent) {
     // 自动创建默认 Agent
-    const persona = await loadPersona(DEFAULT_PERSONA)
+    const persona = await loadPersona(DEFAULT_PERSONA_NAME)
 
     agent = {
       id: crypto.randomUUID(),
       name: DEFAULT_AGENT_NAME,
-      persona: DEFAULT_PERSONA,
+      persona: DEFAULT_PERSONA_NAME,
       personaConfig: persona,
       description: '内置默认执行 Agent',
       status: 'idle',
