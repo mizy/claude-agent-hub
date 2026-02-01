@@ -133,7 +133,7 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
 
   state.activeJobs++
 
-  const { workflowId, instanceId, nodeId, attempt } = data
+  const { workflowId, instanceId, nodeId } = data
 
   // Check node attempts from instance state (source of truth)
   const instance = getInstance(instanceId)

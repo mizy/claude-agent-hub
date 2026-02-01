@@ -6,12 +6,31 @@ import type { Agent } from '../types/agent.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from '../workflow/types.js'
 
+/**
+ * 获取当前时间字符串
+ */
+function getCurrentTime(): string {
+  const now = new Date()
+  return now.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export const TASK_PROMPTS = {
   /**
    * 执行 Workflow 节点的 prompt 模板
    */
   EXECUTE_NODE: `
 你是 {{agentName}}，正在执行工作流 "{{workflowName}}" 的节点。
+
+## 当前时间
+{{currentTime}}
 
 ## 工作目录
 {{cwd}}
@@ -48,6 +67,9 @@ Return ONLY the title text, nothing else. Use the same language as the content (
   GENERATE_JSON_WORKFLOW: `
 你是 {{agentName}}，一个 {{persona}} 风格的开发者。
 
+## 当前时间
+{{currentTime}}
+
 ## 工作目录
 {{cwd}}
 
@@ -71,10 +93,11 @@ Return ONLY the title text, nothing else. Use the same language as the content (
    \`\`\`
    unit 可选: s(秒), m(分), h(时), d(天)
 
-3. **human** - 人工审批节点
+3. **human** - 人工审批节点（仅在任务明确要求人工审核时使用，默认不使用）
    \`\`\`json
    { "id": "唯一ID", "type": "human", "name": "审核", "human": { "timeout": 86400000 } }
    \`\`\`
+   ⚠️ 除非任务明确要求人工介入，否则不要使用此节点，工作流应全自动完成
 
 4. **switch** - 条件分支节点
    \`\`\`json
@@ -173,6 +196,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
  */
 export function buildJsonWorkflowPrompt(agent: Agent, task: Task): string {
   return TASK_PROMPTS.GENERATE_JSON_WORKFLOW
+    .replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
     .replace('{{agentName}}', agent.name)
     .replace('{{persona}}', agent.persona)
@@ -192,6 +216,7 @@ export function buildExecuteNodePrompt(
   context: string = ''
 ): string {
   return TASK_PROMPTS.EXECUTE_NODE
+    .replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
     .replace('{{agentName}}', agent.name)
     .replace('{{workflowName}}', workflow.name)

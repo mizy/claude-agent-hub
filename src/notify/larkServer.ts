@@ -15,7 +15,7 @@ import {
   markNodeDone,
   markNodeFailed as stateMarkNodeFailed,
 } from '../workflow/engine/StateManager.js'
-import { handleNodeResult, getInstance, getWorkflow } from '../workflow/index.js'
+import { handleNodeResult, getWorkflow } from '../workflow/index.js'
 import { sendApprovalResultNotification } from './lark.js'
 
 const logger = createLogger('lark-server')
@@ -86,8 +86,6 @@ let server: ReturnType<typeof createServer> | null = null
  * - "通过 node-id"
  */
 function parseApprovalCommand(text: string): ParsedApproval | null {
-  const normalized = text.trim().toLowerCase()
-
   // 移除 @mention
   const cleanText = text.replace(/@[\w\u4e00-\u9fa5]+/g, '').trim()
 

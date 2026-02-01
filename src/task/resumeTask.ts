@@ -14,7 +14,6 @@ import {
   getProcessInfo,
   isProcessRunning,
   updateProcessInfo,
-  updateTask,
   getTaskInstance,
 } from '../store/TaskStore.js'
 import { recoverWorkflowInstance } from '../workflow/index.js'

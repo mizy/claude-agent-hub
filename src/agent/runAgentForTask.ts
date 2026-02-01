@@ -27,7 +27,6 @@ import {
   updateTask,
   getTaskWorkflow,
   getTaskInstance,
-  getOutputPath,
 } from '../store/TaskStore.js'
 import { enqueueNode } from '../workflow/index.js'
 import { saveWorkflowOutputToTask } from '../output/saveWorkflowOutputToTask.js'

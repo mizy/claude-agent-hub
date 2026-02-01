@@ -4,7 +4,7 @@
  */
 
 import { mkdir, writeFile } from 'fs/promises'
-import { join, dirname } from 'path'
+import { dirname } from 'path'
 import { createLogger } from '../shared/logger.js'
 import { getOutputPath } from '../store/TaskStore.js'
 import type { Task } from '../types/task.js'

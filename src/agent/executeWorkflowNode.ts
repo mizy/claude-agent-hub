@@ -11,7 +11,6 @@ import {
   getWorkflow,
   getInstance,
   markNodeRunning,
-  markNodeDone,
   markNodeFailed,
   handleNodeResult,
   updateInstanceVariables,

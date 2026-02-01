@@ -10,7 +10,6 @@ import { openSync, closeSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '../shared/logger.js'
 import {
-  getTaskFolder,
   createTaskFolder,
   saveProcessInfo,
   getLogPath,
@@ -33,7 +32,6 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   const { taskId, agentName = 'default', resume = false } = options
 
   // Ensure task folder exists
-  const taskDir = getTaskFolder(taskId)
   createTaskFolder(taskId)
 
   // Create log file for process output
