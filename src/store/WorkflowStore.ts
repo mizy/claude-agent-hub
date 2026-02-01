@@ -11,13 +11,13 @@
 
 import { createLogger } from '../shared/logger.js'
 import { generateId } from '../shared/id.js'
+import { getAllTaskSummaries } from './TaskStore.js'
 import {
   getTaskWorkflow,
   saveTaskWorkflow,
   getTaskInstance,
   saveTaskInstance,
-  getAllTaskSummaries,
-} from './TaskStore.js'
+} from './TaskWorkflowStore.js'
 import type {
   Workflow,
   WorkflowInstance,

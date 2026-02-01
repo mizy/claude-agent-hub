@@ -5,11 +5,9 @@ import {
   getProcessInfo,
   isProcessRunning,
   getTaskFolder,
-  getWorkflowPath,
-  getInstancePath,
-  getLogPath,
-  getOutputPath,
 } from '../store/TaskStore.js'
+import { getWorkflowPath, getInstancePath } from '../store/TaskWorkflowStore.js'
+import { getLogPath, getOutputPath } from '../store/TaskLogStore.js'
 
 /**
  * Format status with color

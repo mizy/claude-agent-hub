@@ -23,7 +23,7 @@ export const gitConfigSchema = z.object({
 })
 
 export const claudeConfigSchema = z.object({
-  model: z.enum(['haiku', 'sonnet', 'opus']).default('sonnet'),
+  model: z.enum(['haiku', 'sonnet', 'opus']).default('opus'),
   max_tokens: z.number().default(8000)
 })
 

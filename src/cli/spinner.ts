@@ -1,23 +1,20 @@
 /**
  * CLI Spinner 封装
- * 基于 ora，提供简洁的 loading 状态管理
  */
 
 import ora, { type Ora } from 'ora'
 
-export interface Spinner {
+interface Spinner {
   start(text?: string): void
   stop(): void
   succeed(text?: string): void
   fail(text?: string): void
-  warn(text?: string): void
-  info(text?: string): void
   text(text: string): void
 }
 
 let activeSpinner: Ora | null = null
 
-export function createSpinner(text?: string): Spinner {
+function createSpinner(text?: string): Spinner {
   const spinner = ora({
     text,
     spinner: 'dots',
@@ -43,21 +40,12 @@ export function createSpinner(text?: string): Spinner {
       spinner.fail(newText)
       activeSpinner = null
     },
-    warn(newText?: string) {
-      spinner.warn(newText)
-      activeSpinner = null
-    },
-    info(newText?: string) {
-      spinner.info(newText)
-      activeSpinner = null
-    },
     text(newText: string) {
       spinner.text = newText
     },
   }
 }
 
-// 执行异步任务并显示 spinner
 export async function withSpinner<T>(
   text: string,
   task: () => Promise<T>,
@@ -83,13 +71,5 @@ export async function withSpinner<T>(
       typeof options?.failText === 'function' ? options.failText(error) : options?.failText
     spinner.fail(failText ?? error.message)
     throw e
-  }
-}
-
-// 停止当前活跃的 spinner
-export function stopActiveSpinner(): void {
-  if (activeSpinner) {
-    activeSpinner.stop()
-    activeSpinner = null
   }
 }

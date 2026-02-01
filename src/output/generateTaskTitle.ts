@@ -5,6 +5,7 @@
 
 import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
 import { buildGenerateTitleFromWorkflowPrompt } from '../prompts/index.js'
+import { loadConfig } from '../config/loadConfig.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from '../workflow/types.js'
@@ -37,10 +38,13 @@ export function isGenericTitle(title: string): boolean {
  */
 export async function generateTaskTitle(task: Task, workflow: Workflow): Promise<string> {
   const prompt = buildGenerateTitleFromWorkflowPrompt(task, workflow)
+  const config = await loadConfig()
+  const model = config.claude?.model || 'opus'
 
   const result = await invokeClaudeCode({
     prompt,
     mode: 'plan',
+    model,
   })
 
   if (!result.ok) {

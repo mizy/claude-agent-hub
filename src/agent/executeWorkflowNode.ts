@@ -6,7 +6,7 @@
 import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
 import { buildExecuteNodePrompt } from '../prompts/index.js'
 import { getStore } from '../store/index.js'
-import { appendConversation, appendExecutionLog } from '../store/TaskStore.js'
+import { appendConversation, appendExecutionLog } from '../store/TaskLogStore.js'
 import { BUILTIN_PERSONAS } from './persona/builtinPersonas.js'
 import { DEFAULT_PERSONA_NAME } from './getDefaultAgent.js'
 import { personaNeedsMcp } from './persona/personaMcpConfig.js'
@@ -16,8 +16,8 @@ import {
   markNodeRunning,
   markNodeFailed,
   handleNodeResult,
-  updateInstanceVariables,
 } from '../workflow/index.js'
+import { updateInstanceVariables } from '../store/WorkflowStore.js'
 import { createLogger } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { sendReviewNotification } from '../notify/lark.js'
@@ -315,6 +315,10 @@ async function executeTaskNode(
   // const existingSessionId = instance.variables?.claudeSessionId as string | undefined
   const existingSessionId = undefined
 
+  // 从配置读取模型
+  const config = await loadConfig()
+  const model = config.claude?.model || 'opus'
+
   const result = await invokeClaudeCode({
     prompt,
     mode: 'execute',
@@ -322,7 +326,8 @@ async function executeTaskNode(
     stream: true,
     disableMcp,
     sessionId: existingSessionId,
-    timeoutMs: 5 * 60 * 1000, // 10 分钟超时
+    model,
+    timeoutMs: 5 * 60 * 1000, // 5 分钟超时
     onChunk: chunk => {
       // 流式输出到执行日志
       if (logTaskId) {

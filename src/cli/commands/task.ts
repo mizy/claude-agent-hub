@@ -14,7 +14,8 @@ import {
   resumeFailedTask,
   getFailedTasks,
 } from '../../task/resumeTask.js'
-import { getTask, getLogPath, getTaskFolder } from '../../store/TaskStore.js'
+import { getTask, getTaskFolder } from '../../store/TaskStore.js'
+import { getLogPath } from '../../store/TaskLogStore.js'
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
 import { success, error, info, warn } from '../output.js'

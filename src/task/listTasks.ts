@@ -5,9 +5,8 @@ import {
   getTasksByStatus,
   getProcessInfo,
   isProcessRunning,
-  getTaskWorkflow,
-  getTaskInstance,
 } from '../store/TaskStore.js'
+import { getTaskWorkflow, getTaskInstance } from '../store/TaskWorkflowStore.js'
 import type { Task } from '../types/task.js'
 
 export interface ListOptions {

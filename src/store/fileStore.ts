@@ -17,15 +17,19 @@ import {
   getTasksByStatus as _getTasksByStatus,
   updateTask as _updateTask,
   deleteTask as _deleteTask,
+} from './TaskStore.js'
+import {
   saveTaskWorkflow,
   getTaskWorkflow,
   saveTaskInstance,
   getTaskInstance,
+} from './TaskWorkflowStore.js'
+import {
   appendExecutionLog as _appendExecutionLog,
   appendConversation as _appendConversation,
   saveStepOutput as _saveStepOutput,
   type ConversationEntry,
-} from './TaskStore.js'
+} from './TaskLogStore.js'
 import {
   enqueueNode,
   getNextJob,

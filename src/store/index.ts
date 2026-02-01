@@ -16,7 +16,7 @@ export * from './types.js'
 // 泛型文件存储类
 export { FileStore, type FileStoreOptions } from './GenericFileStore.js'
 
-// TaskStore - 任务存储
+// TaskStore - Task CRUD 和进程管理
 export {
   // Task CRUD
   saveTask,
@@ -32,33 +32,47 @@ export {
   createTaskFolder,
   getTaskFolder,
   getTaskFolderByStatus,
-  loadTaskFolder,
-  // Workflow in task folder
-  saveTaskWorkflow,
-  getTaskWorkflow,
-  saveTaskInstance,
-  getTaskInstance,
   // Process info
   saveProcessInfo,
   getProcessInfo,
   updateProcessInfo,
   isProcessRunning,
-  // Step records
-  saveStepOutput,
-  // Logs
-  appendConversation,
-  appendExecutionLog,
-  getLogPath,
-  getOutputPath,
-  getWorkflowPath,
-  getInstancePath,
-  getConversationLogPath,
   // Types
   type TaskSummary,
   type ProcessInfo,
-  type TaskFolder,
-  type ConversationEntry,
 } from './TaskStore.js'
+
+// TaskWorkflowStore - Task 的 Workflow 和 Instance 存储
+export {
+  // Workflow in task folder
+  saveTaskWorkflow,
+  getTaskWorkflow,
+  saveTaskInstance,
+  getTaskInstance,
+  // Path helpers
+  getWorkflowPath,
+  getInstancePath,
+  // Load full folder
+  loadTaskFolder,
+  // Types
+  type TaskFolder,
+} from './TaskWorkflowStore.js'
+
+// TaskLogStore - Task 的日志和步骤输出
+export {
+  // Conversation logging
+  appendConversation,
+  getConversationLogPath,
+  // Execution log
+  appendExecutionLog,
+  // Path helpers
+  getLogPath,
+  getOutputPath,
+  // Step records
+  saveStepOutput,
+  // Types
+  type ConversationEntry,
+} from './TaskLogStore.js'
 
 // 统一存储接口和实现
 export {

@@ -6,8 +6,9 @@
 import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
 import { buildJsonWorkflowPrompt } from '../prompts/index.js'
 import { parseJson, validateJsonWorkflow, extractJson } from '../workflow/index.js'
-import { appendConversation } from '../store/TaskStore.js'
+import { appendConversation } from '../store/TaskLogStore.js'
 import { getStore } from '../store/index.js'
+import { loadConfig } from '../config/loadConfig.js'
 import { createLogger } from '../shared/logger.js'
 import type { AgentContext } from '../types/agent.js'
 import type { Workflow } from '../workflow/types.js'
@@ -31,9 +32,13 @@ export async function generateWorkflow(context: AgentContext): Promise<Workflow>
 
   // 调用 Claude (不传 persona，因为模板中已定义"软件架构师"角色)
   logger.info('调用 Claude 生成执行计划...')
+  const config = await loadConfig()
+  const model = config.claude?.model || 'opus'
+
   const result = await invokeClaudeCode({
     prompt,
     stream: true,
+    model,
   })
 
   if (!result.ok) {

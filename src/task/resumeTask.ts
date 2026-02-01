@@ -14,10 +14,9 @@ import {
   getProcessInfo,
   isProcessRunning,
   updateProcessInfo,
-  getTaskInstance,
-  getTaskWorkflow,
-  appendExecutionLog,
 } from '../store/TaskStore.js'
+import { getTaskInstance, getTaskWorkflow } from '../store/TaskWorkflowStore.js'
+import { appendExecutionLog } from '../store/TaskLogStore.js'
 import { recoverWorkflowInstance } from '../workflow/index.js'
 import { spawnTaskProcess } from './spawnTask.js'
 import type { Task, TaskStatus } from '../types/task.js'

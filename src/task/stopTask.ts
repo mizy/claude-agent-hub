@@ -8,9 +8,9 @@ import {
   updateTask,
   getProcessInfo,
   isProcessRunning,
-  appendExecutionLog,
-  getTaskInstance,
 } from '../store/TaskStore.js'
+import { getTaskInstance } from '../store/TaskWorkflowStore.js'
+import { appendExecutionLog } from '../store/TaskLogStore.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
 

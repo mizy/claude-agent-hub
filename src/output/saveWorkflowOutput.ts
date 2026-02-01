@@ -1,11 +1,15 @@
 /**
  * Save workflow execution output to markdown file
- * Output path: outputs/YYYY-MM-DD/WorkflowName_shortId.md
+ *
+ * Supports two save locations:
+ * - Global outputs: outputs/YYYY-MM-DD/TaskTitle_shortId.md
+ * - Task folder: data/tasks/{taskId}/outputs/result.md
  */
 
 import { mkdir, writeFile } from 'fs/promises'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { createLogger } from '../shared/logger.js'
+import { getResultFilePath } from '../store/paths.js'
 import type { Task } from '../types/task.js'
 import type { Agent } from '../types/agent.js'
 import type { Workflow, WorkflowInstance, NodeState } from '../workflow/types.js'
@@ -21,6 +25,11 @@ export interface WorkflowExecutionResult {
     startedAt: string
     completedAt: string
   }
+}
+
+export interface SaveOptions {
+  /** Save to task folder instead of global outputs directory */
+  toTaskFolder?: boolean
 }
 
 /**
@@ -41,7 +50,7 @@ function sanitizeFilename(name: string): string {
 /**
  * Get output directory for today: outputs/YYYY-MM-DD
  */
-function getOutputDir(): string {
+function getGlobalOutputDir(): string {
   const date = new Date().toISOString().slice(0, 10)
   return join(process.cwd(), 'outputs', date)
 }
@@ -49,7 +58,7 @@ function getOutputDir(): string {
 /**
  * Format duration from milliseconds to human readable
  */
-function formatDuration(ms: number): string {
+export function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000)
   const minutes = Math.floor(seconds / 60)
   const remainingSeconds = seconds % 60
@@ -63,7 +72,7 @@ function formatDuration(ms: number): string {
 /**
  * Calculate total duration from timing
  */
-function calculateTotalDuration(startedAt: string, completedAt: string): string {
+export function calculateTotalDuration(startedAt: string, completedAt: string): string {
   const start = new Date(startedAt).getTime()
   const end = new Date(completedAt).getTime()
   return formatDuration(end - start)
@@ -72,7 +81,7 @@ function calculateTotalDuration(startedAt: string, completedAt: string): string 
 /**
  * Format node state for markdown
  */
-function formatNodeState(nodeId: string, name: string, state: NodeState): string {
+export function formatNodeState(nodeId: string, name: string, state: NodeState): string {
   const statusEmoji = {
     pending: '⏳',
     ready: '🟡',
@@ -122,7 +131,7 @@ function formatNodeState(nodeId: string, name: string, state: NodeState): string
 /**
  * Format workflow execution result as markdown
  */
-function formatWorkflowOutput(result: WorkflowExecutionResult): string {
+export function formatWorkflowOutput(result: WorkflowExecutionResult): string {
   const { task, agent, workflow, instance, timing } = result
 
   // Count node states
@@ -184,20 +193,37 @@ function formatWorkflowOutput(result: WorkflowExecutionResult): string {
 }
 
 /**
- * Save workflow execution output to markdown file
- * @returns The path to the saved file
+ * Get output path based on options
  */
-export async function saveWorkflowOutput(result: WorkflowExecutionResult): Promise<string> {
-  const outputDir = getOutputDir()
+function getOutputPath(result: WorkflowExecutionResult, options: SaveOptions): string {
+  if (options.toTaskFolder) {
+    return getResultFilePath(result.task.id)
+  }
 
-  // Ensure output directory exists
-  await mkdir(outputDir, { recursive: true })
-
-  // Generate filename: TaskTitle_shortId.md
+  // Global outputs directory
+  const outputDir = getGlobalOutputDir()
   const shortId = result.task.id.slice(0, 8)
   const sanitizedTitle = sanitizeFilename(result.task.title)
   const filename = `${sanitizedTitle}_${shortId}.md`
-  const outputPath = join(outputDir, filename)
+  return join(outputDir, filename)
+}
+
+/**
+ * Save workflow execution output to markdown file
+ *
+ * @param result - Workflow execution result
+ * @param options - Save options
+ * @param options.toTaskFolder - If true, save to task folder; otherwise save to global outputs
+ * @returns The path to the saved file
+ */
+export async function saveWorkflowOutput(
+  result: WorkflowExecutionResult,
+  options: SaveOptions = {}
+): Promise<string> {
+  const outputPath = getOutputPath(result, options)
+
+  // Ensure output directory exists
+  await mkdir(dirname(outputPath), { recursive: true })
 
   // Format and write content
   const content = formatWorkflowOutput(result)
@@ -206,3 +232,4 @@ export async function saveWorkflowOutput(result: WorkflowExecutionResult): Promi
   logger.info(`Saved workflow output to ${outputPath}`)
   return outputPath
 }
+

@@ -55,7 +55,7 @@ export function getDefaultConfig(): Config {
       auto_push: false
     },
     claude: {
-      model: 'sonnet',
+      model: 'opus',
       max_tokens: 8000
     }
   }

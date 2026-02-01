@@ -58,6 +58,8 @@ export interface InvokeOptions {
   disableMcp?: boolean
   /** 复用已有会话 ID，加速连续任务 */
   sessionId?: string
+  /** 模型选择: 'opus' | 'sonnet' | 'haiku' 或完整模型名，默认 'opus' */
+  model?: string
 }
 
 export interface InvokeResult {
@@ -108,10 +110,11 @@ export async function invokeClaudeCode(
     onChunk,
     disableMcp = false,
     sessionId,
+    model = 'opus',
   } = options
 
   const fullPrompt = buildPrompt(prompt, persona, mode)
-  const args = buildArgs(fullPrompt, skipPermissions, disableMcp, sessionId, stream)
+  const args = buildArgs(fullPrompt, skipPermissions, disableMcp, sessionId, stream, model)
 
   logger.info(`[${mode ?? 'default'}] 调用 Claude (${fullPrompt.length} chars)${sessionId ? ` [复用会话 ${sessionId.slice(0, 8)}]` : ''} [slots: ${activeCalls}/${MAX_CONCURRENT_CALLS}]`)
   logger.debug(`Prompt: ${truncate(fullPrompt, 100)}`)
@@ -297,13 +300,19 @@ function buildArgs(
   skipPermissions: boolean,
   disableMcp: boolean,
   sessionId?: string,
-  stream?: boolean
+  stream?: boolean,
+  model?: string
 ): string[] {
   const args: string[] = []
 
   // 复用已有会话（跳过部分初始化，加速启动）
   if (sessionId) {
     args.push('--resume', sessionId)
+  }
+
+  // 指定模型
+  if (model) {
+    args.push('--model', model)
   }
 
   args.push('--print')

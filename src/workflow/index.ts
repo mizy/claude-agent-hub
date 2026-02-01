@@ -1,123 +1,96 @@
 /**
  * Workflow 模块统一导出
+ *
+ * 常用 API 从这里导入，完整功能请使用子模块：
+ * - workflow/engine: 引擎核心、状态管理、条件求值
+ * - workflow/queue: 任务队列、Worker
+ * - workflow/parser: Markdown/JSON 解析器
+ * - workflow/types: 完整类型定义
  */
 
-// 类型
-export * from './types.js'
+// ============ 核心类型 ============
 
-// 引擎
+export type {
+  // 基础类型
+  NodeType,
+  NodeStatus,
+  WorkflowStatus,
+  // 主要结构
+  Workflow,
+  WorkflowNode,
+  WorkflowEdge,
+  WorkflowInstance,
+  NodeState,
+  // 配置类型
+  TaskConfig,
+  ConditionConfig,
+  HumanConfig,
+  // 运行时类型
+  NodeJobData,
+  NodeJobResult,
+  EvalContext,
+  ExecuteNodeResult,
+} from './types.js'
+
+// 类型辅助函数
+export {
+  createInitialNodeState,
+  createInitialInstance,
+} from './types.js'
+
+// ============ 引擎核心 ============
+
+// Workflow 创建和启动
 export {
   createWorkflow,
   startWorkflow,
-  getNextNodes,
-  canExecuteNode,
-  getReadyNodes,
   handleNodeResult,
-  handleParallelGateway,
-  handleJoinGateway,
-  approveHumanNode,
-  rejectHumanNode,
 } from './engine/WorkflowEngine.js'
 
-// 状态管理
+// 状态管理（常用）
 export {
-  startWorkflowInstance,
-  pauseWorkflowInstance,
-  resumeWorkflowInstance,
-  completeWorkflowInstance,
-  failWorkflowInstance,
-  cancelWorkflowInstance,
   recoverWorkflowInstance,
-  markNodeReady,
   markNodeRunning,
   markNodeDone,
   markNodeFailed,
-  markNodeSkipped,
-  isNodeCompleted,
-  isNodeRunnable,
-  getActiveNodes,
-  getPendingNodes,
-  getCompletedNodes,
-  getFailedNodes,
-  checkWorkflowCompletion,
   getWorkflowProgress,
 } from './engine/StateManager.js'
 
-// 条件求值
-export {
-  evaluateCondition,
-  validateExpression,
-  extractVariables,
-} from './engine/ConditionEvaluator.js'
+// ============ 存储 ============
 
-// 存储
 export {
   saveWorkflow,
   getWorkflow,
-  getAllWorkflows,
-  deleteWorkflow,
   createInstance,
   saveInstance,
   getInstance,
-  getInstancesByWorkflow,
-  getInstancesByStatus,
-  getAllInstances,
-  updateInstanceStatus,
   updateNodeState,
   setNodeOutput,
-  incrementLoopCount,
-  resetNodeState,
-  updateInstanceVariables,
 } from '../store/WorkflowStore.js'
 
-// 队列（SQLite-based）
+// ============ 队列（常用） ============
+
 export {
   enqueueNode,
   enqueueNodes,
   getQueueStats,
-  drainQueue,
   closeQueue,
-  removeWorkflowJobs,
-  getNextJob,
-  completeJob,
-  failJob,
-  getWaitingJobs,
-  cleanupOldJobs,
 } from './queue/WorkflowQueue.js'
 
 // Worker
 export {
   createNodeWorker,
-  getNodeWorker,
   startWorker,
-  pauseWorker,
-  resumeWorker,
   closeWorker,
   isWorkerRunning,
   type NodeProcessor,
   type WorkerOptions,
 } from './queue/NodeWorker.js'
 
-// 解析器
-export {
-  parseMarkdown,
-  validateMarkdown,
-} from './parser/parseMarkdown.js'
+// ============ 解析器 ============
 
 export {
   parseJson,
   validateJsonWorkflow,
   extractJson,
 } from './parser/parseJson.js'
-
-// 新节点执行器
-export {
-  evaluateExpression,
-  executeDelayNode,
-  executeScheduleNode,
-  executeSwitchNode,
-  executeAssignNode,
-  executeScriptNode,
-  executeLoopNode,
-  executeForeachNode,
-} from './engine/executeNewNodes.js'

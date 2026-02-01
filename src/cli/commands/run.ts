@@ -10,11 +10,13 @@ import { readFile } from 'fs/promises'
 import { resolve } from 'path'
 import chalk from 'chalk'
 import {
-  parseMarkdown,
-  validateMarkdown,
   saveWorkflow,
   startWorkflow,
 } from '../../workflow/index.js'
+import {
+  parseMarkdown,
+  validateMarkdown,
+} from '../../workflow/parser.js'
 import { createTask } from '../../task/createTask.js'
 import { success, error, info } from '../output.js'
 import { withSpinner } from '../spinner.js'

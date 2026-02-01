@@ -21,8 +21,8 @@ import { registerTaskCommands } from './commands/task.js'
 import { registerDaemonCommands } from './commands/daemon.js'
 import { registerReportCommands } from './commands/report.js'
 import { registerInitCommand } from './commands/init.js'
-import { runTasks } from '../agent/runTasks.js'
 import { runAgentForTask } from '../agent/runAgentForTask.js'
+import { runAgent } from '../agent/runAgent.js'
 import { getOrCreateDefaultAgent } from '../agent/getDefaultAgent.js'
 import { getStore } from '../store/index.js'
 // TODO: 支持前台模式的流式输出 (stream option in invokeClaudeCode)
@@ -120,7 +120,8 @@ program
   .action(async () => {
     try {
       info('Starting task execution...')
-      await runTasks()
+      const agent = await getOrCreateDefaultAgent()
+      await runAgent(agent.name)
       success('Task execution completed')
     } catch (err) {
       error(`Execution failed: ${err instanceof Error ? err.message : String(err)}`)

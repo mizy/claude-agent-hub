@@ -12,9 +12,9 @@ import { createLogger } from '../shared/logger.js'
 import {
   createTaskFolder,
   saveProcessInfo,
-  getLogPath,
   type ProcessInfo,
 } from '../store/TaskStore.js'
+import { getLogPath } from '../store/TaskLogStore.js'
 
 const logger = createLogger('spawn-task')
 

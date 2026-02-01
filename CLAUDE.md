@@ -1,102 +1,96 @@
 # Claude Agent Hub
 
-## 项目概述
-基于 Claude Code CLI 的 AI 任务调度系统，通过 Workflow 引擎自动分析、规划和执行开发任务。
+基于 Claude Code CLI 的自举式 AI 任务系统。可以用自己来维护和开发自己。
+
+## 核心命令
+
+```bash
+cah "任务描述"           # 创建并执行任务
+cah "任务描述" -F        # 前台运行（可看日志）
+cah "任务描述" --no-run  # 仅创建不执行
+cah task list            # 查看任务列表
+cah task logs <id> -f    # 实时查看任务日志
+cah task resume <id>     # 恢复中断的任务
+```
 
 ## 架构
 
 ```
 src/
-├── cli/                    # CLI 命令入口
+├── cli/                    # CLI 入口
 │   ├── index.ts           # @entry 主入口
-│   ├── output.ts          # 统一输出格式
-│   └── commands/          # 子命令 (task, workflow, agent, daemon)
+│   └── commands/          # 子命令 (task, agent, daemon, report)
 │
-├── agent/                  # Agent 核心逻辑
+├── agent/                  # Agent 核心
 │   ├── runAgentForTask.ts # 任务执行入口
-│   ├── generateWorkflow.ts # 生成 Workflow
-│   ├── executeWorkflowNode.ts # 执行节点
-│   └── persona/           # Agent 人格配置
+│   ├── generateWorkflow.ts # AI 生成 Workflow
+│   └── executeWorkflowNode.ts # 执行节点
 │
-├── workflow/               # Workflow 引擎
+├── workflow/               # Workflow 引擎 (内部使用)
 │   ├── types.ts           # 类型定义
-│   ├── engine/            # 状态管理、条件求值、节点执行
-│   ├── queue/             # NodeWorker, WorkflowQueue
-│   ├── parser/            # JSON/Markdown 解析
-│   └── store/             # Workflow 存储
+│   ├── engine/            # 状态管理、节点执行
+│   └── queue/             # NodeWorker, WorkflowQueue
 │
 ├── claude/                 # Claude Code 集成
-│   └── invokeClaudeCode.ts # Claude CLI 调用 (返回 Result 类型)
+│   └── invokeClaudeCode.ts # CLI 调用封装
 │
 ├── task/                   # 任务管理
 │   ├── createTaskWithFolder.ts
-│   ├── listTasks.ts
-│   └── resumeTask.ts
+│   ├── resumeTask.ts
+│   └── stopTask.ts
 │
-├── store/                  # 数据存储 (文件系统)
-│   ├── TaskStore.ts       # 任务文件存储
-│   └── fileStore.ts       # Agent 存储
+├── store/                  # 文件存储
+│   ├── TaskStore.ts       # 任务存储
+│   ├── WorkflowStore.ts   # Workflow 存储
+│   └── paths.ts           # 路径常量
 │
-├── notify/                 # 通知系统
-│   └── lark.ts            # 飞书通知
-│
-├── shared/                 # 公共基础设施
-│   ├── result.ts          # Result<T, E> 类型
-│   ├── logger.ts          # 日志系统
-│   └── time.ts            # 时间处理
-│
-├── scheduler/              # 调度核心
-│   ├── startDaemon.ts     # 守护进程
-│   └── worker.ts          # Worker 抽象
-│
-└── prompts/                # Prompt 模板
-    └── taskPrompts.ts
+└── shared/                 # 公共模块
+    ├── result.ts          # Result<T, E> 类型
+    └── logger.ts          # 日志
 ```
 
-## 核心模块
+## 数据结构
 
-### workflow/ - Workflow 引擎
-- 支持多种节点类型：task, delay, schedule, loop, foreach, switch, assign, script, human, parallel, join
-- 基于 DAG 的执行引擎
-- 表达式求值 (expr-eval)
+```
+data/tasks/
+└── task-20260201-HHMMSS-xxx/
+    ├── task.json          # 任务元数据
+    ├── workflow.json      # 生成的 workflow
+    ├── instance.json      # 执行状态
+    ├── process.json       # 进程信息
+    └── logs/
+        └── execution.log  # 执行日志
+```
 
-### claude/ - Claude Code 调用
-- `invokeClaudeCode()`: 返回 `Result<InvokeResult, InvokeError>`
-- 支持流式输出 (`stream: true`)
-- 自动跳过权限确认 (`--dangerously-skip-permissions`)
+## 任务执行流程
 
-### store/ - 数据存储
-- 文件系统存储，无需数据库
-- 任务按状态组织：`data/tasks/{status}/task-{id}/`
-- 每个任务独立文件夹，包含 task.json, workflow.json, instance.json
-
-## 命名约定
-- 文件名: 动词 + 名词 (`createTask.ts`, `executeNode.ts`)
-- 函数: 动词 + 名词 (`createTask`, `executeNode`)
-- `@entry` 标记主入口点
+1. `cah "描述"` → 创建 task 文件夹
+2. AI 分析任务 → 生成 workflow.json
+3. NodeWorker 执行节点 → 调用 Claude Code
+4. 结果写入 instance.json
 
 ## 关键文件
-- `src/cli/index.ts`: @entry CLI 主入口
-- `src/agent/runAgentForTask.ts`: 任务执行流程
-- `src/agent/generateWorkflow.ts`: 生成 JSON Workflow
-- `src/agent/executeWorkflowNode.ts`: 执行单个节点
-- `src/claude/invokeClaudeCode.ts`: Claude CLI 调用
-- `src/workflow/types.ts`: Workflow 类型定义
-- `src/workflow/engine/executeNewNodes.ts`: 新节点执行器
 
-## 技术栈
-- Node.js 20+, TypeScript 5.5+
-- Commander.js (CLI)
-- execa (进程)
-- expr-eval (表达式求值)
-- zod (配置验证)
-- chalk/ora (终端 UI)
+| 文件 | 作用 |
+|------|------|
+| `cli/index.ts` | CLI 主入口 |
+| `agent/runAgentForTask.ts` | 任务执行主流程 |
+| `agent/generateWorkflow.ts` | AI 生成 Workflow |
+| `claude/invokeClaudeCode.ts` | Claude CLI 封装 |
+| `store/TaskStore.ts` | 任务文件操作 |
 
-## 开发命令
+## 开发
+
 ```bash
-npm run dev          # 开发模式
-npm run build        # 构建
-npm run lint         # ESLint 检查
-npm run typecheck    # 类型检查
-npm test             # 运行测试
+npm run dev       # 开发模式
+npm run build     # 构建
+npm run lint      # Lint
+npm run typecheck # 类型检查
+npm test          # 测试
 ```
+
+## 命名规范
+
+- 文件: 动词+名词 (`createTask.ts`)
+- 函数: 动词+名词 (`createTask()`)
+- `@entry` 标记入口点

@@ -1,19 +1,12 @@
 /**
- * Task Store - 平铺结构的任务文件夹存储
+ * Task Store - Task CRUD 和进程管理
  *
  * 目录结构:
  * data/tasks/
  * └── task-20260131-HHMMSS-xxx/
- *     ├── task.json                       # 任务元数据 (包含 status)
- *     ├── workflow.json                   # 生成的 workflow
- *     ├── instance.json                   # workflow 实例状态
- *     ├── process.json                    # 后台进程信息
- *     ├── logs/
- *     │   └── execution.log
- *     ├── outputs/
- *     │   └── result.md
- *     └── steps/
- *         └── step-{n}.json
+ *     ├── task.json        # 任务元数据 (包含 status)
+ *     ├── process.json     # 后台进程信息
+ *     └── ...
  *
  * 注意：不再使用 index.json 缓存，直接扫描文件夹
  */
@@ -23,24 +16,17 @@ import { join } from 'path'
 import { format } from 'date-fns'
 import { createLogger } from '../shared/logger.js'
 import type { Task, TaskStatus } from '../types/task.js'
-import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 import {
   DATA_DIR,
   TASKS_DIR,
   TASK_FILE,
-  WORKFLOW_FILE,
-  INSTANCE_FILE,
   PROCESS_FILE,
   getTaskDir,
   getTaskLogsDir,
   getTaskOutputsDir,
   getTaskStepsDir,
-  getExecutionLogPath,
-  getConversationLogFilePath,
-  getResultFilePath,
-  getStepFilePath,
 } from './paths.js'
-import { readJson, writeJson, appendToFile, ensureDirs } from './json.js'
+import { readJson, writeJson, ensureDirs } from './json.js'
 
 const logger = createLogger('task-store')
 
@@ -76,16 +62,6 @@ export interface ProcessInfo {
   error?: string
 }
 
-// Task folder contents
-export interface TaskFolder {
-  path: string
-  taskId: string
-  task: Task
-  workflow?: Workflow
-  instance?: WorkflowInstance
-  process?: ProcessInfo
-}
-
 // Ensure directories exist
 function initDirs(): void {
   ensureDirs(DATA_DIR, TASKS_DIR)
@@ -111,13 +87,12 @@ function scanTaskFolders(): string[] {
 }
 
 // Generate task ID: task-{YYYYMMDD}-{HHMMSS}-{random}
-// Example: task-20260131-094532-a3f
 export function generateTaskId(_title: string): string {
   initDirs()
   const now = new Date()
   const date = format(now, 'yyyyMMdd')
   const time = format(now, 'HHmmss')
-  const random = Math.random().toString(36).slice(2, 5) // 3 char random
+  const random = Math.random().toString(36).slice(2, 5)
 
   const baseId = `task-${date}-${time}-${random}`
 
@@ -129,7 +104,7 @@ export function generateTaskId(_title: string): string {
   return baseId
 }
 
-// Create task folder structure (flat structure, no status subdirectories)
+// Create task folder structure
 export function createTaskFolder(taskId: string, _status?: TaskStatus): string {
   initDirs()
   const taskDir = getTaskDir(taskId)
@@ -140,7 +115,14 @@ export function createTaskFolder(taskId: string, _status?: TaskStatus): string {
   return taskDir
 }
 
-// Get task folder path (flat structure)
+// Find task by partial ID
+function findTaskByPartialId(partialId: string): string | null {
+  const folders = scanTaskFolders()
+  const match = folders.find(f => f.startsWith(partialId) || f.includes(partialId))
+  return match || null
+}
+
+// Get task folder path
 export function getTaskFolder(taskId: string): string | null {
   initDirs()
 
@@ -159,14 +141,14 @@ export function getTaskFolder(taskId: string): string | null {
   return null
 }
 
-// Get task folder path (for compatibility, status is ignored in flat structure)
+// Get task folder path (for compatibility, status is ignored)
 export function getTaskFolderByStatus(taskId: string, _status: TaskStatus): string {
   return getTaskDir(taskId)
 }
 
 // ============ Task CRUD ============
 
-// Save task (flat structure)
+// Save task
 export function saveTask(task: Task): void {
   initDirs()
 
@@ -193,13 +175,6 @@ export function getTask(taskId: string): Task | null {
   return readJson<Task>(join(taskDir, TASK_FILE))
 }
 
-// Find task by partial ID
-function findTaskByPartialId(partialId: string): string | null {
-  const folders = scanTaskFolders()
-  const match = folders.find(f => f.startsWith(partialId) || f.includes(partialId))
-  return match || null
-}
-
 // Get all tasks (直接扫描文件夹)
 export function getAllTasks(): Task[] {
   const folders = scanTaskFolders()
@@ -214,12 +189,12 @@ export function getAllTasks(): Task[] {
   return tasks
 }
 
-// 获取任务摘要列表 (扫描文件夹)
+// 获取任务摘要列表
 export function getAllTaskSummaries(): TaskSummary[] {
   return getAllTasks().map(toSummary)
 }
 
-// Get tasks by status (扫描文件夹并过滤)
+// Get tasks by status
 export function getTasksByStatus(status: TaskStatus): Task[] {
   return getAllTasks().filter(t => t.status === status)
 }
@@ -248,43 +223,6 @@ export function deleteTask(taskId: string): void {
     rmSync(taskDir, { recursive: true, force: true })
     logger.debug(`Deleted task folder: ${taskDir}`)
   }
-}
-
-// ============ Workflow in Task Folder ============
-
-// Save workflow to task folder
-export function saveTaskWorkflow(taskId: string, workflow: Workflow): void {
-  const taskDir = getTaskFolder(taskId)
-  if (!taskDir) {
-    logger.warn(`Task folder not found for: ${taskId}`)
-    return
-  }
-  writeJson(join(taskDir, WORKFLOW_FILE), workflow)
-  logger.debug(`Saved workflow for task: ${taskId}`)
-}
-
-// Get workflow from task folder
-export function getTaskWorkflow(taskId: string): Workflow | null {
-  const taskDir = getTaskFolder(taskId)
-  if (!taskDir) return null
-  return readJson<Workflow>(join(taskDir, WORKFLOW_FILE))
-}
-
-// Save workflow instance to task folder
-export function saveTaskInstance(taskId: string, instance: WorkflowInstance): void {
-  const taskDir = getTaskFolder(taskId)
-  if (!taskDir) {
-    logger.warn(`Task folder not found for: ${taskId}`)
-    return
-  }
-  writeJson(join(taskDir, INSTANCE_FILE), instance)
-}
-
-// Get workflow instance from task folder
-export function getTaskInstance(taskId: string): WorkflowInstance | null {
-  const taskDir = getTaskFolder(taskId)
-  if (!taskDir) return null
-  return readJson<WorkflowInstance>(join(taskDir, INSTANCE_FILE))
 }
 
 // ============ Process Info ============
@@ -322,131 +260,6 @@ export function isProcessRunning(pid: number): boolean {
   } catch {
     return false
   }
-}
-
-// ============ Step Records ============
-
-// Save step output
-export function saveStepOutput(taskId: string, stepNumber: number, output: unknown): void {
-  const taskDir = getTaskFolder(taskId)
-  if (!taskDir) return
-  writeJson(getStepFilePath(taskId, stepNumber), output)
-}
-
-// ============ Logs ============
-
-// Get log file path
-export function getLogPath(taskId: string): string {
-  return getExecutionLogPath(taskId)
-}
-
-// Get output file path
-export function getOutputPath(taskId: string): string {
-  return getResultFilePath(taskId)
-}
-
-// Get workflow file path
-export function getWorkflowPath(taskId: string): string {
-  return join(getTaskDir(taskId), WORKFLOW_FILE)
-}
-
-// Get instance file path
-export function getInstancePath(taskId: string): string {
-  return join(getTaskDir(taskId), INSTANCE_FILE)
-}
-
-// ============ Load Full Task Folder ============
-
-// Load complete task folder
-export function loadTaskFolder(taskId: string): TaskFolder | null {
-  const task = getTask(taskId)
-  if (!task) return null
-
-  const taskDir = getTaskFolder(taskId)
-  if (!taskDir) return null
-
-  return {
-    path: taskDir,
-    taskId: taskId,
-    task,
-    workflow: getTaskWorkflow(taskId) || undefined,
-    instance: getTaskInstance(taskId) || undefined,
-    process: getProcessInfo(taskId) || undefined,
-  }
-}
-
-// ============ Conversation Logging ============
-
-export interface ConversationEntry {
-  timestamp: string
-  phase: 'planning' | 'executing'
-  nodeId?: string
-  nodeName?: string
-  prompt: string
-  response: string
-  durationMs: number
-  /** API 耗时毫秒数 */
-  durationApiMs?: number
-  /** 花费 USD */
-  costUsd?: number
-}
-
-// Append conversation entry to task logs
-export function appendConversation(taskId: string, entry: ConversationEntry): void {
-  const logDir = getTaskLogsDir(taskId)
-  if (!existsSync(logDir)) {
-    mkdirSync(logDir, { recursive: true })
-  }
-
-  const logPath = getConversationLogFilePath(taskId)
-  const separator = '\n' + '='.repeat(80) + '\n'
-
-  const logContent = [
-    separator,
-    `[${entry.timestamp}] Phase: ${entry.phase}`,
-    entry.nodeId ? `Node: ${entry.nodeId} (${entry.nodeName || 'unnamed'})` : '',
-    `Duration: ${entry.durationMs}ms`,
-    '',
-    '--- PROMPT ---',
-    entry.prompt,
-    '',
-    '--- RESPONSE ---',
-    entry.response,
-    separator,
-  ].filter(Boolean).join('\n')
-
-  appendToFile(logPath, logContent)
-  logger.debug(`Logged conversation for task ${taskId}`)
-}
-
-// Get conversation log path
-export function getConversationLogPath(taskId: string): string {
-  return getConversationLogFilePath(taskId)
-}
-
-// ============ Execution Log (for stop/resume/events) ============
-
-/**
- * Append a log entry to the execution log
- * Used for tracking stop/resume and other lifecycle events
- */
-export function appendExecutionLog(taskId: string, message: string): void {
-  const logPath = getExecutionLogPath(taskId)
-  const logDir = getTaskLogsDir(taskId)
-
-  if (!existsSync(logDir)) {
-    mkdirSync(logDir, { recursive: true })
-  }
-
-  const timestamp = new Date().toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-
-  const logLine = `${timestamp} INF ${message}\n`
-  appendToFile(logPath, logLine)
 }
 
 // Initialize on module load
