@@ -15,6 +15,8 @@ import {
   isProcessRunning,
   updateProcessInfo,
   getTaskInstance,
+  getTaskWorkflow,
+  appendExecutionLog,
 } from '../store/TaskStore.js'
 import { recoverWorkflowInstance } from '../workflow/index.js'
 import { spawnTaskProcess } from './spawnTask.js'
@@ -87,6 +89,10 @@ export function detectOrphanedTasks(): OrphanedTask[] {
 /**
  * 恢复单个任务
  * 重新启动后台进程继续执行
+ *
+ * 关键逻辑：
+ * 1. 检查是否已有 workflow - 如果有，使用 resume 模式继续执行
+ * 2. 检查 workflow instance 状态 - 决定从哪个节点继续
  */
 export function resumeTask(taskId: string, agentName?: string): number | null {
   const processInfo = getProcessInfo(taskId)
@@ -97,15 +103,35 @@ export function resumeTask(taskId: string, agentName?: string): number | null {
     return null
   }
 
-  // 获取之前的 agent name
-  const agent = agentName || processInfo?.pid ? 'default' : 'default'
+  // 获取任务信息
+  const task = getTask(taskId)
+  if (!task) {
+    logger.error(`Task not found: ${taskId}`)
+    return null
+  }
+
+  // 获取 agent name
+  const agent = agentName || task.assignee || 'default'
+
+  // 检查是否已有 workflow - 决定是否使用 resume 模式
+  const existingWorkflow = getTaskWorkflow(taskId)
+  const existingInstance = getTaskInstance(taskId)
+  const shouldResume = !!(existingWorkflow && existingInstance)
 
   logger.info(`Resuming task: ${taskId}`)
+  if (shouldResume) {
+    logger.info(`Found existing workflow: ${existingWorkflow!.id}, instance: ${existingInstance!.id}`)
+    logger.info(`Instance status: ${existingInstance!.status}`)
+  }
+
+  // 记录 resume 到执行日志
+  appendExecutionLog(taskId, `[RESUME] Task resumed, mode: ${shouldResume ? 'continue' : 'restart'}`)
 
   // 重新启动后台进程
   const pid = spawnTaskProcess({
     taskId,
     agentName: agent,
+    resume: shouldResume,
   })
 
   logger.info(`Task ${taskId} resumed with PID: ${pid}`)

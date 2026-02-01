@@ -97,17 +97,18 @@ export async function runAgent(agentName: string): Promise<void> {
     // 3. 启动 Workflow
     const startedAt = now()
 
-    // 创建并启动 NodeWorker
+    // 先启动 workflow 获取 instance
+    const instance = await startWorkflow(workflow.id)
+    console.log(`[${agent.name}] Workflow 启动: ${instance.id}`)
+
+    // 创建并启动 NodeWorker（绑定到该 instance，实现队列隔离）
     createNodeWorker({
       concurrency: 1, // Agent 一次只处理一个节点
       pollInterval: POLL_INTERVAL,
       processor: executeNode,
+      instanceId: instance.id,
     })
     await startWorker()
-
-    // 启动 workflow 执行
-    const instance = await startWorkflow(workflow.id)
-    console.log(`[${agent.name}] Workflow 启动: ${instance.id}`)
 
     // 4. 等待 Workflow 完成
     const finalInstance = await waitForWorkflowCompletion(

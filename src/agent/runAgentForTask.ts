@@ -22,13 +22,17 @@ import {
   startWorker,
   closeWorker,
   isWorkerRunning,
+  getReadyNodes,
+  resetNodeState,
+  updateInstanceStatus,
+  enqueueNodes,
 } from '../workflow/index.js'
 import {
   updateTask,
   getTaskWorkflow,
   getTaskInstance,
+  appendExecutionLog,
 } from '../store/TaskStore.js'
-import { enqueueNode } from '../workflow/index.js'
 import { saveWorkflowOutputToTask } from '../output/saveWorkflowOutputToTask.js'
 import { createLogger } from '../shared/logger.js'
 import type { Agent, AgentContext } from '../types/agent.js'
@@ -37,15 +41,18 @@ import type { WorkflowInstance } from '../workflow/types.js'
 
 const logger = createLogger('run-agent')
 
-// 轮询间隔
-const POLL_INTERVAL = 1000
+// 轮询间隔（毫秒）
+const POLL_INTERVAL = 500
+
+// 工作流内节点并发数（parallel 节点可以并行执行）
+const NODE_CONCURRENCY = 3
 
 /**
  * 执行指定任务
  *
  * 流程：
- * 1. 更新任务状态为 planning
- * 2. 生成 Workflow
+ * 1. 检查是否已有 Workflow（支持从中断处继续）
+ * 2. 如果没有 Workflow，更新任务状态为 planning 并生成
  * 3. 保存 Workflow 到任务文件夹
  * 4. 执行 Workflow
  * 5. 保存输出到任务文件夹
@@ -60,30 +67,39 @@ export async function runAgentForTask(agent: Agent, task: Task): Promise<void> {
   store.updateAgent(agent.name, { status: 'working' })
 
   try {
-    // 1. 更新任务状态为 planning
-    updateTask(task.id, {
-      status: 'planning',
-      assignee: agent.name,
-    })
-    logger.info(`[${agent.name}] 任务状态: planning`)
+    // 1. 检查是否已有 Workflow（进程崩溃后恢复的情况）
+    let workflow = getTaskWorkflow(task.id)
 
-    // 2. 生成 Workflow
-    const context: AgentContext = { agent, task }
+    if (workflow) {
+      // 已有 Workflow，跳过 planning 阶段
+      logger.info(`[${agent.name}] 发现已有 Workflow: ${workflow.id}，跳过 planning`)
+      logger.info(`[${agent.name}] Workflow 节点数: ${workflow.nodes.length}`)
+    } else {
+      // 2. 没有 Workflow，更新任务状态为 planning 并生成
+      updateTask(task.id, {
+        status: 'planning',
+        assignee: agent.name,
+      })
+      logger.info(`[${agent.name}] 任务状态: planning`)
 
-    logger.info(`[${agent.name}] 生成执行计划...`)
-    const workflow = await generateWorkflow(context)
+      // 生成 Workflow
+      const context: AgentContext = { agent, task }
 
-    // 3. 设置 taskId 并保存 Workflow（会自动保存到 task 目录）
-    workflow.taskId = task.id
-    saveWorkflow(workflow)
-    logger.info(`[${agent.name}] Workflow 已保存: ${workflow.nodes.length - 2} 个任务节点`)
+      logger.info(`[${agent.name}] 生成执行计划...`)
+      workflow = await generateWorkflow(context)
 
-    // 如果标题是通用的，生成一个描述性标题
-    if (isGenericTitle(task.title)) {
-      const generatedTitle = await generateTaskTitle(task, workflow)
-      task.title = generatedTitle
-      updateTask(task.id, { title: generatedTitle })
-      logger.info(`[${agent.name}] 生成标题: ${generatedTitle}`)
+      // 3. 设置 taskId 并保存 Workflow（会自动保存到 task 目录）
+      workflow.taskId = task.id
+      saveWorkflow(workflow)
+      logger.info(`[${agent.name}] Workflow 已保存: ${workflow.nodes.length - 2} 个任务节点`)
+
+      // 如果标题是通用的，生成一个描述性标题
+      if (isGenericTitle(task.title)) {
+        const generatedTitle = await generateTaskTitle(task, workflow)
+        task.title = generatedTitle
+        updateTask(task.id, { title: generatedTitle })
+        logger.info(`[${agent.name}] 生成标题: ${generatedTitle}`)
+      }
     }
 
     // 4. 更新任务状态为 developing
@@ -96,17 +112,18 @@ export async function runAgentForTask(agent: Agent, task: Task): Promise<void> {
     // 5. 启动 Workflow 执行
     const startedAt = now()
 
-    // 创建并启动 NodeWorker
-    createNodeWorker({
-      concurrency: 1,
-      pollInterval: POLL_INTERVAL,
-      processor: executeNode,
-    })
-    await startWorker()
-
-    // 启动 workflow 执行（使用任务文件夹内的 workflow）
+    // 先启动 workflow 获取 instance，再创建绑定到该 instance 的 worker
     const instance = await startWorkflowFromTask(task.id, workflow)
     logger.info(`[${agent.name}] Workflow 启动: ${instance.id}`)
+
+    // 创建并启动 NodeWorker（绑定到该 instance，实现队列隔离）
+    createNodeWorker({
+      concurrency: NODE_CONCURRENCY,
+      pollInterval: POLL_INTERVAL,
+      processor: executeNode,
+      instanceId: instance.id,
+    })
+    await startWorker()
 
     // 6. 等待 Workflow 完成
     const finalInstance = await waitForWorkflowCompletion(
@@ -248,12 +265,12 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * 恢复失败的任务
+ * 恢复中断/失败的任务
  *
  * 与 runAgentForTask 不同，这个函数：
  * 1. 使用已有的 workflow（不重新生成）
  * 2. 继续执行现有的 instance
- * 3. 从失败点恢复执行
+ * 3. 从上次停止的节点继续执行
  */
 export async function resumeAgentForTask(agent: Agent, task: Task): Promise<void> {
   const store = getStore()
@@ -262,7 +279,7 @@ export async function resumeAgentForTask(agent: Agent, task: Task): Promise<void
 
   // 获取已有的 workflow 和 instance
   const workflow = getTaskWorkflow(task.id)
-  const instance = getTaskInstance(task.id)
+  let instance = getTaskInstance(task.id)
 
   if (!workflow) {
     throw new Error(`No workflow found for task: ${task.id}`)
@@ -275,6 +292,9 @@ export async function resumeAgentForTask(agent: Agent, task: Task): Promise<void
   logger.info(`[${agent.name}] 找到 Workflow: ${workflow.id}`)
   logger.info(`[${agent.name}] Instance 状态: ${instance.status}`)
 
+  // 记录 resume 到执行日志
+  appendExecutionLog(task.id, `[RESUME] Resuming from instance status: ${instance.status}`)
+
   // 更新 Agent 状态
   store.updateAgent(agent.name, { status: 'working' })
 
@@ -285,32 +305,57 @@ export async function resumeAgentForTask(agent: Agent, task: Task): Promise<void
 
     const startedAt = now()
 
-    // 创建并启动 NodeWorker
+    // 1. 重置所有 running 状态的节点为 pending（它们被中断了）
+    const runningNodes = Object.entries(instance.nodeStates)
+      .filter(([, state]) => state.status === 'running')
+      .map(([nodeId]) => nodeId)
+
+    if (runningNodes.length > 0) {
+      logger.info(`[${agent.name}] 重置被中断的节点: ${runningNodes.join(', ')}`)
+      for (const nodeId of runningNodes) {
+        resetNodeState(instance.id, nodeId)
+      }
+      appendExecutionLog(task.id, `[RESUME] Reset interrupted nodes: ${runningNodes.join(', ')}`)
+    }
+
+    // 2. 如果 instance 状态不是 running，更新为 running
+    if (instance.status !== 'running') {
+      updateInstanceStatus(instance.id, 'running')
+      logger.info(`[${agent.name}] 更新 instance 状态为 running`)
+    }
+
+    // 重新获取更新后的 instance
+    instance = getInstance(instance.id)!
+
+    // 创建并启动 NodeWorker（绑定到该 instance，实现队列隔离）
     createNodeWorker({
-      concurrency: 1,
+      concurrency: NODE_CONCURRENCY,
       pollInterval: POLL_INTERVAL,
       processor: executeNode,
+      instanceId: instance.id,
     })
     await startWorker()
 
-    // 找到需要重新执行的节点并入队
-    // instance.status 应该已经被 recoverWorkflowInstance 设为 running
-    // 失败的节点也应该被重置
-    const pendingNodes = Object.entries(instance.nodeStates)
-      .filter(([_, state]) => state.status === 'pending' && state.attempts === 0)
-      .map(([nodeId]) => nodeId)
+    // 3. 获取所有可执行的节点并入队
+    const readyNodes = getReadyNodes(workflow, instance)
 
-    if (pendingNodes.length > 0) {
-      // 只入队第一个 pending 节点（通常是循环节点）
-      const nodeToResume = pendingNodes[0]!
-      logger.info(`[${agent.name}] 恢复节点: ${nodeToResume}`)
+    if (readyNodes.length > 0) {
+      logger.info(`[${agent.name}] 恢复执行节点: ${readyNodes.join(', ')}`)
+      appendExecutionLog(task.id, `[RESUME] Enqueuing ready nodes: ${readyNodes.join(', ')}`)
 
-      await enqueueNode({
-        workflowId: workflow.id,
-        instanceId: instance.id,
-        nodeId: nodeToResume,
-        attempt: 1,
-      })
+      await enqueueNodes(
+        readyNodes.map(nodeId => ({
+          data: {
+            workflowId: workflow.id,
+            instanceId: instance!.id,
+            nodeId,
+            attempt: 1,
+          },
+        }))
+      )
+    } else {
+      logger.warn(`[${agent.name}] 没有可执行的节点`)
+      appendExecutionLog(task.id, `[RESUME] Warning: No ready nodes found`)
     }
 
     // 等待 Workflow 完成

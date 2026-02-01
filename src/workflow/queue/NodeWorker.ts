@@ -4,7 +4,7 @@
  */
 
 import { getNextJob, completeJob, failJob, markJobFailed, markJobWaiting, enqueueNode } from './WorkflowQueue.js'
-import { getInstance } from '../store/WorkflowStore.js'
+import { getInstance } from '../../store/WorkflowStore.js'
 import { failWorkflowInstance, markNodeWaiting } from '../engine/StateManager.js'
 import { createLogger } from '../../shared/logger.js'
 import type { NodeJobData, NodeJobResult } from '../types.js'
@@ -20,6 +20,7 @@ export interface WorkerOptions {
   concurrency?: number
   pollInterval?: number  // 轮询间隔，毫秒
   processor: NodeProcessor
+  instanceId?: string    // 绑定到特定 instance，实现队列隔离
 }
 
 interface WorkerState {
@@ -51,9 +52,14 @@ export function createNodeWorker(options: WorkerOptions): void {
     concurrency: options.concurrency ?? 5,
     pollInterval: options.pollInterval ?? 1000,
     processor: options.processor,
+    instanceId: options.instanceId,
   }
 
-  logger.info(`Worker created with concurrency: ${workerOptions.concurrency}`)
+  if (workerOptions.instanceId) {
+    logger.info(`Worker created with concurrency: ${workerOptions.concurrency}, bound to instance: ${workerOptions.instanceId}`)
+  } else {
+    logger.info(`Worker created with concurrency: ${workerOptions.concurrency} (global, no instance filter)`)
+  }
 }
 
 /**
@@ -99,8 +105,8 @@ async function pollForJobs(): Promise<void> {
     return
   }
 
-  // 获取下一个任务
-  const job = getNextJob()
+  // 获取下一个任务（只获取绑定 instance 的任务）
+  const job = getNextJob(workerOptions.instanceId)
 
   if (job) {
     // 异步处理任务，不阻塞轮询

@@ -18,7 +18,7 @@ const logger = createLogger('workflow-gen')
  * 根据任务生成 Workflow (JSON 格式)
  */
 export async function generateWorkflow(context: AgentContext): Promise<Workflow> {
-  const { agent, task } = context
+  const { task } = context
 
   // 获取可用 agent 列表（完整对象，包含能力描述）
   const store = getStore()
@@ -29,11 +29,10 @@ export async function generateWorkflow(context: AgentContext): Promise<Workflow>
   const prompt = buildJsonWorkflowPrompt(task, availableAgents)
   logger.debug(`Prompt 长度: ${prompt.length} 字符`)
 
-  // 调用 Claude (不使用 mode，避免触发 Claude Code 的 Plan Mode)
+  // 调用 Claude (不传 persona，因为模板中已定义"软件架构师"角色)
   logger.info('调用 Claude 生成执行计划...')
   const result = await invokeClaudeCode({
     prompt,
-    persona: agent.personaConfig,
     stream: true,
   })
 
@@ -54,8 +53,16 @@ export async function generateWorkflow(context: AgentContext): Promise<Workflow>
     prompt: invokeResult.prompt,
     response: invokeResult.response,
     durationMs: invokeResult.durationMs,
+    durationApiMs: invokeResult.durationApiMs,
+    costUsd: invokeResult.costUsd,
   })
   logger.debug('对话已保存到任务日志')
+
+  // 保存 Claude 会话 ID，供后续节点复用（加速执行）
+  const claudeSessionId = invokeResult.sessionId
+  if (claudeSessionId) {
+    logger.debug(`Claude session: ${claudeSessionId.slice(0, 8)}...`)
+  }
 
   // 提取 JSON 内容
   logger.info('解析 JSON Workflow...')
@@ -80,11 +87,12 @@ export async function generateWorkflow(context: AgentContext): Promise<Workflow>
   const workflow = parseJson(jsonContent)
   logger.info(`Workflow 解析完成: ${workflow.nodes.length} 个节点`)
 
-  // 关联任务信息
+  // 关联任务信息和 Claude 会话
   workflow.variables = {
     ...workflow.variables,
     taskId: task.id,
     taskTitle: task.title,
+    claudeSessionId, // 复用会话加速后续执行
   }
 
   // 打印节点摘要

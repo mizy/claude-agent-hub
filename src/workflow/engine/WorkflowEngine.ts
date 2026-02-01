@@ -13,7 +13,7 @@ import {
   incrementLoopCount,
   resetNodeState,
   saveInstance,
-} from '../store/WorkflowStore.js'
+} from '../../store/WorkflowStore.js'
 import {
   startWorkflowInstance,
   markNodeDone,

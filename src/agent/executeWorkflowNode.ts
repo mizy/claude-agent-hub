@@ -6,7 +6,7 @@
 import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
 import { buildExecuteNodePrompt } from '../prompts/index.js'
 import { getStore } from '../store/index.js'
-import { appendConversation } from '../store/TaskStore.js'
+import { appendConversation, appendExecutionLog } from '../store/TaskStore.js'
 import { BUILTIN_PERSONAS } from './persona/builtinPersonas.js'
 import { DEFAULT_PERSONA_NAME } from './getDefaultAgent.js'
 import { personaNeedsMcp } from './persona/personaMcpConfig.js'
@@ -30,7 +30,14 @@ import {
   executeLoopNode,
   executeForeachNode,
 } from '../workflow/engine/executeNewNodes.js'
-import type { NodeJobData, NodeJobResult, Workflow, WorkflowNode, WorkflowInstance, EvalContext } from '../workflow/types.js'
+import type {
+  NodeJobData,
+  NodeJobResult,
+  Workflow,
+  WorkflowNode,
+  WorkflowInstance,
+  EvalContext,
+} from '../workflow/types.js'
 import type { Agent } from '../types/agent.js'
 
 const logger = createLogger('execute-node')
@@ -280,7 +287,7 @@ async function executeTaskNode(
   node: WorkflowNode,
   workflow: Workflow,
   instance: WorkflowInstance
-): Promise<{ success: boolean; output?: unknown; error?: string }> {
+): Promise<{ success: boolean; output?: unknown; error?: string; sessionId?: string }> {
   if (!node.task) {
     return { success: false, error: 'Task config missing' }
   }
@@ -300,12 +307,29 @@ async function executeTaskNode(
   // 不需要外部集成的角色禁用 MCP，加速启动
   const disableMcp = !personaNeedsMcp(agent.persona)
 
+  // 获取 taskId 用于日志写入
+  const logTaskId = instance.variables?.taskId as string | undefined
+
+  // 复用已有 Claude 会话（加速连续任务）
+  // 暂时禁用会话复用以排查问题
+  // const existingSessionId = instance.variables?.claudeSessionId as string | undefined
+  const existingSessionId = undefined
+
   const result = await invokeClaudeCode({
     prompt,
     mode: 'execute',
     persona: agent.personaConfig,
     stream: true,
     disableMcp,
+    sessionId: existingSessionId,
+    timeoutMs: 5 * 60 * 1000, // 10 分钟超时
+    onChunk: chunk => {
+      // 流式输出到执行日志
+      if (logTaskId) {
+        appendExecutionLog(logTaskId, chunk)
+      }
+      process.stdout.write(chunk)
+    },
   })
 
   if (!result.ok) {
@@ -313,6 +337,13 @@ async function executeTaskNode(
       success: false,
       error: result.error.message,
     }
+  }
+
+  // 保存 sessionId 供后续节点复用
+  const newSessionId = result.value.sessionId
+  if (newSessionId && newSessionId !== existingSessionId) {
+    await updateInstanceVariables(instance.id, { claudeSessionId: newSessionId })
+    logger.debug(`Saved Claude session: ${newSessionId.slice(0, 8)}...`)
   }
 
   // 记录 AI 对话到任务日志
@@ -326,12 +357,15 @@ async function executeTaskNode(
       prompt: result.value.prompt,
       response: result.value.response,
       durationMs: result.value.durationMs,
+      durationApiMs: result.value.durationApiMs,
+      costUsd: result.value.costUsd,
     })
   }
 
   return {
     success: true,
     output: result.value.response,
+    sessionId: newSessionId,
   }
 }
 
@@ -399,7 +433,7 @@ function buildEvalContext(instance: WorkflowInstance): EvalContext {
   return {
     outputs: instance.outputs,
     variables: instance.variables,
-    loopCount: 0,  // 将由具体节点设置
+    loopCount: 0, // 将由具体节点设置
     nodeStates: instance.nodeStates,
   }
 }

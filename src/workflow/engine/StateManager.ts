@@ -10,7 +10,7 @@ import {
   updateInstanceStatus,
   updateNodeState,
   setNodeOutput,
-} from '../store/WorkflowStore.js'
+} from '../../store/WorkflowStore.js'
 import type {
   WorkflowInstance,
   NodeState,
@@ -125,7 +125,7 @@ export async function recoverWorkflowInstance(instanceId: string): Promise<{
   updatedInstance.error = undefined
 
   // 保存更新
-  const { saveInstance } = await import('../store/WorkflowStore.js')
+  const { saveInstance } = await import('../../store/WorkflowStore.js')
   saveInstance(updatedInstance)
 
   logger.info(`Workflow instance recovered: ${instanceId}, will retry node: ${failedNodeId}`)

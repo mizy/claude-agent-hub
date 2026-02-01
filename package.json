@@ -16,8 +16,8 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "test": "vitest",
-    "test:run": "vitest run",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
@@ -25,7 +25,8 @@
     "claude",
     "agent",
     "automation",
-    "cli"
+    "cli",
+    "bootstrap"
   ],
   "author": "",
   "license": "MIT",
@@ -33,7 +34,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "better-sqlite3": "^11.1.2",
+    "@larksuiteoapi/node-sdk": "^1.58.0",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "conf": "^13.0.1",
@@ -50,7 +51,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.6.0",
-    "@types/better-sqlite3": "^7.6.11",
     "@types/inquirer": "^9.0.7",
     "@types/marked": "^5.0.2",
     "@types/node": "^20.14.10",

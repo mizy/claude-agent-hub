@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @bootstrap - 自举能力已验证 2026-02-01
 /**
  * @entry Claude Agent Hub CLI 主入口
  *

@@ -1,19 +1,18 @@
 /**
  * Workflow 任务队列
- * 基于 SQLite 实现，无需外部依赖
+ * 基于 JSON 文件实现
  */
 
-import Database from 'better-sqlite3'
-import { join } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, unlinkSync, writeFileSync, statSync } from 'fs'
+import { execSync } from 'child_process'
 import { createLogger } from '../../shared/logger.js'
+import { readJson, writeJson, ensureDir } from '../../store/json.js'
+import { QUEUE_FILE, DATA_DIR } from '../../store/paths.js'
 import type { NodeJobData } from '../types.js'
 
 const logger = createLogger('workflow-queue')
 
-let db: Database.Database | null = null
-
-type JobStatus = 'waiting' | 'active' | 'completed' | 'failed' | 'delayed'
+type JobStatus = 'waiting' | 'active' | 'completed' | 'failed' | 'delayed' | 'human_waiting'
 
 interface Job {
   id: string
@@ -30,40 +29,80 @@ interface Job {
   error?: string
 }
 
-function getDb(): Database.Database {
-  if (db) return db
+interface QueueData {
+  jobs: Job[]
+  updatedAt: string
+}
 
-  const dataDir = join(process.cwd(), '.claude-agent-hub')
-  if (!existsSync(dataDir)) {
-    mkdirSync(dataDir, { recursive: true })
+// 简单的文件锁机制
+const LOCK_FILE = `${QUEUE_FILE}.lock`
+let lockAcquired = false
+
+function acquireLock(): boolean {
+  if (lockAcquired) return true
+
+  try {
+    // 检查锁文件是否存在
+    if (existsSync(LOCK_FILE)) {
+      // 检查锁是否过期（超过 30 秒视为死锁）
+      const stat = statSync(LOCK_FILE)
+      const age = Date.now() - stat.mtimeMs
+      if (age < 30000) {
+        return false
+      }
+      // 锁过期，删除旧锁
+      unlinkSync(LOCK_FILE)
+    }
+
+    // 创建锁文件
+    writeFileSync(LOCK_FILE, process.pid.toString(), { flag: 'wx' })
+    lockAcquired = true
+    return true
+  } catch {
+    return false
+  }
+}
+
+function releaseLock(): void {
+  if (!lockAcquired) return
+
+  try {
+    if (existsSync(LOCK_FILE)) {
+      unlinkSync(LOCK_FILE)
+    }
+    lockAcquired = false
+  } catch {
+    // 忽略错误
+  }
+}
+
+function withLock<T>(fn: () => T): T {
+  const maxRetries = 10
+  const retryDelay = 100
+
+  for (let i = 0; i < maxRetries; i++) {
+    if (acquireLock()) {
+      try {
+        return fn()
+      } finally {
+        releaseLock()
+      }
+    }
+    // 等待后重试
+    execSync(`sleep ${retryDelay / 1000}`)
   }
 
-  db = new Database(join(dataDir, 'queue.db'))
+  throw new Error('Failed to acquire queue lock')
+}
 
-  // 创建队列表
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS jobs (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      data TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'waiting',
-      priority INTEGER NOT NULL DEFAULT 0,
-      delay INTEGER NOT NULL DEFAULT 0,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      max_attempts INTEGER NOT NULL DEFAULT 3,
-      created_at TEXT NOT NULL,
-      process_at TEXT NOT NULL,
-      completed_at TEXT,
-      error TEXT
-    );
+function getQueueData(): QueueData {
+  ensureDir(DATA_DIR)
+  return readJson<QueueData>(QUEUE_FILE, { defaultValue: { jobs: [], updatedAt: new Date().toISOString() } }) ?? { jobs: [], updatedAt: new Date().toISOString() }
+}
 
-    CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
-    CREATE INDEX IF NOT EXISTS idx_jobs_process_at ON jobs(process_at);
-    CREATE INDEX IF NOT EXISTS idx_jobs_instance ON jobs(json_extract(data, '$.instanceId'));
-  `)
-
-  logger.debug('Queue database initialized')
-  return db
+function saveQueueData(data: QueueData): void {
+  data.updatedAt = new Date().toISOString()
+  writeJson(QUEUE_FILE, data)
 }
 
 // 入队节点任务
@@ -74,32 +113,42 @@ export async function enqueueNode(
     priority?: number
   }
 ): Promise<string> {
-  const database = getDb()
+  return withLock(() => {
+    const queueData = getQueueData()
 
-  const jobId = `${data.instanceId}:${data.nodeId}:${data.attempt}`
-  const now = new Date()
-  const processAt = options?.delay
-    ? new Date(now.getTime() + options.delay)
-    : now
+    const jobId = `${data.instanceId}:${data.nodeId}:${data.attempt}`
+    const now = new Date()
+    const processAt = options?.delay
+      ? new Date(now.getTime() + options.delay)
+      : now
 
-  const stmt = database.prepare(`
-    INSERT OR REPLACE INTO jobs (id, name, data, status, priority, delay, attempts, max_attempts, created_at, process_at)
-    VALUES (?, ?, ?, 'waiting', ?, ?, 0, 3, ?, ?)
-  `)
+    // 查找是否已存在
+    const existingIndex = queueData.jobs.findIndex(j => j.id === jobId)
 
-  stmt.run(
-    jobId,
-    `node:${data.nodeId}`,
-    JSON.stringify(data),
-    options?.priority || 0,
-    options?.delay || 0,
-    now.toISOString(),
-    processAt.toISOString()
-  )
+    const job: Job = {
+      id: jobId,
+      name: `node:${data.nodeId}`,
+      data,
+      status: 'waiting',
+      priority: options?.priority || 0,
+      delay: options?.delay || 0,
+      attempts: 0,
+      maxAttempts: 3,
+      createdAt: now.toISOString(),
+      processAt: processAt.toISOString(),
+    }
 
-  logger.debug(`Enqueued node job: ${jobId}`)
+    if (existingIndex >= 0) {
+      queueData.jobs[existingIndex] = job
+    } else {
+      queueData.jobs.push(job)
+    }
 
-  return jobId
+    saveQueueData(queueData)
+    logger.debug(`Enqueued node job: ${jobId}`)
+
+    return jobId
+  })
 }
 
 // 批量入队
@@ -109,152 +158,184 @@ export async function enqueueNodes(
     options?: { delay?: number; priority?: number }
   }>
 ): Promise<string[]> {
-  const database = getDb()
-  const ids: string[] = []
+  return withLock(() => {
+    const queueData = getQueueData()
+    const ids: string[] = []
+    const now = new Date()
 
-  const stmt = database.prepare(`
-    INSERT OR REPLACE INTO jobs (id, name, data, status, priority, delay, attempts, max_attempts, created_at, process_at)
-    VALUES (?, ?, ?, 'waiting', ?, ?, 0, 3, ?, ?)
-  `)
-
-  const now = new Date()
-
-  const insertMany = database.transaction(() => {
     for (const { data, options } of nodes) {
       const jobId = `${data.instanceId}:${data.nodeId}:${data.attempt}`
       const processAt = options?.delay
         ? new Date(now.getTime() + options.delay)
         : now
 
-      stmt.run(
-        jobId,
-        `node:${data.nodeId}`,
-        JSON.stringify(data),
-        options?.priority || 0,
-        options?.delay || 0,
-        now.toISOString(),
-        processAt.toISOString()
-      )
+      const job: Job = {
+        id: jobId,
+        name: `node:${data.nodeId}`,
+        data,
+        status: 'waiting',
+        priority: options?.priority || 0,
+        delay: options?.delay || 0,
+        attempts: 0,
+        maxAttempts: 3,
+        createdAt: now.toISOString(),
+        processAt: processAt.toISOString(),
+      }
+
+      const existingIndex = queueData.jobs.findIndex(j => j.id === jobId)
+      if (existingIndex >= 0) {
+        queueData.jobs[existingIndex] = job
+      } else {
+        queueData.jobs.push(job)
+      }
 
       ids.push(jobId)
     }
+
+    saveQueueData(queueData)
+    logger.debug(`Enqueued ${ids.length} node jobs`)
+
+    return ids
   })
-
-  insertMany()
-
-  logger.debug(`Enqueued ${ids.length} node jobs`)
-
-  return ids
 }
 
-// 获取下一个待处理的任务
-export function getNextJob(): Job | null {
-  const database = getDb()
-  const now = new Date().toISOString()
+// 获取下一个待处理的任务（支持按 instanceId 过滤）
+export function getNextJob(instanceId?: string): Job | null {
+  return withLock(() => {
+    const queueData = getQueueData()
+    const now = new Date().toISOString()
 
-  // 获取优先级最高、创建时间最早的待处理任务
-  const row = database.prepare(`
-    SELECT * FROM jobs
-    WHERE status = 'waiting' AND process_at <= ?
-    ORDER BY priority DESC, created_at ASC
-    LIMIT 1
-  `).get(now) as Record<string, unknown> | undefined
+    // 过滤出待处理的任务
+    let candidates = queueData.jobs.filter(
+      j => j.status === 'waiting' && j.processAt <= now
+    )
 
-  if (!row) return null
+    if (instanceId) {
+      candidates = candidates.filter(j => j.data.instanceId === instanceId)
+    }
 
-  // 标记为处理中
-  database.prepare(`UPDATE jobs SET status = 'active' WHERE id = ?`).run(row.id)
+    // 按优先级降序、创建时间升序排序
+    candidates.sort((a, b) => {
+      if (b.priority !== a.priority) return b.priority - a.priority
+      return a.createdAt.localeCompare(b.createdAt)
+    })
 
-  return {
-    id: row.id as string,
-    name: row.name as string,
-    data: JSON.parse(row.data as string),
-    status: 'active',
-    priority: row.priority as number,
-    delay: row.delay as number,
-    attempts: row.attempts as number,
-    maxAttempts: row.max_attempts as number,
-    createdAt: row.created_at as string,
-    processAt: row.process_at as string,
-  }
+    const job = candidates[0]
+    if (!job) return null
+
+    // 标记为处理中
+    const jobIndex = queueData.jobs.findIndex(j => j.id === job.id)
+    const targetJob = queueData.jobs[jobIndex]
+    if (!targetJob) return null
+
+    targetJob.status = 'active'
+    saveQueueData(queueData)
+
+    return { ...targetJob }
+  })
 }
 
 // 标记任务完成
 export function completeJob(jobId: string): void {
-  const database = getDb()
-  database.prepare(`
-    UPDATE jobs SET status = 'completed', completed_at = ? WHERE id = ?
-  `).run(new Date().toISOString(), jobId)
+  withLock(() => {
+    const queueData = getQueueData()
+    const job = queueData.jobs.find(j => j.id === jobId)
+
+    if (job) {
+      job.status = 'completed'
+      job.completedAt = new Date().toISOString()
+      saveQueueData(queueData)
+    }
+  })
 }
 
 // 标记任务失败（带重试逻辑）
 export function failJob(jobId: string, error: string): void {
-  const database = getDb()
+  withLock(() => {
+    const queueData = getQueueData()
+    const job = queueData.jobs.find(j => j.id === jobId)
 
-  const row = database.prepare(`SELECT attempts, max_attempts FROM jobs WHERE id = ?`)
-    .get(jobId) as { attempts: number; max_attempts: number } | undefined
+    if (!job) return
 
-  if (row && row.attempts + 1 < row.max_attempts) {
-    // 还有重试机会，重新入队
-    const backoffDelay = Math.pow(2, row.attempts) * 1000 // 指数退避
-    const processAt = new Date(Date.now() + backoffDelay)
+    if (job.attempts + 1 < job.maxAttempts) {
+      // 还有重试机会，重新入队
+      const backoffDelay = Math.pow(2, job.attempts) * 1000 // 指数退避
+      const processAt = new Date(Date.now() + backoffDelay)
 
-    database.prepare(`
-      UPDATE jobs SET status = 'waiting', attempts = attempts + 1, process_at = ?, error = ?
-      WHERE id = ?
-    `).run(processAt.toISOString(), error, jobId)
+      job.status = 'waiting'
+      job.attempts = job.attempts + 1
+      job.processAt = processAt.toISOString()
+      job.error = error
 
-    logger.debug(`Job ${jobId} will retry after ${backoffDelay}ms`)
-  } else {
-    // 重试用尽，标记失败
-    database.prepare(`
-      UPDATE jobs SET status = 'failed', completed_at = ?, error = ?
-      WHERE id = ?
-    `).run(new Date().toISOString(), error, jobId)
-  }
+      logger.debug(`Job ${jobId} will retry after ${backoffDelay}ms`)
+    } else {
+      // 重试用尽，标记失败
+      job.status = 'failed'
+      job.completedAt = new Date().toISOString()
+      job.error = error
+    }
+
+    saveQueueData(queueData)
+  })
 }
 
 // 直接标记任务失败（不重试）
 export function markJobFailed(jobId: string, error: string): void {
-  const database = getDb()
-  database.prepare(`
-    UPDATE jobs SET status = 'failed', completed_at = ?, error = ?
-    WHERE id = ?
-  `).run(new Date().toISOString(), error, jobId)
-  logger.debug(`Job ${jobId} marked as failed (no retry)`)
+  withLock(() => {
+    const queueData = getQueueData()
+    const job = queueData.jobs.find(j => j.id === jobId)
+
+    if (job) {
+      job.status = 'failed'
+      job.completedAt = new Date().toISOString()
+      job.error = error
+      saveQueueData(queueData)
+    }
+
+    logger.debug(`Job ${jobId} marked as failed (no retry)`)
+  })
 }
 
 // 标记任务为等待人工审批（不重试，保持等待状态）
 export function markJobWaiting(jobId: string): void {
-  const database = getDb()
-  database.prepare(`
-    UPDATE jobs SET status = 'human_waiting'
-    WHERE id = ?
-  `).run(jobId)
-  logger.debug(`Job ${jobId} marked as waiting for human approval`)
+  withLock(() => {
+    const queueData = getQueueData()
+    const job = queueData.jobs.find(j => j.id === jobId)
+
+    if (job) {
+      job.status = 'human_waiting'
+      saveQueueData(queueData)
+    }
+
+    logger.debug(`Job ${jobId} marked as waiting for human approval`)
+  })
 }
 
 // 获取等待审批的任务
 export function getWaitingHumanJobs(): Array<{ id: string; data: NodeJobData }> {
-  const database = getDb()
-  const rows = database.prepare(`
-    SELECT id, data FROM jobs WHERE status = 'human_waiting'
-  `).all() as Array<{ id: string; data: string }>
+  const queueData = getQueueData()
 
-  return rows.map(row => ({
-    id: row.id,
-    data: JSON.parse(row.data) as NodeJobData,
-  }))
+  return queueData.jobs
+    .filter(j => j.status === 'human_waiting')
+    .map(j => ({ id: j.id, data: j.data }))
 }
 
 // 恢复等待中的任务（审批通过后）
 export function resumeWaitingJob(jobId: string): void {
-  const database = getDb()
-  database.prepare(`
-    UPDATE jobs SET status = 'completed', completed_at = ?
-    WHERE id = ? AND status = 'human_waiting'
-  `).run(new Date().toISOString(), jobId)
-  logger.debug(`Job ${jobId} resumed after approval`)
+  withLock(() => {
+    const queueData = getQueueData()
+    const job = queueData.jobs.find(
+      j => j.id === jobId && j.status === 'human_waiting'
+    )
+
+    if (job) {
+      job.status = 'completed'
+      job.completedAt = new Date().toISOString()
+      saveQueueData(queueData)
+    }
+
+    logger.debug(`Job ${jobId} resumed after approval`)
+  })
 }
 
 // 获取队列统计
@@ -265,102 +346,124 @@ export async function getQueueStats(): Promise<{
   failed: number
   delayed: number
 }> {
-  const database = getDb()
+  const queueData = getQueueData()
   const now = new Date().toISOString()
 
-  const stats = database.prepare(`
-    SELECT
-      SUM(CASE WHEN status = 'waiting' AND process_at <= ? THEN 1 ELSE 0 END) as waiting,
-      SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
-      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-      SUM(CASE WHEN status = 'waiting' AND process_at > ? THEN 1 ELSE 0 END) as delayed
-    FROM jobs
-  `).get(now, now) as Record<string, number>
-
-  return {
-    waiting: stats.waiting || 0,
-    active: stats.active || 0,
-    completed: stats.completed || 0,
-    failed: stats.failed || 0,
-    delayed: stats.delayed || 0,
+  const stats = {
+    waiting: 0,
+    active: 0,
+    completed: 0,
+    failed: 0,
+    delayed: 0,
   }
+
+  for (const job of queueData.jobs) {
+    if (job.status === 'waiting' && job.processAt <= now) {
+      stats.waiting++
+    } else if (job.status === 'active') {
+      stats.active++
+    } else if (job.status === 'completed') {
+      stats.completed++
+    } else if (job.status === 'failed') {
+      stats.failed++
+    } else if (job.status === 'waiting' && job.processAt > now) {
+      stats.delayed++
+    }
+  }
+
+  return stats
 }
 
 // 获取待处理任务列表
 export function getWaitingJobs(): Job[] {
-  const database = getDb()
+  const queueData = getQueueData()
   const now = new Date().toISOString()
 
-  const rows = database.prepare(`
-    SELECT * FROM jobs WHERE status = 'waiting' AND process_at <= ?
-    ORDER BY priority DESC, created_at ASC
-  `).all(now) as Record<string, unknown>[]
-
-  return rows.map(row => ({
-    id: row.id as string,
-    name: row.name as string,
-    data: JSON.parse(row.data as string),
-    status: row.status as JobStatus,
-    priority: row.priority as number,
-    delay: row.delay as number,
-    attempts: row.attempts as number,
-    maxAttempts: row.max_attempts as number,
-    createdAt: row.created_at as string,
-    processAt: row.process_at as string,
-  }))
+  return queueData.jobs
+    .filter(j => j.status === 'waiting' && j.processAt <= now)
+    .sort((a, b) => {
+      if (b.priority !== a.priority) return b.priority - a.priority
+      return a.createdAt.localeCompare(b.createdAt)
+    })
 }
 
 // 清空队列
 export async function drainQueue(): Promise<void> {
-  const database = getDb()
-  database.prepare(`DELETE FROM jobs WHERE status IN ('waiting', 'delayed')`).run()
+  withLock(() => {
+    const queueData = getQueueData()
+    queueData.jobs = queueData.jobs.filter(
+      j => j.status !== 'waiting' && j.status !== 'delayed'
+    )
+    saveQueueData(queueData)
+  })
+
   logger.info('Queue drained')
 }
 
 // 关闭队列（清理资源）
 export async function closeQueue(): Promise<void> {
-  if (db) {
-    db.close()
-    db = null
-  }
+  releaseLock()
   logger.info('Queue closed')
 }
 
 // 移除特定工作流的所有待处理任务
 export async function removeWorkflowJobs(instanceId: string): Promise<number> {
-  const database = getDb()
+  return withLock(() => {
+    const queueData = getQueueData()
+    const initialCount = queueData.jobs.length
 
-  const result = database.prepare(`
-    DELETE FROM jobs
-    WHERE status IN ('waiting', 'delayed')
-    AND json_extract(data, '$.instanceId') = ?
-  `).run(instanceId)
+    queueData.jobs = queueData.jobs.filter(
+      j =>
+        !(
+          (j.status === 'waiting' || j.status === 'delayed') &&
+          j.data.instanceId === instanceId
+        )
+    )
 
-  logger.debug(`Removed ${result.changes} jobs for instance ${instanceId}`)
+    const removedCount = initialCount - queueData.jobs.length
+    saveQueueData(queueData)
 
-  return result.changes
+    logger.debug(`Removed ${removedCount} jobs for instance ${instanceId}`)
+    return removedCount
+  })
 }
 
 // 清理已完成的旧任务（保留最近 N 条）
 export function cleanupOldJobs(keepCount: number = 100): number {
-  const database = getDb()
+  return withLock(() => {
+    const queueData = getQueueData()
 
-  // 获取需要保留的最小 ID
-  const row = database.prepare(`
-    SELECT id FROM jobs
-    WHERE status IN ('completed', 'failed')
-    ORDER BY completed_at DESC
-    LIMIT 1 OFFSET ?
-  `).get(keepCount) as { id: string } | undefined
+    // 分离出已完成的任务
+    const completedJobs = queueData.jobs.filter(
+      j => j.status === 'completed' || j.status === 'failed'
+    )
 
-  if (!row) return 0
+    if (completedJobs.length <= keepCount) return 0
 
-  const result = database.prepare(`
-    DELETE FROM jobs
-    WHERE status IN ('completed', 'failed')
-    AND completed_at < (SELECT completed_at FROM jobs WHERE id = ?)
-  `).run(row.id)
+    // 按完成时间排序，保留最新的
+    completedJobs.sort((a, b) =>
+      (b.completedAt || '').localeCompare(a.completedAt || '')
+    )
 
-  return result.changes
+    const jobsToKeep = new Set(
+      completedJobs.slice(0, keepCount).map(j => j.id)
+    )
+
+    const initialCount = queueData.jobs.length
+    queueData.jobs = queueData.jobs.filter(
+      j =>
+        j.status === 'waiting' ||
+        j.status === 'active' ||
+        j.status === 'delayed' ||
+        j.status === 'human_waiting' ||
+        jobsToKeep.has(j.id)
+    )
+
+    const removedCount = initialCount - queueData.jobs.length
+    if (removedCount > 0) {
+      saveQueueData(queueData)
+    }
+
+    return removedCount
+  })
 }

@@ -132,7 +132,10 @@ function renderTaskList(tasks: Task[], showProgress: boolean): void {
       const progress = getTaskProgress(task.id)
       if (progress) {
         const bar = formatProgressBar(progress.percent)
-        progressDisplay = `${bar} ${progress.done}/${progress.total}`
+        // 显示进度：已完成/总数，如果有正在运行的也显示
+        const runningInfo = progress.running > 0 ? chalk.cyan(` (${progress.running}⏳)`) : ''
+        const failedInfo = progress.failed > 0 ? chalk.red(` (${progress.failed}❌)`) : ''
+        progressDisplay = `${bar} ${progress.done}/${progress.total}${runningInfo}${failedInfo}`
       }
     }
 

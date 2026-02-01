@@ -8,6 +8,8 @@ import {
   updateTask,
   getProcessInfo,
   isProcessRunning,
+  appendExecutionLog,
+  getTaskInstance,
 } from '../store/TaskStore.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
@@ -64,9 +66,24 @@ export function stopTask(id: string): StopTaskResult {
     }
   }
 
+  // Get current execution state for logging
+  const instance = getTaskInstance(task.id)
+  const currentNodeInfo = instance
+    ? Object.entries(instance.nodeStates)
+        .filter(([, state]) => state.status === 'running')
+        .map(([nodeId]) => nodeId)
+        .join(', ')
+    : 'unknown'
+
   // Update task status
   updateTask(task.id, { status: 'cancelled' })
   logger.info(`Stopped task: ${task.id}`)
+
+  // Record stop event to execution log
+  appendExecutionLog(
+    task.id,
+    `[STOP] Task stopped. Status: ${task.status}, Running nodes: ${currentNodeInfo || 'none'}`
+  )
 
   // Return updated task
   const updatedTask = getTask(task.id)

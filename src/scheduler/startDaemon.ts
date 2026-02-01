@@ -4,11 +4,13 @@ import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { runAgent } from '../agent/runAgent.js'
 import { startLarkServer, stopLarkServer } from '../notify/larkServer.js'
+import { startLarkWsClient, stopLarkWsClient } from '../notify/larkWsClient.js'
 
 interface DaemonOptions {
   agent?: string
   foreground?: boolean
   lark?: boolean
+  larkWs?: boolean
   larkPort?: number
 }
 
@@ -52,11 +54,20 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
     scheduledJobs.push(job)
   }
 
-  // 启动飞书事件监听服务器
-  if (options.lark || config.notify?.lark?.webhookUrl) {
+  // 启动飞书事件监听
+  if (options.larkWs) {
+    // WebSocket 长连接模式（推荐，无需公网 IP）
+    try {
+      await startLarkWsClient()
+      console.log(chalk.green('  ✓ 飞书 WebSocket 客户端已启动 (长连接模式)'))
+    } catch (error) {
+      console.error(chalk.red('  ✗ 飞书 WebSocket 客户端启动失败:'), error)
+    }
+  } else if (options.lark || config.notify?.lark?.webhookUrl) {
+    // HTTP 服务器模式（需要公网 IP）
     try {
       await startLarkServer(options.larkPort)
-      console.log(chalk.green('  ✓ 飞书事件监听服务器已启动'))
+      console.log(chalk.green('  ✓ 飞书事件监听服务器已启动 (HTTP 模式)'))
     } catch (error) {
       console.error(chalk.red('  ✗ 飞书服务器启动失败:'), error)
     }
@@ -73,6 +84,7 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
       console.log(chalk.yellow('\n收到中断信号，停止守护进程...'))
       stopAllJobs()
       await stopLarkServer()
+      await stopLarkWsClient()
       process.exit(0)
     }
 

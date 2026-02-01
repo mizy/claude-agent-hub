@@ -68,7 +68,7 @@ export {
   incrementLoopCount,
   resetNodeState,
   updateInstanceVariables,
-} from './store/WorkflowStore.js'
+} from '../store/WorkflowStore.js'
 
 // 队列（SQLite-based）
 export {

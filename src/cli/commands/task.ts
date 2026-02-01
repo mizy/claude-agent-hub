@@ -14,7 +14,9 @@ import {
   resumeFailedTask,
   getFailedTasks,
 } from '../../task/resumeTask.js'
-import { getTask } from '../../store/TaskStore.js'
+import { getTask, getLogPath, getTaskFolder } from '../../store/TaskStore.js'
+import { spawn } from 'child_process'
+import { existsSync } from 'fs'
 import { success, error, info, warn } from '../output.js'
 import type { TaskStatus } from '../../types/task.js'
 
@@ -227,5 +229,45 @@ export function registerTaskCommands(program: Command) {
           }
         }
       }
+    })
+
+  task
+    .command('logs')
+    .description('查看任务执行日志 (实时)')
+    .argument('<id>', '任务 ID')
+    .option('-f, --follow', '持续跟踪 (类似 tail -f)')
+    .option('-n, --lines <n>', '显示最后 N 行', '50')
+    .action((id, options) => {
+      const taskFolder = getTaskFolder(id)
+      if (!taskFolder) {
+        error(`Task not found: ${id}`)
+        return
+      }
+
+      const logPath = getLogPath(id)
+      if (!existsSync(logPath)) {
+        warn(`No logs yet for task: ${id}`)
+        console.log(chalk.gray(`  Log path: ${logPath}`))
+        return
+      }
+
+      info(`Tailing logs for task: ${id}`)
+      console.log(chalk.gray(`  Path: ${logPath}`))
+      console.log(chalk.gray(`  Press Ctrl+C to stop\n`))
+
+      // 使用 tail 命令
+      const tailArgs = ['-n', options.lines]
+      if (options.follow) {
+        tailArgs.push('-f')
+      }
+      tailArgs.push(logPath)
+
+      const tail = spawn('tail', tailArgs, {
+        stdio: 'inherit',
+      })
+
+      tail.on('error', (err) => {
+        error(`Failed to tail logs: ${err.message}`)
+      })
     })
 }
