@@ -12,7 +12,7 @@ import { tmpdir } from 'os'
 
 // 测试临时目录
 const TEST_DIR = join(tmpdir(), 'cah-test-' + Date.now())
-const CLI_PATH = join(process.cwd(), 'dist/index.js')
+const CLI_PATH = join(process.cwd(), 'dist/cli/index.js')
 
 describe('CLI 简化命令', () => {
   beforeEach(async () => {

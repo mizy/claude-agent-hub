@@ -78,6 +78,6 @@ async function main(): Promise<void> {
 
 main().catch(err => {
   releaseRunnerLock()
-  console.error('Fatal error:', err)
+  logger.error(`Fatal error: ${err instanceof Error ? err.message : String(err)}`)
   process.exit(1)
 })

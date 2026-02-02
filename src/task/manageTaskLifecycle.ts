@@ -16,7 +16,14 @@ import { getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { updateInstanceStatus } from '../store/WorkflowStore.js'
 import { appendExecutionLog, appendJsonlLog } from '../store/TaskLogStore.js'
 import { createLogger } from '../shared/logger.js'
+import { getActiveNodes } from '../workflow/engine/StateManager.js'
 import type { Task, TaskStatus } from '../types/task.js'
+import {
+  isRunningStatus,
+  isTerminalStatus,
+  isStoppableStatus,
+  isReviewingStatus,
+} from '../types/taskStatus.js'
 
 const logger = createLogger('task')
 
@@ -39,7 +46,7 @@ export function deleteTask(id: string): DeleteTaskResult {
   }
 
   // Check if task is currently running
-  if (task.status === 'planning' || task.status === 'developing') {
+  if (isRunningStatus(task.status)) {
     return {
       success: false,
       error: `Cannot delete running task. Stop it first with: cah task stop ${id}`,
@@ -103,7 +110,7 @@ export function clearTasks(options?: {
   } else {
     // Default: clear completed, failed, and cancelled tasks
     tasksToDelete = allTasks
-      .filter(t => ['completed', 'failed', 'cancelled'].includes(t.status))
+      .filter(t => isTerminalStatus(t.status))
       .map(t => t.id)
   }
 
@@ -140,8 +147,7 @@ export function stopTask(id: string): StopTaskResult {
   }
 
   // Check if task can be stopped
-  const stoppableStatuses = ['pending', 'planning', 'developing', 'reviewing']
-  if (!stoppableStatuses.includes(task.status)) {
+  if (!isStoppableStatus(task.status)) {
     return {
       success: false,
       error: `Task is already ${task.status}, cannot stop`,
@@ -167,10 +173,7 @@ export function stopTask(id: string): StopTaskResult {
   // Get current execution state for logging
   const instance = getTaskInstance(task.id)
   const currentNodeInfo = instance
-    ? Object.entries(instance.nodeStates)
-        .filter(([, state]) => state.status === 'running')
-        .map(([nodeId]) => nodeId)
-        .join(', ')
+    ? getActiveNodes(instance).join(', ')
     : 'unknown'
 
   // Update task status
@@ -225,7 +228,7 @@ export function completeTask(id: string): CompleteTaskResult {
   }
 
   // Only reviewing tasks can be completed
-  if (task.status !== 'reviewing') {
+  if (!isReviewingStatus(task.status)) {
     return {
       success: false,
       error: `Task status is ${task.status}, only 'reviewing' tasks can be completed`,
@@ -252,7 +255,7 @@ export function rejectTask(id: string, reason?: string): CompleteTaskResult {
   }
 
   // Only reviewing tasks can be rejected
-  if (task.status !== 'reviewing') {
+  if (!isReviewingStatus(task.status)) {
     return {
       success: false,
       error: `Task status is ${task.status}, only 'reviewing' tasks can be rejected`,

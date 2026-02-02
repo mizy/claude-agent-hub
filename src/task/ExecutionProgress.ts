@@ -7,7 +7,10 @@ import { getInstance, getWorkflowProgress } from '../workflow/index.js'
 import { updateInstanceStatus } from '../store/WorkflowStore.js'
 import { getTask } from '../store/TaskStore.js'
 import { estimateRemainingTime, formatTimeEstimate } from '../analysis/index.js'
+import { createLogger } from '../shared/logger.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
+
+const logger = createLogger('progress')
 
 // 轮询间隔（毫秒）
 const POLL_INTERVAL = 500
@@ -33,7 +36,6 @@ function sleep(ms: number): Promise<void> {
 export async function waitForWorkflowCompletion(
   workflow: Workflow,
   instanceId: string,
-  log: (...args: unknown[]) => void,
   taskId?: string
 ): Promise<WorkflowInstance> {
   let lastProgress = -1
@@ -63,7 +65,7 @@ export async function waitForWorkflowCompletion(
     if (taskId) {
       const task = getTask(taskId)
       if (task && (task.status === 'failed' || task.status === 'cancelled')) {
-        log(`Task status changed to ${task.status}, syncing instance status...`)
+        logger.info(`Task status changed to ${task.status}, syncing instance status...`)
         // 同步 instance 状态
         updateInstanceStatus(instanceId, task.status === 'cancelled' ? 'cancelled' : 'failed')
         // 重新获取更新后的 instance
@@ -115,7 +117,7 @@ export async function waitForWorkflowCompletion(
         : ''
       const timeInfo = estimate.remainingMs > 0 ? ` ETA: ${formatTimeEstimate(estimate)}` : ''
 
-      log(`${progressBar} ${progress.completed}/${progress.total}${runningInfo}${timeInfo}`)
+      logger.info(`${progressBar} ${progress.completed}/${progress.total}${runningInfo}${timeInfo}`)
       lastProgress = progress.percentage
       lastRunningNodes = runningNodes
       lastLogTime = currentTime

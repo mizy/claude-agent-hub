@@ -21,6 +21,7 @@ import {
 import {
   getReadyNodes,
 } from '../workflow/engine/WorkflowEngine.js'
+import { getActiveNodes } from '../workflow/engine/StateManager.js'
 import {
   resetNodeState,
   updateInstanceStatus,
@@ -31,7 +32,7 @@ import { appendExecutionLog, appendJsonlLog } from '../store/TaskLogStore.js'
 import { saveWorkflowOutput } from '../output/saveWorkflowOutput.js'
 import { saveExecutionStats, appendTimelineEvent } from '../store/ExecutionStatsStore.js'
 import { workflowEvents } from '../workflow/engine/WorkflowEventEmitter.js'
-import { createLogger } from '../shared/logger.js'
+import { createLogger, setLogMode, logError as logErrorFn } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 import { waitForWorkflowCompletion } from './ExecutionProgress.js'
@@ -92,14 +93,12 @@ export async function executeTask(
     useConsole = false,
   } = options
 
-  const log: (...args: unknown[]) => void = useConsole
-    ? console.log.bind(console)
-    : (msg, ...rest) => logger.info(String(msg), ...rest)
-  const logError: (...args: unknown[]) => void = useConsole
-    ? console.error.bind(console)
-    : (msg, ...rest) => logger.error(String(msg), ...rest)
+  // 设置日志模式：前台运行用简洁输出，后台用完整结构化
+  if (useConsole) {
+    setLogMode('foreground')
+  }
 
-  log(`${resume ? '恢复任务' : '开始执行任务'}: ${task.title}`)
+  logger.info(`${resume ? '恢复任务' : '开始执行任务'}: ${task.title}`)
 
   try {
     let workflow: Workflow
@@ -107,22 +106,22 @@ export async function executeTask(
 
     if (resume) {
       // 恢复模式：使用已有的 workflow 和 instance
-      const result = await prepareResume(task, log)
+      const result = await prepareResume(task)
       workflow = result.workflow
       instance = result.instance
     } else {
       // 新任务模式：检查是否已有 workflow 或生成新的
-      const result = await prepareNewExecution(task, log, saveToTaskFolder)
+      const result = await prepareNewExecution(task, saveToTaskFolder)
       workflow = result.workflow
 
       // 启动 workflow
       instance = await startWorkflow(workflow.id)
-      log(`Workflow 启动: ${instance.id}`)
+      logger.info(`Workflow 启动: ${instance.id}`)
 
       // 检查是否为直接回答类型 - 不需要执行节点，直接输出
       if (workflow.variables?.isDirectAnswer && workflow.variables?.directAnswer) {
         const answer = workflow.variables.directAnswer as string
-        log(`\n${answer}\n`)
+        logger.info(`\n${answer}\n`)
 
         // 直接完成任务
         updateTask(task.id, { status: 'completed' })
@@ -173,7 +172,7 @@ export async function executeTask(
       status: 'developing',
       workflowId: workflow.id,
     })
-    log(`任务状态: developing`)
+    logger.info(`任务状态: developing`)
 
     const startedAt = now()
 
@@ -195,7 +194,7 @@ export async function executeTask(
     if (resume) {
       const readyNodes = getReadyNodes(workflow, instance)
       if (readyNodes.length > 0) {
-        log(`恢复执行节点: ${readyNodes.join(', ')}`)
+        logger.info(`恢复执行节点: ${readyNodes.join(', ')}`)
         appendExecutionLog(task.id, `Enqueuing ready nodes: ${readyNodes.join(', ')}`, { scope: 'lifecycle' })
         await enqueueNodes(
           readyNodes.map(nodeId => ({
@@ -208,7 +207,7 @@ export async function executeTask(
           }))
         )
       } else {
-        log(`警告：没有可执行的节点`)
+        logger.warn(`没有可执行的节点`)
         appendExecutionLog(task.id, `Warning: No ready nodes found`, { scope: 'lifecycle', level: 'warn' })
       }
     }
@@ -217,7 +216,6 @@ export async function executeTask(
     const finalInstance = await waitForWorkflowCompletion(
       workflow,
       instance.id,
-      log,
       task.id  // 传入 taskId 以便检查 task 状态是否被外部修改
     )
 
@@ -329,10 +327,10 @@ export async function executeTask(
       },
     })
 
-    log(`输出保存至: ${outputPath}`)
+    logger.info(`输出保存至: ${outputPath}`)
 
     if (success) {
-      log(`任务完成: ${task.title}`)
+      logger.info(`任务完成: ${task.title}`)
       return {
         success,
         workflow,
@@ -341,24 +339,18 @@ export async function executeTask(
         timing: { startedAt, completedAt },
       }
     } else {
-      logError(`任务失败: ${task.title}`)
+      logger.error(`任务失败: ${task.title}`)
       // 确保错误信息不会显示为 undefined
       const errorMsg = finalInstance.error || 'Unknown error (check logs for details)'
-      logError(`错误: ${errorMsg}`)
+      logger.error(`错误: ${errorMsg}`)
       // 失败时抛出错误，让调用方知道
       throw new Error(errorMsg)
     }
   } catch (error) {
-    // 捕获完整的错误信息，包括堆栈
-    let errorMessage: string
-    if (error instanceof Error) {
-      errorMessage = error.stack || error.message || 'Unknown error'
-    } else if (error === undefined || error === null) {
-      errorMessage = 'Unknown error (undefined/null error object)'
-    } else {
-      errorMessage = String(error)
-    }
-    logError(`执行出错: ${errorMessage}`)
+    // 使用 logError 记录带上下文的错误
+    logErrorFn(logger, '执行出错', error instanceof Error ? error : String(error), {
+      taskId: task.id,
+    })
 
     // 确保关闭 worker
     if (isWorkerRunning()) {
@@ -377,24 +369,23 @@ export async function executeTask(
  */
 async function prepareNewExecution(
   task: Task,
-  log: (...args: unknown[]) => void,
   saveToTaskFolder: boolean
 ): Promise<{ workflow: Workflow }> {
   // 检查是否已有 Workflow（进程崩溃后恢复的情况）
   let workflow = saveToTaskFolder ? getTaskWorkflow(task.id) : null
 
   if (workflow) {
-    log(`发现已有 Workflow: ${workflow.id}，跳过 planning`)
-    log(`Workflow 节点数: ${workflow.nodes.length}`)
+    logger.info(`发现已有 Workflow: ${workflow.id}，跳过 planning`)
+    logger.info(`Workflow 节点数: ${workflow.nodes.length}`)
   } else {
     // 更新任务状态为 planning
     updateTask(task.id, {
       status: 'planning',
     })
-    log(`任务状态: planning`)
+    logger.info(`任务状态: planning`)
 
     // 生成 Workflow
-    log(`生成执行计划...`)
+    logger.info(`生成执行计划...`)
     workflow = await generateWorkflow(task)
 
     // 设置 taskId 以便保存到正确位置
@@ -404,14 +395,14 @@ async function prepareNewExecution(
 
     // 保存 workflow
     saveWorkflow(workflow)
-    log(`Workflow 已保存: ${workflow.nodes.length - 2} 个任务节点`)
+    logger.info(`Workflow 已保存: ${workflow.nodes.length - 2} 个任务节点`)
 
     // 如果标题是通用的，生成一个描述性标题
     if (isGenericTitle(task.title)) {
       const generatedTitle = await generateTaskTitle(task, workflow)
       task.title = generatedTitle
       updateTask(task.id, { title: generatedTitle })
-      log(`生成标题: ${generatedTitle}`)
+      logger.info(`生成标题: ${generatedTitle}`)
     }
   }
 
@@ -422,8 +413,7 @@ async function prepareNewExecution(
  * 准备恢复执行
  */
 async function prepareResume(
-  task: Task,
-  log: (...args: unknown[]) => void
+  task: Task
 ): Promise<{ workflow: Workflow; instance: WorkflowInstance }> {
   // 获取已有的 workflow 和 instance
   const workflow = getTaskWorkflow(task.id)
@@ -437,19 +427,22 @@ async function prepareResume(
     throw new Error(`No instance found for task: ${task.id}`)
   }
 
-  log(`找到 Workflow: ${workflow.id}`)
-  log(`Instance 状态: ${instance.status}`)
+  logger.info(`找到 Workflow: ${workflow.id}`)
+  logger.info(`Instance 状态: ${instance.status}`)
+
+  // 如果 instance 已完成，不应该恢复
+  if (instance.status === 'completed') {
+    throw new Error(`Instance already completed, cannot resume: ${instance.id}`)
+  }
 
   // 记录 resume 到执行日志
   appendExecutionLog(task.id, `Resuming from instance status: ${instance.status}`, { scope: 'lifecycle' })
 
   // 重置所有 running 状态的节点为 pending（它们被中断了）
-  const runningNodes = Object.entries(instance.nodeStates)
-    .filter(([, state]) => state.status === 'running')
-    .map(([nodeId]) => nodeId)
+  const runningNodes = getActiveNodes(instance)
 
   if (runningNodes.length > 0) {
-    log(`重置被中断的节点: ${runningNodes.join(', ')}`)
+    logger.info(`重置被中断的节点: ${runningNodes.join(', ')}`)
     for (const nodeId of runningNodes) {
       resetNodeState(instance.id, nodeId)
     }
@@ -459,7 +452,7 @@ async function prepareResume(
   // 如果 instance 状态不是 running，更新为 running
   if (instance.status !== 'running') {
     updateInstanceStatus(instance.id, 'running')
-    log(`更新 instance 状态为 running`)
+    logger.info(`更新 instance 状态为 running`)
   }
 
   // 重新获取更新后的 instance

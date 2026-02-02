@@ -33,6 +33,9 @@ export interface OrphanedTask {
   reason: 'process_not_found' | 'heartbeat_timeout'
 }
 
+// 孤立任务检测宽限期（秒）- 新任务在此时间内不算孤立
+const ORPHAN_GRACE_PERIOD_MS = 30 * 1000
+
 /**
  * 检测孤立任务
  *
@@ -40,14 +43,23 @@ export interface OrphanedTask {
  * 1. 状态为 planning 或 developing
  * 2. 有 process.json 记录
  * 3. 但进程实际上已不存在
+ * 4. 且任务创建时间超过宽限期
  */
 export function detectOrphanedTasks(): OrphanedTask[] {
   const orphaned: OrphanedTask[] = []
+  const now = Date.now()
 
   for (const status of RUNNING_STATUSES) {
     const tasks = getTasksByStatus(status)
 
     for (const task of tasks) {
+      // 检查任务是否在宽限期内（刚创建的任务可能还没写入 process.json）
+      const taskAge = now - new Date(task.updatedAt || task.createdAt).getTime()
+      if (taskAge < ORPHAN_GRACE_PERIOD_MS) {
+        logger.debug(`Task ${task.id} is within grace period (${Math.round(taskAge / 1000)}s old), skipping`)
+        continue
+      }
+
       const processInfo = getProcessInfo(task.id)
 
       // 没有进程信息，可能是旧任务或异常创建的
@@ -112,6 +124,13 @@ export function resumeTask(taskId: string): number | null {
   // 检查是否已有 workflow - 决定是否使用 resume 模式
   const existingWorkflow = getTaskWorkflow(taskId)
   const existingInstance = getTaskInstance(taskId)
+
+  // 如果 instance 已完成，不需要恢复
+  if (existingInstance && existingInstance.status === 'completed') {
+    logger.info(`Task ${taskId} instance already completed, skipping resume`)
+    return null
+  }
+
   const shouldResume = !!(existingWorkflow && existingInstance)
 
   logger.info(`Resuming task: ${taskId}`)
@@ -177,9 +196,9 @@ export async function resumeFailedTask(taskId: string): Promise<{
     // 记录到日志
     appendExecutionLog(taskId, 'Task restarted (no previous instance)', { scope: 'lifecycle' })
     appendJsonlLog(taskId, {
-      event: 'task_restarted',
+      event: 'task_started',
       message: `Task restarted: ${task.title}`,
-      data: { reason: 'no_instance' },
+      data: { reason: 'no_instance', mode: 'restart' },
     })
 
     // 启动后台进程（非 resume 模式，从头开始）

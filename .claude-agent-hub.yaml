@@ -26,4 +26,4 @@ git:
 
 # Claude Code 配置
 claude:
-  model: opus # haiku | sonnet | opus
+  model: sonnet # haiku | sonnet | opus

@@ -1,5 +1,5 @@
-import chalk from 'chalk'
 import { getStore } from '../store/index.js'
+import { ui } from '../cli/output.js'
 import type { Task, CreateTaskOptions, TaskPriority } from '../types/task.js'
 
 export async function createTask(options: CreateTaskOptions): Promise<Task> {
@@ -18,14 +18,16 @@ export async function createTask(options: CreateTaskOptions): Promise<Task> {
 
   store.saveTask(task)
 
-  console.log(chalk.green(`✓ 任务创建成功`))
-  console.log(chalk.gray(`  ID: ${task.id.slice(0, 8)}`))
-  console.log(chalk.gray(`  标题: ${task.title}`))
-  console.log(chalk.gray(`  优先级: ${task.priority}`))
-
+  ui.success('任务创建成功')
+  const items = [
+    { label: 'ID', value: task.id.slice(0, 8), dim: true },
+    { label: '标题', value: task.title, dim: true },
+    { label: '优先级', value: task.priority, dim: true },
+  ]
   if (task.assignee) {
-    console.log(chalk.gray(`  指派给: ${task.assignee}`))
+    items.push({ label: '指派给', value: task.assignee, dim: true })
   }
+  ui.list(items)
 
   return task
 }

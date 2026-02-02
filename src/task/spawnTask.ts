@@ -19,7 +19,7 @@ import {
   type ProcessInfo,
 } from '../store/TaskStore.js'
 import { getLogPath } from '../store/TaskLogStore.js'
-import { RUNNER_LOCK_FILE, DATA_DIR } from '../store/paths.js'
+import { RUNNER_LOCK_FILE, RUNNER_LOG_FILE, DATA_DIR } from '../store/paths.js'
 import { mkdirSync } from 'fs'
 
 const logger = createLogger('spawn-task')
@@ -52,6 +52,46 @@ export interface SpawnTaskOptions {
 }
 
 /**
+ * 获取脚本路径和执行命令
+ * 开发模式下使用 .ts 文件 + tsx，生产模式下使用 .js 文件 + node
+ *
+ * 注意：tsup 打包后代码可能被放入 dist/ 的 chunk 文件中，
+ * 但 runQueueProcess.js 和 runTaskProcess.js 始终在 dist/task/ 目录
+ */
+function getScriptConfig(scriptName: string): { execPath: string; scriptPath: string } {
+  // 可能的脚本位置（按优先级排序）
+  const possiblePaths = [
+    // 1. 当前目录（开发模式或未打包时）
+    join(currentDir, `${scriptName}.js`),
+    // 2. task 子目录（tsup 打包后，chunk 在 dist/ 但脚本在 dist/task/）
+    join(currentDir, 'task', `${scriptName}.js`),
+    // 3. 开发模式 .ts 文件
+    join(currentDir, `${scriptName}.ts`),
+  ]
+
+  // 检查 .js 文件
+  for (const jsPath of possiblePaths.filter(p => p.endsWith('.js'))) {
+    if (existsSync(jsPath)) {
+      logger.debug(`Found script at: ${jsPath}`)
+      return { execPath: process.execPath, scriptPath: jsPath }
+    }
+  }
+
+  // 开发模式：使用 tsx 执行 .ts 文件
+  const tsxPath = join(process.cwd(), 'node_modules', '.bin', 'tsx')
+  const tsPath = join(currentDir, `${scriptName}.ts`)
+  if (existsSync(tsPath) && existsSync(tsxPath)) {
+    logger.debug(`Found TS script at: ${tsPath}, using tsx`)
+    return { execPath: tsxPath, scriptPath: tsPath }
+  }
+
+  // 回退：假设在当前目录
+  const fallbackPath = join(currentDir, `${scriptName}.js`)
+  logger.warn(`Script not found, falling back to: ${fallbackPath}`)
+  return { execPath: process.execPath, scriptPath: fallbackPath }
+}
+
+/**
  * Spawn task execution as a detached background process
  * @returns Process ID
  */
@@ -66,8 +106,8 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   const out = openSync(logPath, 'a')
   const err = openSync(logPath, 'a')
 
-  // Find the runTaskProcess script path (relative to this file's location)
-  const scriptPath = join(currentDir, 'runTaskProcess.js')
+  // Find the runTaskProcess script path
+  const { execPath, scriptPath } = getScriptConfig('runTaskProcess')
 
   const args = [
     scriptPath,
@@ -81,13 +121,14 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   }
 
   logger.debug(`Spawning task process: ${taskId}`)
+  logger.debug(`Exec: ${execPath}`)
   logger.debug(`Script: ${scriptPath}`)
   logger.debug(`Log: ${logPath}`)
   logger.debug(`Resume mode: ${resume}`)
 
   // Spawn detached process
   const child = spawn(
-    process.execPath, // node
+    execPath,
     args,
     {
       detached: true,
@@ -127,6 +168,7 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
 
 /**
  * 检查是否有 runner 在运行
+ * 如果锁文件存在但进程已死，自动清理锁文件
  */
 function isRunnerRunning(): boolean {
   if (!existsSync(RUNNER_LOCK_FILE)) {
@@ -134,9 +176,19 @@ function isRunnerRunning(): boolean {
   }
   try {
     const pid = parseInt(readFileSync(RUNNER_LOCK_FILE, 'utf-8').trim(), 10)
-    if (isNaN(pid)) return false
-    return isProcessRunning(pid)
+    if (isNaN(pid)) {
+      releaseRunnerLock()
+      return false
+    }
+    const running = isProcessRunning(pid)
+    if (!running) {
+      // 进程已死，清理残留锁文件
+      logger.debug(`Runner process ${pid} dead, cleaning up stale lock file`)
+      releaseRunnerLock()
+    }
+    return running
   } catch {
+    releaseRunnerLock()
     return false
   }
 }
@@ -174,19 +226,28 @@ export function spawnTaskRunner(): void {
     return
   }
 
-  const scriptPath = join(currentDir, 'runQueueProcess.js')
+  const { execPath, scriptPath } = getScriptConfig('runQueueProcess')
 
-  logger.debug(`Spawning queue runner: ${scriptPath}`)
+  logger.debug(`Spawning queue runner: ${execPath} ${scriptPath}`)
+
+  // 创建日志文件用于调试
+  mkdirSync(DATA_DIR, { recursive: true })
+  const out = openSync(RUNNER_LOG_FILE, 'a')
+  const err = openSync(RUNNER_LOG_FILE, 'a')
 
   const child = spawn(
-    process.execPath,
+    execPath,
     [scriptPath],
     {
       detached: true,
-      stdio: 'ignore',
+      stdio: ['ignore', out, err],
       cwd: process.cwd(),
     }
   )
+
+  // Close file descriptors in parent
+  closeSync(out)
+  closeSync(err)
 
   child.unref()
 

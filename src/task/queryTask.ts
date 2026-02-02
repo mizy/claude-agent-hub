@@ -13,6 +13,7 @@ import {
   isProcessRunning,
   getTaskFolder,
 } from '../store/TaskStore.js'
+import { ui } from '../cli/output.js'
 import { getStore } from '../store/index.js'
 import {
   getTaskWorkflow,
@@ -92,7 +93,7 @@ function formatProgressBar(percent: number, width = 10): string {
  */
 function renderTaskList(tasks: Task[], showProgress: boolean): void {
   if (tasks.length === 0) {
-    console.log(chalk.yellow('暂无任务'))
+    ui.warn('暂无任务')
     return
   }
 
@@ -267,7 +268,7 @@ export async function getTaskDetail(id: string): Promise<void> {
   const task = getTask(id)
 
   if (!task) {
-    console.log(chalk.red(`Task "${id}" not found`))
+    ui.error(`Task "${id}" not found`)
     return
   }
 

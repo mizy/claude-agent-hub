@@ -43,6 +43,9 @@ export const QUEUE_FILE = join(DATA_DIR, 'queue.json')
 /** 队列运行器锁文件 */
 export const RUNNER_LOCK_FILE = join(DATA_DIR, 'runner.lock')
 
+/** 队列运行器日志文件 */
+export const RUNNER_LOG_FILE = join(DATA_DIR, 'runner.log')
+
 // ============ 文件名常量（聚合导出） ============
 
 /** 文件名常量集合 */

@@ -22,10 +22,11 @@ import { registerDaemonCommands } from './commands/daemon.js'
 import { registerReportCommands } from './commands/report.js'
 import { registerTemplateCommands } from './commands/template.js'
 import { registerInitCommand } from './commands/init.js'
+import { registerAgentCommands } from './commands/agent.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
-import { getTaskFolder } from '../store/TaskStore.js'
+import { getTaskFolder, getAllTasks } from '../store/TaskStore.js'
 import { getLogPath } from '../store/TaskLogStore.js'
 import { existsSync } from 'fs'
 import { spawn } from 'child_process'
@@ -34,6 +35,7 @@ import { setLogLevel } from '../shared/logger.js'
 import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
 import { detectOrphanedTasks, resumeAllOrphanedTasks } from '../task/resumeTask.js'
 import { success, error, info, warn } from './output.js'
+import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
 
 const program = new Command()
 
@@ -45,6 +47,7 @@ program
   .option('-p, --priority <priority>', '优先级 (low/medium/high)', 'medium')
   .option('-a, --agent <agent>', '指定执行的 Agent')
   .option('-F, --foreground', '立即前台执行（默认只创建任务）')
+  .option('--no-run', '仅创建任务，不执行')
   .option('-v, --verbose', '显示详细日志 (debug 级别)')
   .action(async (input, options) => {
     if (input) {
@@ -79,6 +82,12 @@ async function handleTaskDescription(
     success(`Created task: ${displayTitle}`)
     console.log(`  ID: ${task.id}`)
 
+    // --no-run: 仅创建任务，不执行
+    if (options.run === false) {
+      info('Task created (--no-run). Use "cah run" or "cah task resume" to execute.')
+      return
+    }
+
     // 2. 执行任务
     if (options.foreground) {
       // -F 前台运行 - 直接执行，可以看到完整日志
@@ -93,8 +102,25 @@ async function handleTaskDescription(
     } else {
       // 默认：创建任务后立即触发队列执行（后台）
       const { spawnTaskRunner } = await import('../task/spawnTask.js')
+
+      // 检测 pending 任务数量（包括刚创建的）
+      const allTasks = getAllTasks()
+      const pendingTasks = allTasks.filter(t => isPendingStatus(t.status))
+      const runningTasks = allTasks.filter(t => isRunningStatus(t.status))
+
+      if (runningTasks.length > 0) {
+        // 有任务在运行，新任务排队等待
+        info(`Task queued. ${runningTasks.length} running, ${pendingTasks.length} pending.`)
+      } else if (pendingTasks.length > 1) {
+        // 有其他 pending 任务
+        info(`Task queued. ${pendingTasks.length} pending tasks in queue.`)
+      }
+
       spawnTaskRunner()
-      info('Task queued and runner started.')
+
+      if (runningTasks.length === 0 && pendingTasks.length <= 1) {
+        info('Task queued and runner started.')
+      }
     }
   } catch (err) {
     error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -134,6 +160,7 @@ program
 // 注册子命令
 registerInitCommand(program)
 registerTaskCommands(program)
+registerAgentCommands(program)
 registerDaemonCommands(program)
 registerReportCommands(program)
 registerTemplateCommands(program)

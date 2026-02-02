@@ -45,7 +45,7 @@ async function main(): Promise<void> {
   const isResume = values['resume'] || false
 
   if (!taskId) {
-    console.error('Missing --task-id argument')
+    logger.error('Missing --task-id argument')
     process.exit(1)
   }
 
@@ -137,6 +137,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(err => {
-  console.error('Fatal error:', err)
+  logger.error(`Fatal error: ${err instanceof Error ? err.message : String(err)}`)
   process.exit(1)
 })

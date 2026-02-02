@@ -17,7 +17,7 @@ import {
   handleNodeResult,
 } from './index.js'
 import { updateInstanceVariables } from '../store/WorkflowStore.js'
-import { createLogger } from '../shared/logger.js'
+import { createLogger, logError as logErrorHelper } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { sendReviewNotification } from '../notify/sendLarkNotify.js'
 import {
@@ -136,7 +136,13 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
-    logger.error(`Node ${nodeId} failed:`, errorMessage)
+    // 使用增强的错误日志记录，包含完整上下文
+    logErrorHelper(logger, `Node ${nodeId} failed`, error instanceof Error ? error : errorMessage, {
+      workflowId,
+      instanceId,
+      nodeId,
+      attempt,
+    })
 
     // 记录节点失败
     const maxAttempts = node.retry?.maxAttempts ?? 3
@@ -432,12 +438,78 @@ async function executeTaskNode(
     })
   }
 
+  // 尝试从响应中提取结构化 JSON 数据
+  const output = extractStructuredOutput(result.value.response)
+
   return {
     success: true,
-    output: result.value.response,
+    output,
     sessionId: newSessionId,
     costUsd: result.value.costUsd,
   }
+}
+
+/**
+ * 从 Claude 响应中提取结构化输出
+ *
+ * 如果响应包含 JSON 代码块，则解析并返回结构化对象
+ * 同时保留原始文本以便展示
+ */
+function extractStructuredOutput(response: string): { _raw: string } & Record<string, unknown> {
+  const output: { _raw: string } & Record<string, unknown> = { _raw: response }
+
+  // 尝试提取 JSON 代码块 (```json ... ```)
+  const jsonBlockMatch = response.match(/```json\s*([\s\S]*?)\s*```/)
+  if (jsonBlockMatch && jsonBlockMatch[1]) {
+    try {
+      let parsed = JSON.parse(jsonBlockMatch[1])
+
+      // 如果 JSON 只有一个 'result' 字段且是对象，展平它
+      // 这样 outputs['node'].hasTypescript 可以直接访问
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        Object.keys(parsed).length === 1 &&
+        'result' in parsed &&
+        typeof parsed.result === 'object' &&
+        parsed.result !== null
+      ) {
+        parsed = parsed.result
+        logger.debug('Flattened single "result" wrapper from JSON output')
+      }
+
+      if (typeof parsed === 'object' && parsed !== null) {
+        Object.assign(output, parsed)
+        logger.debug(`Extracted structured output from JSON block: ${Object.keys(parsed).join(', ')}`)
+      }
+    } catch {
+      // JSON 解析失败，忽略
+    }
+  }
+
+  // 尝试匹配 key: value 或 key: **value** 模式
+  // 例如: "hasTypescript: true" 或 "hasTypescript: **true**"
+  const kvMatches = response.matchAll(/(\w+):\s*\*{0,2}(true|false|\d+(?:\.\d+)?)\*{0,2}/gi)
+  for (const match of kvMatches) {
+    const key = match[1]
+    const valueStr = match[2]
+    if (!key || !valueStr) continue
+
+    // 避免覆盖已从 JSON 块提取的值
+    if (key in output) continue
+
+    // 转换值类型
+    const lowerValue = valueStr.toLowerCase()
+    if (lowerValue === 'true') {
+      output[key] = true
+    } else if (lowerValue === 'false') {
+      output[key] = false
+    } else if (!isNaN(Number(lowerValue))) {
+      output[key] = Number(lowerValue)
+    }
+  }
+
+  return output
 }
 
 /** 默认 Persona 名称 */

@@ -21,6 +21,12 @@ import type {
   NodeState,
   Workflow,
 } from '../types.js'
+import {
+  isNodeDone,
+  isNodeRunning,
+  isNodeFailed,
+  isNodeWaiting,
+} from '../../types/nodeStatus.js'
 
 const logger = createLogger('state-manager')
 
@@ -241,22 +247,22 @@ export const markNodeWaiting = markNodeWaitingFn
 // ============ 状态查询 (内部实现) ============
 
 function isNodeCompletedFn(state: NodeState): boolean {
-  return state.status === 'done' || state.status === 'skipped'
+  return isNodeDone(state.status)
 }
 
 function isNodeRunnableFn(state: NodeState): boolean {
-  return state.status === 'pending' || state.status === 'ready'
+  return isNodeWaiting(state.status)
 }
 
 function getActiveNodesFn(instance: WorkflowInstance): string[] {
   return Object.entries(instance.nodeStates)
-    .filter(([_, state]) => state.status === 'running')
+    .filter(([_, state]) => isNodeRunning(state.status))
     .map(([nodeId]) => nodeId)
 }
 
 function getPendingNodesFn(instance: WorkflowInstance): string[] {
   return Object.entries(instance.nodeStates)
-    .filter(([_, state]) => state.status === 'pending' || state.status === 'ready')
+    .filter(([_, state]) => isNodeWaiting(state.status))
     .map(([nodeId]) => nodeId)
 }
 
@@ -268,7 +274,7 @@ function getCompletedNodesFn(instance: WorkflowInstance): string[] {
 
 function getFailedNodesFn(instance: WorkflowInstance): string[] {
   return Object.entries(instance.nodeStates)
-    .filter(([_, state]) => state.status === 'failed')
+    .filter(([_, state]) => isNodeFailed(state.status))
     .map(([nodeId]) => nodeId)
 }
 
@@ -304,7 +310,7 @@ export function checkWorkflowCompletion(
   const endState = instance.nodeStates[endNode.id]
 
   // end 节点完成 = 工作流完成
-  if (endState?.status === 'done') {
+  if (endState && isNodeDone(endState.status)) {
     return { completed: true, failed: false }
   }
 

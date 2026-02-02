@@ -43,11 +43,25 @@ export {
 // 日志
 export {
   type LogLevel,
+  type LogMode,
   type Logger,
+  type LoggerOptions,
+  type ErrorContext,
+  type JsonLogEntry,
   setLogLevel,
   getLogLevel,
+  setLogMode,
+  getLogMode,
   createLogger,
   logger,
+  logError,
+  createErrorLogger,
+  flushLogs,
+  // 文件日志工具
+  stripAnsi,
+  formatISOTimestamp,
+  formatFileLogLine,
+  formatJsonLogEntry,
 } from './logger.js'
 
 // ID 生成
