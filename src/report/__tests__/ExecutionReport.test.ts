@@ -129,12 +129,12 @@ describe('ExecutionReport', () => {
       })
 
       vi.mocked(getExecutionTimeline).mockReturnValue([
-        { timestamp: '2026-02-01T10:00:00Z', event: 'workflow:started' },
-        { timestamp: '2026-02-01T10:00:01Z', event: 'node:started', nodeId: 'node-1', nodeName: 'Task Node 1' },
-        { timestamp: '2026-02-01T10:02:00Z', event: 'node:completed', nodeId: 'node-1', nodeName: 'Task Node 1' },
-        { timestamp: '2026-02-01T10:02:01Z', event: 'node:started', nodeId: 'node-2', nodeName: 'Task Node 2' },
-        { timestamp: '2026-02-01T10:05:00Z', event: 'node:completed', nodeId: 'node-2', nodeName: 'Task Node 2' },
-        { timestamp: '2026-02-01T10:05:00Z', event: 'workflow:completed' },
+        { timestamp: '2026-02-01T10:00:00Z', event: 'workflow:started', instanceId: 'inst-1' },
+        { timestamp: '2026-02-01T10:00:01Z', event: 'node:started', nodeId: 'node-1', nodeName: 'Task Node 1', instanceId: 'inst-1' },
+        { timestamp: '2026-02-01T10:02:00Z', event: 'node:completed', nodeId: 'node-1', nodeName: 'Task Node 1', instanceId: 'inst-1' },
+        { timestamp: '2026-02-01T10:02:01Z', event: 'node:started', nodeId: 'node-2', nodeName: 'Task Node 2', instanceId: 'inst-1' },
+        { timestamp: '2026-02-01T10:05:00Z', event: 'node:completed', nodeId: 'node-2', nodeName: 'Task Node 2', instanceId: 'inst-1' },
+        { timestamp: '2026-02-01T10:05:00Z', event: 'workflow:completed', instanceId: 'inst-1' },
       ])
 
 
@@ -239,8 +239,8 @@ describe('ExecutionReport', () => {
           { id: 'node-2', name: 'Task Node 2', type: 'task', status: 'completed', attempts: 1, durationMs: 150000, costUsd: 0.07 },
         ],
         timeline: [
-          { timestamp: '2026-02-01T10:00:00Z', event: 'workflow:started' },
-          { timestamp: '2026-02-01T10:05:00Z', event: 'workflow:completed' },
+          { timestamp: '2026-02-01T10:00:00Z', event: 'workflow:started', instanceId: 'inst-1' },
+          { timestamp: '2026-02-01T10:05:00Z', event: 'workflow:completed', instanceId: 'inst-1' },
         ],
         summary: {
           totalNodes: 2,

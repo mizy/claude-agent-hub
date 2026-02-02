@@ -31,6 +31,7 @@ interface WorkerState {
   paused: boolean
   activeJobs: number
   pollTimer: NodeJS.Timeout | null
+  retryTimers: Set<NodeJS.Timeout>  // 跟踪所有重试定时器
 }
 
 const state: WorkerState = {
@@ -38,6 +39,7 @@ const state: WorkerState = {
   paused: false,
   activeJobs: 0,
   pollTimer: null,
+  retryTimers: new Set(),
 }
 
 let workerOptions: WorkerOptions | null = null
@@ -298,7 +300,13 @@ async function handleNodeFailure(
 
     // 如果有延迟，使用 setTimeout 延迟入队
     if (retryDecision.delayMs > 0) {
-      setTimeout(async () => {
+      const timer = setTimeout(async () => {
+        state.retryTimers.delete(timer)
+        // Worker 已关闭则不再入队
+        if (!state.running) {
+          logger.debug(`Worker stopped, skipping retry for node ${nodeId}`)
+          return
+        }
         // 重新入队以触发重试
         await enqueueNode({
           workflowId,
@@ -308,6 +316,7 @@ async function handleNodeFailure(
         })
         logger.debug(`Retry job enqueued for node ${nodeId}`)
       }, retryDecision.delayMs)
+      state.retryTimers.add(timer)
     } else {
       // 立即重试
       await enqueueNode({
@@ -359,6 +368,16 @@ export async function closeWorker(): Promise<void> {
   if (state.pollTimer) {
     clearTimeout(state.pollTimer)
     state.pollTimer = null
+  }
+
+  // 清除所有重试定时器
+  const timerCount = state.retryTimers.size
+  for (const timer of state.retryTimers) {
+    clearTimeout(timer)
+  }
+  state.retryTimers.clear()
+  if (timerCount > 0) {
+    logger.debug(`Cleared ${timerCount} retry timers`)
   }
 
   // 等待活跃任务完成

@@ -6,12 +6,36 @@
  * 执行完毕后自动退出
  */
 
-import { runTask } from '../agent/runAgentForTask.js'
+import { runTask } from './runTask.js'
 import { getAllTasks, getTask, updateTask } from '../store/TaskStore.js'
 import { createLogger } from '../shared/logger.js'
 import { releaseRunnerLock } from './spawnTask.js'
 
 const logger = createLogger('queue-runner')
+
+// 确保异常退出时也能清理锁文件
+function setupSignalHandlers(): void {
+  const cleanup = (signal: string) => {
+    logger.info(`Received ${signal}, cleaning up...`)
+    releaseRunnerLock()
+    process.exit(0)
+  }
+
+  process.on('SIGINT', () => cleanup('SIGINT'))
+  process.on('SIGTERM', () => cleanup('SIGTERM'))
+  process.on('uncaughtException', (err) => {
+    logger.error(`Uncaught exception: ${err.message}`)
+    releaseRunnerLock()
+    process.exit(1)
+  })
+  process.on('unhandledRejection', (reason) => {
+    logger.error(`Unhandled rejection: ${reason}`)
+    releaseRunnerLock()
+    process.exit(1)
+  })
+}
+
+setupSignalHandlers()
 
 async function main(): Promise<void> {
   logger.info('Queue runner started')

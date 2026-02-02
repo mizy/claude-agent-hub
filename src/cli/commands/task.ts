@@ -1,12 +1,8 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
 import { createTask } from '../../task/createTask.js'
-import { listTasks } from '../../task/listTasks.js'
-import { getTaskDetail } from '../../task/getTaskDetail.js'
-import { deleteTask } from '../../task/deleteTask.js'
-import { clearTasks } from '../../task/clearTasks.js'
-import { stopTask } from '../../task/stopTask.js'
-import { completeTask, rejectTask } from '../../task/completeTask.js'
+import { listTasks, getTaskDetail } from '../../task/queryTask.js'
+import { deleteTask, clearTasks, stopTask, completeTask, rejectTask } from '../../task/manageTaskLifecycle.js'
 import {
   detectOrphanedTasks,
   resumeTask,
@@ -31,16 +27,9 @@ import { writeFileSync } from 'fs'
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
 import { success, error, info, warn } from '../output.js'
-import { taskNotFoundError, formatError } from '../errors.js'
+import { AppError } from '../../shared/error.js'
+import { formatDuration } from '../../shared/formatTime.js'
 import type { TaskStatus } from '../../types/task.js'
-
-function formatDurationMs(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  const minutes = Math.floor(ms / 60000)
-  const seconds = Math.round((ms % 60000) / 1000)
-  return `${minutes}m ${seconds}s`
-}
 
 export function registerTaskCommands(program: Command) {
   const task = program
@@ -184,11 +173,17 @@ export function registerTaskCommands(program: Command) {
         }
 
         if (task.status === 'failed') {
-          // 恢复失败的任务 (从失败点继续，自动启动进程)
+          // 恢复失败的任务 (从失败点继续或重新执行)
           const result = await resumeFailedTask(id)
           if (result.success) {
-            success(`Failed task recovered and started: ${id}`)
-            console.log(chalk.gray(`  Retrying node: ${result.failedNodeId}`))
+            if (result.mode === 'restart') {
+              success(`Failed task restarted: ${id}`)
+              console.log(chalk.gray(`  Mode: restart (no previous workflow)`))
+            } else {
+              success(`Failed task recovered and started: ${id}`)
+              console.log(chalk.gray(`  Mode: continue from failed node`))
+              console.log(chalk.gray(`  Retrying node: ${result.failedNodeId}`))
+            }
             console.log(chalk.gray(`  PID: ${result.pid}`))
           } else {
             error(result.error || 'Failed to recover task')
@@ -264,7 +259,7 @@ export function registerTaskCommands(program: Command) {
     .action((id, options) => {
       const taskFolder = getTaskFolder(id)
       if (!taskFolder) {
-        console.error(formatError(taskNotFoundError(id)))
+        console.error(AppError.taskNotFound(id).format())
         return
       }
 
@@ -327,7 +322,7 @@ export function registerTaskCommands(program: Command) {
                            node.status === 'failed' ? chalk.red :
                            node.status === 'skipped' ? chalk.gray : chalk.yellow
 
-        const duration = node.durationMs ? ` (${formatDurationMs(node.durationMs)})` : ''
+        const duration = node.durationMs ? ` (${formatDuration(node.durationMs)})` : ''
         const cost = node.costUsd ? ` $${node.costUsd.toFixed(4)}` : ''
 
         console.log(statusColor(`  ${statusIcon} ${node.nodeName} [${node.nodeType}]${duration}${cost}`))
@@ -357,7 +352,7 @@ export function registerTaskCommands(program: Command) {
     .action((id, options) => {
       const taskFolder = getTaskFolder(id)
       if (!taskFolder) {
-        console.error(formatError(taskNotFoundError(id)))
+        console.error(AppError.taskNotFound(id).format())
         return
       }
 

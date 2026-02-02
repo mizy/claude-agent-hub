@@ -3,16 +3,17 @@
  */
 
 import { existsSync, mkdirSync } from 'fs'
-import { createLogger, formatISOTimestamp } from '../shared/logger.js'
+import { createLogger, formatFileLogLine, formatISOTimestamp, stripAnsi, type LogLevel } from '../shared/logger.js'
 import {
   getTaskLogsDir,
   getExecutionLogPath,
   getConversationLogFilePath,
+  getConversationJsonlPath,
   getJsonlLogPath,
   getResultFilePath,
   getStepFilePath,
 } from './paths.js'
-import { writeJson, appendToFile } from './json.js'
+import { writeJson, appendToFile } from './readWriteJson.js'
 import { getTaskFolder } from './TaskStore.js'
 
 const logger = createLogger('task-log-store')
@@ -40,14 +41,21 @@ export function appendConversation(taskId: string, entry: ConversationEntry): vo
     mkdirSync(logDir, { recursive: true })
   }
 
+  // 1. 写入人类可读的文本格式 (conversation.log)
   const logPath = getConversationLogFilePath(taskId)
   const separator = '\n' + '='.repeat(80) + '\n'
 
-  const logContent = [
-    separator,
+  const metaLines = [
     `[${entry.timestamp}] Phase: ${entry.phase}`,
     entry.nodeId ? `Node: ${entry.nodeId} (${entry.nodeName || 'unnamed'})` : '',
     `Duration: ${entry.durationMs}ms`,
+    entry.durationApiMs != null ? `API Duration: ${entry.durationApiMs}ms` : '',
+    entry.costUsd != null ? `Cost: $${entry.costUsd.toFixed(6)}` : '',
+  ].filter(Boolean)
+
+  const logContent = [
+    separator,
+    ...metaLines,
     '',
     '--- PROMPT ---',
     entry.prompt,
@@ -55,9 +63,15 @@ export function appendConversation(taskId: string, entry: ConversationEntry): vo
     '--- RESPONSE ---',
     entry.response,
     separator,
-  ].filter(Boolean).join('\n')
+  ].join('\n')
 
   appendToFile(logPath, logContent)
+
+  // 2. 写入结构化的 JSONL 格式 (conversation.jsonl)
+  const jsonlPath = getConversationJsonlPath(taskId)
+  const jsonlLine = JSON.stringify(entry) + '\n'
+  appendToFile(jsonlPath, jsonlLine)
+
   logger.debug(`Logged conversation for task ${taskId}`)
 }
 
@@ -68,14 +82,27 @@ export function getConversationLogPath(taskId: string): string {
 
 // ============ Execution Log (for stop/resume/events) ============
 
+export interface ExecutionLogOptions {
+  /** 日志级别，默认 info */
+  level?: Exclude<LogLevel, 'silent'>
+  /** 日志 scope，如 lifecycle、node、stream */
+  scope?: string
+  /** 是否为原始流式输出（不添加时间戳和格式） */
+  raw?: boolean
+}
+
 /**
  * Append a log entry to the execution log
  * Used for tracking stop/resume and other lifecycle events
  *
- * 日志格式: ISO 8601 时间戳 + 级别 + 消息
- * 示例: 2026-02-01T13:02:47.739Z INF [RESUME] Task resumed
+ * 日志格式: ISO 8601 时间戳 + 级别 + [scope] + 消息
+ * 示例: 2026-02-01T13:02:47.739Z INF [lifecycle] Task resumed
  */
-export function appendExecutionLog(taskId: string, message: string): void {
+export function appendExecutionLog(
+  taskId: string,
+  message: string,
+  options: ExecutionLogOptions = {}
+): void {
   const logPath = getExecutionLogPath(taskId)
   const logDir = getTaskLogsDir(taskId)
 
@@ -83,8 +110,17 @@ export function appendExecutionLog(taskId: string, message: string): void {
     mkdirSync(logDir, { recursive: true })
   }
 
-  const timestamp = formatISOTimestamp()
-  const logLine = `${timestamp} INF ${message}\n`
+  const { level = 'info', scope = '', raw = false } = options
+
+  let logLine: string
+  if (raw) {
+    // 原始流式输出：只移除 ANSI 颜色码，不添加格式
+    logLine = stripAnsi(message)
+  } else {
+    // 结构化日志：使用统一格式
+    logLine = formatFileLogLine(level, scope, message) + '\n'
+  }
+
   appendToFile(logPath, logLine)
 }
 
@@ -157,7 +193,10 @@ export function getOutputPath(taskId: string): string {
 
 // ============ Step Records ============
 
-// Save step output
+/**
+ * @deprecated steps 目录已不再使用
+ * 节点输出现在存储在 instance.json 的 outputs 字段中
+ */
 export function saveStepOutput(taskId: string, stepNumber: number, output: unknown): void {
   const taskDir = getTaskFolder(taskId)
   if (!taskDir) return

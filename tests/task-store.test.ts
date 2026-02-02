@@ -103,7 +103,7 @@ describe('TaskStore', () => {
       expect(existsSync(taskDir)).toBe(true)
       expect(existsSync(join(taskDir, 'logs'))).toBe(true)
       expect(existsSync(join(taskDir, 'outputs'))).toBe(true)
-      expect(existsSync(join(taskDir, 'steps'))).toBe(true)
+      // steps/ 目录已移除（未使用）
     })
   })
 
@@ -332,8 +332,10 @@ describe('TaskStore', () => {
     })
   })
 
-  describe('Step 存储', () => {
-    it('应保存步骤输出', () => {
+  // NOTE: Step 存储已废弃，节点输出现在存储在 instance.json 的 outputs 字段中
+  // 保留测试以验证向后兼容性
+  describe('Step 存储 (deprecated)', () => {
+    it('应保存步骤输出（向后兼容）', () => {
       const task = createTestTask()
       saveTask(task)
 

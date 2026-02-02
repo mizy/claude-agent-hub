@@ -29,7 +29,8 @@ const LEVEL_LABELS: Record<Exclude<LogLevel, 'silent'>, string> = {
   error: 'ERR',
 }
 
-let currentLevel: LogLevel = 'info'
+// 测试环境默认静默，避免测试输出噪音
+let currentLevel: LogLevel = process.env.NODE_ENV === 'test' ? 'silent' : 'info'
 
 export function setLogLevel(level: LogLevel): void {
   currentLevel = level
@@ -59,6 +60,13 @@ function formatMessage(level: Exclude<LogLevel, 'silent'>, scope: string, messag
 
 // ============ 文件日志格式化（无 ANSI 颜色） ============
 
+/** 移除 ANSI 转义序列 */
+// eslint-disable-next-line no-control-regex
+const ANSI_REGEX = /\x1b\[[0-9;]*m/g
+export function stripAnsi(str: string): string {
+  return str.replace(ANSI_REGEX, '')
+}
+
 /** ISO 8601 时间戳 */
 export function formatISOTimestamp(): string {
   return new Date().toISOString()
@@ -73,7 +81,9 @@ export function formatFileLogLine(
   const timestamp = formatISOTimestamp()
   const label = LEVEL_LABELS[level]
   const scopeStr = scope ? `[${scope}]` : ''
-  return `${timestamp} ${label} ${scopeStr} ${message}`
+  // 移除消息中的 ANSI 颜色码
+  const cleanMessage = stripAnsi(message)
+  return `${timestamp} ${label} ${scopeStr} ${cleanMessage}`
 }
 
 /** JSON Lines 格式日志条目 */

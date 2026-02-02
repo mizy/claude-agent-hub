@@ -1,17 +1,17 @@
 /**
  * Task Store - Task CRUD 和进程管理
  *
- * 目录结构:
+ * 基于 FileStore（目录模式）实现，目录结构:
  * data/tasks/
  * └── task-20260131-HHMMSS-xxx/
  *     ├── task.json        # 任务元数据 (包含 status)
  *     ├── process.json     # 后台进程信息
  *     └── ...
  *
- * 注意：不再使用 index.json 缓存，直接扫描文件夹
+ * 内部使用 FileStore 作为底层存储，对外保持原有 API。
  */
 
-import { existsSync, readdirSync, rmSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { format } from 'date-fns'
 import { createLogger } from '../shared/logger.js'
@@ -24,9 +24,9 @@ import {
   getTaskDir,
   getTaskLogsDir,
   getTaskOutputsDir,
-  getTaskStepsDir,
 } from './paths.js'
-import { readJson, writeJson, ensureDirs } from './json.js'
+import { readJson, writeJson, ensureDirs } from './readWriteJson.js'
+import { FileStore } from './GenericFileStore.js'
 
 const logger = createLogger('task-store')
 
@@ -76,24 +76,18 @@ function initDirs(): void {
   ensureDirs(DATA_DIR, TASKS_DIR)
 }
 
-// ============ 扫描任务文件夹 ============
+// ============ FileStore 实例（底层存储） ============
 
-/**
- * 扫描所有任务文件夹，返回有效的任务目录名列表
- */
-function scanTaskFolders(): string[] {
-  initDirs()
+// Task 存储：目录模式，支持部分 ID 匹配
+const taskStore = new FileStore<Task, TaskSummary>({
+  dir: TASKS_DIR,
+  mode: 'directory',
+  dataFile: TASK_FILE,
+  partialIdMatch: true,
+  toSummary,
+})
 
-  if (!existsSync(TASKS_DIR)) return []
-
-  return readdirSync(TASKS_DIR).filter(f => {
-    // 跳过索引文件和临时文件
-    if (f === 'index.json' || f.endsWith('.tmp')) return false
-    const fullPath = join(TASKS_DIR, f)
-    // 只保留包含 task.json 的目录
-    return existsSync(join(fullPath, TASK_FILE))
-  })
-}
+// ============ Task ID 生成和文件夹创建 ============
 
 // Generate task ID: task-{YYYYMMDD}-{HHMMSS}-{random}
 export function generateTaskId(_title: string): string {
@@ -114,37 +108,40 @@ export function generateTaskId(_title: string): string {
 }
 
 // Create task folder structure
+// 注：steps/ 目录已移除（未使用）
 export function createTaskFolder(taskId: string, _status?: TaskStatus): string {
   initDirs()
   const taskDir = getTaskDir(taskId)
   mkdirSync(taskDir, { recursive: true })
   mkdirSync(getTaskLogsDir(taskId), { recursive: true })
   mkdirSync(getTaskOutputsDir(taskId), { recursive: true })
-  mkdirSync(getTaskStepsDir(taskId), { recursive: true })
   return taskDir
 }
 
-// Find task by partial ID
-function findTaskByPartialId(partialId: string): string | null {
-  const folders = scanTaskFolders()
-  const match = folders.find(f => f.startsWith(partialId) || f.includes(partialId))
-  return match || null
-}
-
 // Get task folder path
+// 返回任务文件夹路径（目录存在即可，不要求 task.json 必须存在）
 export function getTaskFolder(taskId: string): string | null {
-  initDirs()
-
-  // Direct lookup
-  const path = getTaskDir(taskId)
-  if (existsSync(path)) {
-    return path
+  // 先尝试通过 FileStore 解析（会检查 task.json）
+  const resolvedId = taskStore.resolveId(taskId)
+  if (resolvedId) {
+    return taskStore.getEntityPath(resolvedId)
   }
 
-  // Try partial match
-  const match = findTaskByPartialId(taskId)
+  // 如果 task.json 不存在，检查目录本身是否存在
+  const taskDir = getTaskDir(taskId)
+  if (existsSync(taskDir)) {
+    return taskDir
+  }
+
+  // 支持部分 ID 匹配：扫描目录名
+  if (!existsSync(TASKS_DIR)) return null
+  const entries = readdirSync(TASKS_DIR)
+  const match = entries.find(entry => entry.startsWith(taskId) || entry.includes(taskId))
   if (match) {
-    return getTaskDir(match)
+    const matchedDir = join(TASKS_DIR, match)
+    if (existsSync(matchedDir)) {
+      return matchedDir
+    }
   }
 
   return null
@@ -171,26 +168,20 @@ export function saveTask(task: Task): void {
   // Update timestamp
   task.updatedAt = new Date().toISOString()
 
-  // Save task.json
-  writeJson(join(taskDir, TASK_FILE), task)
+  // Save using FileStore
+  taskStore.setSync(task.id, task)
 
   logger.debug(`Saved task: ${task.id} (status: ${task.status})`)
 }
 
 // Get task
 export function getTask(taskId: string): Task | null {
-  const taskDir = getTaskFolder(taskId)
-  if (!taskDir) return null
-  return readJson<Task>(join(taskDir, TASK_FILE))
+  return taskStore.getSync(taskId)
 }
 
 // Get all tasks (直接扫描文件夹)
 export function getAllTasks(): Task[] {
-  const folders = scanTaskFolders()
-
-  const tasks = folders
-    .map(folder => readJson<Task>(join(TASKS_DIR, folder, TASK_FILE)))
-    .filter((t): t is Task => t !== null)
+  const tasks = taskStore.getAllSync()
 
   // 按创建时间倒序
   tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -221,23 +212,41 @@ export function updateTask(taskId: string, updates: Partial<Task>): void {
     return
   }
 
+  // 状态变化时记录详细日志（用于问题追溯）
+  if (updates.status && updates.status !== task.status) {
+    const caller = new Error().stack?.split('\n').slice(2, 5).join('\n') || 'unknown'
+    const logMsg =
+      `Task status change: ${task.id} [${task.status} → ${updates.status}]\n` +
+      `  Title: ${task.title.slice(0, 50)}...\n` +
+      `  Caller:\n${caller}`
+    logger.info(logMsg)
+
+    // 同时写入任务日志文件（异步，延迟导入避免循环依赖）
+    import('./TaskLogStore.js').then(({ appendExecutionLog }) => {
+      appendExecutionLog(taskId, `[STATUS] ${task.status} → ${updates.status}\n${caller}`, {
+        scope: 'lifecycle',
+        level: updates.status === 'failed' ? 'error' : 'info',
+      })
+    }).catch(() => {
+      // 忽略日志写入失败
+    })
+  }
+
   const updated = { ...task, ...updates }
   saveTask(updated)
 }
 
 // Delete task
 export function deleteTask(taskId: string): void {
-  const taskDir = getTaskFolder(taskId)
-  if (taskDir && existsSync(taskDir)) {
-    rmSync(taskDir, { recursive: true, force: true })
-    logger.debug(`Deleted task folder: ${taskDir}`)
+  const deleted = taskStore.deleteSync(taskId)
+  if (deleted) {
+    logger.debug(`Deleted task: ${taskId}`)
   }
 }
 
-// ============ Process Info ============
+// ============ Process Info (聚合导出) ============
 
-// Save process info
-export function saveProcessInfo(taskId: string, info: ProcessInfo): void {
+function saveProcessInfoFn(taskId: string, info: ProcessInfo): void {
   const taskDir = getTaskFolder(taskId)
   if (!taskDir) {
     logger.warn(`Task folder not found for: ${taskId}`)
@@ -246,23 +255,20 @@ export function saveProcessInfo(taskId: string, info: ProcessInfo): void {
   writeJson(join(taskDir, PROCESS_FILE), info)
 }
 
-// Get process info
-export function getProcessInfo(taskId: string): ProcessInfo | null {
+function getProcessInfoFn(taskId: string): ProcessInfo | null {
   const taskDir = getTaskFolder(taskId)
   if (!taskDir) return null
   return readJson<ProcessInfo>(join(taskDir, PROCESS_FILE))
 }
 
-// Update process info
-export function updateProcessInfo(taskId: string, updates: Partial<ProcessInfo>): void {
-  const info = getProcessInfo(taskId)
+function updateProcessInfoFn(taskId: string, updates: Partial<ProcessInfo>): void {
+  const info = getProcessInfoFn(taskId)
   if (info) {
-    saveProcessInfo(taskId, { ...info, ...updates })
+    saveProcessInfoFn(taskId, { ...info, ...updates })
   }
 }
 
-// Check if process is running
-export function isProcessRunning(pid: number): boolean {
+function isProcessRunningFn(pid: number): boolean {
   try {
     process.kill(pid, 0)
     return true
@@ -270,6 +276,20 @@ export function isProcessRunning(pid: number): boolean {
     return false
   }
 }
+
+/** 进程操作聚合对象 */
+export const PROCESS_OPS = {
+  save: saveProcessInfoFn,
+  get: getProcessInfoFn,
+  update: updateProcessInfoFn,
+  isRunning: isProcessRunningFn,
+}
+
+// 兼容性单独导出
+export const saveProcessInfo = saveProcessInfoFn
+export const getProcessInfo = getProcessInfoFn
+export const updateProcessInfo = updateProcessInfoFn
+export const isProcessRunning = isProcessRunningFn
 
 // Initialize on module load
 initDirs()

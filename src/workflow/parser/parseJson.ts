@@ -4,7 +4,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
-import { generateId } from '../../shared/id.js'
+import { generateId } from '../../shared/generateId.js'
 import type { Workflow, WorkflowNode, WorkflowEdge } from '../types.js'
 
 const logger = createLogger('json-parser')

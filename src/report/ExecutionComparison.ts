@@ -6,10 +6,10 @@
 import { readdirSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { TASKS_DIR } from '../store/paths.js'
-import { readJson } from '../store/json.js'
+import { readJson } from '../store/readWriteJson.js'
 import { formatDuration } from '../store/ExecutionStatsStore.js'
 import type { ExecutionSummary } from '../store/ExecutionStatsStore.js'
-import type { TaskCategory } from '../agent/executionHistory.js'
+import type { TaskCategory } from '../analysis/index.js'
 
 // ============ 类型定义 ============
 

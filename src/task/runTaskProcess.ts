@@ -14,7 +14,7 @@
  */
 
 import { parseArgs } from 'util'
-import { runTask, resumeTask } from '../agent/runAgentForTask.js'
+import { runTask, resumeTask } from './runTask.js'
 import {
   getTask,
   updateTask,

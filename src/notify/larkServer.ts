@@ -16,7 +16,7 @@ import {
   markNodeFailed as stateMarkNodeFailed,
 } from '../workflow/engine/StateManager.js'
 import { handleNodeResult, getWorkflow } from '../workflow/index.js'
-import { sendApprovalResultNotification } from './lark.js'
+import { sendApprovalResultNotification } from './sendLarkNotify.js'
 
 const logger = createLogger('lark-server')
 

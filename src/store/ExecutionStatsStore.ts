@@ -5,7 +5,8 @@
 
 import { existsSync, mkdirSync } from 'fs'
 import { createLogger } from '../shared/logger.js'
-import { readJson, writeJson } from './json.js'
+import { formatDuration } from '../shared/formatTime.js'
+import { readJson, writeJson } from './readWriteJson.js'
 import { getTaskFolder } from './TaskStore.js'
 import type { WorkflowExecutionStats, NodeExecutionStats } from '../workflow/engine/WorkflowEventEmitter.js'
 
@@ -33,7 +34,8 @@ export interface ExecutionSummary {
 
 export interface ExecutionTimeline {
   timestamp: string
-  event: 'workflow:started' | 'node:started' | 'node:completed' | 'node:failed' | 'workflow:completed' | 'workflow:failed'
+  event: 'workflow:started' | 'workflow:resumed' | 'node:started' | 'node:completed' | 'node:failed' | 'workflow:completed' | 'workflow:failed'
+  instanceId: string  // 关联到具体的执行实例，用于过滤不同执行的事件（必填）
   nodeId?: string
   nodeName?: string
   details?: string
@@ -155,7 +157,7 @@ export function appendTimelineEvent(taskId: string, event: ExecutionTimeline): v
     timeline = readJson(path, { defaultValue: [] }) ?? []
   }
 
-  // 去重检查：相同 event + nodeId 组合在 5 秒内不重复
+  // 去重检查：相同 event + nodeId + instanceId 组合在 5 秒内不重复
   const DEDUP_WINDOW_MS = 5000
   const eventTime = new Date(event.timestamp).getTime()
   const isDuplicate = timeline.some(existing => {
@@ -164,6 +166,7 @@ export function appendTimelineEvent(taskId: string, event: ExecutionTimeline): v
     return (
       existing.event === event.event &&
       existing.nodeId === event.nodeId &&
+      existing.instanceId === event.instanceId &&
       timeDiff < DEDUP_WINDOW_MS
     )
   })
@@ -199,6 +202,66 @@ export function getExecutionTimeline(taskId: string): ExecutionTimeline[] {
   }
 
   return readJson(path, { defaultValue: [] }) ?? []
+}
+
+/**
+ * 读取指定 instance 的执行时间线
+ *
+ * 过滤只返回属于指定 instanceId 的事件
+ */
+export function getTimelineForInstance(taskId: string, instanceId: string): ExecutionTimeline[] {
+  const allEvents = getExecutionTimeline(taskId)
+  return allEvents.filter(event => event.instanceId === instanceId)
+}
+
+/**
+ * 清理旧 instance 的事件，为新执行做准备
+ *
+ * 可选操作：
+ * - 'archive': 保留旧事件但标记为已归档（默认）
+ * - 'remove': 删除旧事件
+ */
+export function clearTimelineForNewInstance(
+  taskId: string,
+  newInstanceId: string,
+  mode: 'archive' | 'remove' = 'archive'
+): void {
+  const path = getTimelineFilePath(taskId)
+  if (!path) {
+    logger.warn(`Cannot clear timeline: task folder not found for ${taskId}`)
+    return
+  }
+
+  if (!existsSync(path)) {
+    return
+  }
+
+  const timeline = readJson<ExecutionTimeline[]>(path, { defaultValue: [] }) ?? []
+
+  if (mode === 'remove') {
+    // 移除所有旧事件，只保留没有 instanceId 的旧事件（向后兼容）
+    const filtered = timeline.filter(event =>
+      event.instanceId === newInstanceId
+    )
+    writeJson(path, filtered)
+    logger.debug(`Cleared timeline for new instance ${newInstanceId}, removed ${timeline.length - filtered.length} old events`)
+  } else {
+    // archive 模式：添加一个分隔标记事件
+    const separator: ExecutionTimeline = {
+      timestamp: new Date().toISOString(),
+      event: 'workflow:started',
+      instanceId: newInstanceId,
+      details: `--- New execution (previous instance events archived) ---`,
+    }
+
+    // 检查是否已有此 instance 的开始事件（避免重复添加分隔符）
+    const hasNewInstanceEvents = timeline.some(e => e.instanceId === newInstanceId)
+    if (!hasNewInstanceEvents) {
+      timeline.push(separator)
+      writeJson(path, timeline)
+      logger.debug(`Added archive separator for new instance ${newInstanceId}`)
+    }
+  }
 }
 
 /**
@@ -257,6 +320,9 @@ export function formatTimeline(timeline: ExecutionTimeline[]): string {
       case 'workflow:started':
         eventStr = 'Workflow started'
         break
+      case 'workflow:resumed':
+        eventStr = 'Workflow resumed'
+        break
       case 'workflow:completed':
         eventStr = 'Workflow completed'
         break
@@ -280,21 +346,6 @@ export function formatTimeline(timeline: ExecutionTimeline[]): string {
   return lines.join('\n')
 }
 
-// ============ 辅助函数 ============
-
-export function formatDuration(ms: number): string {
-  if (ms < 1000) {
-    return `${ms}ms`
-  }
-  if (ms < 60000) {
-    return `${(ms / 1000).toFixed(1)}s`
-  }
-  if (ms < 3600000) {
-    const minutes = Math.floor(ms / 60000)
-    const seconds = Math.round((ms % 60000) / 1000)
-    return `${minutes}m ${seconds}s`
-  }
-  const hours = Math.floor(ms / 3600000)
-  const minutes = Math.round((ms % 3600000) / 60000)
-  return `${hours}h ${minutes}m`
-}
+// Re-export for convenience
+export { formatDuration } from '../shared/formatTime.js'
+export type { NodeExecutionStats, WorkflowExecutionStats } from '../workflow/engine/WorkflowEventEmitter.js'

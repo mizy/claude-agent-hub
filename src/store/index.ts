@@ -1,20 +1,34 @@
 /**
- * 统一存储模块入口
+ * @entry Store 存储模块
  *
- * 导出所有存储相关的类型、工具和类。
+ * 提供文件存储、任务持久化和日志管理能力
+ *
+ * 主要 API:
+ * - FileStore<T>: 泛型 key-value 文件存储类
+ * - getStore(): 获取统一存储接口实例
+ * - saveTask/getTask: 任务 CRUD
+ * - saveWorkflow/getInstance: Workflow 存储
+ * - appendExecutionLog: 日志写入
  */
 
 // 路径常量和构建函数
 export * from './paths.js'
 
 // JSON 读写工具
-export * from './json.js'
+export * from './readWriteJson.js'
 
 // 类型定义
 export * from './types.js'
 
-// 泛型文件存储类
-export { FileStore, type FileStoreOptions } from './GenericFileStore.js'
+// ============ 泛型文件存储类 ============
+// FileStore<T, S> 是一个通用的 key-value 文件存储工具类
+// 支持文件模式和目录模式，可选的 Summary 转换和 Query 过滤
+export {
+  FileStore,
+  type FileStoreOptions,
+  type QueryFilter,
+  type StoreMode,
+} from './GenericFileStore.js'
 
 // TaskStore - Task CRUD 和进程管理
 export {
@@ -66,22 +80,28 @@ export {
   getConversationLogPath,
   // Execution log
   appendExecutionLog,
+  // JSON Lines log
+  appendJsonlLog,
+  type JsonlLogEntry,
+  type LogEventType,
   // Path helpers
   getLogPath,
   getOutputPath,
-  // Step records
+  // Step records (deprecated - 节点输出现在存储在 instance.json)
   saveStepOutput,
   // Types
   type ConversationEntry,
+  type ExecutionLogOptions,
 } from './TaskLogStore.js'
 
-// 统一存储接口和实现
+// ============ 统一存储接口 ============
+// UnifiedStore 提供 Task, Workflow 的存储操作方法
+// 使用 getStore() 获取单例实例
+// 注意：队列操作请直接使用 workflow/queue/WorkflowQueue.js
 export {
   getStore,
   type UnifiedStore,
-  type TaskQueueItem,
-  type QueueStatus,
-} from './fileStore.js'
+} from './UnifiedStore.js'
 
 // WorkflowStore - Workflow 和 Instance 存储
 export {
@@ -105,3 +125,20 @@ export {
   resetNodeState,
   updateInstanceVariables,
 } from './WorkflowStore.js'
+
+// ExecutionStatsStore - 执行统计和时间线
+export {
+  // Stats
+  saveExecutionStats,
+  getExecutionStats,
+  formatExecutionSummary,
+  // Timeline
+  appendTimelineEvent,
+  getExecutionTimeline,
+  getTimelineForInstance,
+  clearTimelineForNewInstance,
+  formatTimeline,
+  // Types
+  type ExecutionTimeline,
+  type ExecutionSummary,
+} from './ExecutionStatsStore.js'

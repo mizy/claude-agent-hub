@@ -306,9 +306,9 @@ export interface ExecuteNodeResult {
   error?: string
 }
 
-// ============ 创建工作流的辅助函数 ============
+// ============ 工作流创建工具 (聚合导出) ============
 
-export function createWorkflow(
+function createWorkflowFn(
   name: string,
   description: string,
   nodes: WorkflowNode[],
@@ -323,7 +323,7 @@ export function createWorkflow(
   }
 }
 
-export function createTaskNode(
+function createTaskNodeFn(
   id: string,
   name: string,
   config: TaskConfig
@@ -336,7 +336,7 @@ export function createTaskNode(
   }
 }
 
-export function createHumanNode(
+function createHumanNodeFn(
   id: string,
   name: string,
   config?: HumanConfig
@@ -349,7 +349,7 @@ export function createHumanNode(
   }
 }
 
-export function createEdge(
+function createEdgeFn(
   from: string,
   to: string,
   options?: { condition?: string; maxLoops?: number; label?: string }
@@ -361,22 +361,20 @@ export function createEdge(
   }
 }
 
-// ============ 初始状态 ============
-
-export function createInitialNodeState(): NodeState {
+function createInitialNodeStateFn(): NodeState {
   return {
     status: 'pending',
     attempts: 0,
   }
 }
 
-export function createInitialInstance(
+function createInitialInstanceFn(
   workflowId: string,
   workflow: Workflow
 ): Omit<WorkflowInstance, 'id'> {
   const nodeStates: Record<string, NodeState> = {}
   for (const node of workflow.nodes) {
-    nodeStates[node.id] = createInitialNodeState()
+    nodeStates[node.id] = createInitialNodeStateFn()
   }
 
   return {
@@ -388,3 +386,26 @@ export function createInitialInstance(
     loopCounts: {},
   }
 }
+
+/**
+ * 工作流创建工具集合
+ * @example
+ * import { WorkflowFactory } from './types.js'
+ * const workflow = WorkflowFactory.createWorkflow(...)
+ */
+export const WORKFLOW_FACTORY = {
+  createWorkflow: createWorkflowFn,
+  createTaskNode: createTaskNodeFn,
+  createHumanNode: createHumanNodeFn,
+  createEdge: createEdgeFn,
+  createInitialNodeState: createInitialNodeStateFn,
+  createInitialInstance: createInitialInstanceFn,
+}
+
+// 为兼容性保留单独导出
+export const createWorkflow = createWorkflowFn
+export const createTaskNode = createTaskNodeFn
+export const createHumanNode = createHumanNodeFn
+export const createEdge = createEdgeFn
+export const createInitialNodeState = createInitialNodeStateFn
+export const createInitialInstance = createInitialInstanceFn

@@ -6,7 +6,7 @@
 import { existsSync, unlinkSync, writeFileSync, statSync } from 'fs'
 import { execSync } from 'child_process'
 import { createLogger } from '../../shared/logger.js'
-import { readJson, writeJson, ensureDir } from '../../store/json.js'
+import { readJson, writeJson, ensureDir } from '../../store/readWriteJson.js'
 import { QUEUE_FILE, DATA_DIR } from '../../store/paths.js'
 import type { NodeJobData } from '../types.js'
 

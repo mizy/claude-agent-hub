@@ -1,11 +1,18 @@
 /**
- * Workflow 模块统一导出
+ * @entry Workflow 工作流引擎模块
  *
- * 常用 API 从这里导入，完整功能请使用子模块：
- * - workflow/engine: 引擎核心、状态管理、条件求值
+ * 提供工作流定义、执行和状态管理能力
+ *
+ * 主要 API:
+ * - createWorkflow(): 创建工作流
+ * - startWorkflow(): 启动工作流
+ * - handleNodeResult(): 处理节点执行结果
+ * - enqueueNodes(): 入队节点
+ *
+ * 子模块:
+ * - workflow/engine: 引擎核心、状态管理
  * - workflow/queue: 任务队列、Worker
- * - workflow/parser: Markdown/JSON 解析器
- * - workflow/types: 完整类型定义
+ * - workflow/parser: JSON 解析器
  */
 
 // ============ 核心类型 ============

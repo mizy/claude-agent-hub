@@ -1,16 +1,16 @@
 /**
  * Workflow 存储 - 薄包装层
  *
- * 所有存储操作都代理到 TaskStore，Workflow 数据存储在任务目录下：
+ * 所有存储操作都代理到 TaskWorkflowStore，Workflow 数据存储在任务目录下：
  * data/tasks/{taskId}/
  * ├── workflow.json
  * └── instance.json
  *
- * 此模块保留是为了提供统一的 API 接口给 workflow 模块内部使用。
+ * 提供基于 workflowId/instanceId 的查找接口。
  */
 
 import { createLogger } from '../shared/logger.js'
-import { generateId } from '../shared/id.js'
+import { generateId } from '../shared/generateId.js'
 import { getAllTaskSummaries } from './TaskStore.js'
 import {
   getTaskWorkflow,
@@ -27,6 +27,30 @@ import type {
 
 const logger = createLogger('workflow-store')
 
+// ============ 内部辅助函数 ============
+
+/** 遍历所有任务的 workflow */
+function forEachWorkflow(callback: (workflow: Workflow, taskId: string) => boolean | void): void {
+  const summaries = getAllTaskSummaries()
+  for (const summary of summaries) {
+    const workflow = getTaskWorkflow(summary.id)
+    if (workflow && callback(workflow, summary.id) === true) {
+      break
+    }
+  }
+}
+
+/** 遍历所有任务的 instance */
+function forEachInstance(callback: (instance: WorkflowInstance, taskId: string) => boolean | void): void {
+  const summaries = getAllTaskSummaries()
+  for (const summary of summaries) {
+    const instance = getTaskInstance(summary.id)
+    if (instance && callback(instance, summary.id) === true) {
+      break
+    }
+  }
+}
+
 // ============ Workflow CRUD ============
 
 export function saveWorkflow(workflow: Workflow): void {
@@ -34,7 +58,6 @@ export function saveWorkflow(workflow: Workflow): void {
     logger.warn(`Workflow ${workflow.id} has no taskId, cannot save`)
     return
   }
-
   saveTaskWorkflow(workflow.taskId, workflow)
   logger.debug(`Saved workflow: ${workflow.id} to task ${workflow.taskId}`)
 }
@@ -42,46 +65,31 @@ export function saveWorkflow(workflow: Workflow): void {
 export function getWorkflow(id: string): Workflow | null {
   // 1. 尝试直接用 id 作为 taskId 查找
   const directWorkflow = getTaskWorkflow(id)
-  if (directWorkflow) {
-    return directWorkflow
-  }
+  if (directWorkflow) return directWorkflow
 
-  // 2. 遍历所有任务，查找匹配的 workflow.id
-  const summaries = getAllTaskSummaries()
-  for (const summary of summaries) {
-    const workflow = getTaskWorkflow(summary.id)
-    if (workflow?.id === id) {
-      return workflow
+  // 2. 遍历所有任务，查找匹配的 workflow.id（支持部分匹配）
+  let found: Workflow | null = null
+  forEachWorkflow((workflow) => {
+    if (workflow.id === id || (id.length >= 6 && workflow.id.startsWith(id))) {
+      found = workflow
+      return true // 停止遍历
     }
-    // 支持部分匹配
-    if (workflow && id.length >= 6 && workflow.id.startsWith(id)) {
-      return workflow
-    }
-  }
-
-  return null
+    return false
+  })
+  return found
 }
 
 export function getAllWorkflows(): Workflow[] {
   const workflows: Workflow[] = []
-  const summaries = getAllTaskSummaries()
-
-  for (const summary of summaries) {
-    const workflow = getTaskWorkflow(summary.id)
-    if (workflow) {
-      workflows.push(workflow)
-    }
-  }
-
+  forEachWorkflow((workflow) => { workflows.push(workflow) })
   return workflows.sort((a, b) =>
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   )
 }
 
-export function deleteWorkflow(id: string): void {
-  // 由于 workflow 存储在 task 目录下，删除 workflow 实际上应该通过 TaskStore.deleteTask
-  // 这里只是清除 workflow.json 文件（如果需要）
-  logger.debug(`Delete workflow ${id} - use TaskStore.deleteTask instead`)
+export function deleteWorkflow(_id: string): void {
+  // workflow 存储在 task 目录下，删除应通过 TaskStore.deleteTask
+  logger.debug(`Delete workflow - use TaskStore.deleteTask instead`)
 }
 
 // ============ Instance CRUD ============
@@ -92,13 +100,9 @@ export function createInstance(workflowId: string): WorkflowInstance {
     throw new Error(`Workflow not found: ${workflowId}`)
   }
 
-  // Initialize node states
   const nodeStates: Record<string, NodeState> = {}
   for (const node of workflow.nodes) {
-    nodeStates[node.id] = {
-      status: 'pending',
-      attempts: 0,
-    }
+    nodeStates[node.id] = { status: 'pending', attempts: 0 }
   }
 
   const instance: WorkflowInstance = {
@@ -106,43 +110,35 @@ export function createInstance(workflowId: string): WorkflowInstance {
     workflowId: workflow.id,
     status: 'pending',
     nodeStates,
-    variables: {
-      ...workflow.variables,
-      taskId: workflow.taskId, // 保存 taskId 供后续使用
-    },
+    variables: { ...workflow.variables, taskId: workflow.taskId },
     outputs: {},
     loopCounts: {},
   }
 
   saveInstance(instance)
   logger.info(`Created instance: ${instance.id} for workflow: ${workflowId}`)
-
   return instance
 }
 
 export function saveInstance(instance: WorkflowInstance): void {
   const taskId = instance.variables.taskId as string | undefined
-
   if (!taskId) {
     logger.warn(`Instance ${instance.id} has no taskId, cannot save`)
     return
   }
-
   saveTaskInstance(taskId, instance)
 }
 
 export function getInstance(id: string): WorkflowInstance | null {
-  // 遍历所有任务，查找匹配的 instance.id
-  const summaries = getAllTaskSummaries()
-
-  for (const summary of summaries) {
-    const instance = getTaskInstance(summary.id)
-    if (instance?.id === id) {
-      return instance
+  let found: WorkflowInstance | null = null
+  forEachInstance((instance) => {
+    if (instance.id === id) {
+      found = instance
+      return true
     }
-  }
-
-  return null
+    return false
+  })
+  return found
 }
 
 export function getInstancesByWorkflow(workflowId: string): WorkflowInstance[] {
@@ -155,15 +151,7 @@ export function getInstancesByStatus(status: WorkflowStatus): WorkflowInstance[]
 
 export function getAllInstances(): WorkflowInstance[] {
   const instances: WorkflowInstance[] = []
-  const summaries = getAllTaskSummaries()
-
-  for (const summary of summaries) {
-    const instance = getTaskInstance(summary.id)
-    if (instance) {
-      instances.push(instance)
-    }
-  }
-
+  forEachInstance((instance) => { instances.push(instance) })
   return instances.sort((a, b) => {
     const aTime = a.startedAt || a.id
     const bTime = b.startedAt || b.id
@@ -177,6 +165,33 @@ export function updateInstanceStatus(id: string, status: WorkflowStatus, error?:
   const instance = getInstance(id)
   if (!instance) return
 
+  const oldStatus = instance.status
+  const taskId = instance.variables.taskId as string | undefined
+
+  // 状态变化时记录详细日志（用于问题追溯）
+  if (status !== oldStatus) {
+    const caller = new Error().stack?.split('\n').slice(2, 5).join('\n') || 'unknown'
+    const logMsg =
+      `Instance status change: ${id.slice(0, 8)}... [${oldStatus} → ${status}]\n` +
+      `  TaskId: ${taskId || 'unknown'}\n` +
+      `  WorkflowId: ${instance.workflowId.slice(0, 8)}...\n` +
+      (error ? `  Error: ${error}\n` : '') +
+      `  Caller:\n${caller}`
+    logger.info(logMsg)
+
+    // 同时写入任务日志文件（异步，延迟导入避免循环依赖）
+    if (taskId) {
+      import('./TaskLogStore.js').then(({ appendExecutionLog }) => {
+        appendExecutionLog(taskId, `[INSTANCE] ${oldStatus} → ${status}\n${caller}`, {
+          scope: 'lifecycle',
+          level: status === 'failed' ? 'error' : 'info',
+        })
+      }).catch(() => {
+        // 忽略日志写入失败
+      })
+    }
+  }
+
   instance.status = status
 
   if (status === 'running' && !instance.startedAt) {
@@ -187,7 +202,6 @@ export function updateInstanceStatus(id: string, status: WorkflowStatus, error?:
   }
 
   saveInstance(instance)
-  logger.debug(`Updated instance ${id} status to ${status}`)
 }
 
 export function updateNodeState(

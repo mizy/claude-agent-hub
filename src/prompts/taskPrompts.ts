@@ -31,8 +31,7 @@ export const TASK_PROMPTS = {
 
 ## 当前时间
 {{currentTime}}
-
-## 工作目录
+## 工作目录)
 {{cwd}}
 
 ## 当前节点

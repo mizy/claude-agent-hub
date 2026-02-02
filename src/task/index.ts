@@ -1,16 +1,55 @@
+/**
+ * @entry Task 任务管理模块
+ *
+ * 提供任务的创建、执行、查询和生命周期管理能力
+ *
+ * 主要 API:
+ * - createTask(): 创建任务
+ * - executeTask(): 执行任务
+ * - listTasks(): 列出任务
+ * - stopTask(): 停止任务
+ */
+
+// Core task creation
 export { createTask } from './createTask.js'
-export { listTasks } from './listTasks.js'
-export { getTaskDetail } from './getTaskDetail.js'
-export { pollTask } from './pollTask.js'
-export { deleteTask } from './deleteTask.js'
-export { clearTasks } from './clearTasks.js'
-export { stopTask } from './stopTask.js'
-export { completeTask, rejectTask } from './completeTask.js'
+
+// Task lifecycle (delete, clear, stop, complete, reject)
+export {
+  deleteTask,
+  clearTasks,
+  stopTask,
+  completeTask,
+  rejectTask,
+  type DeleteTaskResult,
+  type ClearTasksResult,
+  type StopTaskResult,
+  type CompleteTaskResult,
+} from './manageTaskLifecycle.js'
+
+// Task query (list, detail, poll)
+export {
+  listTasks,
+  getTaskDetail,
+  pollPendingTask,
+  pollTask,
+  getAllTasks,
+  type ListOptions,
+} from './queryTask.js'
+
+// Task execution
 export { createAndRunTask } from './createAndRun.js'
 export {
   detectOrphanedTasks,
-  resumeTask,
+  resumeTask as resumeOrphanedTask,
   resumeAllOrphanedTasks,
   getOrphanedTasksSummary,
   type OrphanedTask,
 } from './resumeTask.js'
+
+// Core task execution
+export { executeTask, type ExecuteTaskOptions, type ExecuteTaskResult } from './executeTask.js'
+export { runTask, resumeTask } from './runTask.js'
+
+// Execution utilities
+export { waitForWorkflowCompletion, createProgressBar } from './ExecutionProgress.js'
+export { setupIncrementalStatsSaving } from './ExecutionStats.js'

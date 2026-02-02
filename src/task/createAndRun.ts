@@ -5,8 +5,8 @@
 
 import { getStore } from '../store/index.js'
 import { createLogger } from '../shared/logger.js'
-import { executeTask } from '../agent/executeAgent.js'
-import { pollPendingTask } from '../task/pollTask.js'
+import { executeTask } from './executeTask.js'
+import { pollPendingTask } from './queryTask.js'
 import type { Task, TaskPriority } from '../types/task.js'
 
 const logger = createLogger('task')

@@ -1,5 +1,12 @@
 /**
- * Scheduler 模块统一导出
+ * @entry Scheduler 调度模块
+ *
+ * 提供任务队列、Worker 和守护进程管理能力
+ *
+ * 主要 API:
+ * - createQueue(): 创建任务队列
+ * - createWorker(): 创建 Worker
+ * - startDaemon(): 启动守护进程
  */
 
 // 事件总线
@@ -19,7 +26,7 @@ export {
   type DelayedQueue,
   createQueue,
   createDelayedQueue,
-} from './queue.js'
+} from './createQueue.js'
 
 // Worker
 export {
@@ -29,7 +36,7 @@ export {
   type WorkerContext,
   type TaskHandler,
   createWorker,
-} from './worker.js'
+} from './createWorker.js'
 
 // 守护进程（原有）
 export { startDaemon } from './startDaemon.js'

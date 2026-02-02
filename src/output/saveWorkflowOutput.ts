@@ -9,6 +9,7 @@
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { createLogger } from '../shared/logger.js'
+import { formatDuration } from '../shared/formatTime.js'
 import { getResultFilePath } from '../store/paths.js'
 import type { Task } from '../types/task.js'
 import type { Workflow, WorkflowInstance, NodeState } from '../workflow/types.js'
@@ -54,20 +55,6 @@ function getGlobalOutputDir(): string {
 }
 
 /**
- * Format duration from milliseconds to human readable
- */
-export function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-
-  if (minutes > 0) {
-    return `${minutes}m ${remainingSeconds}s`
-  }
-  return `${seconds}s`
-}
-
-/**
  * Calculate total duration from timing
  */
 export function calculateTotalDuration(startedAt: string, completedAt: string): string {
@@ -75,6 +62,9 @@ export function calculateTotalDuration(startedAt: string, completedAt: string): 
   const end = new Date(completedAt).getTime()
   return formatDuration(end - start)
 }
+
+// Re-export formatDuration for backward compatibility
+export { formatDuration } from '../shared/formatTime.js'
 
 /**
  * Format node state for markdown
@@ -209,6 +199,9 @@ function getOutputPath(result: WorkflowExecutionResult, options: SaveOptions): s
 /**
  * Save workflow execution output to markdown file
  *
+ * 注意：此函数从传入的 instance 读取最新状态，确保 result.md 与 instance.json 一致。
+ * instance.json 是唯一的执行状态数据源。
+ *
  * @param result - Workflow execution result
  * @param options - Save options
  * @param options.toTaskFolder - If true, save to task folder; otherwise save to global outputs
@@ -229,5 +222,43 @@ export async function saveWorkflowOutput(
 
   logger.info(`Saved workflow output to ${outputPath}`)
   return outputPath
+}
+
+/**
+ * 从 instance 重新生成 result.md
+ *
+ * 用于修复因进程中断导致的 result.md 过时问题。
+ * 此函数从 instance.json（唯一数据源）读取最新状态重新生成报告。
+ */
+export async function regenerateResultFromInstance(
+  taskId: string
+): Promise<string | null> {
+  // 动态导入避免循环依赖
+  const { getTask } = await import('../store/TaskStore.js')
+  const { getTaskWorkflow, getTaskInstance } = await import('../store/TaskWorkflowStore.js')
+
+  const task = getTask(taskId)
+  if (!task) {
+    logger.warn(`Task not found: ${taskId}`)
+    return null
+  }
+
+  const workflow = getTaskWorkflow(taskId)
+  const instance = getTaskInstance(taskId)
+
+  if (!workflow || !instance) {
+    logger.warn(`Workflow or instance not found for task: ${taskId}`)
+    return null
+  }
+
+  const timing = {
+    startedAt: instance.startedAt || new Date().toISOString(),
+    completedAt: instance.completedAt || new Date().toISOString(),
+  }
+
+  return saveWorkflowOutput(
+    { task, workflow, instance, timing },
+    { toTaskFolder: true }
+  )
 }
 

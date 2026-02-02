@@ -24,6 +24,28 @@ import { mkdirSync } from 'fs'
 
 const logger = createLogger('spawn-task')
 
+const isMac = process.platform === 'darwin'
+
+/**
+ * 启动 caffeinate 防止 Mac 休眠
+ * caffeinate -w <pid> 会在指定进程运行期间阻止系统休眠
+ */
+function spawnCaffeinate(pid: number): void {
+  if (!isMac) return
+
+  try {
+    const caffeinate = spawn('caffeinate', ['-w', String(pid)], {
+      detached: true,
+      stdio: 'ignore',
+    })
+    caffeinate.unref()
+    logger.debug(`Caffeinate started for PID ${pid}`)
+  } catch (error) {
+    // caffeinate 失败不影响任务执行
+    logger.warn(`Failed to start caffeinate: ${error}`)
+  }
+}
+
 export interface SpawnTaskOptions {
   taskId: string
   resume?: boolean  // 是否为恢复模式
@@ -86,6 +108,9 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   child.unref()
 
   const pid = child.pid!
+
+  // 启动 caffeinate 防止 Mac 休眠
+  spawnCaffeinate(pid)
 
   // Save process info
   const processInfo: ProcessInfo = {
@@ -168,6 +193,8 @@ export function spawnTaskRunner(): void {
   // 写入锁文件
   if (child.pid) {
     createRunnerLock(child.pid)
+    // 启动 caffeinate 防止 Mac 休眠
+    spawnCaffeinate(child.pid)
   }
 
   logger.debug(`Queue runner spawned: PID ${child.pid}`)

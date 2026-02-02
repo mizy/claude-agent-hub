@@ -1,5 +1,14 @@
 /**
- * Shared 模块统一导出
+ * @entry Shared 公共基础设施模块
+ *
+ * 提供底层工具函数，无业务逻辑依赖
+ *
+ * 主要 API:
+ * - Result<T,E>: 函数式错误处理
+ * - AppError: 统一错误类型
+ * - createLogger(): 日志创建
+ * - generateId(): ID 生成
+ * - formatDuration(): 时间格式化
  */
 
 // Result 类型
@@ -20,7 +29,16 @@ export {
 } from './result.js'
 
 // 错误类型
-export { type ErrorCode, AppError, assertNever } from './error.js'
+export {
+  type ErrorCode,
+  type ErrorCategory,
+  AppError,
+  assertNever,
+  printError,
+  printWarning,
+  analyzeError,
+  formatError,
+} from './error.js'
 
 // 日志
 export {
@@ -39,7 +57,7 @@ export {
   isValidUUID,
   shortenId,
   matchesShortId,
-} from './id.js'
+} from './generateId.js'
 
 // 时间处理
 export {
@@ -50,4 +68,4 @@ export {
   formatDuration,
   parseInterval,
   intervalToCron,
-} from './time.js'
+} from './formatTime.js'

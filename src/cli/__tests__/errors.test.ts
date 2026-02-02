@@ -1,76 +1,69 @@
 /**
- * 结构化错误提示系统测试
+ * 统一错误处理系统测试
  */
 
 import { describe, it, expect } from 'vitest'
-import {
-  analyzeError,
-  formatError,
-  taskNotFoundError,
-  workflowGenerationError,
-  nodeExecutionError,
-} from '../errors.js'
+import { AppError } from '../../shared/error.js'
 
-describe('analyzeError', () => {
+describe('AppError.fromError', () => {
   it('should detect timeout errors', () => {
-    const result = analyzeError('Request timed out after 30000ms')
-    expect(result.category).toBe('timeout')
+    const result = AppError.fromError('Request timed out after 30000ms')
+    expect(result.category).toBe('TIMEOUT')
     expect(result.code).toBe('ERR_TIMEOUT')
-    expect(result.suggestions).toBeDefined()
-    expect(result.suggestions!.length).toBeGreaterThan(0)
+    expect(result.suggestion).toBeDefined()
   })
 
   it('should detect network errors', () => {
-    const result = analyzeError('ECONNREFUSED: Connection refused')
-    expect(result.category).toBe('network')
+    const result = AppError.fromError('ECONNREFUSED: Connection refused')
+    expect(result.category).toBe('NETWORK')
     expect(result.code).toBe('ERR_NETWORK')
   })
 
   it('should detect rate limit errors', () => {
-    const result = analyzeError('Error 429: Rate limit exceeded')
-    expect(result.category).toBe('api')
+    const result = AppError.fromError('Error 429: Rate limit exceeded')
+    expect(result.category).toBe('API')
     expect(result.code).toBe('ERR_RATE_LIMIT')
   })
 
   it('should detect authentication errors', () => {
-    const result = analyzeError('401 Unauthorized: Invalid API key')
-    expect(result.category).toBe('api')
+    const result = AppError.fromError('401 Unauthorized: Invalid API key')
+    expect(result.category).toBe('API')
     expect(result.code).toBe('ERR_AUTH')
   })
 
   it('should detect file not found errors', () => {
-    const result = analyzeError('ENOENT: no such file or directory "/path/to/file"')
-    expect(result.category).toBe('resource')
+    const result = AppError.fromError('ENOENT: no such file or directory "/path/to/file"')
+    expect(result.category).toBe('RESOURCE')
     expect(result.code).toBe('ERR_FILE_NOT_FOUND')
-    expect(result.suggestions).toBeDefined()
-    expect(result.suggestions!.some(s => s.includes('确认文件存在'))).toBe(true)
+    expect(result.suggestion).toBeDefined()
+    expect(result.suggestion!.includes('确认文件存在')).toBe(true)
   })
 
   it('should detect permission errors', () => {
-    const result = analyzeError('EACCES: permission denied "/etc/passwd"')
-    expect(result.category).toBe('permission')
+    const result = AppError.fromError('EACCES: permission denied "/etc/passwd"')
+    expect(result.category).toBe('PERMISSION')
     expect(result.code).toBe('ERR_PERMISSION')
   })
 
   it('should handle unknown errors', () => {
-    const result = analyzeError('Some random error message')
-    expect(result.category).toBe('unknown')
+    const result = AppError.fromError('Some random error message')
+    expect(result.category).toBe('UNKNOWN')
     expect(result.code).toBe('ERR_UNKNOWN')
-    expect(result.suggestions).toBeDefined()
+    expect(result.suggestion).toBeDefined()
   })
 
   it('should accept Error objects', () => {
     const error = new Error('ETIMEDOUT: connection timed out')
-    const result = analyzeError(error)
-    expect(result.category).toBe('timeout')
-    expect(result.context?.stack).toBeDefined()
+    const result = AppError.fromError(error)
+    expect(result.category).toBe('TIMEOUT')
+    expect(result.cause).toBeDefined()
   })
 })
 
-describe('formatError', () => {
+describe('AppError.format', () => {
   it('should format error with all fields', () => {
-    const structured = analyzeError('Request timeout after 5000ms')
-    const formatted = formatError(structured)
+    const appError = AppError.fromError('Request timeout after 5000ms')
+    const formatted = appError.format()
 
     expect(formatted).toContain('错误')
     expect(formatted).toContain('超时')
@@ -79,8 +72,8 @@ describe('formatError', () => {
   })
 
   it('should format unknown errors', () => {
-    const structured = analyzeError('Something went wrong')
-    const formatted = formatError(structured)
+    const appError = AppError.fromError('Something went wrong')
+    const formatted = appError.format()
 
     expect(formatted).toContain('错误')
     expect(formatted).toContain('未知')
@@ -88,26 +81,26 @@ describe('formatError', () => {
   })
 })
 
-describe('preset error constructors', () => {
+describe('AppError factory methods', () => {
   it('should create task not found error', () => {
-    const err = taskNotFoundError('task-12345')
-    expect(err.category).toBe('resource')
-    expect(err.code).toBe('ERR_TASK_NOT_FOUND')
+    const err = AppError.taskNotFound('task-12345')
+    expect(err.category).toBe('TASK')
+    expect(err.code).toBe('TASK_NOT_FOUND')
     expect(err.message).toContain('task-12345')
-    expect(err.suggestions).toBeDefined()
-    expect(err.suggestions!.some(s => s.includes('cah task list'))).toBe(true)
+    expect(err.suggestion).toBeDefined()
+    expect(err.suggestion!.includes('cah task list')).toBe(true)
   })
 
   it('should create workflow generation error', () => {
-    const err = workflowGenerationError('Invalid prompt')
-    expect(err.category).toBe('execution')
+    const err = AppError.workflowGeneration('Invalid prompt')
+    expect(err.category).toBe('WORKFLOW')
     expect(err.code).toBe('ERR_WORKFLOW_GEN')
     expect(err.message).toContain('Invalid prompt')
   })
 
   it('should create node execution error', () => {
-    const err = nodeExecutionError('build-step', 'npm install failed')
-    expect(err.category).toBe('execution')
+    const err = AppError.nodeExecution('build-step', 'npm install failed')
+    expect(err.category).toBe('RUNTIME')
     expect(err.code).toBe('ERR_NODE_EXEC')
     expect(err.message).toContain('build-step')
     expect(err.message).toContain('npm install failed')

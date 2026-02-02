@@ -16,7 +16,7 @@ import {
   updateProcessInfo,
 } from '../store/TaskStore.js'
 import { getTaskInstance, getTaskWorkflow } from '../store/TaskWorkflowStore.js'
-import { appendExecutionLog } from '../store/TaskLogStore.js'
+import { appendExecutionLog, appendJsonlLog } from '../store/TaskLogStore.js'
 import { recoverWorkflowInstance } from '../workflow/index.js'
 import { spawnTaskProcess } from './spawnTask.js'
 import type { Task, TaskStatus } from '../types/task.js'
@@ -121,7 +121,19 @@ export function resumeTask(taskId: string): number | null {
   }
 
   // 记录 resume 到执行日志
-  appendExecutionLog(taskId, `[RESUME] Task resumed, mode: ${shouldResume ? 'continue' : 'restart'}`)
+  appendExecutionLog(taskId, `Task resumed, mode: ${shouldResume ? 'continue' : 'restart'}`, { scope: 'lifecycle' })
+
+  // 写入结构化事件日志
+  appendJsonlLog(taskId, {
+    event: 'task_resumed',
+    message: `Task resumed: ${task.title}`,
+    data: {
+      mode: shouldResume ? 'continue' : 'restart',
+      workflowId: existingWorkflow?.id,
+      instanceId: existingInstance?.id,
+      instanceStatus: existingInstance?.status,
+    },
+  })
 
   // 重新启动后台进程
   const pid = spawnTaskProcess({
@@ -135,7 +147,8 @@ export function resumeTask(taskId: string): number | null {
 
 /**
  * 恢复失败的任务
- * 从失败点继续执行 workflow
+ * - 如果有 workflow instance：从失败点继续执行
+ * - 如果没有 instance（workflow 生成阶段失败）：重新执行
  * 会自动启动后台进程
  */
 export async function resumeFailedTask(taskId: string): Promise<{
@@ -143,6 +156,7 @@ export async function resumeFailedTask(taskId: string): Promise<{
   failedNodeId?: string
   pid?: number
   error?: string
+  mode?: 'continue' | 'restart'
 }> {
   const task = getTask(taskId)
   if (!task) {
@@ -155,11 +169,30 @@ export async function resumeFailedTask(taskId: string): Promise<{
 
   // 获取 workflow instance
   const instance = getTaskInstance(taskId)
+
+  // 没有 instance 说明 workflow 生成阶段就失败了，需要重新执行
   if (!instance) {
-    return { success: false, error: 'No workflow instance found for task' }
+    logger.info(`No workflow instance found, restarting task: ${taskId}`)
+
+    // 记录到日志
+    appendExecutionLog(taskId, 'Task restarted (no previous instance)', { scope: 'lifecycle' })
+    appendJsonlLog(taskId, {
+      event: 'task_restarted',
+      message: `Task restarted: ${task.title}`,
+      data: { reason: 'no_instance' },
+    })
+
+    // 启动后台进程（非 resume 模式，从头开始）
+    const pid = spawnTaskProcess({
+      taskId,
+      resume: false,
+    })
+
+    logger.info(`Task process started (restart mode): PID ${pid}`)
+    return { success: true, pid, mode: 'restart' }
   }
 
-  // 恢复 workflow instance（重置失败节点状态）
+  // 有 instance，恢复 workflow instance（重置失败节点状态）
   const result = await recoverWorkflowInstance(instance.id)
   if (!result.success) {
     return result
@@ -175,7 +208,7 @@ export async function resumeFailedTask(taskId: string): Promise<{
 
   logger.info(`Task process started: PID ${pid}`)
 
-  return { ...result, pid }
+  return { ...result, pid, mode: 'continue' }
 }
 
 /**
