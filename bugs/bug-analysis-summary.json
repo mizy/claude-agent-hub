@@ -1,0 +1,152 @@
+{
+  "summary": {
+    "total_bugs": 5,
+    "by_severity": {
+      "P0": 1,
+      "P1": 2,
+      "P2": 2
+    },
+    "by_type": {
+      "数据清理缺失": 1,
+      "功能缺失": 2,
+      "参数验证缺失": 1,
+      "命令解析歧义": 1
+    }
+  },
+  "bugs": [
+    {
+      "id": "bug-02",
+      "file": "bugs/bug-02-template-ranking-pollution.md",
+      "title": "模板排行榜数据污染",
+      "severity": "P0",
+      "type": "数据清理缺失",
+      "status": "未修复",
+      "priority": 1,
+      "estimated_hours": 2.5,
+      "impact": {
+        "user_experience": "严重",
+        "data_quality": "严重",
+        "functionality": "功能几乎不可用"
+      },
+      "fix_approach": "添加模板清理命令 + 改进排行榜过滤逻辑",
+      "affected_files": [
+        "src/template/TemplateCore.ts:120-180",
+        "src/template/TemplateScoring.ts:45-90",
+        "src/cli/commands/template.ts:85-130"
+      ]
+    },
+    {
+      "id": "bug-01",
+      "file": "bugs/bug-01-task-logs-tail.md",
+      "title": "`cah task logs` 缺少 `--tail` 参数",
+      "severity": "P1",
+      "type": "功能缺失",
+      "status": "未修复",
+      "priority": 2,
+      "estimated_hours": 0.5,
+      "impact": {
+        "user_experience": "中等",
+        "data_quality": "无",
+        "functionality": "日志查看体验下降"
+      },
+      "fix_approach": "在 logs 命令中添加 --tail/-n 和 --head 参数",
+      "affected_files": [
+        "src/cli/commands/task.ts:180-220",
+        "src/task/queryTask.ts:85-120"
+      ]
+    },
+    {
+      "id": "bug-03",
+      "file": "bugs/bug-03-task-get-missing.md",
+      "title": "`cah task get` 命令不存在",
+      "severity": "P1",
+      "type": "功能缺失",
+      "status": "未修复",
+      "priority": 3,
+      "estimated_hours": 1,
+      "impact": {
+        "user_experience": "中等",
+        "data_quality": "无",
+        "functionality": "CLI 功能不完整"
+      },
+      "fix_approach": "实现 task get 命令，支持 --json 和 --verbose 参数",
+      "affected_files": [
+        "src/cli/commands/task.ts",
+        "src/task/queryTask.ts:30-60",
+        "src/cli/output.ts"
+      ]
+    },
+    {
+      "id": "bug-04",
+      "file": "bugs/bug-04-empty-input-silent.md",
+      "title": "空描述参数被静默接受",
+      "severity": "P2",
+      "type": "参数验证缺失",
+      "status": "未修复",
+      "priority": 4,
+      "estimated_hours": 0.5,
+      "impact": {
+        "user_experience": "低",
+        "data_quality": "无",
+        "functionality": "用户困惑"
+      },
+      "fix_approach": "在 CLI 入口添加输入验证，检查空字符串并显示错误",
+      "affected_files": [
+        "src/cli/index.ts:120-150"
+      ]
+    },
+    {
+      "id": "bug-05",
+      "file": "bugs/bug-05-command-ambiguity.md",
+      "title": "不存在的命令被当作任务描述",
+      "severity": "P2",
+      "type": "命令解析歧义",
+      "status": "未修复",
+      "priority": 5,
+      "estimated_hours": 1.5,
+      "impact": {
+        "user_experience": "低",
+        "data_quality": "低",
+        "functionality": "可能误操作"
+      },
+      "fix_approach": "智能提示方案：使用 Levenshtein 距离检测拼写错误，提示用户确认",
+      "affected_files": [
+        "src/cli/index.ts:50-80",
+        "src/shared/levenshtein.ts"
+      ]
+    }
+  ],
+  "recommended_fix_order": [
+    {
+      "order": 1,
+      "bug_id": "bug-02",
+      "reason": "P0 严重问题，影响核心功能可用性，需立即修复"
+    },
+    {
+      "order": 2,
+      "bug_id": "bug-01",
+      "reason": "P1 高优先级，修复简单（0.5h），性价比高"
+    },
+    {
+      "order": 3,
+      "bug_id": "bug-04",
+      "reason": "P2 但修复简单（0.5h），可与 bug-01 一起快速完成"
+    },
+    {
+      "order": 4,
+      "bug_id": "bug-03",
+      "reason": "P1 功能缺失，完善 CLI 功能"
+    },
+    {
+      "order": 5,
+      "bug_id": "bug-05",
+      "reason": "P2 设计决策问题，需要更多考虑，优先级最低"
+    }
+  ],
+  "total_estimated_time": "6.0 hours",
+  "quick_wins": [
+    "bug-01",
+    "bug-04"
+  ],
+  "quick_wins_time": "1.0 hours"
+}

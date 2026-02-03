@@ -1,0 +1,186 @@
+{
+  "version": "0.1.0",
+  "date": "2026-02-03",
+  "timestamp": "2026-02-03T15:24:29+08:00",
+  "platform": {
+    "os": "darwin",
+    "osVersion": "Darwin 25.2.0",
+    "node": "v20+",
+    "testFramework": "vitest@2.1.9"
+  },
+  "testSummary": {
+    "totalTests": 10,
+    "passed": 10,
+    "failed": 0,
+    "duration": 1.41,
+    "errorRate": 0.0
+  },
+  "metrics": {
+    "basicPerformance": {
+      "lockOperationLatency": {
+        "value": 0.102,
+        "unit": "ms",
+        "iterations": 1000,
+        "totalTime": 101.80,
+        "threshold": 1.0,
+        "status": "excellent"
+      },
+      "lockCheckLatency": {
+        "value": 0.001,
+        "unit": "ms",
+        "iterations": 10000,
+        "totalTime": 13.79,
+        "threshold": 0.1,
+        "status": "excellent"
+      },
+      "pidReadLatency": {
+        "value": 0.013,
+        "unit": "ms",
+        "iterations": 5000,
+        "totalTime": 64.51,
+        "threshold": 0.2,
+        "status": "excellent"
+      }
+    },
+    "concurrency": {
+      "concurrentWriteContention": {
+        "workers": 10,
+        "attemptsPerWorker": 100,
+        "successfulAcquisitions": 100,
+        "totalTime": 125.97,
+        "mutualExclusionCorrectness": 1.0,
+        "status": "pass"
+      },
+      "deadlockDetection": {
+        "detectionTime": 0.30,
+        "unit": "ms",
+        "threshold": 10.0,
+        "status": "pass"
+      }
+    },
+    "stressTest": {
+      "highFrequencyThroughput": {
+        "iterations": 10000,
+        "totalTime": 992.59,
+        "unit": "ms",
+        "throughput": 10075,
+        "throughputUnit": "ops/s",
+        "errors": 0,
+        "threshold": 1000,
+        "status": "excellent"
+      },
+      "longHoldImpact": {
+        "holdTime": 100,
+        "checkIterations": 1000,
+        "checkTotalTime": 1.52,
+        "avgCheckTime": 0.002,
+        "unit": "ms",
+        "impactPercentage": 1.52,
+        "status": "pass"
+      }
+    },
+    "reliability": {
+      "stateConsistency": {
+        "status": "pass",
+        "description": "Lock acquire and release state correct"
+      },
+      "corruptedFileHandling": {
+        "status": "pass",
+        "description": "Correctly handles and recovers from corrupted lock files"
+      },
+      "externalDeletion": {
+        "status": "pass",
+        "description": "Correctly detects when lock file is externally deleted"
+      }
+    }
+  },
+  "thresholds": {
+    "lockOperationLatency": {
+      "value": 1.0,
+      "unit": "ms",
+      "comparison": "lessThan"
+    },
+    "lockCheckLatency": {
+      "value": 0.1,
+      "unit": "ms",
+      "comparison": "lessThan"
+    },
+    "pidReadLatency": {
+      "value": 0.2,
+      "unit": "ms",
+      "comparison": "lessThan"
+    },
+    "throughput": {
+      "value": 1000,
+      "unit": "ops/s",
+      "comparison": "greaterThan"
+    },
+    "errorRate": {
+      "value": 0.01,
+      "unit": "ratio",
+      "comparison": "lessThan"
+    },
+    "mutualExclusion": {
+      "value": 1.0,
+      "unit": "ratio",
+      "comparison": "equals"
+    }
+  },
+  "performanceGrade": {
+    "overall": "excellent",
+    "dimensions": {
+      "performance": {
+        "score": 5,
+        "maxScore": 5,
+        "rating": "excellent",
+        "notes": "All metrics exceed targets significantly"
+      },
+      "reliability": {
+        "score": 5,
+        "maxScore": 5,
+        "rating": "excellent",
+        "notes": "Zero errors, complete exception handling"
+      },
+      "concurrency": {
+        "score": 5,
+        "maxScore": 5,
+        "rating": "excellent",
+        "notes": "100% mutual exclusion correctness"
+      },
+      "scalability": {
+        "score": 4,
+        "maxScore": 5,
+        "rating": "good",
+        "notes": "Suitable for moderate concurrency, may need optimization for extreme concurrency (>20 competitors)"
+      }
+    }
+  },
+  "bottlenecks": [
+    {
+      "component": "File I/O",
+      "percentage": 68.6,
+      "impact": "medium",
+      "optimization": "Consider mmap or lighter serialization if further optimization needed",
+      "priority": "low",
+      "notes": "Current performance already excellent, optimization not urgent"
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "high",
+      "action": "Deploy to production",
+      "rationale": "All tests passed with excellent performance"
+    },
+    {
+      "priority": "medium",
+      "action": "Setup performance monitoring",
+      "metrics": ["P50/P95/P99 latency", "throughput", "error rate", "lock contention"]
+    },
+    {
+      "priority": "low",
+      "action": "Run regression tests monthly",
+      "rationale": "Ensure no performance degradation over time"
+    }
+  ],
+  "comparisonNotes": "This is the initial baseline. Future tests will compare against these metrics to detect performance regressions or improvements."
+}

@@ -36,6 +36,10 @@ import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
 import { detectOrphanedTasks, resumeAllOrphanedTasks } from '../task/resumeTask.js'
 import { success, error, info, warn } from './output.js'
 import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
+import { findClosestMatch } from '../shared/levenshtein.js'
+
+// 已知的 CLI 命令列表
+const KNOWN_COMMANDS = ['task', 'template', 'tpl', 'report', 'daemon', 'agent', 'init', 'run', 'logs']
 
 const program = new Command()
 
@@ -50,7 +54,26 @@ program
   .option('--no-run', '仅创建任务，不执行')
   .option('-v, --verbose', '显示详细日志 (debug 级别)')
   .action(async (input, options) => {
+    // 处理空输入：空字符串或纯空白字符
+    if (input !== undefined && input.trim().length === 0) {
+      error('任务描述不能为空')
+      console.log(chalk.gray('  请使用 cah "描述" 创建任务'))
+      console.log(chalk.gray('  或使用 cah --help 查看帮助'))
+      process.exit(1)
+    }
     if (input) {
+      // 检测是否可能是拼错的命令
+      const firstWord = input.split(/\s+/)[0].toLowerCase()
+      const match = findClosestMatch(firstWord, KNOWN_COMMANDS)
+
+      // 如果输入是单个单词且可能是命令拼写错误
+      if (match && input.trim().split(/\s+/).length === 1) {
+        warn(`未找到命令 "${firstWord}"`)
+        console.log(chalk.gray(`  您是否想输入: cah ${match.match}`))
+        console.log(chalk.gray(`  如果要创建任务: cah "${input}"`))
+        process.exit(1)
+      }
+
       await handleTaskDescription(input, options)
     }
   })

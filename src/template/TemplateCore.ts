@@ -207,3 +207,86 @@ export function searchTemplates(query: string): TaskTemplate[] {
     t.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
   )
 }
+
+/**
+ * 清理模板选项
+ */
+export interface CleanTemplatesOptions {
+  /** 按模式匹配 ID */
+  pattern?: string
+  /** 最小使用次数（低于此值的将被清理） */
+  minCount?: number
+  /** 最小有效性评分（低于此值的将被清理） */
+  minEffectiveness?: number
+  /** 是否执行删除（false 则只预览） */
+  execute?: boolean
+}
+
+/**
+ * 清理模板结果
+ */
+export interface CleanTemplatesResult {
+  /** 匹配要删除的模板 */
+  matched: TaskTemplate[]
+  /** 实际删除的模板 */
+  deleted: string[]
+  /** 是否只是预览模式 */
+  dryRun: boolean
+}
+
+/**
+ * 清理低质量/测试模板
+ */
+export function cleanTemplates(options: CleanTemplatesOptions): CleanTemplatesResult {
+  const allTemplates = getAllTemplates()
+  const execute = options.execute ?? false
+
+  // 筛选要清理的模板
+  const matched = allTemplates.filter(t => {
+    // 按模式匹配
+    if (options.pattern) {
+      const regex = new RegExp(options.pattern.replace(/\*/g, '.*'), 'i')
+      if (!regex.test(t.id) && !regex.test(t.name)) {
+        return false
+      }
+    }
+
+    // 按最小使用次数
+    if (options.minCount !== undefined) {
+      const totalCount = (t.successCount || 0) + (t.failureCount || 0)
+      if (totalCount >= options.minCount) {
+        return false
+      }
+    }
+
+    // 按最小有效性评分
+    if (options.minEffectiveness !== undefined && t.effectivenessScore !== undefined) {
+      if (t.effectivenessScore >= options.minEffectiveness * 100) {
+        return false
+      }
+    }
+
+    // 如果没有任何匹配条件，不删除
+    if (!options.pattern && options.minCount === undefined && options.minEffectiveness === undefined) {
+      return false
+    }
+
+    return true
+  })
+
+  const deleted: string[] = []
+
+  if (execute) {
+    for (const tpl of matched) {
+      if (deleteTemplate(tpl.id)) {
+        deleted.push(tpl.id)
+      }
+    }
+  }
+
+  return {
+    matched,
+    deleted,
+    dryRun: !execute,
+  }
+}

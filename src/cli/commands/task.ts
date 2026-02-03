@@ -64,10 +64,13 @@ export function registerTaskCommands(program: Command) {
 
   task
     .command('show')
+    .alias('get')
     .description('查看任务详情')
     .argument('<id>', '任务 ID')
-    .action(async (id) => {
-      await getTaskDetail(id)
+    .option('--json', '以 JSON 格式输出')
+    .option('--verbose', '显示详细信息(包括节点状态)')
+    .action(async (id, options) => {
+      await getTaskDetail(id, { json: options.json, verbose: options.verbose })
     })
 
   task
@@ -348,7 +351,8 @@ export function registerTaskCommands(program: Command) {
     .description('查看任务执行日志 (实时)')
     .argument('<id>', '任务 ID')
     .option('-f, --follow', '持续跟踪 (类似 tail -f)')
-    .option('-n, --lines <n>', '显示最后 N 行', '50')
+    .option('-n, --tail <n>', '显示最后 N 行', '50')
+    .option('--head <n>', '显示前 N 行')
     .action((id, options) => {
       const taskFolder = getTaskFolder(id)
       if (!taskFolder) {
@@ -363,23 +367,34 @@ export function registerTaskCommands(program: Command) {
         return
       }
 
-      info(`Tailing logs for task: ${id}`)
+      info(`Viewing logs for task: ${id}`)
       console.log(chalk.gray(`  Path: ${logPath}`))
-      console.log(chalk.gray(`  Press Ctrl+C to stop\n`))
-
-      // 使用 tail 命令
-      const tailArgs = ['-n', options.lines]
       if (options.follow) {
-        tailArgs.push('-f')
+        console.log(chalk.gray(`  Press Ctrl+C to stop\n`))
       }
-      tailArgs.push(logPath)
 
-      const tail = spawn('tail', tailArgs, {
-        stdio: 'inherit',
-      })
+      // 使用 head 或 tail 命令
+      if (options.head) {
+        const head = spawn('head', ['-n', options.head, logPath], {
+          stdio: 'inherit',
+        })
+        head.on('error', (err) => {
+          error(`Failed to read logs: ${err.message}`)
+        })
+      } else {
+        const tailArgs = ['-n', options.tail]
+        if (options.follow) {
+          tailArgs.push('-f')
+        }
+        tailArgs.push(logPath)
 
-      tail.on('error', (err) => {
-        error(`Failed to tail logs: ${err.message}`)
-      })
+        const tail = spawn('tail', tailArgs, {
+          stdio: 'inherit',
+        })
+
+        tail.on('error', (err) => {
+          error(`Failed to tail logs: ${err.message}`)
+        })
+      }
     })
 }

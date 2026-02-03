@@ -31,7 +31,10 @@ export {
   incrementUsageCount,
   applyTemplate,
   searchTemplates,
+  cleanTemplates,
 } from './TemplateCore.js'
+
+export type { CleanTemplatesOptions, CleanTemplatesResult } from './TemplateCore.js'
 
 // 模板推荐
 export { suggestTemplates } from './TemplateSuggestion.js'
@@ -42,6 +45,8 @@ export {
   recalculateAllEffectivenessScores,
   getTemplateRanking,
 } from './TemplateScoring.js'
+
+export type { RankingOptions } from './TemplateScoring.js'
 
 // 从历史任务生成模板
 export {

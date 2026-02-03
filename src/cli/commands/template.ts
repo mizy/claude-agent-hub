@@ -18,9 +18,10 @@ import {
   getTasksAvailableForTemplate,
   getTemplateRanking,
   recalculateAllEffectivenessScores,
+  cleanTemplates,
   CATEGORY_LABELS,
 } from '../../template/TaskTemplate.js'
-import type { TemplateCategory, TaskTemplate } from '../../template/TaskTemplate.js'
+import type { TemplateCategory, TaskTemplate, RankingOptions } from '../../template/TaskTemplate.js'
 import { success, error, info, warn } from '../output.js'
 
 export function registerTemplateCommands(program: Command) {
@@ -350,17 +351,29 @@ export function registerTemplateCommands(program: Command) {
   template
     .command('ranking')
     .description('查看模板有效性排行榜')
-    .action(() => {
-      const ranking = getTemplateRanking()
+    .option('--show-all', '显示所有模板（包括测试模板）')
+    .option('--min-count <count>', '最小使用次数', '3')
+    .action((options) => {
+      const rankingOptions: RankingOptions = {
+        showAll: options.showAll,
+        minCount: parseInt(options.minCount, 10),
+      }
+      const ranking = getTemplateRanking(rankingOptions)
 
       if (ranking.length === 0) {
         warn('没有带有效性评分的模板')
+        if (!options.showAll) {
+          info('使用 --show-all 查看所有模板（包括测试模板）')
+        }
         info('模板使用后会自动计算有效性评分')
         return
       }
 
       console.log('')
       console.log(chalk.cyan.bold('  模板有效性排行榜'))
+      if (!options.showAll) {
+        console.log(chalk.dim(`  （最少 ${options.minCount} 次使用，排除测试模板）`))
+      }
       console.log('')
 
       ranking.forEach((tpl, i) => {
@@ -385,5 +398,64 @@ export function registerTemplateCommands(program: Command) {
       recalculateAllEffectivenessScores()
       success('已重新计算所有模板的有效性评分')
       info('运行 `cah template ranking` 查看排行榜')
+    })
+
+  // 清理低质量/测试模板
+  template
+    .command('clean')
+    .description('清理低质量/测试模板')
+    .option('-p, --pattern <pattern>', '按模式匹配 ID（支持 * 通配符）')
+    .option('--min-count <count>', '清理使用次数小于此值的模板')
+    .option('--min-effectiveness <score>', '清理有效性评分小于此值的模板（0-1）')
+    .option('-y, --yes', '跳过确认直接删除')
+    .action((options) => {
+      // 至少需要一个过滤条件
+      if (!options.pattern && options.minCount === undefined && options.minEffectiveness === undefined) {
+        error('请指定至少一个过滤条件')
+        console.log(chalk.dim('  --pattern <pattern>        按模式匹配'))
+        console.log(chalk.dim('  --min-count <count>        使用次数小于'))
+        console.log(chalk.dim('  --min-effectiveness <0-1>  有效性评分小于'))
+        return
+      }
+
+      const result = cleanTemplates({
+        pattern: options.pattern,
+        minCount: options.minCount ? parseInt(options.minCount, 10) : undefined,
+        minEffectiveness: options.minEffectiveness ? parseFloat(options.minEffectiveness) : undefined,
+        execute: false, // 先预览
+      })
+
+      if (result.matched.length === 0) {
+        info('没有匹配的模板')
+        return
+      }
+
+      console.log('')
+      console.log(chalk.yellow(`  将删除 ${result.matched.length} 个模板:`))
+      console.log('')
+
+      for (const tpl of result.matched) {
+        const total = (tpl.successCount || 0) + (tpl.failureCount || 0)
+        const score = tpl.effectivenessScore !== undefined ? `${tpl.effectivenessScore}%` : 'N/A'
+        console.log(`  ${chalk.red('✗')} ${chalk.gray(tpl.id)}`)
+        console.log(`     ${tpl.description}`)
+        console.log(`     ${chalk.dim(`使用: ${total}次, 有效性: ${score}`)}`)
+        console.log('')
+      }
+
+      if (!options.yes) {
+        warn('使用 --yes 确认删除')
+        return
+      }
+
+      // 执行删除
+      const execResult = cleanTemplates({
+        pattern: options.pattern,
+        minCount: options.minCount ? parseInt(options.minCount, 10) : undefined,
+        minEffectiveness: options.minEffectiveness ? parseFloat(options.minEffectiveness) : undefined,
+        execute: true,
+      })
+
+      success(`已删除 ${execResult.deleted.length} 个模板`)
     })
 }

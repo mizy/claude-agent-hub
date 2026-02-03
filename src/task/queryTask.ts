@@ -264,11 +264,41 @@ function formatProcessStatus(status: string, isAlive: boolean): string {
   return chalk.gray(status)
 }
 
-export async function getTaskDetail(id: string): Promise<void> {
+export interface GetTaskDetailOptions {
+  json?: boolean
+  verbose?: boolean
+}
+
+export async function getTaskDetail(id: string, options: GetTaskDetailOptions = {}): Promise<void> {
   const task = getTask(id)
 
   if (!task) {
-    ui.error(`Task "${id}" not found`)
+    if (options.json) {
+      console.log(JSON.stringify({ error: `Task "${id}" not found` }))
+    } else {
+      ui.error(`Task "${id}" not found`)
+    }
+    return
+  }
+
+  // JSON 输出模式
+  if (options.json) {
+    const result: Record<string, unknown> = { task }
+
+    const processInfo = getProcessInfo(task.id)
+    if (processInfo) {
+      const isAlive = processInfo.status === 'running' && isProcessRunning(processInfo.pid)
+      result.process = { ...processInfo, isAlive }
+    }
+
+    if (options.verbose) {
+      const workflow = getTaskWorkflow(task.id)
+      const instance = getTaskInstance(task.id)
+      if (workflow) result.workflow = workflow
+      if (instance) result.instance = instance
+    }
+
+    console.log(JSON.stringify(result, null, 2))
     return
   }
 
@@ -297,6 +327,34 @@ export async function getTaskDetail(id: string): Promise<void> {
     }
     if (processInfo.error) {
       console.log(`  ${chalk.gray('Error:')} ${chalk.red(processInfo.error)}`)
+    }
+  }
+
+  // Verbose: Node status
+  if (options.verbose) {
+    const workflow = getTaskWorkflow(task.id)
+    const instance = getTaskInstance(task.id)
+
+    if (workflow && instance) {
+      console.log('')
+      console.log(chalk.bold('Nodes:'))
+
+      for (const node of workflow.nodes) {
+        if (node.type === 'start' || node.type === 'end') continue
+
+        const state = instance.nodeStates[node.id]
+        const statusIcon = state?.status === 'done' ? chalk.green('✓') :
+                          state?.status === 'failed' ? chalk.red('✗') :
+                          state?.status === 'running' ? chalk.cyan('⏳') :
+                          chalk.gray('○')
+
+        const durationStr = state?.durationMs ? chalk.gray(` (${Math.round(state.durationMs / 1000)}s)`) : ''
+        console.log(`  ${statusIcon} ${node.name}${durationStr}`)
+
+        if (state?.error) {
+          console.log(chalk.red(`      Error: ${state.error}`))
+        }
+      }
     }
   }
 

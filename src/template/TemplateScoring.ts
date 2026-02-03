@@ -82,10 +82,39 @@ function findTasksRelatedToTemplate(template: TaskTemplate, tasks: TaskSummary[]
 }
 
 /**
+ * 排行榜选项
+ */
+export interface RankingOptions {
+  /** 最小使用次数（默认 3） */
+  minCount?: number
+  /** 是否显示所有模板（包括测试模板，默认 false） */
+  showAll?: boolean
+}
+
+/**
  * 获取模板排行榜（按有效性评分排序）
  */
-export function getTemplateRanking(): TaskTemplate[] {
+export function getTemplateRanking(options: RankingOptions = {}): TaskTemplate[] {
+  const minCount = options.minCount ?? 3
+  const showAll = options.showAll ?? false
+
   return getAllTemplates()
-    .filter(t => t.effectivenessScore !== undefined)
+    .filter(t => {
+      // 必须有有效性评分
+      if (t.effectivenessScore === undefined) return false
+
+      // 检查最小使用次数
+      const totalCount = (t.successCount || 0) + (t.failureCount || 0)
+      if (totalCount < minCount) return false
+
+      // 默认过滤测试模板
+      if (!showAll) {
+        // 排除测试模板（ID 或名称包含 test）
+        if (t.id.startsWith('test-') || t.id.startsWith('count-test-')) return false
+        if (t.name.toLowerCase() === 'test template') return false
+      }
+
+      return true
+    })
     .sort((a, b) => (b.effectivenessScore || 0) - (a.effectivenessScore || 0))
 }

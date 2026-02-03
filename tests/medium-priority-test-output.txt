@@ -1,0 +1,20 @@
+
+> @mizy/claude-agent-hub@0.1.0 test
+> vitest run tests/priority-medium.test.ts
+
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90m/Users/miaozhuang/projects/claude-agent-hub[39m
+
+[90mstdout[2m | tests/priority-medium.test.ts[2m > [22m[2mMedium 优先级任务测试[2m > [22m[2m应该成功创建 medium 优先级任务
+[22m[39m[32m✓[39m 任务创建成功
+  [90mID :[39m [2m2bab1305[22m
+  [90m标题 :[39m [2mMedium优先级测试任务[22m
+  [90m优先级:[39m [2mmedium[22m
+
+ [32m✓[39m tests/priority-medium.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 22[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+[2m   Start at [22m 18:43:47
+[2m   Duration [22m 415ms[2m (transform 68ms, setup 0ms, collect 177ms, tests 22ms, environment 0ms, prepare 51ms)[22m
+
