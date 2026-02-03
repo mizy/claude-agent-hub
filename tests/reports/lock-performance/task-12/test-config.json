@@ -1,0 +1,186 @@
+{
+  "taskId": "task-12",
+  "taskName": "锁性能测试 - 性能退化专项调查",
+  "testFile": "tests/lock-performance-task12.test.ts",
+  "executionDate": "2026-02-03",
+  "objective": "调查并解决并发性能退化 17.5%（1.48ms vs 1.26ms）",
+  "testGroups": [
+    {
+      "groupId": 1,
+      "name": "基线重复测试",
+      "scenarios": [
+        {
+          "id": "T1",
+          "name": "单次锁操作延迟稳定性",
+          "config": {
+            "repeatCount": 10,
+            "iterations": 1000,
+            "warmupRuns": 2,
+            "cooldownMs": 1000
+          },
+          "baseline": {
+            "avg": 0.107,
+            "unit": "ms"
+          },
+          "target": {
+            "avg": "<1ms",
+            "cv": "<10%"
+          }
+        },
+        {
+          "id": "T2",
+          "name": "并发竞争延迟稳定性",
+          "config": {
+            "repeatCount": 10,
+            "workerCount": 10,
+            "opsPerWorker": 100,
+            "cooldownMs": 2000
+          },
+          "baseline": {
+            "avg": 1.26,
+            "unit": "ms"
+          },
+          "target": {
+            "avg": "<2.5ms",
+            "cv": "<10%"
+          },
+          "importance": "CRITICAL",
+          "note": "核心退化指标"
+        },
+        {
+          "id": "T3",
+          "name": "吞吐量稳定性",
+          "config": {
+            "repeatCount": 10,
+            "iterations": 10000,
+            "cooldownMs": 1000
+          },
+          "baseline": {
+            "avg": 10075,
+            "unit": "ops/s"
+          },
+          "target": {
+            "avg": ">1000 ops/s",
+            "cv": "<15%"
+          }
+        }
+      ]
+    },
+    {
+      "groupId": 2,
+      "name": "并发性能深度分析",
+      "scenarios": [
+        {
+          "id": "T4",
+          "name": "不同竞争者数量下的性能",
+          "config": {
+            "workerCounts": [2, 5, 10, 20, 50],
+            "opsPerWorker": 50
+          },
+          "target": "识别扩展性瓶颈"
+        },
+        {
+          "id": "T5",
+          "name": "不同持有锁时间的影响",
+          "config": {
+            "holdTimes": [0, 10, 50, 100],
+            "workerCount": 10,
+            "opsPerWorker": 50
+          },
+          "target": "分析锁持有时间影响"
+        },
+        {
+          "id": "T6",
+          "name": "重试机制性能分析",
+          "config": {
+            "retryConfigs": [
+              { "maxRetries": 5, "retryDelay": 50 },
+              { "maxRetries": 10, "retryDelay": 100 },
+              { "maxRetries": 20, "retryDelay": 100 },
+              { "maxRetries": 10, "retryDelay": 200 }
+            ],
+            "iterations": 100
+          },
+          "target": "优化重试策略"
+        }
+      ]
+    },
+    {
+      "groupId": 3,
+      "name": "系统负载影响测试",
+      "scenarios": [
+        {
+          "id": "T7",
+          "name": "空闲系统性能",
+          "config": {
+            "iterations": 5000,
+            "systemLoad": "idle (CPU < 10%)"
+          },
+          "target": {
+            "avg": "<1ms"
+          }
+        },
+        {
+          "id": "T8",
+          "name": "中等负载性能",
+          "config": {
+            "iterations": 5000,
+            "systemLoad": "medium (CPU ~50%)"
+          },
+          "target": {
+            "avg": "<2ms"
+          }
+        },
+        {
+          "id": "T9",
+          "name": "高负载性能",
+          "config": {
+            "iterations": 5000,
+            "systemLoad": "high (CPU ~80%)"
+          },
+          "target": {
+            "avg": "<3ms"
+          }
+        }
+      ]
+    },
+    {
+      "groupId": 4,
+      "name": "文件 I/O 性能分析",
+      "scenarios": [
+        {
+          "id": "T10",
+          "name": "锁操作分段计时",
+          "config": {
+            "iterations": 1000
+          },
+          "target": "量化 I/O 占比"
+        },
+        {
+          "id": "T11",
+          "name": "文件系统调用统计",
+          "config": {
+            "iterations": 1000
+          },
+          "target": "识别高频操作"
+        }
+      ]
+    }
+  ],
+  "totalScenarios": 11,
+  "estimatedDuration": "25 minutes",
+  "successCriteria": {
+    "dataCompleteness": "所有 11 个场景执行完成",
+    "statisticalValidity": "10 次重复 × 6 个核心指标",
+    "analysisDepth": "回答 4 个关键问题",
+    "reportQuality": "包含原始数据、统计分析、优化建议"
+  },
+  "outputs": [
+    "performance-data.json",
+    "test-execution-report.md",
+    "performance-analysis.md",
+    "regression-investigation.md",
+    "optimization-recommendations.md",
+    "final-report.md"
+  ]
+}

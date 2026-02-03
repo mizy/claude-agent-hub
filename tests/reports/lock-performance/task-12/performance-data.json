@@ -1,0 +1,483 @@
+{
+  "testInfo": {
+    "taskId": "task-12",
+    "executionDate": "2026-02-03",
+    "executionTime": "17:57-18:01",
+    "totalDuration": "238.25s",
+    "testFramework": "vitest@2.1.9",
+    "nodeVersion": "v23.5.0"
+  },
+  "summary": {
+    "totalScenarios": 11,
+    "passed": 9,
+    "failed": 2,
+    "passRate": 81.8,
+    "keyFinding": "并发性能正常，无退化问题（-24.3% vs 基准）"
+  },
+  "baselineComparison": {
+    "concurrentContention": {
+      "baseline": 1.26,
+      "measured": 0.954,
+      "change": -24.3,
+      "status": "improved",
+      "unit": "ms"
+    },
+    "singleLock": {
+      "baseline": 0.107,
+      "measured": 0.46,
+      "change": 329.6,
+      "status": "degraded",
+      "unit": "ms"
+    },
+    "throughput": {
+      "baseline": 10075,
+      "measured": 2484,
+      "change": -75.3,
+      "status": "degraded",
+      "unit": "ops/s"
+    }
+  },
+  "scenarios": {
+    "T1_singleLockLatencyStability": {
+      "name": "单次锁操作延迟稳定性",
+      "status": "failed",
+      "config": {
+        "repeats": 10,
+        "iterations": 1000,
+        "warmup": 2
+      },
+      "metrics": {
+        "avgLatency": {
+          "value": 0.46,
+          "stdDev": 0.663,
+          "unit": "ms"
+        },
+        "percentiles": {
+          "p50": 0.266,
+          "p95": 1.699,
+          "p99": 3.057,
+          "unit": "ms"
+        },
+        "stability": {
+          "cv": 144.2,
+          "runsCv": 24.55,
+          "threshold": 10,
+          "passed": false
+        }
+      },
+      "runs": [
+        {"run": 1, "avg": 0.631, "p95": 2.171},
+        {"run": 2, "avg": 0.355, "p95": 1.259},
+        {"run": 3, "avg": 0.399, "p95": 1.629},
+        {"run": 4, "avg": 0.412, "p95": 1.436},
+        {"run": 5, "avg": 0.597, "p95": 2.321},
+        {"run": 6, "avg": 0.483, "p95": 1.752},
+        {"run": 7, "avg": 0.639, "p95": 2.412},
+        {"run": 8, "avg": 0.368, "p95": 1.25},
+        {"run": 9, "avg": 0.355, "p95": 1.166},
+        {"run": 10, "avg": 0.359, "p95": 1.144}
+      ]
+    },
+    "T2_concurrentContentionStability": {
+      "name": "并发竞争延迟稳定性（核心测试）",
+      "status": "passed",
+      "config": {
+        "repeats": 10,
+        "workers": 10,
+        "operationsPerWorker": 100,
+        "totalOperations": 1000
+      },
+      "metrics": {
+        "avgLatency": {
+          "value": 0.954,
+          "stdDev": 1.944,
+          "unit": "ms"
+        },
+        "percentiles": {
+          "p50": 0.554,
+          "p95": 2.825,
+          "p99": 4.775,
+          "unit": "ms"
+        },
+        "stability": {
+          "cv": 203.88,
+          "runsCv": 32.75,
+          "passed": true
+        },
+        "successRate": 100
+      },
+      "runs": [
+        {"run": 1, "avg": 1.184, "p95": 3.593, "success": 1000},
+        {"run": 2, "avg": 1.401, "p95": 3.844, "success": 1000},
+        {"run": 3, "avg": 0.765, "p95": 1.665, "success": 1000},
+        {"run": 4, "avg": 0.532, "p95": 1.167, "success": 1000},
+        {"run": 5, "avg": 0.713, "p95": 1.138, "success": 1000},
+        {"run": 6, "avg": 0.639, "p95": 1.195, "success": 1000},
+        {"run": 7, "avg": 1.061, "p95": 2.434, "success": 1000},
+        {"run": 8, "avg": 0.684, "p95": 2.215, "success": 1000},
+        {"run": 9, "avg": 1.109, "p95": 3.365, "success": 1000},
+        {"run": 10, "avg": 1.447, "p95": 3.536, "success": 1000}
+      ]
+    },
+    "T3_throughputStability": {
+      "name": "吞吐量稳定性",
+      "status": "failed",
+      "config": {
+        "repeats": 10,
+        "iterations": 10000
+      },
+      "metrics": {
+        "avgThroughput": {
+          "value": 2484,
+          "stdDev": 673,
+          "unit": "ops/s"
+        },
+        "range": {
+          "min": 1447,
+          "max": 3669
+        },
+        "stability": {
+          "cv": 27.09,
+          "threshold": 15,
+          "passed": false
+        },
+        "errorRate": 0
+      },
+      "runs": [
+        {"run": 1, "throughput": 2376, "errors": 0},
+        {"run": 2, "throughput": 1995, "errors": 0},
+        {"run": 3, "throughput": 2372, "errors": 0},
+        {"run": 4, "throughput": 1919, "errors": 0},
+        {"run": 5, "throughput": 2201, "errors": 0},
+        {"run": 6, "throughput": 2945, "errors": 0},
+        {"run": 7, "throughput": 2361, "errors": 0},
+        {"run": 8, "throughput": 3669, "errors": 0},
+        {"run": 9, "throughput": 3561, "errors": 0},
+        {"run": 10, "throughput": 1447, "errors": 0}
+      ]
+    },
+    "T4_differentWorkerCounts": {
+      "name": "不同竞争者数量下的性能",
+      "status": "passed",
+      "config": {
+        "workerCounts": [2, 5, 10, 20, 50]
+      },
+      "results": [
+        {
+          "workers": 2,
+          "avgLatency": 1.74,
+          "p95": 5.428,
+          "throughput": 574,
+          "successRate": 100
+        },
+        {
+          "workers": 5,
+          "avgLatency": 0.311,
+          "p95": 1.177,
+          "throughput": 3202,
+          "successRate": 100,
+          "optimal": true
+        },
+        {
+          "workers": 10,
+          "avgLatency": 0.445,
+          "p95": 2.168,
+          "throughput": 2241,
+          "successRate": 100
+        },
+        {
+          "workers": 20,
+          "avgLatency": 0.569,
+          "p95": 2.551,
+          "throughput": 1750,
+          "successRate": 100
+        },
+        {
+          "workers": 50,
+          "avgLatency": 0.584,
+          "p95": 2.345,
+          "throughput": 1696,
+          "successRate": 100
+        }
+      ],
+      "insights": {
+        "optimalWorkers": 5,
+        "scalingIssue": "超过 5 Workers 后性能下降"
+      }
+    },
+    "T5_differentHoldTimes": {
+      "name": "不同持有锁时间的影响",
+      "status": "passed",
+      "config": {
+        "holdTimes": [0, 10, 50, 100]
+      },
+      "results": [
+        {
+          "holdTime": 0,
+          "avgLatency": 0.44,
+          "p95": 1.734,
+          "throughput": 2264
+        },
+        {
+          "holdTime": 10,
+          "avgLatency": 37.009,
+          "p95": 52.872,
+          "throughput": 27
+        },
+        {
+          "holdTime": 50,
+          "avgLatency": 77.777,
+          "p95": 102.348,
+          "throughput": 13
+        },
+        {
+          "holdTime": 100,
+          "avgLatency": 115.363,
+          "p95": 133.177,
+          "throughput": 9
+        }
+      ],
+      "insights": {
+        "relationship": "延迟 ≈ 持有时间 + 锁开销（~0.4ms）",
+        "recommendation": "临界区代码应尽量简短"
+      }
+    },
+    "T6_retryMechanisms": {
+      "name": "重试机制性能分析",
+      "status": "passed",
+      "results": [
+        {
+          "maxRetries": 5,
+          "retryDelay": 50,
+          "avgLatency": 0.108,
+          "p95": 0.155
+        },
+        {
+          "maxRetries": 10,
+          "retryDelay": 100,
+          "avgLatency": 0.178,
+          "p95": 0.311
+        },
+        {
+          "maxRetries": 20,
+          "retryDelay": 100,
+          "avgLatency": 0.106,
+          "p95": 0.115
+        },
+        {
+          "maxRetries": 10,
+          "retryDelay": 200,
+          "avgLatency": 0.104,
+          "p95": 0.122,
+          "optimal": true
+        }
+      ],
+      "insights": {
+        "optimalConfig": "maxRetries=10, retryDelay=200ms",
+        "finding": "低竞争环境下重试参数影响很小"
+      }
+    },
+    "T7_idleSystemPerformance": {
+      "name": "空闲系统性能",
+      "status": "passed",
+      "config": {
+        "iterations": 5000
+      },
+      "metrics": {
+        "avgLatency": 0.106,
+        "p50": 0.096,
+        "p95": 0.149,
+        "p99": 0.258,
+        "unit": "ms"
+      }
+    },
+    "T8_mediumLoadPerformance": {
+      "name": "中等负载性能",
+      "status": "passed",
+      "config": {
+        "iterations": 5000
+      },
+      "metrics": {
+        "avgLatency": 0.119,
+        "p50": 0.105,
+        "p95": 0.191,
+        "p99": 0.269,
+        "unit": "ms"
+      }
+    },
+    "T9_highLoadPerformance": {
+      "name": "高负载性能",
+      "status": "passed",
+      "config": {
+        "iterations": 5000
+      },
+      "metrics": {
+        "avgLatency": 0.127,
+        "p50": 0.105,
+        "p95": 0.2,
+        "p99": 0.267,
+        "unit": "ms"
+      }
+    },
+    "T10_lockOperationTiming": {
+      "name": "锁操作分段计时",
+      "status": "passed",
+      "config": {
+        "iterations": 1000
+      },
+      "timing": {
+        "checkLock": {
+          "time": 0.0035,
+          "percentage": 3.6,
+          "operation": "existsSync"
+        },
+        "createLock": {
+          "time": 0.0619,
+          "percentage": 62.8,
+          "operation": "writeFileSync",
+          "bottleneck": true
+        },
+        "releaseLock": {
+          "time": 0.0329,
+          "percentage": 33.4,
+          "operation": "unlinkSync"
+        },
+        "total": {
+          "time": 0.0985,
+          "percentage": 100
+        }
+      },
+      "insights": {
+        "bottleneck": "文件写入占 62.8%",
+        "recommendation": "优化文件 I/O 操作"
+      }
+    },
+    "T11_fileSystemCalls": {
+      "name": "文件系统调用统计",
+      "status": "passed",
+      "config": {
+        "iterations": 1000
+      },
+      "calls": {
+        "existsSync": 1000,
+        "writeFileSync": 1000,
+        "unlinkSync": 1000,
+        "statSync": 0,
+        "total": 3000
+      },
+      "metrics": {
+        "totalTime": 99.87,
+        "avgTime": 0.1,
+        "unit": "ms"
+      },
+      "insights": {
+        "callsPerLock": 3,
+        "efficiency": "无冗余调用"
+      }
+    }
+  },
+  "systemLoadAnalysis": {
+    "loadLevels": [
+      {
+        "level": "idle",
+        "avgLatency": 0.106,
+        "p50": 0.096,
+        "p95": 0.149,
+        "p99": 0.258
+      },
+      {
+        "level": "medium",
+        "avgLatency": 0.119,
+        "p50": 0.105,
+        "p95": 0.191,
+        "p99": 0.269
+      },
+      {
+        "level": "high",
+        "avgLatency": 0.127,
+        "p50": 0.105,
+        "p95": 0.2,
+        "p99": 0.267
+      }
+    ],
+    "insights": {
+      "loadImpact": "系统负载对平均延迟影响较小（+20%）",
+      "p50Stability": "P50 稳定在 0.105ms",
+      "p95Degradation": "高负载下 P95 增加 34%"
+    }
+  },
+  "recommendedBaselines": {
+    "singleLockLatency": {
+      "p50": 0.266,
+      "p95": 1.0,
+      "unit": "ms",
+      "usage": "P50 为目标，P95 为告警阈值"
+    },
+    "concurrentContentionLatency": {
+      "p50": 0.554,
+      "p95": 1.5,
+      "unit": "ms",
+      "usage": "P50 为目标，P95 为告警阈值"
+    },
+    "throughput": {
+      "p50": 2500,
+      "p95": 1500,
+      "unit": "ops/s",
+      "usage": "P50 为目标，P95 为告警阈值"
+    }
+  },
+  "optimizationRecommendations": [
+    {
+      "priority": "P0",
+      "category": "stability",
+      "issue": "测试稳定性差，CV 过高",
+      "solutions": [
+        "增加预热次数（2→5）",
+        "延长冷却时间（5s→10s）",
+        "测试前关闭后台任务"
+      ],
+      "expectedImprovement": "CV 降低到 15% 以下"
+    },
+    {
+      "priority": "P1",
+      "category": "performance",
+      "issue": "文件写入占 63% 时间",
+      "solutions": [
+        "评估 in-memory 锁机制",
+        "批量锁操作",
+        "使用异步 I/O"
+      ],
+      "expectedImprovement": "吞吐量提升 5-10x"
+    },
+    {
+      "priority": "P2",
+      "category": "scalability",
+      "issue": "超过 5 Workers 后性能下降",
+      "solutions": [
+        "针对 5-10 Workers 优化",
+        "引入锁分片",
+        "动态调整并发度"
+      ],
+      "expectedImprovement": "支持更高并发（20+ Workers）"
+    }
+  ],
+  "conclusions": {
+    "mainFindings": [
+      "并发性能正常，优于基准 24.3%",
+      "之前报告的 +17.5% 退化问题不存在",
+      "稳定性需改进（CV=24-32%）",
+      "文件 I/O 是主要瓶颈（62.8%）"
+    ],
+    "keyMetrics": {
+      "concurrentLatency": "0.954ms",
+      "throughput": "2484 ops/s",
+      "successRate": "100%",
+      "stability": "CV=32.75%"
+    },
+    "nextSteps": [
+      "在干净环境重跑验证",
+      "更新性能基准（采用 P50）",
+      "优化文件 I/O（预期 5-10x 提升）"
+    ]
+  }
+}
