@@ -1,0 +1,223 @@
+{
+  "taskId": "11",
+  "taskTitle": "锁性能测试-11",
+  "executionDate": "2026-02-03",
+  "executionTime": "18:22:34",
+  "totalDuration": "1.60s",
+  "testFile": "tests/lock-performance-task11.test.ts",
+  "environment": {
+    "os": "Darwin 25.2.0",
+    "arch": "darwin-arm64",
+    "nodeVersion": "v22.12.0",
+    "vitestVersion": "2.1.9"
+  },
+  "summary": {
+    "totalTests": 10,
+    "passed": 10,
+    "failed": 0,
+    "passRate": "100%"
+  },
+  "testResults": {
+    "basicPerformance": {
+      "T1_singleLockOperation": {
+        "status": "passed",
+        "iterations": 1000,
+        "metrics": {
+          "avg": 0.104,
+          "p50": 0.099,
+          "p95": 0.134,
+          "p99": 0.184,
+          "unit": "ms"
+        },
+        "baseline": {
+          "value": 0.102,
+          "change": "+2.4%"
+        },
+        "target": "< 1ms",
+        "result": "pass"
+      },
+      "T2_lockCheckPerformance": {
+        "status": "passed",
+        "iterations": 10000,
+        "metrics": {
+          "avg": 0.0014,
+          "p50": 0.0014,
+          "p95": 0.0015,
+          "p99": 0.0017,
+          "unit": "ms"
+        },
+        "baseline": {
+          "value": 0.001,
+          "change": "+44.4%"
+        },
+        "target": "< 0.1ms",
+        "result": "pass",
+        "note": "有退化但仍优秀"
+      },
+      "T3_pidReadPerformance": {
+        "status": "passed",
+        "iterations": 5000,
+        "metrics": {
+          "avg": 0.0134,
+          "p50": 0.0130,
+          "p95": 0.0146,
+          "p99": 0.0204,
+          "unit": "ms"
+        },
+        "baseline": {
+          "value": 0.013,
+          "change": "+3.3%"
+        },
+        "target": "< 0.2ms",
+        "result": "pass"
+      }
+    },
+    "concurrencySafety": {
+      "T4_concurrentWriteContention": {
+        "status": "passed",
+        "workerCount": 10,
+        "opsPerWorker": 100,
+        "totalOps": 1000,
+        "metrics": {
+          "successOps": 1000,
+          "duration": 262.53,
+          "dataIntegrity": "100.0%",
+          "errors": 0,
+          "unit": "ms"
+        },
+        "target": "100% 互斥",
+        "result": "pass"
+      },
+      "T5_deadlockDetectionAndCleanup": {
+        "status": "passed",
+        "iterations": 100,
+        "metrics": {
+          "avg": 0.112,
+          "p50": 0.106,
+          "p95": 0.160,
+          "p99": 0.195,
+          "unit": "ms"
+        },
+        "baseline": {
+          "value": 0.3,
+          "change": "-62.6%"
+        },
+        "target": "< 10ms",
+        "result": "pass",
+        "note": "显著性能提升"
+      }
+    },
+    "stressTesting": {
+      "T6_highFrequencyLockOperations": {
+        "status": "passed",
+        "iterations": 10000,
+        "metrics": {
+          "duration": 1006.74,
+          "throughput": 9933,
+          "errors": 0,
+          "unit": "ops/s"
+        },
+        "baseline": {
+          "value": 10075,
+          "change": "-1.4%"
+        },
+        "target": "> 1,000 ops/s",
+        "result": "pass"
+      },
+      "T7_longHoldLockImpact": {
+        "status": "passed",
+        "holdTime": 100,
+        "checkIterations": 1000,
+        "metrics": {
+          "totalCheckTime": 1.85,
+          "avgCheckTime": 0.0019,
+          "unit": "ms"
+        },
+        "target": "验证不受阻",
+        "result": "pass"
+      }
+    },
+    "reliability": {
+      "T8_lockStateConsistency": {
+        "status": "passed",
+        "checks": [
+          "初始状态: 无锁",
+          "获取锁: 成功",
+          "释放锁: 成功",
+          "重复释放: 安全",
+          "再次获取: 成功"
+        ],
+        "result": "pass"
+      },
+      "T9_corruptedLockFileHandling": {
+        "status": "passed",
+        "metrics": {
+          "recovered": true,
+          "recoveryTime": 0.16,
+          "unit": "ms"
+        },
+        "target": "自动恢复",
+        "result": "pass"
+      },
+      "T10_externalLockDeletion": {
+        "status": "passed",
+        "checks": [
+          "初始状态: 锁已获取",
+          "外部删除: 锁文件已删除",
+          "释放操作: 安全",
+          "重新获取: true"
+        ],
+        "metrics": {
+          "recoveryTime": 0.09,
+          "unit": "ms"
+        },
+        "target": "自动恢复",
+        "result": "pass"
+      }
+    }
+  },
+  "comparison": {
+    "baseline": "Task-19 (2026-02-03)",
+    "improvements": [
+      {
+        "metric": "死锁检测清理",
+        "improvement": "-62.6%",
+        "note": "显著性能提升"
+      }
+    ],
+    "regressions": [
+      {
+        "metric": "锁检查性能",
+        "regression": "+44.4%",
+        "note": "仍远低于目标阈值，可接受"
+      }
+    ],
+    "stable": [
+      {
+        "metric": "单次锁操作延迟",
+        "change": "+2.4%"
+      },
+      {
+        "metric": "PID 读取延迟",
+        "change": "+3.3%"
+      },
+      {
+        "metric": "高频吞吐量",
+        "change": "-1.4%"
+      }
+    ]
+  },
+  "conclusion": {
+    "overallStatus": "excellent",
+    "passRate": "100%",
+    "performanceRating": "优秀",
+    "recommendation": "无需优化，所有指标均满足生产要求",
+    "notes": [
+      "100% 互斥正确性",
+      "零错误率",
+      "高吞吐量 (9,933 ops/s)",
+      "快速恢复能力",
+      "状态一致性优秀"
+    ]
+  }
+}
