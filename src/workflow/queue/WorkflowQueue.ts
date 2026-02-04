@@ -4,7 +4,6 @@
  */
 
 import { existsSync, unlinkSync, writeFileSync, statSync } from 'fs'
-import { execSync } from 'child_process'
 import { createLogger } from '../../shared/logger.js'
 import { readJson, writeJson, ensureDir } from '../../store/readWriteJson.js'
 import { QUEUE_FILE, DATA_DIR } from '../../store/paths.js'
@@ -76,6 +75,30 @@ function releaseLock(): void {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function withLockAsync<T>(fn: () => T | Promise<T>): Promise<T> {
+  const maxRetries = 10
+  const retryDelay = 100
+
+  for (let i = 0; i < maxRetries; i++) {
+    if (acquireLock()) {
+      try {
+        return await fn()
+      } finally {
+        releaseLock()
+      }
+    }
+    // 异步等待后重试
+    await sleep(retryDelay)
+  }
+
+  throw new Error('Failed to acquire queue lock')
+}
+
+// 保留同步版本以便向后兼容
 function withLock<T>(fn: () => T): T {
   const maxRetries = 10
   const retryDelay = 100
@@ -88,8 +111,11 @@ function withLock<T>(fn: () => T): T {
         releaseLock()
       }
     }
-    // 等待后重试
-    execSync(`sleep ${retryDelay / 1000}`)
+    // 同步等待（使用 busy wait，避免 execSync）
+    const start = Date.now()
+    while (Date.now() - start < retryDelay) {
+      // busy wait
+    }
   }
 
   throw new Error('Failed to acquire queue lock')
@@ -113,7 +139,7 @@ export async function enqueueNode(
     priority?: number
   }
 ): Promise<string> {
-  return withLock(() => {
+  return withLockAsync(() => {
     const queueData = getQueueData()
 
     const jobId = `${data.instanceId}:${data.nodeId}:${data.attempt}`
@@ -158,7 +184,7 @@ export async function enqueueNodes(
     options?: { delay?: number; priority?: number }
   }>
 ): Promise<string[]> {
-  return withLock(() => {
+  return withLockAsync(() => {
     const queueData = getQueueData()
     const ids: string[] = []
     const now = new Date()
@@ -389,7 +415,7 @@ export function getWaitingJobs(): Job[] {
 
 // 清空队列
 export async function drainQueue(): Promise<void> {
-  withLock(() => {
+  await withLockAsync(() => {
     const queueData = getQueueData()
     queueData.jobs = queueData.jobs.filter(
       j => j.status !== 'waiting' && j.status !== 'delayed'
@@ -408,7 +434,7 @@ export async function closeQueue(): Promise<void> {
 
 // 移除特定工作流的所有待处理任务
 export async function removeWorkflowJobs(instanceId: string): Promise<number> {
-  return withLock(() => {
+  return withLockAsync(() => {
     const queueData = getQueueData()
     const initialCount = queueData.jobs.length
 

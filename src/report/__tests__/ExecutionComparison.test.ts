@@ -7,6 +7,7 @@ import {
   generateRegressionReport,
   formatRegressionReportForTerminal,
   formatRegressionReportForMarkdown,
+  collectTaskSnapshots,
 } from '../ExecutionComparison.js'
 import type { RegressionReport, ComparisonResult, TaskExecutionSnapshot } from '../ExecutionComparison.js'
 
@@ -79,7 +80,8 @@ const mockRegressionReport: RegressionReport = {
 describe('ExecutionComparison', () => {
   describe('generateRegressionReport', () => {
     it('should generate a regression report', () => {
-      const report = generateRegressionReport(7)
+      const snapshots = collectTaskSnapshots(7)
+      const report = generateRegressionReport(snapshots)
 
       expect(report).toBeDefined()
       expect(report.generatedAt).toBeDefined()
@@ -91,15 +93,18 @@ describe('ExecutionComparison', () => {
     })
 
     it('should respect days back parameter', () => {
-      const report7 = generateRegressionReport(7)
-      const report30 = generateRegressionReport(30)
+      const snapshots7 = collectTaskSnapshots(7)
+      const snapshots30 = collectTaskSnapshots(30)
+      const report7 = generateRegressionReport(snapshots7)
+      const report30 = generateRegressionReport(snapshots30)
 
       // 30 天应该分析更多或相同数量的任务
       expect(report30.analyzedTasks).toBeGreaterThanOrEqual(report7.analyzedTasks)
     })
 
     it('should always have a summary', () => {
-      const report = generateRegressionReport(1)
+      const snapshots = collectTaskSnapshots(1)
+      const report = generateRegressionReport(snapshots)
       expect(report.summary.length).toBeGreaterThan(0)
     })
   })

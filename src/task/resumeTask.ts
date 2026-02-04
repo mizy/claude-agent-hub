@@ -14,6 +14,7 @@ import {
   getProcessInfo,
   isProcessRunning,
   updateProcessInfo,
+  type ProcessInfo,
 } from '../store/TaskStore.js'
 import { getTaskInstance, getTaskWorkflow } from '../store/TaskWorkflowStore.js'
 import { appendExecutionLog, appendJsonlLog } from '../store/TaskLogStore.js'
@@ -35,6 +36,50 @@ export interface OrphanedTask {
 
 // 孤立任务检测宽限期（秒）- 新任务在此时间内不算孤立
 const ORPHAN_GRACE_PERIOD_MS = 30 * 1000
+
+// 进程活跃心跳阈值（毫秒）- 如果心跳在此时间内，认为进程仍在运行
+const HEARTBEAT_ALIVE_THRESHOLD_MS = 30 * 1000
+
+// 进程启动宽限期（毫秒）- 进程刚启动时可能还没写心跳
+const PROCESS_START_GRACE_MS = 10 * 1000
+
+/**
+ * 检查进程是否活跃（基于心跳和启动时间）
+ *
+ * 比单纯的 PID 检查更可靠：
+ * 1. 如果进程刚启动（在宽限期内），认为活跃
+ * 2. 如果心跳在阈值内，认为活跃
+ * 3. 否则才检查 PID 是否存在
+ */
+function isProcessActive(processInfo: ProcessInfo | null): boolean {
+  if (!processInfo) return false
+
+  // 进程状态已经是 stopped 或 crashed，明确不活跃
+  if (processInfo.status !== 'running') return false
+
+  const now = Date.now()
+
+  // 检查进程启动时间 - 刚启动的进程可能还没写心跳
+  if (processInfo.startedAt) {
+    const startedAt = new Date(processInfo.startedAt).getTime()
+    if (now - startedAt < PROCESS_START_GRACE_MS) {
+      logger.debug(`Process started recently (${Math.round((now - startedAt) / 1000)}s ago), treating as active`)
+      return true
+    }
+  }
+
+  // 检查心跳 - 心跳新鲜说明进程活跃
+  if (processInfo.lastHeartbeat) {
+    const lastHeartbeat = new Date(processInfo.lastHeartbeat).getTime()
+    if (now - lastHeartbeat < HEARTBEAT_ALIVE_THRESHOLD_MS) {
+      logger.debug(`Process heartbeat recent (${Math.round((now - lastHeartbeat) / 1000)}s ago), treating as active`)
+      return true
+    }
+  }
+
+  // 最后检查 PID 是否存在
+  return isProcessRunning(processInfo.pid)
+}
 
 /**
  * 检测孤立任务
@@ -102,15 +147,16 @@ export function detectOrphanedTasks(): OrphanedTask[] {
  * 重新启动后台进程继续执行
  *
  * 关键逻辑：
- * 1. 检查是否已有 workflow - 如果有，使用 resume 模式继续执行
- * 2. 检查 workflow instance 状态 - 决定从哪个节点继续
+ * 1. 检查进程是否活跃（基于心跳、启动时间、PID）
+ * 2. 检查是否已有 workflow - 如果有，使用 resume 模式继续执行
+ * 3. 检查 workflow instance 状态 - 决定从哪个节点继续
  */
 export function resumeTask(taskId: string): number | null {
   const processInfo = getProcessInfo(taskId)
 
-  // 如果进程仍在运行，不需要恢复
-  if (processInfo && processInfo.status === 'running' && isProcessRunning(processInfo.pid)) {
-    logger.warn(`Task ${taskId} is still running (PID: ${processInfo.pid})`)
+  // 如果进程仍然活跃，不需要恢复
+  if (isProcessActive(processInfo)) {
+    logger.warn(`Task ${taskId} is still actively running (PID: ${processInfo?.pid})`)
     return null
   }
 
@@ -184,6 +230,15 @@ export async function resumeFailedTask(taskId: string): Promise<{
 
   if (task.status !== 'failed') {
     return { success: false, error: `Task is not in failed status: ${task.status}` }
+  }
+
+  // 检查是否有进程仍在活跃（防止竞态条件）
+  const processInfo = getProcessInfo(taskId)
+  if (isProcessActive(processInfo)) {
+    return {
+      success: false,
+      error: `Task ${taskId} has an active process (PID: ${processInfo?.pid}). Wait for it to complete or kill it first.`,
+    }
   }
 
   // 获取 workflow instance

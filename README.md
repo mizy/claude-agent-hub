@@ -88,6 +88,7 @@ cah template use feature --var name="用户认证"
 cah "任务描述"             # 创建任务并自动执行
 cah "任务描述" -F          # 前台模式，实时输出
 cah "任务描述" --no-run    # 仅创建不执行
+cah "任务描述" -d <path>   # 指定数据目录
 ```
 
 ### 任务管理 (task)
@@ -219,13 +220,17 @@ cah "任务描述"
 
 ## 数据存储
 
-数据目录默认为 `.cah-data/`，可通过环境变量 `CAH_DATA_DIR` 覆盖。
+数据目录默认为 `.cah-data/`，可通过以下方式指定：
 
 ```bash
 # 使用默认目录
 cah "任务描述"
 
-# 使用自定义目录
+# 通过命令行参数指定（推荐）
+cah "任务描述" -d /path/to/data
+cah "任务描述" --data-dir ./custom-data
+
+# 通过环境变量指定
 CAH_DATA_DIR=/path/to/data cah "任务描述"
 ```
 

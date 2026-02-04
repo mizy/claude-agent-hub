@@ -8,7 +8,7 @@ export default defineConfig({
   ],
   format: ['esm'],
   outDir: 'dist',
-  dts: true,
+  dts: false, // 常规构建不生成类型声明，加快构建速度
   sourcemap: true,
   clean: true,
   target: 'node18',

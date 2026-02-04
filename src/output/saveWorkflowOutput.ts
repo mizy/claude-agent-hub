@@ -105,11 +105,21 @@ export function formatNodeState(nodeId: string, name: string, state: NodeState, 
       : JSON.stringify(output, null, 2)
 
     // Truncate long results
-    const truncated = resultStr.length > 2000
-      ? resultStr.slice(0, 2000) + '\n... (truncated)'
+    const truncated = resultStr.length > 5000
+      ? resultStr.slice(0, 5000) + '\n\n... (truncated)'
       : resultStr
 
-    lines.push('', '**Output:**', '```', truncated, '```')
+    // 检测是否是 markdown 内容（包含标题、列表、代码块等）
+    const isMarkdown = typeof output === 'string' &&
+      (/^#{1,6}\s/m.test(output) || /^[-*]\s/m.test(output) || /```/.test(output))
+
+    if (isMarkdown) {
+      // Markdown 内容直接输出，不包裹代码块
+      lines.push('', '**Output:**', '', truncated)
+    } else {
+      // 非 markdown 内容（如 JSON）用代码块包裹
+      lines.push('', '**Output:**', '```', truncated, '```')
+    }
   }
 
   lines.push('')

@@ -409,6 +409,25 @@ async function prepareNewExecution(
   return { workflow }
 }
 
+// 检查节点是否在最近被处理（用于检测竞态条件）
+const RECENT_NODE_ACTIVITY_THRESHOLD_MS = 60 * 1000  // 1 分钟内有活动认为是活跃的
+
+function hasRecentNodeActivity(instance: WorkflowInstance): { active: boolean; nodeId?: string } {
+  const now = Date.now()
+
+  for (const [nodeId, state] of Object.entries(instance.nodeStates)) {
+    // 检查是否有节点正在运行且启动时间在阈值内
+    if (state.status === 'running' && state.startedAt) {
+      const startedAt = new Date(state.startedAt).getTime()
+      if (now - startedAt < RECENT_NODE_ACTIVITY_THRESHOLD_MS) {
+        return { active: true, nodeId }
+      }
+    }
+  }
+
+  return { active: false }
+}
+
 /**
  * 准备恢复执行
  */
@@ -433,6 +452,25 @@ async function prepareResume(
   // 如果 instance 已完成，不应该恢复
   if (instance.status === 'completed') {
     throw new Error(`Instance already completed, cannot resume: ${instance.id}`)
+  }
+
+  // 检查是否有节点最近在活动（防止竞态条件）
+  const nodeActivity = hasRecentNodeActivity(instance)
+  if (nodeActivity.active) {
+    logger.warn(`Node ${nodeActivity.nodeId} appears to be actively running, waiting briefly...`)
+    // 等待一小段时间，让正在运行的操作完成
+    await new Promise(resolve => setTimeout(resolve, 5000))
+    // 重新获取 instance
+    instance = getTaskInstance(task.id)!
+
+    // 再次检查
+    const recheckActivity = hasRecentNodeActivity(instance)
+    if (recheckActivity.active) {
+      throw new Error(
+        `Node ${recheckActivity.nodeId} is still actively running. ` +
+        `Another process may be executing this task. Wait for it to complete or stop it first.`
+      )
+    }
   }
 
   // 记录 resume 到执行日志

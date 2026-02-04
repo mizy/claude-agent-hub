@@ -8,6 +8,7 @@
 cah "任务描述"           # 创建并执行任务
 cah "任务描述" -F        # 前台运行（可看日志）
 cah "任务描述" --no-run  # 仅创建不执行
+cah "任务描述" -d <path> # 指定数据目录
 cah task list            # 查看任务列表
 cah task logs <id> -f    # 实时查看任务日志
 cah task resume <id>     # 恢复中断的任务
@@ -82,13 +83,19 @@ src/
 │   ├── generateReport.ts    # 工作报告
 │   ├── TrendAnalyzer.ts     # 趋势分析入口
 │   ├── LiveSummary.ts       # 实时摘要（队列预览、ETA）
-│   ├── ExecutionComparison.ts # 执行对比（退化检测）
+│   ├── ExecutionComparison.ts # 执行对比（退化检测，barrel export）
 │   ├── ExecutionReport.ts   # 执行报告
-│   └── analyzers/           # 分析器子模块
-│       ├── TypeTrendAnalyzer.ts  # 类型趋势
-│       ├── HeatmapAnalyzer.ts    # 热力图
-│       ├── CostAnalyzer.ts       # 成本优化
-│       ├── dataCollector.ts      # 数据收集
+│   ├── analyzers/           # 趋势分析子模块
+│   │   ├── TypeTrendAnalyzer.ts  # 类型趋势
+│   │   ├── HeatmapAnalyzer.ts    # 热力图
+│   │   ├── CostAnalyzer.ts       # 成本优化
+│   │   ├── dataCollector.ts      # 数据收集
+│   │   └── formatters.ts         # 格式化输出
+│   └── comparison/          # 执行对比子模块
+│       ├── types.ts              # 类型定义
+│       ├── dataCollector.ts      # 任务数据收集
+│       ├── MetricCalculator.ts   # 指标计算
+│       ├── DegradationDetector.ts # 退化检测
 │       └── formatters.ts         # 格式化输出
 │
 ├── claude/                   # Claude Code 集成
@@ -142,7 +149,9 @@ src/
 
 ## 数据结构
 
-数据目录默认为 `.cah-data/`，可通过环境变量 `CAH_DATA_DIR` 覆盖。
+数据目录默认为 `.cah-data/`，可通过以下方式指定：
+- 命令行参数：`cah "任务" -d /path/to/data`
+- 环境变量：`CAH_DATA_DIR=/path/to/data`
 
 ```
 .cah-data/tasks/

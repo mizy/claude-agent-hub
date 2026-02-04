@@ -26,6 +26,14 @@ npm-debug.log*
 # Test coverage
 coverage/
 
+# Test reports and outputs
+tests/reports/
+tests/*.md
+!tests/README.md
+tests/*.txt
+tests/*.log
+tests/*.sh
+
 # Environment
 .env
 .env.local

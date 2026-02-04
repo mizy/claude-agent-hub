@@ -53,7 +53,9 @@ program
   .option('-F, --foreground', '立即前台执行（默认只创建任务）')
   .option('--no-run', '仅创建任务，不执行')
   .option('-v, --verbose', '显示详细日志 (debug 级别)')
+  .option('-d, --data-dir <path>', '数据存储目录（默认: ./.cah-data）')
   .action(async (input, options) => {
+    // 数据目录已在 bin/cah.js 入口处理
     // 处理空输入：空字符串或纯空白字符
     if (input !== undefined && input.trim().length === 0) {
       error('任务描述不能为空')
