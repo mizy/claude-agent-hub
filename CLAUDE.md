@@ -5,21 +5,32 @@
 ## 核心命令
 
 ```bash
+# 任务
 cah "任务描述"           # 创建并执行任务
-cah "任务描述" -F        # 前台运行
+cah "任务描述" -F        # 前台运行（可看日志）
 cah "任务描述" --no-run  # 仅创建不执行
 cah task list            # 查看任务列表
-cah task logs <id> -f    # 实时查看日志
-cah task resume <id>     # 恢复中断任务
-cah report trend         # 趋势分析
-cah report live          # 实时监控
+cah task logs <id> -f    # 实时查看任务日志
+cah task resume <id>     # 恢复中断的任务
+
+# 守护进程
+cah serve                # 启动守护进程（前台，自动检测飞书/Telegram）
+cah serve -D             # 后台运行（fork 子进程）
+cah stop                 # 停止守护进程
+cah status               # 查看运行状态
+
+# 报告 & 工具
+cah report trend         # 趋势分析报告
+cah report live          # 实时状态监控
+cah dashboard            # 启动 Workflow 可视化面板
+cah agent list           # 查看可用 Agent
 ```
 
 ## @entry 模块索引
 
 | 模块 | 入口 | 核心能力 |
 |------|------|----------|
-| CLI | `cli/index.ts` | 命令行主入口、子命令（task/report/daemon） |
+| CLI | `cli/index.ts` | 命令行主入口、子命令（task/serve/stop/status/report/dashboard） |
 | Backend | `backend/index.ts` | CLI 后端抽象层（claude-code/opencode/iflow/codebuddy） |
 | Task | `task/index.ts` | 创建、执行（进度条/ETA/统计）、查询、生命周期 |
 | Workflow | `workflow/index.ts` | AI 生成工作流、节点执行（Persona）、状态管理、重试 |

@@ -4,14 +4,14 @@
  * @entry Claude Agent Hub CLI 主入口
  *
  * 核心命令：
- *   cah "任务描述"           - 创建任务（加入队列）
- *   cah "任务描述" -F        - 创建并立即执行（前台）
- *   cah run                  - 执行队列中的待处理任务
+ *   cah "任务描述"           - 创建并执行任务
+ *   cah "任务描述" -F        - 前台运行（可看日志）
  *   cah task list            - 查看任务列表
  *
- * 子命令：
- *   cah task      - 任务管理
-*   cah daemon    - 守护进程
+ * 守护进程：
+ *   cah serve               - 启动守护进程（前台阻塞）
+ *   cah stop                - 停止守护进程
+ *   cah status              - 查看运行状态
  */
 
 import { Command } from 'commander'
@@ -22,7 +22,7 @@ import { registerReportCommands } from './commands/report.js'
 
 import { registerInitCommand } from './commands/init.js'
 import { registerAgentCommands } from './commands/agent.js'
-import { registerServerCommand } from './commands/server.js'
+import { registerDashboardCommand } from './commands/server.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
@@ -39,7 +39,7 @@ import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
 import { findClosestMatch } from '../shared/levenshtein.js'
 
 // 已知的 CLI 命令列表
-const KNOWN_COMMANDS = ['task', 'report', 'daemon', 'agent', 'init', 'run', 'logs', 'server']
+const KNOWN_COMMANDS = ['task', 'report', 'serve', 'stop', 'status', 'agent', 'init', 'run', 'logs', 'dashboard']
 
 const program = new Command()
 
@@ -152,10 +152,10 @@ async function handleTaskDescription(
   }
 }
 
-// cah run - 执行待处理任务
+// cah run - 手动执行队列中下一个待处理任务
 program
   .command('run')
-  .description('执行待处理任务')
+  .description('手动执行队列中下一个待处理任务')
   .action(async () => {
     try {
       info('Starting task execution...')
@@ -188,7 +188,7 @@ registerTaskCommands(program)
 registerAgentCommands(program)
 registerDaemonCommands(program)
 registerReportCommands(program)
-registerServerCommand(program)
+registerDashboardCommand(program)
 
 // cah logs <id> - 查看任务日志的快捷命令
 program

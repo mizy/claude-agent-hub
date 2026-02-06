@@ -1,5 +1,13 @@
+/**
+ * 守护进程启动
+ *
+ * 默认前台运行（阻塞），接收 Ctrl+C 优雅退出
+ * --detach 模式 fork 子进程后台运行
+ */
+
 import cron from 'node-cron'
 import chalk from 'chalk'
+import { spawn } from 'child_process'
 import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { executeTask } from '../task/executeTask.js'
@@ -9,41 +17,65 @@ import { startLarkWsClient, stopLarkWsClient } from '../notify/larkWsClient.js'
 import { startTelegramClient, stopTelegramClient } from '../notify/telegramClient.js'
 
 interface DaemonOptions {
-  foreground?: boolean
+  detach?: boolean
 }
 
 let scheduledJobs: cron.ScheduledTask[] = []
 
+/**
+ * 启动守护进程
+ * 默认前台阻塞运行，--detach 后台运行
+ */
 export async function startDaemon(options: DaemonOptions): Promise<void> {
+  if (options.detach) {
+    return spawnDetached()
+  }
+
+  await runDaemon()
+}
+
+/** fork 子进程后台运行 */
+function spawnDetached(): void {
+  const args = process.argv.slice(2).filter(a => a !== '--detach' && a !== '-D')
+  const child = spawn(process.execPath, [...process.execArgv, ...getEntryArgs(), ...args], {
+    detached: true,
+    stdio: 'ignore',
+  })
+  child.unref()
+  console.log(chalk.green(`✓ 守护进程已在后台启动 (PID: ${child.pid})`))
+  console.log(chalk.gray(`  使用 cah daemon stop 停止`))
+}
+
+/** 获取当前入口脚本参数 */
+function getEntryArgs(): string[] {
+  // process.argv: [node, script, ...args]
+  const script = process.argv[1]
+  return script ? [script] : []
+}
+
+/** 实际运行守护进程（前台阻塞） */
+async function runDaemon(): Promise<void> {
   const config = await loadConfig()
   const store = getStore()
 
-  // 获取轮询间隔配置（从 agents 配置中获取第一个，或使用默认值）
   const agentConfig = config.agents?.[0]
   const pollInterval = agentConfig?.schedule?.poll_interval || '5m'
-
-  console.log(chalk.green('启动守护进程...'))
-
-  // 转换间隔为 cron 表达式
   const cronExpr = intervalToCron(pollInterval)
 
+  console.log(chalk.green('启动守护进程...'))
   console.log(chalk.gray(`  轮询间隔: ${pollInterval}`))
 
+  // 任务轮询
   const job = cron.schedule(cronExpr, async () => {
-    console.log(chalk.blue(`[${new Date().toISOString()}] 开始轮询...`))
     try {
       const task = await pollPendingTask()
-      if (!task) {
-        console.log(chalk.gray('  没有待处理任务'))
-        return
-      }
-      console.log(chalk.blue(`  执行任务: ${task.title}`))
+      if (!task) return
+      console.log(chalk.blue(`[${new Date().toLocaleTimeString()}] 执行任务: ${task.title}`))
       await executeTask(task, { concurrency: 1, saveToTaskFolder: true, useConsole: false })
     } catch (error) {
       console.error(chalk.red(`执行出错:`), error)
     }
   })
-
   scheduledJobs.push(job)
 
   // 根据配置自动启动通知平台
@@ -51,7 +83,6 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   const telegramConfig = config.notify?.telegram
 
   if (larkConfig?.appId && larkConfig?.appSecret) {
-    // 飞书 WebSocket 长连接（推荐，无需公网 IP）
     try {
       await startLarkWsClient()
       console.log(chalk.green('  ✓ 飞书已启动 (WebSocket 长连接)'))
@@ -69,30 +100,27 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
     }
   }
 
-  // 保存 PID
   store.setDaemonPid(process.pid)
+  console.log(chalk.green(`✓ 守护进程运行中 (PID: ${process.pid})`))
+  console.log(chalk.gray('  Ctrl+C 停止'))
 
-  console.log(chalk.green(`✓ 守护进程已启动 (PID: ${process.pid})`))
-
-  if (options.foreground) {
-    // 前台运行，等待信号
-    const cleanup = async () => {
-      console.log(chalk.yellow('\n收到中断信号，停止守护进程...'))
-      stopAllJobs()
-      await stopLarkServer()
-      await stopLarkWsClient()
-      stopTelegramClient()
-      process.exit(0)
-    }
-
-    process.on('SIGINT', cleanup)
-    process.on('SIGTERM', cleanup)
+  // 前台阻塞，等待信号优雅退出
+  const cleanup = async () => {
+    console.log(chalk.yellow('\n停止守护进程...'))
+    stopAllJobs()
+    await stopLarkServer()
+    await stopLarkWsClient()
+    stopTelegramClient()
+    process.exit(0)
   }
+
+  process.on('SIGINT', cleanup)
+  process.on('SIGTERM', cleanup)
 }
 
 function intervalToCron(interval: string): string {
   const match = interval.match(/^(\d+)(m|h|d)$/)
-  if (!match) return '*/5 * * * *' // 默认每 5 分钟
+  if (!match) return '*/5 * * * *'
 
   const num = match[1]
   const unit = match[2]

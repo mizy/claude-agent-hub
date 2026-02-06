@@ -107,14 +107,4 @@ export function registerReportCommands(program: Command) {
       }
     })
 
-  // 默认命令 (向后兼容)
-  program
-    .command('report-legacy')
-    .description('生成工作报告 (已废弃，请使用 report work)')
-    .option('-a, --agent <name>', '指定 Agent')
-    .option('-d, --days <days>', '报告天数', '1')
-    .option('-o, --output <file>', '输出到文件')
-    .action(async (options) => {
-      await generateReport(options)
-    })
 }
