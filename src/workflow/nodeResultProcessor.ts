@@ -119,13 +119,37 @@ export function buildNodeContext(instance: WorkflowInstance): string {
 }
 
 /**
+ * 为带连字符的 key 创建下划线别名
+ * 例如: { 'rerun-tests': {...} } → { 'rerun-tests': {...}, rerun_tests: {...} }
+ *
+ * 这样在 expr-eval 表达式中可以使用 outputs.rerun_tests.summary.total_failed
+ * 因为 expr-eval 不支持方括号语法 outputs['rerun-tests']
+ */
+function createHyphenAliases<T extends Record<string, unknown>>(obj: T): T {
+  const result = { ...obj }
+  for (const key of Object.keys(obj)) {
+    if (key.includes('-')) {
+      const aliasKey = key.replace(/-/g, '_')
+      // 只在别名 key 不存在时创建，避免覆盖
+      if (!(aliasKey in result)) {
+        result[aliasKey as keyof T] = obj[key] as T[keyof T]
+      }
+    }
+  }
+  return result
+}
+
+/**
  * 构建表达式求值上下文
+ *
+ * 自动为带连字符的节点 ID 创建下划线别名，以便在表达式中使用
+ * 例如: outputs['rerun-tests'] → outputs.rerun_tests
  */
 export function buildEvalContext(instance: WorkflowInstance): EvalContext {
   return {
-    outputs: instance.outputs,
+    outputs: createHyphenAliases(instance.outputs),
     variables: instance.variables,
     loopCount: 0, // 将由具体节点设置
-    nodeStates: instance.nodeStates,
+    nodeStates: createHyphenAliases(instance.nodeStates),
   }
 }

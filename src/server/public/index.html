@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAH Workflow Visualizer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .container { display: flex; height: 100vh; }
+
+    /* Sidebar */
+    .sidebar {
+      width: 300px;
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid #334155;
+    }
+    .sidebar-header h1 { font-size: 18px; font-weight: 600; }
+    .sidebar-header .subtitle { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .task-list { flex: 1; overflow-y: auto; padding: 8px; }
+    .task-item {
+      padding: 12px;
+      margin-bottom: 4px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .task-item:hover { background: #334155; }
+    .task-item.active { background: #3b82f6; }
+    .task-item .task-title {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+    .task-item .task-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .task-status {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .status-pending { background: #475569; }
+    .status-developing, .status-planning { background: #1d4ed8; }
+    .status-completed { background: #15803d; }
+    .status-failed { background: #b91c1c; }
+
+    /* Main */
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .main-header {
+      padding: 12px 20px;
+      border-bottom: 1px solid #334155;
+      background: #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .main-header h2 { font-size: 14px; font-weight: 600; }
+    .main-header .task-id { font-size: 11px; color: #64748b; }
+    .header-actions { display: flex; gap: 8px; }
+    .btn {
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      border: none;
+      background: #334155;
+      color: #e2e8f0;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #475569; }
+    .btn.active { background: #3b82f6; }
+
+    /* Toolbar */
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      padding: 8px 20px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      font-size: 11px;
+      align-items: center;
+    }
+    .legend { display: flex; gap: 12px; }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-pending { background: #6b7280; }
+    .dot-running { background: #3b82f6; }
+    .dot-done { background: #22c55e; }
+    .dot-failed { background: #ef4444; }
+    .dot-skipped { background: #eab308; }
+    .zoom-controls { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+    .zoom-btn {
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: #334155;
+      color: #e2e8f0;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .zoom-btn:hover { background: #475569; }
+
+    /* Canvas */
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+    }
+    .canvas-container.dragging { cursor: grabbing; }
+    #workflow-canvas { position: absolute; top: 0; left: 0; }
+    .no-selection {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    /* Right Panel */
+    .right-panel {
+      width: 380px;
+      background: #1e293b;
+      border-left: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-tabs {
+      display: flex;
+      border-bottom: 1px solid #334155;
+    }
+    .panel-tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 12px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      border-bottom: 2px solid transparent;
+    }
+    .panel-tab:hover { color: #e2e8f0; }
+    .panel-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .panel-section {
+      margin-bottom: 16px;
+    }
+    .panel-section-title {
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .info-item {
+      background: #0f172a;
+      padding: 10px;
+      border-radius: 6px;
+    }
+    .info-item .label { font-size: 10px; color: #64748b; margin-bottom: 2px; }
+    .info-item .value { font-size: 12px; }
+    .info-item.full { grid-column: 1 / -1; }
+    .error-box {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid #ef4444;
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 12px;
+      color: #fca5a5;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .output-box {
+      background: #0f172a;
+      border-radius: 6px;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    /* Log viewer */
+    .log-viewer {
+      background: #0f172a;
+      border-radius: 6px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-all;
+      height: 100%;
+      overflow-y: auto;
+    }
+    .log-line { margin-bottom: 2px; }
+    .log-time { color: #64748b; }
+    .log-info { color: #3b82f6; }
+    .log-error { color: #ef4444; }
+    .log-success { color: #22c55e; }
+
+    /* Node tooltip */
+    .node-tooltip {
+      position: absolute;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 11px;
+      pointer-events: none;
+      z-index: 100;
+      max-width: 300px;
+    }
+    .node-tooltip .tt-name { font-weight: 600; margin-bottom: 4px; }
+    .node-tooltip .tt-type { color: #64748b; }
+    .node-tooltip .tt-status { margin-top: 4px; }
+    .node-tooltip .tt-duration { color: #94a3b8; }
+
+    /* Refresh indicator */
+    .refresh-indicator {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      padding: 6px 12px;
+      background: #334155;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .refresh-indicator.active { background: #3b82f6; color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h1>CAH Workflow</h1>
+        <div class="subtitle">Claude Agent Hub Visualizer</div>
+      </div>
+      <div class="task-list" id="task-list"></div>
+    </div>
+
+    <div class="main">
+      <div class="main-header" id="main-header" style="display: none;">
+        <div>
+          <h2 id="task-title">-</h2>
+          <div class="task-id" id="task-id">-</div>
+        </div>
+        <div class="header-actions">
+          <button class="btn" onclick="resetView()">Reset View</button>
+        </div>
+      </div>
+
+      <div class="toolbar" id="toolbar" style="display: none;">
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot dot-pending"></div> Pending</div>
+          <div class="legend-item"><div class="legend-dot dot-running"></div> Running</div>
+          <div class="legend-item"><div class="legend-dot dot-done"></div> Done</div>
+          <div class="legend-item"><div class="legend-dot dot-failed"></div> Failed</div>
+          <div class="legend-item"><div class="legend-dot dot-skipped"></div> Skipped</div>
+        </div>
+        <div class="zoom-controls">
+          <span id="zoom-level">100%</span>
+          <button class="zoom-btn" onclick="zoomIn()">+</button>
+          <button class="zoom-btn" onclick="zoomOut()">-</button>
+        </div>
+      </div>
+
+      <div class="canvas-container" id="canvas-container">
+        <div class="no-selection" id="no-selection">Select a task to view workflow</div>
+        <canvas id="workflow-canvas" style="display: none;"></canvas>
+        <div class="node-tooltip" id="node-tooltip" style="display: none;"></div>
+      </div>
+    </div>
+
+    <div class="right-panel" id="right-panel" style="display: none;">
+      <div class="panel-tabs">
+        <button class="panel-tab active" data-tab="details">Details</button>
+        <button class="panel-tab" data-tab="logs">Logs</button>
+        <button class="panel-tab" data-tab="output">Output</button>
+      </div>
+      <div class="panel-content" id="panel-content"></div>
+    </div>
+  </div>
+
+  <div class="refresh-indicator" id="refresh-indicator">Auto-refresh: 3s</div>
+
+  <script>
+    // State
+    let tasks = [];
+    let selectedTaskId = null;
+    let selectedNodeId = null;
+    let taskData = null;
+    let nodePositions = {};
+    let activeTab = 'details';
+    let logs = [];
+
+    // Pan & Zoom state
+    let scale = 1;
+    let panX = 0, panY = 0;
+    let isDragging = false;
+    let lastMouseX = 0, lastMouseY = 0;
+
+    const STATUS_COLORS = {
+      pending: '#6b7280',
+      ready: '#6b7280',
+      running: '#3b82f6',
+      waiting: '#3b82f6',
+      done: '#22c55e',
+      failed: '#ef4444',
+      skipped: '#eab308',
+    };
+
+    // API
+    async function fetchTasks() {
+      const res = await fetch('/api/tasks');
+      return res.json();
+    }
+
+    async function fetchTaskDetails(taskId) {
+      const res = await fetch(`/api/tasks/${taskId}`);
+      return res.json();
+    }
+
+    async function fetchTimeline(taskId) {
+      const res = await fetch(`/api/tasks/${taskId}/timeline`);
+      return res.json();
+    }
+
+    // Task list
+    function renderTaskList() {
+      const container = document.getElementById('task-list');
+      container.innerHTML = tasks.map(task => `
+        <div class="task-item ${task.id === selectedTaskId ? 'active' : ''}" data-id="${task.id}">
+          <div class="task-title">${escapeHtml(task.title)}</div>
+          <div class="task-meta">
+            <span class="task-status status-${task.status}">${task.status}</span>
+            <span>${formatTime(task.createdAt)}</span>
+          </div>
+        </div>
+      `).join('');
+
+      container.querySelectorAll('.task-item').forEach(item => {
+        item.addEventListener('click', () => selectTask(item.dataset.id));
+      });
+    }
+
+    // Select task
+    async function selectTask(taskId) {
+      selectedTaskId = taskId;
+      selectedNodeId = null;
+      renderTaskList();
+
+      document.getElementById('no-selection').style.display = 'flex';
+      document.getElementById('no-selection').textContent = 'Loading...';
+      document.getElementById('workflow-canvas').style.display = 'none';
+
+      taskData = await fetchTaskDetails(taskId);
+      logs = await fetchTimeline(taskId);
+
+      if (!taskData.workflow) {
+        document.getElementById('no-selection').textContent = 'No workflow generated yet';
+        return;
+      }
+
+      document.getElementById('no-selection').style.display = 'none';
+      document.getElementById('workflow-canvas').style.display = 'block';
+      document.getElementById('main-header').style.display = 'flex';
+      document.getElementById('toolbar').style.display = 'flex';
+      document.getElementById('right-panel').style.display = 'flex';
+
+      document.getElementById('task-title').textContent = taskData.task.title;
+      document.getElementById('task-id').textContent = taskData.task.id;
+
+      resetView();
+      calculateNodePositions();
+      renderWorkflow();
+      renderPanel();
+    }
+
+    // Calculate node positions with proper loop handling
+    function calculateNodePositions() {
+      if (!taskData?.workflow?.nodes) return;
+
+      const nodes = taskData.workflow.nodes;
+      const edges = taskData.workflow.edges || [];
+      nodePositions = {};
+
+      const nodeWidth = 180;
+      const nodeHeight = 56;
+      const xGap = 100;
+      const yGap = 30;
+      const startX = 50;
+      const startY = 50;
+
+      // Find loop nodes and their body nodes
+      const loopNodes = new Map();
+      nodes.forEach(n => {
+        if (n.type === 'loop' && n.config?.bodyNodes) {
+          loopNodes.set(n.id, n.config.bodyNodes);
+        }
+      });
+
+      // Build dependency graph (excluding loop body connections)
+      const loopBodySet = new Set();
+      loopNodes.forEach(bodyNodes => bodyNodes.forEach(id => loopBodySet.add(id)));
+
+      const mainNodes = nodes.filter(n => !loopBodySet.has(n.id));
+      const inDegree = {};
+      const adj = {};
+
+      mainNodes.forEach(n => {
+        inDegree[n.id] = 0;
+        adj[n.id] = [];
+      });
+
+      edges.forEach(e => {
+        if (!loopBodySet.has(e.from) && !loopBodySet.has(e.to)) {
+          if (adj[e.from]) adj[e.from].push(e.to);
+          if (inDegree[e.to] !== undefined) inDegree[e.to]++;
+        }
+      });
+
+      // Topological sort for main flow
+      const levels = [];
+      let queue = mainNodes.filter(n => inDegree[n.id] === 0).map(n => n.id);
+      const visited = new Set();
+
+      while (queue.length > 0) {
+        const level = [];
+        const nextQueue = [];
+
+        for (const nodeId of queue) {
+          if (visited.has(nodeId)) continue;
+          visited.add(nodeId);
+          level.push(nodeId);
+
+          for (const next of (adj[nodeId] || [])) {
+            inDegree[next]--;
+            if (inDegree[next] === 0) nextQueue.push(next);
+          }
+        }
+
+        if (level.length > 0) levels.push(level);
+        queue = nextQueue;
+      }
+
+      // Handle unvisited main nodes
+      mainNodes.forEach(n => {
+        if (!visited.has(n.id)) {
+          if (levels.length === 0) levels.push([]);
+          levels[levels.length - 1].push(n.id);
+        }
+      });
+
+      // Position main nodes
+      let maxY = startY;
+      levels.forEach((level, levelIndex) => {
+        const x = startX + levelIndex * (nodeWidth + xGap);
+        level.forEach((nodeId, nodeIndex) => {
+          const y = startY + nodeIndex * (nodeHeight + yGap);
+          nodePositions[nodeId] = { x, y, width: nodeWidth, height: nodeHeight };
+          maxY = Math.max(maxY, y + nodeHeight);
+        });
+      });
+
+      // Position loop body nodes below their loop node
+      loopNodes.forEach((bodyNodes, loopId) => {
+        const loopPos = nodePositions[loopId];
+        if (!loopPos) return;
+
+        const bodyStartY = maxY + yGap * 2;
+        bodyNodes.forEach((bodyNodeId, idx) => {
+          nodePositions[bodyNodeId] = {
+            x: loopPos.x + idx * (nodeWidth + xGap / 2),
+            y: bodyStartY,
+            width: nodeWidth,
+            height: nodeHeight,
+            isLoopBody: true,
+            loopId: loopId,
+          };
+        });
+      });
+    }
+
+    // Render workflow
+    function renderWorkflow() {
+      const canvas = document.getElementById('workflow-canvas');
+      const container = document.getElementById('canvas-container');
+      const ctx = canvas.getContext('2d');
+
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      ctx.save();
+      ctx.translate(panX, panY);
+      ctx.scale(scale, scale);
+
+      if (!taskData?.workflow) { ctx.restore(); return; }
+
+      const nodes = taskData.workflow.nodes || [];
+      const edges = taskData.workflow.edges || [];
+      const nodeStates = taskData.instance?.nodeStates || {};
+
+      // Find loop nodes for drawing loop arrows
+      const loopNodes = new Map();
+      nodes.forEach(n => {
+        if (n.type === 'loop' && n.config?.bodyNodes) {
+          loopNodes.set(n.id, n.config.bodyNodes);
+        }
+      });
+
+      // Draw edges
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 2;
+
+      edges.forEach(edge => {
+        const from = nodePositions[edge.from];
+        const to = nodePositions[edge.to];
+        if (!from || !to) return;
+
+        drawArrow(ctx, from.x + from.width, from.y + from.height / 2, to.x, to.y + to.height / 2);
+      });
+
+      // Draw loop body connections and loop-back arrows
+      loopNodes.forEach((bodyNodes, loopId) => {
+        const loopPos = nodePositions[loopId];
+        if (!loopPos || bodyNodes.length === 0) return;
+
+        // Draw arrow from loop to first body node
+        const firstBody = nodePositions[bodyNodes[0]];
+        if (firstBody) {
+          ctx.strokeStyle = '#8b5cf6';
+          ctx.setLineDash([5, 5]);
+          drawArrow(ctx, loopPos.x + loopPos.width / 2, loopPos.y + loopPos.height,
+                    firstBody.x + firstBody.width / 2, firstBody.y);
+          ctx.setLineDash([]);
+        }
+
+        // Draw arrows between body nodes
+        for (let i = 0; i < bodyNodes.length - 1; i++) {
+          const curr = nodePositions[bodyNodes[i]];
+          const next = nodePositions[bodyNodes[i + 1]];
+          if (curr && next) {
+            ctx.strokeStyle = '#8b5cf6';
+            drawArrow(ctx, curr.x + curr.width, curr.y + curr.height / 2,
+                      next.x, next.y + next.height / 2);
+          }
+        }
+
+        // Draw loop-back arrow from last body to loop
+        const lastBody = nodePositions[bodyNodes[bodyNodes.length - 1]];
+        if (lastBody) {
+          ctx.strokeStyle = '#f59e0b';
+          ctx.setLineDash([5, 5]);
+          // Curved loop-back
+          ctx.beginPath();
+          const startX = lastBody.x + lastBody.width;
+          const startY = lastBody.y + lastBody.height / 2;
+          const endX = loopPos.x;
+          const endY = loopPos.y + loopPos.height / 2;
+          const ctrlX = Math.max(startX, endX) + 60;
+          const ctrlY = (startY + endY) / 2;
+
+          ctx.moveTo(startX, startY);
+          ctx.quadraticCurveTo(ctrlX, startY, ctrlX, ctrlY);
+          ctx.quadraticCurveTo(ctrlX, endY, endX, endY);
+          ctx.stroke();
+
+          // Arrow head
+          const angle = Math.atan2(0, -1);
+          drawArrowHead(ctx, endX, endY, angle);
+          ctx.setLineDash([]);
+        }
+      });
+
+      // Draw nodes
+      nodes.forEach(node => {
+        const pos = nodePositions[node.id];
+        if (!pos) return;
+
+        const state = nodeStates[node.id];
+        const status = state?.status || 'pending';
+        const color = STATUS_COLORS[status] || STATUS_COLORS.pending;
+
+        // Node background
+        ctx.fillStyle = selectedNodeId === node.id ? '#334155' : '#1e293b';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = selectedNodeId === node.id ? 3 : 2;
+
+        if (pos.isLoopBody) {
+          ctx.setLineDash([4, 4]);
+        }
+
+        roundRect(ctx, pos.x, pos.y, pos.width, pos.height, 8);
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Status dot
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(pos.x + 14, pos.y + pos.height / 2, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Running pulse
+        if (status === 'running') {
+          ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(pos.x + 14, pos.y + pos.height / 2, 9, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Node text
+        ctx.fillStyle = '#f1f5f9';
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textBaseline = 'middle';
+        const name = node.name || node.id;
+        const maxLen = Math.floor((pos.width - 35) / 7);
+        const displayName = name.length > maxLen ? name.slice(0, maxLen - 2) + '...' : name;
+        ctx.fillText(displayName, pos.x + 26, pos.y + pos.height / 2 - 8);
+
+        // Type and duration
+        ctx.fillStyle = '#64748b';
+        ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+        let typeText = node.type;
+        if (state?.durationMs) {
+          typeText += ` · ${formatDuration(state.durationMs)}`;
+        }
+        ctx.fillText(typeText, pos.x + 26, pos.y + pos.height / 2 + 10);
+
+        // Loop indicator
+        if (node.type === 'loop') {
+          ctx.fillStyle = '#8b5cf6';
+          ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+          const count = taskData.instance?.loopCounts?.[node.id] || 0;
+          ctx.fillText(`×${count}`, pos.x + pos.width - 25, pos.y + 14);
+        }
+
+        // Error indicator
+        if (status === 'failed') {
+          ctx.fillStyle = '#ef4444';
+          ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif';
+          ctx.fillText('!', pos.x + pos.width - 16, pos.y + pos.height / 2);
+        }
+      });
+
+      ctx.restore();
+    }
+
+    function drawArrow(ctx, x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      drawArrowHead(ctx, x2, y2, angle);
+    }
+
+    function drawArrowHead(ctx, x, y, angle) {
+      const size = 8;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - size * Math.cos(angle - Math.PI / 6), y - size * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(x - size * Math.cos(angle + Math.PI / 6), y - size * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.fill();
+    }
+
+    function roundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    // Pan & Zoom
+    function setupPanZoom() {
+      const container = document.getElementById('canvas-container');
+      const canvas = document.getElementById('workflow-canvas');
+
+      container.addEventListener('mousedown', (e) => {
+        if (e.target === canvas) {
+          isDragging = true;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+          container.classList.add('dragging');
+        }
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+          panX += e.clientX - lastMouseX;
+          panY += e.clientY - lastMouseY;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+          renderWorkflow();
+        }
+      });
+
+      document.addEventListener('mouseup', () => {
+        isDragging = false;
+        container.classList.remove('dragging');
+      });
+
+      container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        const newScale = Math.min(3, Math.max(0.3, scale * delta));
+
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        panX = mouseX - (mouseX - panX) * (newScale / scale);
+        panY = mouseY - (mouseY - panY) * (newScale / scale);
+        scale = newScale;
+
+        document.getElementById('zoom-level').textContent = Math.round(scale * 100) + '%';
+        renderWorkflow();
+      }, { passive: false });
+
+      canvas.addEventListener('click', handleCanvasClick);
+    }
+
+    function zoomIn() {
+      scale = Math.min(3, scale * 1.2);
+      document.getElementById('zoom-level').textContent = Math.round(scale * 100) + '%';
+      renderWorkflow();
+    }
+
+    function zoomOut() {
+      scale = Math.max(0.3, scale * 0.8);
+      document.getElementById('zoom-level').textContent = Math.round(scale * 100) + '%';
+      renderWorkflow();
+    }
+
+    function resetView() {
+      scale = 1;
+      panX = 0;
+      panY = 0;
+      document.getElementById('zoom-level').textContent = '100%';
+      if (taskData) renderWorkflow();
+    }
+
+    function handleCanvasClick(e) {
+      const canvas = document.getElementById('workflow-canvas');
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left - panX) / scale;
+      const y = (e.clientY - rect.top - panY) / scale;
+
+      let clickedNode = null;
+      for (const [nodeId, pos] of Object.entries(nodePositions)) {
+        if (x >= pos.x && x <= pos.x + pos.width && y >= pos.y && y <= pos.y + pos.height) {
+          clickedNode = nodeId;
+          break;
+        }
+      }
+
+      selectedNodeId = clickedNode;
+      renderWorkflow();
+      renderPanel();
+    }
+
+    // Panel rendering
+    function renderPanel() {
+      const container = document.getElementById('panel-content');
+
+      if (activeTab === 'details') {
+        renderDetailsPanel(container);
+      } else if (activeTab === 'logs') {
+        renderLogsPanel(container);
+      } else if (activeTab === 'output') {
+        renderOutputPanel(container);
+      }
+    }
+
+    function renderDetailsPanel(container) {
+      if (!taskData?.instance) {
+        container.innerHTML = '<div style="color: #64748b;">No execution data</div>';
+        return;
+      }
+
+      const nodeStates = taskData.instance.nodeStates || {};
+      const outputs = taskData.instance.outputs || {};
+      const nodes = taskData.workflow?.nodes || [];
+
+      if (selectedNodeId && nodeStates[selectedNodeId]) {
+        const state = nodeStates[selectedNodeId];
+        const node = nodes.find(n => n.id === selectedNodeId);
+        const output = outputs[selectedNodeId];
+
+        let html = `
+          <div class="panel-section">
+            <div class="panel-section-title">Node: ${escapeHtml(node?.name || selectedNodeId)}</div>
+            <div class="info-grid">
+              <div class="info-item">
+                <div class="label">Status</div>
+                <div class="value" style="color: ${STATUS_COLORS[state.status]}">${state.status}</div>
+              </div>
+              <div class="info-item">
+                <div class="label">Type</div>
+                <div class="value">${node?.type || '-'}</div>
+              </div>
+              <div class="info-item">
+                <div class="label">Attempts</div>
+                <div class="value">${state.attempts}</div>
+              </div>
+              <div class="info-item">
+                <div class="label">Duration</div>
+                <div class="value">${state.durationMs ? formatDuration(state.durationMs) : '-'}</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        if (state.error) {
+          html += `
+            <div class="panel-section">
+              <div class="panel-section-title">Error</div>
+              <div class="error-box">${escapeHtml(state.error)}</div>
+            </div>
+          `;
+        }
+
+        if (output) {
+          const outputStr = typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output);
+          html += `
+            <div class="panel-section">
+              <div class="panel-section-title">Output</div>
+              <div class="output-box">${escapeHtml(outputStr)}</div>
+            </div>
+          `;
+        }
+
+        container.innerHTML = html;
+      } else {
+        // Summary view
+        const statusCounts = { pending: 0, running: 0, done: 0, failed: 0, skipped: 0 };
+        Object.values(nodeStates).forEach(s => {
+          if (statusCounts[s.status] !== undefined) statusCounts[s.status]++;
+        });
+
+        let html = `
+          <div class="panel-section">
+            <div class="panel-section-title">Workflow Summary</div>
+            <div class="info-grid">
+              <div class="info-item">
+                <div class="label">Total Nodes</div>
+                <div class="value">${nodes.length}</div>
+              </div>
+              <div class="info-item">
+                <div class="label">Completed</div>
+                <div class="value" style="color: #22c55e">${statusCounts.done}</div>
+              </div>
+              <div class="info-item">
+                <div class="label">Running</div>
+                <div class="value" style="color: #3b82f6">${statusCounts.running}</div>
+              </div>
+              <div class="info-item">
+                <div class="label">Failed</div>
+                <div class="value" style="color: #ef4444">${statusCounts.failed}</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        if (taskData.instance.variables && Object.keys(taskData.instance.variables).length > 0) {
+          html += `
+            <div class="panel-section">
+              <div class="panel-section-title">Variables</div>
+              <div class="output-box">${escapeHtml(JSON.stringify(taskData.instance.variables, null, 2))}</div>
+            </div>
+          `;
+        }
+
+        // Show failed nodes
+        const failedNodes = Object.entries(nodeStates).filter(([, s]) => s.status === 'failed');
+        if (failedNodes.length > 0) {
+          html += `<div class="panel-section"><div class="panel-section-title">Failed Nodes</div>`;
+          failedNodes.forEach(([nodeId, state]) => {
+            const node = nodes.find(n => n.id === nodeId);
+            html += `
+              <div class="error-box" style="margin-bottom: 8px;">
+                <strong>${escapeHtml(node?.name || nodeId)}</strong><br>
+                ${escapeHtml(state.error || 'Unknown error')}
+              </div>
+            `;
+          });
+          html += `</div>`;
+        }
+
+        container.innerHTML = html;
+      }
+    }
+
+    function renderLogsPanel(container) {
+      if (!logs || logs.length === 0) {
+        container.innerHTML = '<div style="color: #64748b;">No logs available</div>';
+        return;
+      }
+
+      const lines = logs.map(log => {
+        const time = new Date(log.timestamp).toLocaleTimeString('zh-CN');
+        const eventClass = log.event.includes('failed') ? 'log-error' :
+                          log.event.includes('completed') ? 'log-success' : 'log-info';
+        return `<div class="log-line"><span class="log-time">[${time}]</span> <span class="${eventClass}">${log.event}</span> ${log.nodeId ? `- ${log.nodeName || log.nodeId}` : ''}</div>`;
+      }).join('');
+
+      container.innerHTML = `<div class="log-viewer">${lines}</div>`;
+    }
+
+    function renderOutputPanel(container) {
+      if (!taskData?.instance?.outputs) {
+        container.innerHTML = '<div style="color: #64748b;">No outputs available</div>';
+        return;
+      }
+
+      const outputs = taskData.instance.outputs;
+      const nodes = taskData.workflow?.nodes || [];
+
+      let html = '';
+      Object.entries(outputs).forEach(([nodeId, output]) => {
+        const node = nodes.find(n => n.id === nodeId);
+        const outputStr = typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output);
+        html += `
+          <div class="panel-section">
+            <div class="panel-section-title">${escapeHtml(node?.name || nodeId)}</div>
+            <div class="output-box">${escapeHtml(outputStr)}</div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html || '<div style="color: #64748b;">No outputs yet</div>';
+    }
+
+    // Tab handling
+    document.querySelectorAll('.panel-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        activeTab = tab.dataset.tab;
+        renderPanel();
+      });
+    });
+
+    // Utilities
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function formatTime(dateStr) {
+      return new Date(dateStr).toLocaleString('zh-CN', { hour12: false });
+    }
+
+    function formatDuration(ms) {
+      if (ms < 1000) return `${ms}ms`;
+      if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+      return `${(ms / 60000).toFixed(1)}m`;
+    }
+
+    // Initialize
+    async function init() {
+      tasks = await fetchTasks();
+      renderTaskList();
+      setupPanZoom();
+
+      window.addEventListener('resize', () => {
+        if (taskData) renderWorkflow();
+      });
+
+      setInterval(async () => {
+        const indicator = document.getElementById('refresh-indicator');
+        indicator.classList.add('active');
+
+        tasks = await fetchTasks();
+        renderTaskList();
+
+        if (selectedTaskId) {
+          const newData = await fetchTaskDetails(selectedTaskId);
+          const newLogs = await fetchTimeline(selectedTaskId);
+          if (JSON.stringify(newData) !== JSON.stringify(taskData)) {
+            taskData = newData;
+            logs = newLogs;
+            renderWorkflow();
+            renderPanel();
+          }
+        }
+
+        setTimeout(() => indicator.classList.remove('active'), 500);
+      }, 3000);
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -54,7 +54,7 @@ function toSummary(task: Task): TaskSummary {
 }
 
 // Stop reason for process termination
-export type ProcessStopReason = 'completed' | 'killed' | 'timeout' | 'error'
+export type ProcessStopReason = 'completed' | 'killed' | 'timeout' | 'error' | 'conflict'
 
 // Process info for background execution
 export interface ProcessInfo {

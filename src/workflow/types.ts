@@ -171,10 +171,19 @@ export interface AssignConfig {
 
 /**
  * 脚本节点 - 执行表达式计算
+ *
+ * 支持两种模式：
+ * 1. 单表达式模式：expression + outputVar
+ * 2. 多赋值模式：assignments（类似 assign 节点）
  */
 export interface ScriptConfig {
-  expression: string               // 要执行的表达式
-  outputVar?: string               // 结果存储的变量名
+  expression?: string              // 要执行的表达式（单表达式模式）
+  outputVar?: string               // 结果存储的变量名（单表达式模式）
+  /** 多变量赋值（类似 assign 节点，支持表达式） */
+  assignments?: Array<{
+    variable: string               // 变量名
+    expression: string             // 表达式
+  }>
 }
 
 /**

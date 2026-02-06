@@ -12,6 +12,6 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   target: 'node18',
-  // 构建后执行 chmod +x（源文件已有 shebang，无需 banner）
-  onSuccess: 'chmod +x dist/cli/index.js',
+  // 构建后执行 chmod +x 并复制静态文件
+  onSuccess: 'chmod +x dist/cli/index.js && mkdir -p dist/server/public && cp -r src/server/public/* dist/server/public/',
 })

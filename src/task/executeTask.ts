@@ -40,6 +40,17 @@ import { setupIncrementalStatsSaving } from './ExecutionStats.js'
 
 const logger = createLogger('execute-task')
 
+/**
+ * 恢复冲突错误 - 当检测到另一个进程正在执行任务时抛出
+ * 这个错误不应该导致任务状态变为 failed
+ */
+export class ResumeConflictError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ResumeConflictError'
+  }
+}
+
 // 轮询间隔（毫秒）
 const POLL_INTERVAL = 500
 
@@ -357,7 +368,14 @@ export async function executeTask(
       await closeWorker()
     }
 
-    // 更新任务状态为 failed
+    // ResumeConflictError 不应该导致任务状态变为 failed
+    // 因为原来的执行可能还在继续
+    if (error instanceof ResumeConflictError) {
+      logger.warn(`恢复冲突，任务可能仍在执行: ${task.id}`)
+      throw error
+    }
+
+    // 其他错误：更新任务状态为 failed
     updateTask(task.id, { status: 'failed' })
 
     throw error
@@ -466,7 +484,8 @@ async function prepareResume(
     // 再次检查
     const recheckActivity = hasRecentNodeActivity(instance)
     if (recheckActivity.active) {
-      throw new Error(
+      // 使用 ResumeConflictError，这样不会导致任务状态变为 failed
+      throw new ResumeConflictError(
         `Node ${recheckActivity.nodeId} is still actively running. ` +
         `Another process may be executing this task. Wait for it to complete or stop it first.`
       )

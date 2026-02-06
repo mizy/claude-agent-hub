@@ -291,6 +291,8 @@ export interface ScriptResult {
   success: boolean
   result?: unknown
   outputVar?: string
+  /** 多变量更新（assignments 模式） */
+  updates?: Record<string, unknown>
   error?: string
 }
 
@@ -305,6 +307,29 @@ export function executeScriptNode(
   }
 
   try {
+    // 模式 1：多变量赋值（assignments）
+    if (config.assignments && config.assignments.length > 0) {
+      const updates: Record<string, unknown> = {}
+
+      for (const assignment of config.assignments) {
+        const value = evaluateExpression(assignment.expression, context)
+        updates[assignment.variable] = value
+        logger.debug(`Script node ${node.id}: ${assignment.variable} = ${JSON.stringify(value)}`)
+      }
+
+      logger.info(`Script node ${node.id}: updated ${Object.keys(updates).length} variables via assignments`)
+      return {
+        success: true,
+        updates,
+        result: updates,
+      }
+    }
+
+    // 模式 2：单表达式模式（向后兼容）
+    if (!config.expression) {
+      return { success: false, error: 'Script config requires either expression or assignments' }
+    }
+
     const result = evaluateExpression(config.expression, context)
 
     logger.info(`Script node ${node.id}: "${config.expression}" = ${JSON.stringify(result)}`)

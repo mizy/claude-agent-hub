@@ -15,6 +15,7 @@
 
 import { parseArgs } from 'util'
 import { runTask, resumeTask } from './runTask.js'
+import { ResumeConflictError } from './executeTask.js'
 import {
   getTask,
   updateTask,
@@ -116,6 +117,20 @@ async function main(): Promise<void> {
     logger.info(`Task completed: ${taskId}`)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
+
+    // ResumeConflictError 表示另一个进程正在执行，不应该标记任务为 failed
+    // 只需要静默退出当前进程
+    if (error instanceof ResumeConflictError) {
+      logger.warn(`Resume conflict detected, another process is executing: ${errorMessage}`)
+      updateProcessInfo(taskId, {
+        status: 'stopped',
+        stopReason: 'conflict',
+        exitCode: 0,
+      })
+      // 不更新任务状态，让原来的进程继续执行
+      process.exit(0)
+    }
+
     logger.error(`Task failed: ${errorMessage}`)
 
     // Update task status

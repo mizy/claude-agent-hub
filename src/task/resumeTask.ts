@@ -123,9 +123,9 @@ export function detectOrphanedTasks(): OrphanedTask[] {
         continue
       }
 
-      // 检查进程是否存活
-      if (!isProcessRunning(processInfo.pid)) {
-        logger.info(`Task ${task.id} process ${processInfo.pid} not found`)
+      // 检查进程是否存活（使用 isProcessActive 综合判断：心跳、启动时间、PID）
+      if (!isProcessActive(processInfo)) {
+        logger.info(`Task ${task.id} process ${processInfo.pid} not active (heartbeat: ${processInfo.lastHeartbeat})`)
         orphaned.push({
           task,
           pid: processInfo.pid,

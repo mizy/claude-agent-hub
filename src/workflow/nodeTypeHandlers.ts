@@ -116,7 +116,15 @@ export async function executeNodeByType(
       if (!result.success) {
         return { success: false, error: result.error }
       }
-      // 如果有输出变量，更新实例变量
+      // 模式 1：多变量赋值（assignments）
+      if (result.updates) {
+        await updateInstanceVariables(instance.id, result.updates)
+        return {
+          success: true,
+          output: { updated: Object.keys(result.updates) },
+        }
+      }
+      // 模式 2：单输出变量（向后兼容）
       if (result.outputVar) {
         await updateInstanceVariables(instance.id, {
           [result.outputVar]: result.result,

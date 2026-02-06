@@ -125,8 +125,23 @@ export function canExecuteNode(
   // start 节点总是可以执行
   if (node.type === 'start') return true
 
+  // 检查节点是否在活跃循环体中
+  const loopBodyResult = canExecuteAsLoopBodyNode(nodeId, instance)
+  if (loopBodyResult.isInLoop) {
+    return loopBodyResult.canExecute
+  }
+
   // 获取所有入边
   const inEdges = workflow.edges.filter(e => e.to === nodeId)
+
+  // 检查是否有入边来自活跃循环节点
+  // 如果循环仍在执行中（activeLoops 中存在），不应该走出循环
+  for (const edge of inEdges) {
+    if (instance.activeLoops && edge.from in instance.activeLoops) {
+      logger.debug(`Node ${nodeId} blocked: upstream loop ${edge.from} is still active`)
+      return false
+    }
+  }
 
   // 特殊处理 join 节点：需要所有入边的源节点都完成
   if (node.type === 'join') {
@@ -141,6 +156,49 @@ export function canExecuteNode(
     const sourceState = instance.nodeStates[edge.from]
     return sourceState && isNodeCompleted(sourceState)
   })
+}
+
+/**
+ * 检查节点是否可以作为循环体节点执行
+ *
+ * 循环体节点没有显式的 edge 连接，它们依赖：
+ * 1. activeLoops 状态记录哪些循环正在执行
+ * 2. bodyNodes 数组定义执行顺序
+ *
+ * @returns isInLoop: 节点是否在活跃循环体中; canExecute: 是否可以执行
+ */
+function canExecuteAsLoopBodyNode(
+  nodeId: string,
+  instance: WorkflowInstance
+): { isInLoop: boolean; canExecute: boolean } {
+  if (!instance.activeLoops) {
+    return { isInLoop: false, canExecute: false }
+  }
+
+  // 查找节点所属的活跃循环
+  for (const [loopNodeId, bodyNodes] of Object.entries(instance.activeLoops)) {
+    const nodeIndex = bodyNodes.indexOf(nodeId)
+    if (nodeIndex === -1) continue
+
+    // 节点在此循环体中
+    const loopState = instance.nodeStates[loopNodeId]
+
+    // 如果是第一个 body 节点，循环节点必须完成
+    if (nodeIndex === 0) {
+      const canExec = loopState?.status === 'done'
+      logger.debug(`Loop body node ${nodeId} (first): loop ${loopNodeId} done=${canExec}`)
+      return { isInLoop: true, canExecute: canExec }
+    }
+
+    // 否则，前一个 body 节点必须完成
+    const prevNodeId = bodyNodes[nodeIndex - 1]!
+    const prevState = instance.nodeStates[prevNodeId]
+    const canExec = prevState?.status === 'done' || prevState?.status === 'skipped'
+    logger.debug(`Loop body node ${nodeId}: prev node ${prevNodeId} done=${canExec}`)
+    return { isInLoop: true, canExecute: canExec }
+  }
+
+  return { isInLoop: false, canExecute: false }
 }
 
 /**

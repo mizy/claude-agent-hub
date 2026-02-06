@@ -49,6 +49,7 @@
     "date-fns": "^3.6.0",
     "execa": "^9.3.0",
     "expr-eval": "^2.0.2",
+    "express": "^5.2.1",
     "inquirer": "^9.3.2",
     "marked": "^17.0.1",
     "node-cron": "^3.0.3",
@@ -59,6 +60,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.6.0",
+    "@types/express": "^5.0.6",
     "@types/inquirer": "^9.0.7",
     "@types/marked": "^5.0.2",
     "@types/node": "^20.14.10",

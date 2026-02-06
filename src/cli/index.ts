@@ -23,6 +23,7 @@ import { registerReportCommands } from './commands/report.js'
 import { registerTemplateCommands } from './commands/template.js'
 import { registerInitCommand } from './commands/init.js'
 import { registerAgentCommands } from './commands/agent.js'
+import { registerServerCommand } from './commands/server.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
@@ -39,7 +40,7 @@ import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
 import { findClosestMatch } from '../shared/levenshtein.js'
 
 // 已知的 CLI 命令列表
-const KNOWN_COMMANDS = ['task', 'template', 'tpl', 'report', 'daemon', 'agent', 'init', 'run', 'logs']
+const KNOWN_COMMANDS = ['task', 'template', 'tpl', 'report', 'daemon', 'agent', 'init', 'run', 'logs', 'server']
 
 const program = new Command()
 
@@ -189,6 +190,7 @@ registerAgentCommands(program)
 registerDaemonCommands(program)
 registerReportCommands(program)
 registerTemplateCommands(program)
+registerServerCommand(program)
 
 // cah logs <id> - 查看任务日志的快捷命令
 program

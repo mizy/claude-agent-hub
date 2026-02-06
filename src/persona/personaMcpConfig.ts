@@ -5,18 +5,17 @@
 
 /** MCP 服务器名称 (与用户 claude 配置中的名称对应) */
 export type McpServerName =
-  | 'puppeteer'      // 浏览器自动化
-  | 'github'         // GitHub 集成
-  | 'mcp-atlassian'  // Jira/Confluence
-  | 'codeup-git'     // 阿里云 Codeup
+  | 'puppeteer' // 浏览器自动化
+  | 'mcp-atlassian' // Jira/Confluence
+  | 'codeup-git' // 阿里云 Codeup
 
 /**
  * 每个 Persona 需要的 MCP 服务器
  * 没有列出的 Persona 默认不启用任何 MCP 服务器
  */
 export const PERSONA_MCP_CONFIG: Record<string, McpServerName[]> = {
-  // 架构师：需要查看 GitHub issues/PRs 了解需求
-  Architect: ['github'],
+  // 架构师：专注系统设计，不需要外部集成
+  Architect: [],
 
   // 务实开发者：专注本地代码，不需要外部集成
   Pragmatist: [],
@@ -24,20 +23,20 @@ export const PERSONA_MCP_CONFIG: Record<string, McpServerName[]> = {
   // 完美主义者：专注代码质量，不需要外部集成
   Perfectionist: [],
 
-  // 探索者：可能需要浏览器探索、查看 GitHub
-  Explorer: ['github', 'puppeteer'],
+  // 探索者：需要浏览器探索
+  Explorer: ['puppeteer'],
 
   // 测试专家：需要浏览器测试、Jira 跟踪 bug
   Tester: ['puppeteer', 'mcp-atlassian'],
 
-  // 代码审查：需要 GitHub 查看 PR
-  Reviewer: ['github'],
+  // 代码审查
+  Reviewer: [],
 
-  // 安全专家：需要 GitHub 检查漏洞
-  Security: ['github'],
+  // 安全专家
+  Security: [],
 
-  // DevOps：需要全部集成
-  DevOps: ['github', 'mcp-atlassian', 'codeup-git'],
+  // DevOps：需要 Jira/Codeup 集成
+  DevOps: ['mcp-atlassian', 'codeup-git'],
 }
 
 /**
