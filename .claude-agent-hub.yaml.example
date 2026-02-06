@@ -1,0 +1,43 @@
+# Claude Agent Hub 配置文件
+# 复制此文件为 .claude-agent-hub.yaml 并填入实际值
+
+# 后端配置（可选: claude-code / opencode / iflow / codebuddy）
+# backend:
+#   type: claude-code
+#   model: opus
+
+# Agent 配置
+agents:
+  - name: dev
+    persona: Pragmatist
+    schedule:
+      poll_interval: 5m
+
+  # - name: reviewer
+  #   persona: Perfectionist
+  #   role: reviewer
+
+# 任务配置
+tasks:
+  default_priority: medium
+  max_retries: 3
+  timeout: 30m
+
+# Git 配置
+git:
+  base_branch: main
+  branch_prefix: 'agent/'
+  auto_push: false
+
+# 通知配置
+notify:
+  # 飞书（需要自建应用，WSClient 长连接模式）
+  # lark:
+  #   appId: "cli_xxx"
+  #   appSecret: "your-app-secret"
+  #   webhookUrl: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"  # 可选，向后兼容
+
+  # Telegram Bot（长轮询模式，无需公网 IP）
+  # telegram:
+  #   botToken: "123456:ABC-DEF"   # 从 @BotFather 获取
+  #   chatId: "your-chat-id"       # 给 bot 发消息后通过 getUpdates 获取

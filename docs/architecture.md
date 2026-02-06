@@ -2,7 +2,7 @@
 
 ## 概览
 
-Claude Agent Hub 是一个基于 Claude Code CLI 的任务执行系统。通过 Workflow 引擎自动分析、拆解和执行开发任务，支持复杂的控制流（条件、循环、并行、定时、人工审批等）。
+Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引擎自动分析、拆解和执行开发任务，支持多种 CLI 后端（claude-code/opencode/iflow/codebuddy）和复杂的控制流（条件、循环、并行、定时、人工审批等）。
 
 ## 系统架构
 
@@ -11,17 +11,21 @@ Claude Agent Hub 是一个基于 Claude Code CLI 的任务执行系统。通过 
 │                                CLI Layer                                     │
 │                         src/cli/index.ts (@entry)                           │
 │                                                                              │
-│   cah "任务"    cah task list    cah workflow run    cah daemon start       │
+│   cah "任务"    cah task list    cah report trend    cah daemon start       │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Agent Layer                                     │
+│                         Task Execution Layer                                 │
 │                                                                              │
-│  ┌──────────────────┐  ┌───────────────────┐  ┌────────────────────────┐   │
-│  │  runAgentForTask │  │  generateWorkflow │  │  executeWorkflowNode   │   │
-│  │  任务执行入口     │  │  生成 JSON 执行计划 │  │  执行单个节点          │   │
-│  └──────────────────┘  └───────────────────┘  └────────────────────────┘   │
+│  ┌──────────────┐  ┌───────────────────┐  ┌─────────────────────────────┐  │
+│  │  createTask  │  │  executeTask      │  │  resumeTask                 │  │
+│  │  任务创建     │  │  任务执行(前台/后台) │  │  恢复中断任务              │  │
+│  └──────────────┘  └───────────────────┘  └─────────────────────────────┘  │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Analysis: 项目上下文分析、历史学习、任务分类、时间预估                │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
@@ -34,36 +38,47 @@ Claude Agent Hub 是一个基于 Claude Code CLI 的任务执行系统。通过 
 │  └───────────────┘  └───────────────┘  └──────────────┘  └──────────────┘  │
 │                                                                              │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                        executeNewNodes.ts                              │  │
-│  │  delay | schedule | loop | foreach | switch | assign | script         │  │
+│  │  generateWorkflow: AI 生成工作流                                        │  │
+│  │  executeNode: 执行节点(使用 Persona)                                    │  │
+│  │  控制流: delay | schedule | loop | foreach | switch | assign | script  │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                             Claude Layer                                     │
+│                             Backend Layer                                    │
+│                        CLI 后端抽象层 (@entry)                                │
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────┐    │
-│  │  invokeClaudeCode({ prompt, mode, stream, onChunk })               │    │
+│  │  Adapters:                                                          │    │
+│  │  - ClaudeCodeAdapter (claude-code CLI)                             │    │
+│  │  - OpenCodeAdapter (opencode CLI)                                  │    │
+│  │  - IflowAdapter (iflow CLI)                                        │    │
+│  │  - CodebuddyAdapter (codebuddy CLI)                                │    │
 │  │                                                                     │    │
-│  │  $ claude --print --dangerously-skip-permissions "<prompt>"        │    │
-│  │                                                                     │    │
-│  │  Returns: Result<InvokeResult, InvokeError>                        │    │
+│  │  createBackend(type) → IBackend                                    │    │
+│  │  backend.execute({ prompt, persona, cwd, onChunk })                │    │
 │  └────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                             Storage Layer                                    │
+│                          Storage & Report Layer                              │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  TaskStore (文件系统, 默认 .cah-data/, 可通过 CAH_DATA_DIR 配置)       │   │
-│  │  .cah-data/tasks/task-{id}/                                          │   │
-│  │    ├── task.json          # 任务信息                                  │   │
-│  │    ├── workflow.json      # 执行计划                                  │   │
-│  │    ├── instance.json      # 运行状态                                  │   │
-│  │    ├── conversations.json # AI 对话记录                               │   │
-│  │    └── outputs/result.md  # 执行报告                                  │   │
+│  │  Store: TaskStore, WorkflowStore, UnifiedStore                       │   │
+│  │  Report: 趋势分析、实时监控、执行对比、退化检测                         │   │
+│  │  Notify: 飞书 WSClient + Telegram 长轮询(双向对话终端)                │   │
+│  │                                                                      │   │
+│  │  .cah-data/tasks/task-{id}/                                         │   │
+│  │    ├── task.json          # 任务元数据                               │   │
+│  │    ├── workflow.json      # 工作流定义                               │   │
+│  │    ├── instance.json      # 唯一执行状态源                            │   │
+│  │    ├── stats.json         # 聚合统计(从 instance 派生)                │   │
+│  │    ├── timeline.json      # 事件时间线                               │   │
+│  │    ├── process.json       # 后台进程信息                             │   │
+│  │    ├── logs/              # execution.log + events.jsonl            │   │
+│  │    └── outputs/result.md  # 执行报告                                 │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -74,66 +89,111 @@ Claude Agent Hub 是一个基于 Claude Code CLI 的任务执行系统。通过 
 src/
 ├── cli/                        # CLI 命令入口
 │   ├── index.ts               # @entry 主入口
-│   ├── output.ts              # 统一输出格式
+│   ├── output.ts              # 统一输出格式(ui 工具)
 │   ├── spinner.ts             # loading 状态
 │   └── commands/              # 子命令
 │       ├── task.ts
-│       ├── workflow.ts
-│       ├── agent.ts
+│       ├── report.ts
 │       └── daemon.ts
 │
-├── agent/                      # Agent 核心逻辑
-│   ├── runAgentForTask.ts     # 任务执行入口
-│   ├── generateWorkflow.ts    # 生成 Workflow
-│   ├── executeWorkflowNode.ts # 执行节点
-│   └── persona/               # Agent 人格配置
+├── backend/                    # CLI 后端抽象层
+│   ├── index.ts               # @entry 后端工厂
+│   ├── IBackend.ts            # 后端接口
+│   └── adapters/              # 各 CLI 适配器
+│       ├── ClaudeCodeAdapter.ts
+│       ├── OpenCodeAdapter.ts
+│       ├── IflowAdapter.ts
+│       └── CodebuddyAdapter.ts
 │
-├── workflow/                   # Workflow 引擎
+├── task/                       # Task 层：生命周期 + 执行
+│   ├── createTask.ts
+│   ├── executeTask.ts         # 任务执行(进度条/ETA/统计)
+│   ├── resumeTask.ts
+│   ├── queryTask.ts           # 查询(list/get/poll)
+│   ├── taskLifecycle.ts       # 生命周期管理
+│   ├── ExecutionProgress.ts
+│   └── ExecutionStats.ts
+│
+├── workflow/                   # Workflow 层：定义、状态、生成
+│   ├── index.ts               # @entry
 │   ├── types.ts               # 类型定义
+│   ├── generateWorkflow.ts    # AI 生成工作流
+│   ├── executeNode.ts         # 执行单个节点(使用 Persona)
 │   ├── engine/
 │   │   ├── StateManager.ts    # 状态管理
 │   │   ├── WorkflowEngine.ts  # 引擎核心
 │   │   ├── ConditionEvaluator.ts
-│   │   └── executeNewNodes.ts # 新节点执行器
+│   │   └── executeNewNodes.ts # 控制流节点执行器
 │   ├── queue/
 │   │   ├── NodeWorker.ts      # 节点执行器
 │   │   └── WorkflowQueue.ts   # 任务队列
-│   ├── parser/
-│   │   ├── parseJson.ts       # JSON 解析
-│   │   └── parseMarkdown.ts   # Markdown 解析
-│   └── store/
-│       └── WorkflowStore.ts   # Workflow 存储
+│   └── parser/
+│       ├── parseJson.ts       # JSON 解析
+│       └── parseMarkdown.ts   # Markdown 解析
 │
-├── claude/                     # Claude Code 集成
-│   └── invokeClaudeCode.ts    # Claude CLI 调用
+├── persona/                    # Persona 层：执行角色定义
+│   ├── builtinPersonas.ts     # 内置人格(Architect/Pragmatist 等)
+│   ├── loadPersona.ts         # 加载人格配置
+│   └── personaMcpConfig.ts    # MCP 配置
 │
-├── task/                       # 任务管理
-│   ├── createTaskWithFolder.ts
-│   ├── listTasks.ts
-│   ├── getTaskDetail.ts
-│   └── resumeTask.ts
+├── analysis/                   # Analysis 层：项目分析、学习、预估
+│   ├── projectContext.ts      # 项目上下文分析
+│   ├── executionHistory.ts    # 历史学习
+│   ├── TaskClassifier.ts      # 任务分类
+│   ├── PatternRecognizer.ts   # 模式识别
+│   └── timeEstimator.ts       # 时间预估
+│
+├── report/                     # 报告分析
+│   ├── trendReport.ts         # 趋势分析
+│   ├── liveReport.ts          # 实时监控
+│   └── compareExecutions.ts   # 执行对比(退化检测)
 │
 ├── store/                      # 数据存储
-│   ├── TaskStore.ts           # 任务文件存储
-│   └── fileStore.ts           # Agent 存储
+│   ├── index.ts               # @entry
+│   ├── GenericFileStore.ts    # 通用文件存储
+│   ├── TaskStore.ts           # 任务存储
+│   ├── WorkflowStore.ts       # Workflow 存储
+│   ├── UnifiedStore.ts        # 统一存储
+│   ├── paths.ts               # 路径常量
+│   ├── readWriteJson.ts       # JSON 工具
+│   └── types.ts               # 类型定义
 │
 ├── notify/                     # 通知系统
-│   ├── lark.ts                # 飞书通知
-│   └── larkServer.ts          # 审批回调服务
+│   ├── index.ts               # @entry
+│   ├── larkServer.ts          # 飞书服务器
+│   ├── larkWsClient.ts        # 飞书 WebSocket 客户端
+│   ├── sendLarkNotify.ts      # 发送飞书通知
+│   ├── telegramClient.ts      # Telegram 客户端
+│   ├── telegramChatHandler.ts # Telegram 对话处理
+│   ├── telegramCommandHandler.ts # Telegram 命令处理
+│   └── sendTelegramNotify.ts  # 发送 Telegram 通知
+│
+├── scheduler/                  # 调度器
+│   ├── startDaemon.ts         # 守护进程
+│   ├── eventBus.ts            # 事件总线
+│   ├── worker.ts              # Worker 抽象
+│   └── queue.ts               # 优先级队列
+│
+├── server/                     # Web 服务器
+│   └── express.ts             # Express 服务器(workflow 可视化)
 │
 ├── shared/                     # 公共基础设施
 │   ├── result.ts              # Result<T, E> 类型
 │   ├── logger.ts              # 日志系统
-│   ├── error.ts               # 错误类型
-│   └── time.ts                # 时间处理
+│   ├── error.ts               # AppError 错误类型
+│   ├── time.ts                # 时间处理
+│   └── id.ts                  # ID 生成
 │
-├── scheduler/                  # 调度器
-│   ├── startDaemon.ts         # 守护进程
-│   ├── worker.ts              # Worker 抽象
-│   └── queue.ts               # 优先级队列
+├── config/                     # 配置系统
+│   ├── index.ts               # @entry
+│   ├── schema.ts              # 配置 Schema
+│   └── loadConfig.ts          # 配置加载
 │
-└── prompts/                    # Prompt 模板
-    └── taskPrompts.ts         # 任务相关 prompts
+├── prompts/                    # Prompt 模板
+│   └── workflowPrompts.ts     # Workflow 生成 prompts
+│
+└── types/                      # 全局类型定义
+    └── ...
 ```
 
 ## 核心流程
@@ -145,59 +205,76 @@ cah "修复登录 bug"
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  createTaskWithFolder()                                          │
-│  创建: .cah-data/tasks/task-20260131-143022-abc/task.json       │
+│  createTask()                                                    │
+│  1. 生成 taskId: task-YYYYMMDD-HHMMSS-xxx                        │
+│  2. 创建目录: .cah-data/tasks/task-{id}/                         │
+│  3. 写入 task.json                                               │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  runAgentForTask(agent, task)                                    │
-│  1. 更新状态: pending → planning                                  │
-│  2. 调用 generateWorkflow()                                      │
+│  executeTask(task, options)                                      │
+│  1. 分析项目上下文(Analysis)                                      │
+│  2. 学习历史执行(ExecutionHistory)                                │
+│  3. 更新状态: pending → planning                                  │
+│  4. 调用 generateWorkflow()                                      │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  generateWorkflow(context)                                       │
+│  generateWorkflow(task, context)                                 │
 │                                                                  │
-│  buildJsonWorkflowPrompt() → invokeClaudeCode({ mode: 'plan' }) │
+│  buildWorkflowPrompt() → backend.execute({                       │
+│    prompt: "分析任务并生成 workflow...",                          │
+│    persona: 'architect'                                          │
+│  })                                                              │
 │                                                                  │
 │  返回 Workflow {                                                 │
 │    nodes: [start, task1, task2, ..., end],                      │
-│    edges: [{from, to, condition?}, ...]                         │
+│    edges: [{from, to, condition?}, ...],                        │
+│    variables: {}                                                │
 │  }                                                               │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  执行 Workflow                                                   │
-│  1. 更新状态: planning → developing                              │
-│  2. 启动 NodeWorker                                              │
-│  3. startWorkflow() 创建 WorkflowInstance                        │
-│  4. 循环执行节点直到完成                                          │
+│  1. 保存 workflow.json                                           │
+│  2. 更新状态: planning → developing                              │
+│  3. 创建 WorkflowInstance(instance.json)                         │
+│  4. 启动 NodeWorker 循环执行节点                                  │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  executeNode(nodeJobData)                                        │
+│  executeNode(node, instance)                                     │
 │                                                                  │
 │  switch(node.type) {                                            │
 │    case 'task':                                                  │
-│      invokeClaudeCode({ prompt, mode: 'execute' })              │
+│      backend.execute({                                          │
+│        prompt: node.task.prompt,                                │
+│        persona: node.task.persona,                              │
+│        cwd: task.cwd,                                           │
+│        onChunk: (chunk) => updateProgress(chunk)                │
+│      })                                                          │
 │    case 'delay':                                                 │
-│      executeDelayNode() → 等待指定时间                            │
+│      setTimeout(() => resolve(), delay)                         │
 │    case 'human':                                                 │
-│      sendLarkNotification() → 等待审批                           │
+│      sendNotification() → 等待审批                               │
+│    case 'loop', 'foreach', 'condition':                         │
+│      executeControlFlowNode()                                   │
 │    ...                                                           │
 │  }                                                               │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  saveWorkflowOutputToTask()                                      │
-│  1. 生成 Markdown 报告                                           │
-│  2. 更新状态: developing → completed/failed                      │
-│  3. 移动任务文件夹到对应状态目录                                   │
+│  完成任务                                                         │
+│  1. 更新 instance.json(最终状态)                                  │
+│  2. 生成 stats.json(从 instance 派生)                             │
+│  3. 生成 outputs/result.md                                       │
+│  4. 更新状态: developing → completed/failed                      │
+│  5. 发送通知(飞书/Telegram)                                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -212,8 +289,9 @@ interface Task {
   description: string     // 完整描述
   priority: 'high' | 'medium' | 'low'
   status: TaskStatus      // pending → planning → developing → completed/failed
-  assignee?: string       // Agent 名称
+  persona?: string        // Persona 名称(如 'architect', 'pragmatist')
   workflowId?: string     // 关联的 Workflow ID
+  backend?: string        // 使用的后端(claude-code/opencode/iflow/codebuddy)
   pid?: number            // 执行进程 PID
   output?: {              // 执行结果
     workflowId: string
@@ -222,6 +300,7 @@ interface Task {
     timing: { startedAt, completedAt }
   }
   createdAt: string
+  updatedAt?: string
 }
 ```
 
@@ -429,40 +508,55 @@ Math.floor(x)   → floor(x)
 !               → not
 ```
 
-## Claude Code 调用
+## Backend 抽象层
 
-### invokeClaudeCode
+支持多种 CLI 后端,通过统一接口调用:
+
+### IBackend 接口
 
 ```typescript
-interface InvokeOptions {
-  prompt: string
-  mode?: 'plan' | 'execute' | 'review'
-  persona?: PersonaConfig
-  cwd?: string
-  stream?: boolean           // 实时输出
-  onChunk?: (chunk: string) => void
-  skipPermissions?: boolean  // 默认 true
-  timeoutMs?: number         // 默认 30 分钟
+interface IBackend {
+  type: BackendType  // 'claude-code' | 'opencode' | 'iflow' | 'codebuddy'
+
+  execute(options: ExecuteOptions): Promise<Result<ExecuteResult, ExecuteError>>
+
+  isAvailable(): Promise<boolean>  // 检查 CLI 是否安装
 }
 
-// 返回 Result 类型
-type Result =
-  | { ok: true; value: InvokeResult }
-  | { ok: false; error: InvokeError }
+interface ExecuteOptions {
+  prompt: string
+  persona?: PersonaConfig         // Persona 配置
+  cwd?: string                    // 工作目录
+  stream?: boolean                // 是否流式输出
+  onChunk?: (chunk: string) => void  // 流式回调
+  timeoutMs?: number              // 超时时间
+}
 
-type InvokeError =
+interface ExecuteResult {
+  response: string                // CLI 输出
+  exitCode: number                // 退出码
+  duration: number                // 执行时长(ms)
+}
+
+type ExecuteError =
   | { type: 'timeout'; message: string }
   | { type: 'process'; message: string; exitCode?: number }
   | { type: 'cancelled'; message: string }
+  | { type: 'not_available'; message: string }
 ```
 
 ### 使用示例
 
 ```typescript
-const result = await invokeClaudeCode({
-  prompt: '分析这个任务...',
-  mode: 'plan',
-  stream: true,  // 实时输出
+import { createBackend } from './backend'
+
+const backend = createBackend('claude-code')
+
+const result = await backend.execute({
+  prompt: '分析这个任务并生成 workflow...',
+  persona: { name: 'architect' },
+  stream: true,
+  onChunk: (chunk) => console.log(chunk),
 })
 
 if (!result.ok) {
@@ -471,6 +565,63 @@ if (!result.ok) {
 }
 
 console.log(result.value.response)
+```
+
+### Adapter 实现
+
+每个 Adapter 负责将统一接口转换为对应 CLI 的命令:
+
+- **ClaudeCodeAdapter**: `claude --print --dangerously-skip-permissions "<prompt>"`
+- **OpenCodeAdapter**: `opencode --print "<prompt>"`
+- **IflowAdapter**: `iflow execute --prompt "<prompt>"`
+- **CodebuddyAdapter**: `codebuddy run "<prompt>"`
+
+## 通知系统
+
+支持飞书和 Telegram 两种通知渠道,提供双向对话终端能力。
+
+### 飞书通知
+
+基于 WebSocket 的实时通知和交互:
+
+- **LarkWsClient**: WebSocket 客户端,接收飞书事件
+- **LarkServer**: Express 服务器,处理飞书回调(审批、消息等)
+- **sendLarkNotify**: 发送飞书卡片消息
+
+功能:
+- 任务状态变更通知
+- 人工审批节点交互
+- 实时对话终端(通过飞书消息控制任务)
+
+### Telegram 通知
+
+基于长轮询的通知和对话:
+
+- **TelegramClient**: 长轮询客户端,接收 Telegram 消息
+- **TelegramChatHandler**: 对话处理器,管理会话状态
+- **TelegramCommandHandler**: 命令处理器,支持 `/list`, `/status`, `/logs` 等
+- **sendTelegramNotify**: 发送 Telegram 消息
+
+功能:
+- 任务状态变更通知
+- 对话式任务管理(通过 Telegram 聊天创建和管理任务)
+- 命令交互(`/list`, `/status <id>`, `/logs <id>`, `/cancel <id>`)
+- 实时日志查看
+
+### 配置
+
+```yaml
+notify:
+  lark:
+    enabled: true
+    appId: "cli_xxx"
+    appSecret: "xxx"
+    webhookUrl: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+
+  telegram:
+    enabled: true
+    botToken: "123456:ABC-DEF..."
+    chatId: "123456789"  # 可选,默认通知目标
 ```
 
 ## 状态流转
@@ -510,12 +661,27 @@ pending ──► ready ──► running ──► done
                          └──► skipped
 ```
 
-## 扩展点
+## 已实现功能
 
-- [x] Workflow 引擎
-- [x] 多种节点类型
-- [x] 飞书通知
-- [ ] 多 Agent 并行
-- [ ] Web UI 监控
-- [ ] 更多通知渠道
+- [x] Workflow 引擎(条件、循环、并行、定时等)
+- [x] 多种节点类型(task/delay/schedule/loop/foreach/condition/parallel/join/human/assign/script/switch)
+- [x] 多 Backend 支持(claude-code/opencode/iflow/codebuddy)
+- [x] Persona 系统(Architect/Pragmatist/Explorer 等)
+- [x] 飞书通知(WebSocket + 双向对话)
+- [x] Telegram 通知(长轮询 + 对话终端)
+- [x] 项目上下文分析
+- [x] 历史执行学习
+- [x] 时间预估(ETA)
+- [x] 任务报告(趋势分析/实时监控/执行对比)
+- [x] Web 服务器(workflow 可视化)
+- [x] 后台守护进程
+- [x] 事件总线
+
+## 扩展方向
+
 - [ ] Workflow 模板库
+- [ ] 更多 Backend 适配器
+- [ ] 更多 Persona 定义
+- [ ] 分布式执行
+- [ ] 任务依赖图
+- [ ] 更丰富的报告和可视化

@@ -1,9 +1,12 @@
 /**
  * 飞书/Lark 通知模块
  * 发送卡片消息通知用户审批
+ *
+ * 发送策略：优先使用 Lark API client（需 WSClient 已启动），否则降级到 webhook
  */
 
 import { createLogger } from '../shared/logger.js'
+import { getLarkClient } from './larkWsClient.js'
 
 const logger = createLogger('lark-notify')
 
@@ -129,12 +132,55 @@ export async function sendReviewNotification(
 }
 
 /**
+ * 通过 Lark API client 发送消息到指定 chat
+ */
+export async function sendLarkMessageViaApi(
+  chatId: string,
+  text: string
+): Promise<boolean> {
+  const client = getLarkClient()
+  if (!client) {
+    logger.warn('Lark API client not available, cannot send via API')
+    return false
+  }
+
+  try {
+    await client.im.v1.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: chatId,
+        content: JSON.stringify({ text }),
+        msg_type: 'text',
+      },
+    })
+    logger.info(`Sent message via Lark API to chat ${chatId}`)
+    return true
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logger.error(`Failed to send Lark message via API: ${errorMessage}`)
+    return false
+  }
+}
+
+/**
  * 发送简单文本消息
+ *
+ * 策略：优先通过 API client 发送（如果已初始化且提供了 chatId），
+ * 否则降级到 webhook 推送
  */
 export async function sendLarkMessage(
   webhookUrl: string,
-  text: string
+  text: string,
+  chatId?: string,
 ): Promise<boolean> {
+  // 优先使用 API client
+  if (chatId && getLarkClient()) {
+    const ok = await sendLarkMessageViaApi(chatId, text)
+    if (ok) return true
+    logger.warn('API send failed, falling back to webhook')
+  }
+
+  // 降级到 webhook
   try {
     const response = await fetch(webhookUrl, {
       method: 'POST',

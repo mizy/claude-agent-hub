@@ -28,6 +28,9 @@ import { saveWorkflowOutput } from '../output/saveWorkflowOutput.js'
 import { saveExecutionStats, appendTimelineEvent } from '../store/ExecutionStatsStore.js'
 import { workflowEvents } from '../workflow/engine/WorkflowEventEmitter.js'
 import { createLogger, setLogMode, logError as logErrorFn } from '../shared/logger.js'
+import { formatDuration } from '../shared/formatTime.js'
+import { loadConfig } from '../config/loadConfig.js'
+import { sendTelegramTextMessage } from '../notify/sendTelegramNotify.js'
 import type { Task } from '../types/task.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 import { waitForWorkflowCompletion } from './ExecutionProgress.js'
@@ -343,6 +346,12 @@ export async function executeTask(
       },
     })
 
+    // 发送 Telegram 任务完成通知（失败不影响任务状态）
+    await sendTaskCompletionNotify(task, success, {
+      durationMs: totalDurationMs,
+      error: finalInstance.error,
+    })
+
     logger.info(`输出保存至: ${outputPath}`)
 
     if (success) {
@@ -384,6 +393,41 @@ export async function executeTask(
     updateTask(task.id, { status: 'failed' })
 
     throw error
+  }
+}
+
+/**
+ * 发送任务完成/失败的 Telegram 通知
+ * 失败只打日志，不抛异常
+ */
+async function sendTaskCompletionNotify(
+  task: Task,
+  success: boolean,
+  info: { durationMs: number; error?: string },
+): Promise<void> {
+  try {
+    const config = await loadConfig()
+    const tg = config.notify?.telegram
+    if (!tg?.botToken) return // 未配置 telegram，跳过
+
+    const status = success ? '✅ 完成' : '❌ 失败'
+    const duration = formatDuration(info.durationMs)
+    const lines = [
+      '📋 任务完成通知',
+      '',
+      `标题: ${task.title}`,
+      `状态: ${status}`,
+      `耗时: ${duration}`,
+      `ID: ${task.id}`,
+    ]
+    if (!success && info.error) {
+      lines.push(`错误: ${info.error.slice(0, 200)}`)
+    }
+
+    await sendTelegramTextMessage(lines.join('\n'), tg.chatId)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logger.warn(`Telegram 通知发送失败: ${msg}`)
   }
 }
 

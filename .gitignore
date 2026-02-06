@@ -34,8 +34,9 @@ tests/*.txt
 tests/*.log
 tests/*.sh
 
-# Environment
+# Environment & config (contains secrets)
 .env
 .env.local
+.claude-agent-hub.yaml
 .cah-data
 dist-*

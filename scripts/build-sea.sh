@@ -38,7 +38,7 @@ npx esbuild "$ENTRY" \
   --target=node20 \
   --format=cjs \
   --outfile="$BUNDLE" \
-  --banner:js="const __importMetaUrl = require('url').pathToFileURL(__filename).href;" \
+  --banner:js="var _pe=process.emit;process.emit=function(e,w){if(e==='warning'&&w&&typeof w.message==='string'&&w.message.includes('single-executable'))return false;return _pe.apply(this,arguments)};const __importMetaUrl = require('url').pathToFileURL(__filename).href;" \
   --define:import.meta.url=__importMetaUrl \
   --minify-syntax
 

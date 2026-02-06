@@ -38,14 +38,19 @@ export const claudeConfigSchema = z.object({
 })
 
 export const larkConfigSchema = z.object({
-  webhookUrl: z.string().optional(),        // 飞书 webhook URL
-  appId: z.string().optional(),             // 飞书应用 ID（@回复用）
-  appSecret: z.string().optional(),         // 飞书应用密钥
-  serverPort: z.number().default(3000),     // 事件监听端口
+  webhookUrl: z.string().optional(),        // 飞书 webhook URL（向后兼容）
+  appId: z.string(),                        // 飞书应用 ID（WSClient 必需）
+  appSecret: z.string(),                    // 飞书应用密钥（WSClient 必需）
+})
+
+export const telegramConfigSchema = z.object({
+  botToken: z.string(),                     // Telegram Bot Token
+  chatId: z.string().optional(),            // 默认 Chat ID
 })
 
 export const notifyConfigSchema = z.object({
   lark: larkConfigSchema.optional(),
+  telegram: telegramConfigSchema.optional(),
 })
 
 export const daemonConfigSchema = z.object({
@@ -71,6 +76,7 @@ export type BackendConfig = z.infer<typeof backendConfigSchema>
 /** @deprecated 使用 BackendConfig */
 export type ClaudeConfig = z.infer<typeof claudeConfigSchema>
 export type LarkConfig = z.infer<typeof larkConfigSchema>
+export type TelegramConfig = z.infer<typeof telegramConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>
 export type DaemonConfig = z.infer<typeof daemonConfigSchema>
 export type Config = z.infer<typeof configSchema>

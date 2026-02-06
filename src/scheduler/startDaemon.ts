@@ -4,14 +4,12 @@ import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
-import { startLarkServer, stopLarkServer } from '../notify/larkServer.js'
+import { stopLarkServer } from '../notify/larkServer.js'
 import { startLarkWsClient, stopLarkWsClient } from '../notify/larkWsClient.js'
+import { startTelegramClient, stopTelegramClient } from '../notify/telegramClient.js'
 
 interface DaemonOptions {
   foreground?: boolean
-  lark?: boolean
-  larkWs?: boolean
-  larkPort?: number
 }
 
 let scheduledJobs: cron.ScheduledTask[] = []
@@ -48,22 +46,26 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
 
   scheduledJobs.push(job)
 
-  // 启动飞书事件监听
-  if (options.larkWs) {
-    // WebSocket 长连接模式（推荐，无需公网 IP）
+  // 根据配置自动启动通知平台
+  const larkConfig = config.notify?.lark
+  const telegramConfig = config.notify?.telegram
+
+  if (larkConfig?.appId && larkConfig?.appSecret) {
+    // 飞书 WebSocket 长连接（推荐，无需公网 IP）
     try {
       await startLarkWsClient()
-      console.log(chalk.green('  ✓ 飞书 WebSocket 客户端已启动 (长连接模式)'))
+      console.log(chalk.green('  ✓ 飞书已启动 (WebSocket 长连接)'))
     } catch (error) {
-      console.error(chalk.red('  ✗ 飞书 WebSocket 客户端启动失败:'), error)
+      console.error(chalk.red('  ✗ 飞书启动失败:'), error)
     }
-  } else if (options.lark || config.notify?.lark?.webhookUrl) {
-    // HTTP 服务器模式（需要公网 IP）
+  }
+
+  if (telegramConfig?.botToken) {
     try {
-      await startLarkServer(options.larkPort)
-      console.log(chalk.green('  ✓ 飞书事件监听服务器已启动 (HTTP 模式)'))
+      await startTelegramClient()
+      console.log(chalk.green('  ✓ Telegram 已启动 (长轮询)'))
     } catch (error) {
-      console.error(chalk.red('  ✗ 飞书服务器启动失败:'), error)
+      console.error(chalk.red('  ✗ Telegram 启动失败:'), error)
     }
   }
 
@@ -79,6 +81,7 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
       stopAllJobs()
       await stopLarkServer()
       await stopLarkWsClient()
+      stopTelegramClient()
       process.exit(0)
     }
 
