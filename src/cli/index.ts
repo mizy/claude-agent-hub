@@ -11,8 +11,7 @@
  *
  * 子命令：
  *   cah task      - 任务管理
- *   cah template  - 模板管理
- *   cah daemon    - 守护进程
+*   cah daemon    - 守护进程
  */
 
 import { Command } from 'commander'
@@ -20,7 +19,7 @@ import chalk from 'chalk'
 import { registerTaskCommands } from './commands/task.js'
 import { registerDaemonCommands } from './commands/daemon.js'
 import { registerReportCommands } from './commands/report.js'
-import { registerTemplateCommands } from './commands/template.js'
+
 import { registerInitCommand } from './commands/init.js'
 import { registerAgentCommands } from './commands/agent.js'
 import { registerServerCommand } from './commands/server.js'
@@ -40,7 +39,7 @@ import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
 import { findClosestMatch } from '../shared/levenshtein.js'
 
 // 已知的 CLI 命令列表
-const KNOWN_COMMANDS = ['task', 'template', 'tpl', 'report', 'daemon', 'agent', 'init', 'run', 'logs', 'server']
+const KNOWN_COMMANDS = ['task', 'report', 'daemon', 'agent', 'init', 'run', 'logs', 'server']
 
 const program = new Command()
 
@@ -189,7 +188,6 @@ registerTaskCommands(program)
 registerAgentCommands(program)
 registerDaemonCommands(program)
 registerReportCommands(program)
-registerTemplateCommands(program)
 registerServerCommand(program)
 
 // cah logs <id> - 查看任务日志的快捷命令

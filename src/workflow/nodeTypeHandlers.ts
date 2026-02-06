@@ -3,7 +3,7 @@
  * 处理不同类型节点的执行逻辑
  */
 
-import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
+import { invokeBackend } from '../backend/index.js'
 import { buildExecuteNodePrompt } from '../prompts/index.js'
 import { appendConversation, appendExecutionLog } from '../store/TaskLogStore.js'
 import { personaNeedsMcp } from '../persona/personaMcpConfig.js'
@@ -264,9 +264,9 @@ async function executeTaskNode(
 
   // 从配置读取模型
   const config = await loadConfig()
-  const model = config.claude?.model || 'opus'
+  const model = config.backend?.model ?? config.claude?.model ?? 'opus'
 
-  const result = await invokeClaudeCode({
+  const result = await invokeBackend({
     prompt,
     mode: 'execute',
     persona,

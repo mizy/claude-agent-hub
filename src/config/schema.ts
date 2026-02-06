@@ -22,6 +22,16 @@ export const gitConfigSchema = z.object({
   auto_push: z.boolean().default(false)
 })
 
+export const backendConfigSchema = z.object({
+  /** 后端类型: claude-code | opencode | iflow | codebuddy */
+  type: z.enum(['claude-code', 'opencode', 'iflow', 'codebuddy']).default('claude-code'),
+  /** 模型名（含义因后端而异） */
+  model: z.string().default('opus'),
+  /** 最大 token 数（部分后端支持） */
+  max_tokens: z.number().optional(),
+})
+
+/** @deprecated 使用 backendConfigSchema */
 export const claudeConfigSchema = z.object({
   model: z.enum(['haiku', 'sonnet', 'opus']).default('opus'),
   max_tokens: z.number().default(8000)
@@ -46,7 +56,10 @@ export const configSchema = z.object({
   agents: z.array(agentConfigSchema).default([]),
   tasks: taskConfigSchema.default({}),
   git: gitConfigSchema.default({}),
-  claude: claudeConfigSchema.default({}),
+  /** 新配置：CLI 后端设置 */
+  backend: backendConfigSchema.optional(),
+  /** @deprecated 使用 backend，旧配置仍可用 */
+  claude: claudeConfigSchema.optional(),
   notify: notifyConfigSchema.optional(),
   daemon: daemonConfigSchema.optional(),
 })
@@ -54,6 +67,8 @@ export const configSchema = z.object({
 export type AgentConfig = z.infer<typeof agentConfigSchema>
 export type TaskConfig = z.infer<typeof taskConfigSchema>
 export type GitConfig = z.infer<typeof gitConfigSchema>
+export type BackendConfig = z.infer<typeof backendConfigSchema>
+/** @deprecated 使用 BackendConfig */
 export type ClaudeConfig = z.infer<typeof claudeConfigSchema>
 export type LarkConfig = z.infer<typeof larkConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>

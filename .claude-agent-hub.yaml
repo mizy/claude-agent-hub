@@ -1,5 +1,10 @@
 # Claude Agent Hub 配置文件
 
+# 后端配置（可选: claude-code / opencode / iflow）
+# backend:
+#   type: opencode
+#   model: opencode/trinity-large-preview-free
+
 # Agent 配置
 agents:
   - name: dev
@@ -24,6 +29,3 @@ git:
   branch_prefix: 'agent/'
   auto_push: false # 需要人工确认才推送
 
-# Claude Code 配置
-claude:
-  model: opus # haiku | sonnet | opus

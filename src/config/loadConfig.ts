@@ -1,6 +1,7 @@
 import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { homedir } from 'os'
 import YAML from 'yaml'
 import { configSchema, type Config } from './schema.js'
 
@@ -9,17 +10,33 @@ const CONFIG_FILENAME = '.claude-agent-hub.yaml'
 let cachedConfig: Config | null = null
 
 /**
+ * 查找配置文件路径
+ * 优先级：项目目录 > 用户主目录 > 默认配置
+ */
+function findConfigPath(cwd?: string): string | null {
+  // 1. 项目目录
+  const projectPath = join(cwd || process.cwd(), CONFIG_FILENAME)
+  if (existsSync(projectPath)) return projectPath
+
+  // 2. 用户主目录 ~/.claude-agent-hub.yaml
+  const homePath = join(homedir(), CONFIG_FILENAME)
+  if (existsSync(homePath)) return homePath
+
+  return null
+}
+
+/**
  * 加载项目配置
+ * 查找顺序：项目目录 → ~/.claude-agent-hub.yaml → 默认配置
  */
 export async function loadConfig(cwd?: string): Promise<Config> {
   if (cachedConfig) {
     return cachedConfig
   }
 
-  const configPath = join(cwd || process.cwd(), CONFIG_FILENAME)
+  const configPath = findConfigPath(cwd)
 
-  if (!existsSync(configPath)) {
-    // 返回默认配置
+  if (!configPath) {
     return getDefaultConfig()
   }
 
@@ -34,7 +51,18 @@ export async function loadConfig(cwd?: string): Promise<Config> {
     return getDefaultConfig()
   }
 
-  cachedConfig = result.data
+  const config = result.data
+
+  // 向后兼容：若只有 claude 没有 backend，自动映射
+  if (config.claude && !config.backend) {
+    config.backend = {
+      type: 'claude-code' as const,
+      model: config.claude.model,
+      max_tokens: config.claude.max_tokens,
+    }
+  }
+
+  cachedConfig = config
   return cachedConfig
 }
 
@@ -54,10 +82,10 @@ export function getDefaultConfig(): Config {
       branch_prefix: 'agent/',
       auto_push: false
     },
-    claude: {
+    backend: {
+      type: 'claude-code',
       model: 'opus',
-      max_tokens: 8000
-    }
+    },
   }
 }
 

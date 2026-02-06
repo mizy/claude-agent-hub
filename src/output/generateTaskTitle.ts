@@ -3,7 +3,7 @@
  * Called when task.title is generic (e.g., "New Task", "Task 1")
  */
 
-import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
+import { invokeBackend } from '../backend/index.js'
 import { buildGenerateTitleFromWorkflowPrompt } from '../prompts/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { createLogger } from '../shared/logger.js'
@@ -39,9 +39,9 @@ export function isGenericTitle(title: string): boolean {
 export async function generateTaskTitle(task: Task, workflow: Workflow): Promise<string> {
   const prompt = buildGenerateTitleFromWorkflowPrompt(task, workflow)
   const config = await loadConfig()
-  const model = config.claude?.model || 'opus'
+  const model = config.backend?.model ?? config.claude?.model ?? 'opus'
 
-  const result = await invokeClaudeCode({
+  const result = await invokeBackend({
     prompt,
     mode: 'plan',
     model,

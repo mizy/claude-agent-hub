@@ -51,21 +51,38 @@ export interface SpawnTaskOptions {
   resume?: boolean  // 是否为恢复模式
 }
 
+/** SEA 二进制模式检测 */
+const isSEA = (() => {
+  try {
+    // Node SEA 注入的 blob 存在时，说明是 SEA 模式
+    const { getAsset } = require('node:sea') as { getAsset: (key: string) => ArrayBuffer }
+    getAsset('sea-config')
+    return true
+  } catch {
+    return false
+  }
+})()
+
 /**
  * 获取脚本路径和执行命令
- * 开发模式下使用 .ts 文件 + tsx，生产模式下使用 .js 文件 + node
  *
- * 注意：tsup 打包后代码可能被放入 dist/ 的 chunk 文件中，
- * 但 runQueueProcess.js 和 runTaskProcess.js 始终在 dist/task/ 目录
+ * 三种模式：
+ * - SEA 二进制：使用 process.execPath + --subprocess=xxx
+ * - 生产模式：node + dist/task/xxx.js
+ * - 开发模式：tsx + src/task/xxx.ts
  */
-function getScriptConfig(scriptName: string): { execPath: string; scriptPath: string } {
+function getScriptConfig(scriptName: string): { execPath: string; args: string[] } {
+  // SEA 模式：用 --subprocess 参数分发
+  if (isSEA) {
+    const subMode = scriptName === 'runTaskProcess' ? 'task' : 'queue'
+    logger.debug(`SEA mode: --subprocess=${subMode}`)
+    return { execPath: process.execPath, args: [`--subprocess=${subMode}`] }
+  }
+
   // 可能的脚本位置（按优先级排序）
   const possiblePaths = [
-    // 1. 当前目录（开发模式或未打包时）
     join(currentDir, `${scriptName}.js`),
-    // 2. task 子目录（tsup 打包后，chunk 在 dist/ 但脚本在 dist/task/）
     join(currentDir, 'task', `${scriptName}.js`),
-    // 3. 开发模式 .ts 文件
     join(currentDir, `${scriptName}.ts`),
   ]
 
@@ -73,7 +90,7 @@ function getScriptConfig(scriptName: string): { execPath: string; scriptPath: st
   for (const jsPath of possiblePaths.filter(p => p.endsWith('.js'))) {
     if (existsSync(jsPath)) {
       logger.debug(`Found script at: ${jsPath}`)
-      return { execPath: process.execPath, scriptPath: jsPath }
+      return { execPath: process.execPath, args: [jsPath] }
     }
   }
 
@@ -82,13 +99,13 @@ function getScriptConfig(scriptName: string): { execPath: string; scriptPath: st
   const tsPath = join(currentDir, `${scriptName}.ts`)
   if (existsSync(tsPath) && existsSync(tsxPath)) {
     logger.debug(`Found TS script at: ${tsPath}, using tsx`)
-    return { execPath: tsxPath, scriptPath: tsPath }
+    return { execPath: tsxPath, args: [tsPath] }
   }
 
-  // 回退：假设在当前目录
+  // 回退
   const fallbackPath = join(currentDir, `${scriptName}.js`)
   logger.warn(`Script not found, falling back to: ${fallbackPath}`)
-  return { execPath: process.execPath, scriptPath: fallbackPath }
+  return { execPath: process.execPath, args: [fallbackPath] }
 }
 
 /**
@@ -107,10 +124,10 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   const err = openSync(logPath, 'a')
 
   // Find the runTaskProcess script path
-  const { execPath, scriptPath } = getScriptConfig('runTaskProcess')
+  const config = getScriptConfig('runTaskProcess')
 
   const args = [
-    scriptPath,
+    ...config.args,
     '--task-id',
     taskId,
   ]
@@ -121,14 +138,13 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   }
 
   logger.debug(`Spawning task process: ${taskId}`)
-  logger.debug(`Exec: ${execPath}`)
-  logger.debug(`Script: ${scriptPath}`)
+  logger.debug(`Exec: ${config.execPath} ${args.join(' ')}`)
   logger.debug(`Log: ${logPath}`)
   logger.debug(`Resume mode: ${resume}`)
 
   // Spawn detached process
   const child = spawn(
-    execPath,
+    config.execPath,
     args,
     {
       detached: true,
@@ -226,9 +242,9 @@ export function spawnTaskRunner(): void {
     return
   }
 
-  const { execPath, scriptPath } = getScriptConfig('runQueueProcess')
+  const config = getScriptConfig('runQueueProcess')
 
-  logger.debug(`Spawning queue runner: ${execPath} ${scriptPath}`)
+  logger.debug(`Spawning queue runner: ${config.execPath} ${config.args.join(' ')}`)
 
   // 创建日志文件用于调试
   mkdirSync(DATA_DIR, { recursive: true })
@@ -236,8 +252,8 @@ export function spawnTaskRunner(): void {
   const err = openSync(RUNNER_LOG_FILE, 'a')
 
   const child = spawn(
-    execPath,
-    [scriptPath],
+    config.execPath,
+    config.args,
     {
       detached: true,
       stdio: ['ignore', out, err],

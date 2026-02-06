@@ -37,3 +37,5 @@ tests/*.sh
 # Environment
 .env
 .env.local
+.cah-data
+dist-*

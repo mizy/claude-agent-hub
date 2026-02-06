@@ -12,10 +12,6 @@ cah "任务描述" -d <path> # 指定数据目录
 cah task list            # 查看任务列表
 cah task logs <id> -f    # 实时查看任务日志
 cah task resume <id>     # 恢复中断的任务
-cah template use <id>    # 使用模板创建任务
-cah template suggest <d> # 根据描述推荐模板
-cah template from-task   # 从历史任务创建模板
-cah template ranking     # 模板有效性排行榜
 cah report trend         # 趋势分析报告
 cah report live          # 实时状态监控
 ```
@@ -28,7 +24,6 @@ src/
 │   ├── index.ts             # @entry 主入口
 │   └── commands/            # 子命令
 │       ├── task.ts          # 任务管理
-│       ├── template.ts      # 模板系统
 │       ├── report.ts        # 报告分析
 │       └── daemon.ts        # 守护进程
 │
@@ -70,15 +65,6 @@ src/
 │   ├── historyTypes.ts      # 历史类型定义
 │   └── estimateTime.ts      # 时间预估
 │
-├── template/                 # 任务模板系统
-│   ├── TaskTemplate.ts      # 入口（barrel export）
-│   ├── types.ts             # 类型定义
-│   ├── TemplateCore.ts      # 核心模板管理
-│   ├── TemplateScoring.ts   # 有效性评分
-│   ├── TemplateSuggestion.ts # 模板推荐
-│   ├── TemplateFromTask.ts  # 从历史任务生成
-│   └── builtinTemplates.ts  # 12个内置模板
-│
 ├── report/                   # 报告分析
 │   ├── generateReport.ts    # 工作报告
 │   ├── TrendAnalyzer.ts     # 趋势分析入口
@@ -98,8 +84,19 @@ src/
 │       ├── DegradationDetector.ts # 退化检测
 │       └── formatters.ts         # 格式化输出
 │
-├── claude/                   # Claude Code 集成
-│   └── invokeClaudeCode.ts  # CLI 调用封装
+├── backend/                  # CLI 后端抽象层（支持多后端）
+│   ├── index.ts             # @entry: invokeBackend() 统一调用
+│   ├── types.ts             # BackendAdapter 接口定义
+│   ├── resolveBackend.ts    # 后端注册表与解析
+│   ├── concurrency.ts       # 并发限流
+│   ├── promptBuilder.ts     # Prompt 组装（persona + mode）
+│   ├── claudeCodeBackend.ts # Claude Code 适配器
+│   ├── opencodeBackend.ts   # OpenCode 适配器
+│   ├── iflowBackend.ts      # iflow-cli 适配器
+│   └── codebuddyBackend.ts # CodeBuddy 适配器（腾讯）
+│
+├── claude/                   # [deprecated] 向后兼容垫片
+│   └── index.ts             # re-export from backend/
 │
 ├── store/                    # 文件存储
 │   ├── GenericFileStore.ts  # 通用文件存储（支持目录模式）
@@ -213,6 +210,12 @@ interface ExecutionTimeline {
 
 | 文件 | 作用 |
 |------|------|
+| `backend/index.ts` | CLI 后端统一调用入口（invokeBackend） |
+| `backend/resolveBackend.ts` | 后端注册表与解析 |
+| `backend/claudeCodeBackend.ts` | Claude Code 适配器 |
+| `backend/opencodeBackend.ts` | OpenCode 适配器 |
+| `backend/iflowBackend.ts` | iflow-cli 适配器 |
+| `backend/codebuddyBackend.ts` | CodeBuddy 适配器（腾讯） |
 | `cli/index.ts` | CLI 主入口 |
 | `task/index.ts` | Task 模块统一导出 |
 | `task/runTask.ts` | 任务执行主流程 |
@@ -226,8 +229,6 @@ interface ExecutionTimeline {
 | `analysis/analyzeProjectContext.ts` | 项目类型/框架/结构分析 |
 | `analysis/learnFromHistory.ts` | 历史学习入口 |
 | `analysis/estimateTime.ts` | 时间预估（历史分析、置信度） |
-| `template/TemplateCore.ts` | 模板核心管理 |
-| `template/TemplateSuggestion.ts` | 模板推荐 |
 | `report/TrendAnalyzer.ts` | 趋势分析入口 |
 | `report/analyzers/CostAnalyzer.ts` | 成本优化分析 |
 | `store/GenericFileStore.ts` | 通用文件存储 |
@@ -265,12 +266,12 @@ npm test          # 测试
 
 | 模块 | 入口文件 | 核心能力 |
 |------|----------|----------|
+| Backend | `backend/index.ts` | CLI 后端抽象层（claude-code/opencode/iflow/codebuddy） |
 | CLI | `cli/index.ts` | 命令行主入口、任务创建 |
 | Task | `task/index.ts` | 任务创建、执行、查询、生命周期 |
 | Workflow | `workflow/index.ts` | 工作流定义、执行、状态管理 |
 | Store | `store/index.ts` | 文件存储、持久化 |
 | Analysis | `analysis/index.ts` | 上下文分析、历史学习、时间预估 |
-| Template | `template/TaskTemplate.ts` | 模板管理、推荐、评分 |
 | Report | `report/index.ts` | 报告生成、趋势分析、实时监控 |
 | Persona | `persona/index.ts` | AI 人格定义、加载 |
 | Scheduler | `scheduler/index.ts` | 任务队列、Worker、守护进程 |

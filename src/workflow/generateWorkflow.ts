@@ -7,7 +7,7 @@
  * - 执行历史学习：从历史任务中学习，避免重复错误
  */
 
-import { invokeClaudeCode } from '../claude/invokeClaudeCode.js'
+import { invokeBackend } from '../backend/index.js'
 import { buildJsonWorkflowPrompt } from '../prompts/index.js'
 import { parseJson, validateJsonWorkflow, extractJson } from './index.js'
 import { appendConversation, appendJsonlLog } from '../store/TaskLogStore.js'
@@ -90,9 +90,9 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   // 调用 Claude (不传 persona，因为模板中已定义"软件架构师"角色)
   logger.info('调用 Claude 生成执行计划...')
   const config = await loadConfig()
-  const model = config.claude?.model || 'opus'
+  const model = config.backend?.model ?? config.claude?.model ?? 'opus'
 
-  const result = await invokeClaudeCode({
+  const result = await invokeBackend({
     prompt,
     stream: true,
     model,
