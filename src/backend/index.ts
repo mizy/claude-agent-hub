@@ -59,8 +59,8 @@ export async function invokeBackend(
 
   logger.info(
     `[${options.mode ?? 'default'}] 调用 ${backend.displayName} (${fullPrompt.length} chars)` +
-    `${options.sessionId ? ` [复用会话 ${options.sessionId.slice(0, 8)}]` : ''}` +
-    ` [slots: ${slots.active}/${slots.max}]`
+      `${options.sessionId ? ` [复用会话 ${options.sessionId.slice(0, 8)}]` : ''}` +
+      ` [slots: ${slots.active}/${slots.max}]`
   )
   logger.debug(`Prompt: ${truncate(fullPrompt, 100)}`)
 
@@ -82,7 +82,3 @@ export async function checkBackendAvailable(): Promise<boolean> {
   const backend = await resolveBackend()
   return backend.checkAvailable()
 }
-
-// 向后兼容别名
-export const invokeClaudeCode = invokeBackend
-export const checkClaudeAvailable = checkBackendAvailable

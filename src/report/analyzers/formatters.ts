@@ -103,7 +103,8 @@ export function formatTrendReportForTerminal(report: TrendReport): string {
   if (report.costOptimizations.length > 0) {
     lines.push('【成本优化建议】')
     for (const opt of report.costOptimizations.slice(0, 3)) {
-      const saving = opt.potentialSavingUsd > 0.001 ? ` (可节省 $${opt.potentialSavingUsd.toFixed(4)})` : ''
+      const saving =
+        opt.potentialSavingUsd > 0.001 ? ` (可节省 $${opt.potentialSavingUsd.toFixed(4)})` : ''
       lines.push(`  • ${opt.suggestion}${saving}`)
     }
     lines.push('')
@@ -122,7 +123,9 @@ export function formatTrendReportForMarkdown(report: TrendReport): string {
 
   lines.push('# 趋势分析报告')
   lines.push('')
-  lines.push(`> 分析周期: ${report.periodStart.toLocaleDateString()} - ${report.periodEnd.toLocaleDateString()}`)
+  lines.push(
+    `> 分析周期: ${report.periodStart.toLocaleDateString()} - ${report.periodEnd.toLocaleDateString()}`
+  )
   lines.push(`> 生成时间: ${new Date(report.generatedAt).toLocaleString()}`)
   lines.push('')
 
@@ -140,7 +143,9 @@ export function formatTrendReportForMarkdown(report: TrendReport): string {
   lines.push('| 周期 | 任务数 | 成功率 | 平均耗时 | 成本 |')
   lines.push('|------|--------|--------|----------|------|')
   for (const trend of report.trends) {
-    lines.push(`| ${trend.period.label} | ${trend.taskCount} | ${trend.successRate}% | ${formatDuration(trend.avgDurationMs)} | $${trend.totalCostUsd.toFixed(2)} |`)
+    lines.push(
+      `| ${trend.period.label} | ${trend.taskCount} | ${trend.successRate}% | ${formatDuration(trend.avgDurationMs)} | $${trend.totalCostUsd.toFixed(2)} |`
+    )
   }
   lines.push('')
 
@@ -151,7 +156,9 @@ export function formatTrendReportForMarkdown(report: TrendReport): string {
     lines.push('| 节点名称 | 类型 | 执行数 | 成功率 | 平均耗时 | 总成本 |')
     lines.push('|----------|------|--------|--------|----------|--------|')
     for (const node of report.nodePerformance.slice(0, 10)) {
-      lines.push(`| ${node.nodeName} | ${node.nodeType} | ${node.executionCount} | ${node.successRate}% | ${formatDuration(node.avgDurationMs)} | $${node.totalCostUsd.toFixed(4)} |`)
+      lines.push(
+        `| ${node.nodeName} | ${node.nodeType} | ${node.executionCount} | ${node.successRate}% | ${formatDuration(node.avgDurationMs)} | $${node.totalCostUsd.toFixed(4)} |`
+      )
     }
     lines.push('')
   }
@@ -182,7 +189,9 @@ export function formatTrendReportForMarkdown(report: TrendReport): string {
     lines.push('| 类型 | 任务数 | 成功率 | 平均耗时 | 平均节点数 | 总成本 |')
     lines.push('|------|--------|--------|----------|------------|--------|')
     for (const cat of report.categoryStats) {
-      lines.push(`| ${cat.category} | ${cat.taskCount} | ${cat.successRate}% | ${formatDuration(cat.avgDurationMs)} | ${cat.avgNodeCount} | $${cat.totalCostUsd.toFixed(4)} |`)
+      lines.push(
+        `| ${cat.category} | ${cat.taskCount} | ${cat.successRate}% | ${formatDuration(cat.avgDurationMs)} | ${cat.avgNodeCount} | $${cat.totalCostUsd.toFixed(4)} |`
+      )
     }
     lines.push('')
   }
@@ -194,7 +203,9 @@ export function formatTrendReportForMarkdown(report: TrendReport): string {
     lines.push('| 节点组合 | 出现次数 | 成功率 | 平均耗时 |')
     lines.push('|----------|----------|--------|----------|')
     for (const combo of report.nodeHeatmap.slice(0, 10)) {
-      lines.push(`| ${combo.combination} | ${combo.count} | ${combo.successRate}% | ${formatDuration(combo.avgDurationMs)} |`)
+      lines.push(
+        `| ${combo.combination} | ${combo.count} | ${combo.successRate}% | ${formatDuration(combo.avgDurationMs)} |`
+      )
     }
     lines.push('')
   }

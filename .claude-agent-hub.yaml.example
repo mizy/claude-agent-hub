@@ -31,10 +31,11 @@ git:
 
 # 通知配置
 notify:
-  # 飞书（需要自建应用，WSClient 长连接模式）
+  # 飞书（需要自建应用，WSClient 长连接模式，支持交互式卡片）
   # lark:
   #   appId: "cli_xxx"
   #   appSecret: "your-app-secret"
+  #   chatId: "oc_xxx"       # 可选，默认推送通知目标（运行时也会自动从首次 DM 记录）
   #   webhookUrl: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"  # 可选，向后兼容
 
   # Telegram Bot（长轮询模式，无需公网 IP）

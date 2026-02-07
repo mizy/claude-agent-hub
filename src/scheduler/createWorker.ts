@@ -47,10 +47,7 @@ export interface WorkerContext<T> {
 
 export type TaskHandler<T, R> = (ctx: WorkerContext<T>) => Promise<R>
 
-export function createWorker<T, R>(
-  config: WorkerConfig,
-  handler: TaskHandler<T, R>
-): Worker<T, R> {
+export function createWorker<T, R>(config: WorkerConfig, handler: TaskHandler<T, R>): Worker<T, R> {
   const logger = createLogger(config.name)
   let currentStatus: WorkerStatus = 'idle'
   let runningTasks = 0
@@ -58,12 +55,7 @@ export function createWorker<T, R>(
 
   const isStopped = () => currentStatus === 'stopped'
 
-  const {
-    concurrency = 1,
-    timeout = 30000,
-    maxRetries = 0,
-    retryDelay = 1000,
-  } = config
+  const { concurrency = 1, timeout = 30000, maxRetries = 0, retryDelay = 1000 } = config
 
   async function executeWithRetry(task: T, attempt: number = 1): Promise<Result<R, Error>> {
     if (isStopped()) {

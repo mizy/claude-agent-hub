@@ -30,14 +30,21 @@ export function formatLiveSummaryForTerminal(report: LiveSummaryReport): string 
       // 预估剩余时间
       let etaStr = ''
       if (task.estimatedRemainingMs !== undefined && task.estimatedRemainingMs > 0) {
-        const confidencePrefix = task.estimateConfidence !== undefined
-          ? (task.estimateConfidence >= 0.7 ? '' : task.estimateConfidence >= 0.4 ? '~' : '≈')
-          : '≈'
+        const confidencePrefix =
+          task.estimateConfidence !== undefined
+            ? task.estimateConfidence >= 0.7
+              ? ''
+              : task.estimateConfidence >= 0.4
+                ? '~'
+                : '≈'
+            : '≈'
         etaStr = chalk.cyan(` ETA: ${confidencePrefix}${formatDuration(task.estimatedRemainingMs)}`)
       }
 
       lines.push(`    ${chalk.white(title)}`)
-      lines.push(`    ${progressBar} ${task.progress.completed}/${task.progress.total} (${elapsed})${etaStr}`)
+      lines.push(
+        `    ${progressBar} ${task.progress.completed}/${task.progress.total} (${elapsed})${etaStr}`
+      )
       if (task.currentNode) {
         lines.push(chalk.dim(`    当前节点: ${task.currentNode}`))
       }
@@ -64,7 +71,10 @@ export function formatLiveSummaryForTerminal(report: LiveSummaryReport): string 
   }
 
   // 预估全部完成时间
-  if (report.estimatedAllCompletionTime && (report.runningTasks.length > 0 || report.queuedTasks.length > 0)) {
+  if (
+    report.estimatedAllCompletionTime &&
+    (report.runningTasks.length > 0 || report.queuedTasks.length > 0)
+  ) {
     lines.push(chalk.cyan(`  ⏰ 预计全部完成: ${report.estimatedAllCompletionTime}`))
     lines.push('')
   }
@@ -85,7 +95,11 @@ export function formatLiveSummaryForTerminal(report: LiveSummaryReport): string 
   lines.push('')
 
   if (s.totalDurationMs > 0 || s.totalCostUsd > 0) {
-    lines.push(chalk.dim(`    总耗时: ${formatDuration(s.totalDurationMs)}  |  总成本: $${s.totalCostUsd.toFixed(4)}`))
+    lines.push(
+      chalk.dim(
+        `    总耗时: ${formatDuration(s.totalDurationMs)}  |  总成本: $${s.totalCostUsd.toFixed(4)}`
+      )
+    )
     lines.push('')
   }
 

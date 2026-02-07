@@ -208,9 +208,7 @@ function flushAggregatedLogs(): void {
 
 function outputAggregatedLog(log: AggregatedLog): void {
   const { level, scope, message, count, args } = log
-  const formattedMessage = count > 1
-    ? `${message} (×${count})`
-    : message
+  const formattedMessage = count > 1 ? `${message} (×${count})` : message
 
   const output = formatMessage(level, scope, formattedMessage)
   const logFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log

@@ -27,14 +27,15 @@ const logger = createLogger('spawn-task')
 const isMac = process.platform === 'darwin'
 
 /**
- * 启动 caffeinate 防止 Mac 休眠
- * caffeinate -w <pid> 会在指定进程运行期间阻止系统休眠
+ * 启动 caffeinate 防止 Mac 空闲睡眠
+ * -i 阻止系统空闲睡眠（允许显示器息屏）
+ * -w <pid> 在指定进程退出后自动结束
  */
 function spawnCaffeinate(pid: number): void {
   if (!isMac) return
 
   try {
-    const caffeinate = spawn('caffeinate', ['-w', String(pid)], {
+    const caffeinate = spawn('caffeinate', ['-i', '-w', String(pid)], {
       detached: true,
       stdio: 'ignore',
     })
@@ -48,13 +49,14 @@ function spawnCaffeinate(pid: number): void {
 
 export interface SpawnTaskOptions {
   taskId: string
-  resume?: boolean  // 是否为恢复模式
+  resume?: boolean // 是否为恢复模式
 }
 
 /** SEA 二进制模式检测 */
 const isSEA = (() => {
   try {
     // Node SEA 注入的 blob 存在时，说明是 SEA 模式
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { getAsset } = require('node:sea') as { getAsset: (key: string) => ArrayBuffer }
     getAsset('sea-config')
     return true
@@ -126,11 +128,7 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   // Find the runTaskProcess script path
   const config = getScriptConfig('runTaskProcess')
 
-  const args = [
-    ...config.args,
-    '--task-id',
-    taskId,
-  ]
+  const args = [...config.args, '--task-id', taskId]
 
   // Add resume flag if needed
   if (resume) {
@@ -143,19 +141,15 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   logger.debug(`Resume mode: ${resume}`)
 
   // Spawn detached process
-  const child = spawn(
-    config.execPath,
-    args,
-    {
-      detached: true,
-      stdio: ['ignore', out, err],
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        CAH_TASK_ID: taskId,
-      },
-    }
-  )
+  const child = spawn(config.execPath, args, {
+    detached: true,
+    stdio: ['ignore', out, err],
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CAH_TASK_ID: taskId,
+    },
+  })
 
   // Close file descriptors in parent
   closeSync(out)
@@ -251,15 +245,11 @@ export function spawnTaskRunner(): void {
   const out = openSync(RUNNER_LOG_FILE, 'a')
   const err = openSync(RUNNER_LOG_FILE, 'a')
 
-  const child = spawn(
-    config.execPath,
-    config.args,
-    {
-      detached: true,
-      stdio: ['ignore', out, err],
-      cwd: process.cwd(),
-    }
-  )
+  const child = spawn(config.execPath, config.args, {
+    detached: true,
+    stdio: ['ignore', out, err],
+    cwd: process.cwd(),
+  })
 
   // Close file descriptors in parent
   closeSync(out)

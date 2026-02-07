@@ -19,6 +19,9 @@ export interface MessengerAdapter {
 
   /** 编辑已发送的消息 */
   editMessage(chatId: string, messageId: string, text: string, options?: SendOptions): Promise<void>
+
+  /** Optional: send a rich card message (Lark only) */
+  replyCard?(chatId: string, card: unknown): Promise<void>
 }
 
 export interface SendOptions {
@@ -53,6 +56,8 @@ export interface ChatSession {
 export interface CommandResult {
   text: string
   parseMode?: 'markdown' | 'html'
+  /** Optional Lark card for rich display (adapter falls back to text if unsupported) */
+  larkCard?: unknown
 }
 
 // ── 客户端环境上下文 ──
@@ -66,6 +71,8 @@ export interface ClientContext {
   supportedFormats: string[]
   /** 是否群聊 */
   isGroup?: boolean
+  /** 机器人名称（从平台 API 获取） */
+  botName?: string
 }
 
 // ── 平台事件（收到的消息） ──

@@ -56,7 +56,9 @@ export function collectAllTaskStats(daysBack: number = 30): TaskStats[] {
 
     // 读取任务信息
     const taskJson = existsSync(taskJsonPath)
-      ? readJson<{ createdAt: string; title?: string; description?: string }>(taskJsonPath, { defaultValue: null })
+      ? readJson<{ createdAt: string; title?: string; description?: string }>(taskJsonPath, {
+          defaultValue: null,
+        })
       : null
     if (!taskJson?.createdAt) continue
 
@@ -64,12 +66,15 @@ export function collectAllTaskStats(daysBack: number = 30): TaskStats[] {
     if (createdAt < cutoffDate) continue
 
     // 读取统计数据
-    const statsData = readJson<{ summary: ExecutionSummary; nodes: NodeExecutionStats[] }>(statsPath, { defaultValue: null })
+    const statsData = readJson<{ summary: ExecutionSummary; nodes: NodeExecutionStats[] }>(
+      statsPath,
+      { defaultValue: null }
+    )
     if (!statsData?.summary) continue
 
     // 读取时间线
     const timeline = existsSync(timelinePath)
-      ? readJson<ExecutionTimeline[]>(timelinePath, { defaultValue: [] }) ?? []
+      ? (readJson<ExecutionTimeline[]>(timelinePath, { defaultValue: [] }) ?? [])
       : []
 
     // 任务分类

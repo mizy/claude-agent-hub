@@ -8,7 +8,10 @@ import { createLogger } from '../shared/logger.js'
 import { formatDuration } from '../shared/formatTime.js'
 import { readJson, writeJson } from './readWriteJson.js'
 import { getTaskFolder } from './TaskStore.js'
-import type { WorkflowExecutionStats, NodeExecutionStats } from '../workflow/engine/WorkflowEventEmitter.js'
+import type {
+  WorkflowExecutionStats,
+  NodeExecutionStats,
+} from '../workflow/engine/WorkflowEventEmitter.js'
 
 const logger = createLogger('execution-stats-store')
 
@@ -34,8 +37,15 @@ export interface ExecutionSummary {
 
 export interface ExecutionTimeline {
   timestamp: string
-  event: 'workflow:started' | 'workflow:resumed' | 'node:started' | 'node:completed' | 'node:failed' | 'workflow:completed' | 'workflow:failed'
-  instanceId: string  // 关联到具体的执行实例，用于过滤不同执行的事件（必填）
+  event:
+    | 'workflow:started'
+    | 'workflow:resumed'
+    | 'node:started'
+    | 'node:completed'
+    | 'node:failed'
+    | 'workflow:completed'
+    | 'workflow:failed'
+  instanceId: string // 关联到具体的执行实例，用于过滤不同执行的事件（必填）
   nodeId?: string
   nodeName?: string
   details?: string
@@ -108,7 +118,10 @@ export function saveExecutionStats(taskId: string, stats: WorkflowExecutionStats
     nodesCompleted: completedNodes || stats.summary.completedNodes,
     nodesFailed: failedNodes || stats.summary.failedNodes,
     nodesRunning: runningNodes,
-    avgNodeDurationMs: completedCount > 0 ? Math.round(totalDurationMs / completedCount) : stats.summary.avgNodeDurationMs,
+    avgNodeDurationMs:
+      completedCount > 0
+        ? Math.round(totalDurationMs / completedCount)
+        : stats.summary.avgNodeDurationMs,
   }
 
   writeJson(path, {
@@ -116,13 +129,17 @@ export function saveExecutionStats(taskId: string, stats: WorkflowExecutionStats
     nodes: stats.nodes,
   })
 
-  logger.debug(`Saved execution stats for task ${taskId}: ${completedNodes} completed, ${failedNodes} failed, ${runningNodes} running`)
+  logger.debug(
+    `Saved execution stats for task ${taskId}: ${completedNodes} completed, ${failedNodes} failed, ${runningNodes} running`
+  )
 }
 
 /**
  * 读取执行统计
  */
-export function getExecutionStats(taskId: string): { summary: ExecutionSummary; nodes: NodeExecutionStats[] } | null {
+export function getExecutionStats(
+  taskId: string
+): { summary: ExecutionSummary; nodes: NodeExecutionStats[] } | null {
   const path = getStatsFilePath(taskId)
   if (!path || !existsSync(path)) {
     return null
@@ -240,11 +257,11 @@ export function clearTimelineForNewInstance(
 
   if (mode === 'remove') {
     // 移除所有旧事件，只保留没有 instanceId 的旧事件（向后兼容）
-    const filtered = timeline.filter(event =>
-      event.instanceId === newInstanceId
-    )
+    const filtered = timeline.filter(event => event.instanceId === newInstanceId)
     writeJson(path, filtered)
-    logger.debug(`Cleared timeline for new instance ${newInstanceId}, removed ${timeline.length - filtered.length} old events`)
+    logger.debug(
+      `Cleared timeline for new instance ${newInstanceId}, removed ${timeline.length - filtered.length} old events`
+    )
   } else {
     // archive 模式：添加一个分隔标记事件
     const separator: ExecutionTimeline = {
@@ -301,7 +318,7 @@ export function formatTimeline(timeline: ExecutionTimeline[]): string {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false
+      hour12: false,
     })
 
     // 计算与上一个事件的时间差
@@ -348,4 +365,7 @@ export function formatTimeline(timeline: ExecutionTimeline[]): string {
 
 // Re-export for convenience
 export { formatDuration } from '../shared/formatTime.js'
-export type { NodeExecutionStats, WorkflowExecutionStats } from '../workflow/engine/WorkflowEventEmitter.js'
+export type {
+  NodeExecutionStats,
+  WorkflowExecutionStats,
+} from '../workflow/engine/WorkflowEventEmitter.js'

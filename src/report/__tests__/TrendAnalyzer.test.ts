@@ -3,10 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import {
-  formatTrendReportForTerminal,
-  formatTrendReportForMarkdown,
-} from '../TrendAnalyzer.js'
+import { formatTrendReportForTerminal, formatTrendReportForMarkdown } from '../TrendAnalyzer.js'
 import type { TrendReport } from '../TrendAnalyzer.js'
 
 // 模拟趋势报告数据
@@ -76,10 +73,7 @@ const mockTrendReport: TrendReport = {
     avgCostPerTask: 0.052,
     avgCostPerNode: 0.013,
   },
-  insights: [
-    '成功率显著提升: 80% → 90% (+10%)',
-    '执行效率提升: 平均时间减少 16%',
-  ],
+  insights: ['成功率显著提升: 80% → 90% (+10%)', '执行效率提升: 平均时间减少 16%'],
   categoryStats: [
     {
       category: 'feature',
@@ -193,8 +187,8 @@ describe('TrendAnalyzer', () => {
 
     it('should show success rate by category', () => {
       const output = formatTrendReportForTerminal(mockTrendReport)
-      expect(output).toContain('87%')  // feature success rate
-      expect(output).toContain('90%')  // fix success rate
+      expect(output).toContain('87%') // feature success rate
+      expect(output).toContain('90%') // fix success rate
     })
   })
 
@@ -207,8 +201,8 @@ describe('TrendAnalyzer', () => {
 
     it('should show combination statistics', () => {
       const output = formatTrendReportForTerminal(mockTrendReport)
-      expect(output).toContain('8')  // count for first combination
-      expect(output).toContain('88%')  // success rate for first combination
+      expect(output).toContain('8') // count for first combination
+      expect(output).toContain('88%') // success rate for first combination
     })
   })
 

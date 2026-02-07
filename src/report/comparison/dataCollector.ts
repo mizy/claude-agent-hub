@@ -14,10 +14,7 @@ import type { TaskExecutionSnapshot } from './types.js'
 /**
  * 任务类型分类
  */
-export function categorizeTask(
-  title: string,
-  description?: string
-): TaskCategory {
+export function categorizeTask(title: string, description?: string): TaskCategory {
   const text = `${title} ${description || ''}`.toLowerCase()
 
   if (/commit|push|pull|merge|提交|推送|合并/.test(text)) return 'git'
@@ -34,9 +31,7 @@ export function categorizeTask(
 /**
  * 收集任务执行快照
  */
-export function collectTaskSnapshots(
-  daysBack: number = 30
-): TaskExecutionSnapshot[] {
+export function collectTaskSnapshots(daysBack: number = 30): TaskExecutionSnapshot[] {
   if (!existsSync(TASKS_DIR)) {
     return []
   }
@@ -60,10 +55,7 @@ export function collectTaskSnapshots(
   return snapshots.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
 }
 
-function collectSingleTaskSnapshot(
-  folder: string,
-  cutoffDate: Date
-): TaskExecutionSnapshot | null {
+function collectSingleTaskSnapshot(folder: string, cutoffDate: Date): TaskExecutionSnapshot | null {
   const taskPath = join(TASKS_DIR, folder)
   const taskJsonPath = join(taskPath, 'task.json')
   const statsPath = join(taskPath, 'stats.json')
@@ -85,8 +77,7 @@ function collectSingleTaskSnapshot(
   if (createdAt < cutoffDate) return null
 
   // 只分析已完成的任务
-  if (taskJson.status !== 'completed' && taskJson.status !== 'failed')
-    return null
+  if (taskJson.status !== 'completed' && taskJson.status !== 'failed') return null
 
   // 读取统计数据
   const stats = readJson<{ summary: ExecutionSummary }>(statsPath, {
@@ -98,14 +89,11 @@ function collectSingleTaskSnapshot(
   if (stats?.summary?.totalDurationMs) {
     durationMs = stats.summary.totalDurationMs
   } else if (existsSync(instancePath)) {
-    const instance = readJson<{ startedAt?: string; completedAt?: string }>(
-      instancePath,
-      { defaultValue: null }
-    )
+    const instance = readJson<{ startedAt?: string; completedAt?: string }>(instancePath, {
+      defaultValue: null,
+    })
     if (instance?.startedAt && instance?.completedAt) {
-      durationMs =
-        new Date(instance.completedAt).getTime() -
-        new Date(instance.startedAt).getTime()
+      durationMs = new Date(instance.completedAt).getTime() - new Date(instance.startedAt).getTime()
     }
   }
 

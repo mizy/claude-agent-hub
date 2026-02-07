@@ -6,7 +6,15 @@
 /**
  * 任务类型分类
  */
-export type TaskCategory = 'git' | 'refactor' | 'feature' | 'fix' | 'docs' | 'test' | 'iteration' | 'other'
+export type TaskCategory =
+  | 'git'
+  | 'refactor'
+  | 'feature'
+  | 'fix'
+  | 'docs'
+  | 'test'
+  | 'iteration'
+  | 'other'
 
 /**
  * 分类任务类型
@@ -65,11 +73,56 @@ export function extractKeywords(text: string): string[] {
 
   // 去除常见停用词
   const stopWords = new Set([
-    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
-    'and', 'or', 'but', 'if', 'then', 'else', 'when', 'at', 'by',
-    'for', 'with', 'about', 'to', 'from', 'in', 'on', 'of', 'as',
-    '的', '是', '在', '和', '了', '有', '个', '这', '那', '我', '你', '他',
-    '请', '把', '让', '给', '做', '用', '到', '会', '要', '能', '可以',
+    'the',
+    'a',
+    'an',
+    'is',
+    'are',
+    'was',
+    'were',
+    'be',
+    'been',
+    'and',
+    'or',
+    'but',
+    'if',
+    'then',
+    'else',
+    'when',
+    'at',
+    'by',
+    'for',
+    'with',
+    'about',
+    'to',
+    'from',
+    'in',
+    'on',
+    'of',
+    'as',
+    '的',
+    '是',
+    '在',
+    '和',
+    '了',
+    '有',
+    '个',
+    '这',
+    '那',
+    '我',
+    '你',
+    '他',
+    '请',
+    '把',
+    '让',
+    '给',
+    '做',
+    '用',
+    '到',
+    '会',
+    '要',
+    '能',
+    '可以',
   ])
 
   return [...new Set(words.filter(w => !stopWords.has(w)))]

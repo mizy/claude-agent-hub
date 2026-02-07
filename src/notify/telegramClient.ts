@@ -21,6 +21,7 @@ const POLL_TIMEOUT = 30
 let running = false
 let botToken: string | null = null
 let defaultChatId: string | null = null
+let botName: string | null = null
 let offset = 0
 
 interface TelegramUpdate {
@@ -42,15 +43,15 @@ async function callApi<T>(method: string, params?: Record<string, unknown>): Pro
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params ?? {}),
     })
-    const result = await response.json() as { ok: boolean; result: T; description?: string }
+    const result = (await response.json()) as { ok: boolean; result: T; description?: string }
     if (!result.ok) {
-      logger.error(`Telegram API ${method} failed: ${result.description}`)
+      logger.error(`→ API ${method}: ${result.description}`)
       return null
     }
     return result.result
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    logger.error(`Telegram API ${method} error: ${msg}`)
+    logger.error(`→ API ${method}: ${msg}`)
     return null
   }
 }
@@ -93,15 +94,27 @@ function parseCommandText(text: string): { cmd: string; args: string } {
   return { cmd: clean.slice(0, spaceIdx).toLowerCase(), args: clean.slice(spaceIdx + 1).trim() }
 }
 
-const TELEGRAM_CLIENT_CONTEXT: ClientContext = {
-  platform: 'Telegram',
-  maxMessageLength: 4096,
-  supportedFormats: ['plaintext', 'code block'],
-  isGroup: false,
+function getTelegramClientContext(): ClientContext {
+  return {
+    platform: 'Telegram',
+    maxMessageLength: 4096,
+    supportedFormats: ['plaintext', 'code block'],
+    isGroup: false,
+    botName: botName ?? undefined,
+  }
 }
 
 const APPROVAL_COMMANDS = new Set(['/approve', '/通过', '/批准', '/reject', '/拒绝', '/否决'])
-const TASK_COMMANDS = new Set(['/run', '/list', '/logs', '/stop', '/resume', '/get', '/help', '/status'])
+const TASK_COMMANDS = new Set([
+  '/run',
+  '/list',
+  '/logs',
+  '/stop',
+  '/resume',
+  '/get',
+  '/help',
+  '/status',
+])
 
 async function handleUpdate(update: TelegramUpdate): Promise<void> {
   const message = update.message
@@ -112,12 +125,13 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
   const chatIdStr = String(chatId)
   const messenger = createAdapter(chatId)
 
-  logger.info(`Received message: ${text}`)
+  const preview = text.length > 60 ? text.slice(0, 57) + '...' : text
+  logger.info(`← ${preview}`)
 
   // 非命令 → 自由对话
   if (!text.startsWith('/')) {
     await handleChat(chatIdStr, text, messenger, {
-      client: TELEGRAM_CLIENT_CONTEXT,
+      client: getTelegramClientContext(),
     })
     return
   }
@@ -136,13 +150,16 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
       await messenger.reply(chatIdStr, '当前没有活跃会话，直接发送文字即可开始对话')
     } else {
       const elapsed = Math.round((Date.now() - info.lastActiveAt) / 1000 / 60)
-      await messenger.reply(chatIdStr, [
-        '💬 当前会话信息',
-        `会话 ID: ${info.sessionId.slice(0, 12)}...`,
-        `最后活跃: ${elapsed} 分钟前`,
-        '',
-        '发送 /new 可开始新对话',
-      ].join('\n'))
+      await messenger.reply(
+        chatIdStr,
+        [
+          '💬 当前会话信息',
+          `会话 ID: ${info.sessionId.slice(0, 12)}...`,
+          `最后活跃: ${elapsed} 分钟前`,
+          '',
+          '发送 /new 可开始新对话',
+        ].join('\n')
+      )
     }
     return
   }
@@ -153,11 +170,15 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
     if (approval) {
       const config = await loadConfig()
       const tgChatId = config.notify?.telegram?.chatId
-      const result = await handleApproval(approval, tgChatId
-        ? async (r) => { await sendTelegramApprovalResult(tgChatId, r) }
-        : undefined,
+      const result = await handleApproval(
+        approval,
+        tgChatId
+          ? async r => {
+              await sendTelegramApprovalResult(tgChatId, r)
+            }
+          : undefined
       )
-      logger.info(`Approval result: ${result}`)
+      logger.info(`→ approval: ${approval.action} ${approval.nodeId ?? '(auto)'}`)
       await messenger.reply(chatIdStr, result)
     }
     return
@@ -171,7 +192,7 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
   }
 
   // 未知命令 → 当作对话
-  await handleChat(chatIdStr, text, messenger, { client: TELEGRAM_CLIENT_CONTEXT })
+  await handleChat(chatIdStr, text, messenger, { client: getTelegramClientContext() })
 }
 
 // ── Long polling ──
@@ -192,7 +213,7 @@ async function pollLoop(): Promise<void> {
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      logger.error(`Poll error: ${msg}`)
+      logger.error(`poll error: ${msg}`)
       if (running) {
         await new Promise(r => setTimeout(r, 5000))
       }
@@ -220,12 +241,16 @@ export async function startTelegramClient(): Promise<void> {
   offset = 0
   running = true
 
+  // 获取机器人信息
+  const me = await callApi<{ first_name: string; username?: string }>('getMe')
+  botName = me?.first_name ?? me?.username ?? null
+
   pollLoop().catch(err => {
-    logger.error('Poll loop crashed:', err)
+    logger.error(`poll loop crashed: ${err instanceof Error ? err.message : err}`)
     running = false
   })
 
-  logger.info('Telegram client started')
+  logger.info(`Telegram client started${botName ? ` as "${botName}"` : ''}`)
 }
 
 export function stopTelegramClient(): void {
@@ -233,6 +258,7 @@ export function stopTelegramClient(): void {
   running = false
   botToken = null
   defaultChatId = null
+  botName = null
   logger.info('Telegram client stopped')
 }
 
@@ -243,7 +269,7 @@ export function isTelegramClientRunning(): boolean {
 export async function sendTelegramMessage(
   chatId: string,
   text: string,
-  parseMode?: string,
+  parseMode?: string
 ): Promise<boolean> {
   if (!botToken) {
     logger.warn('Telegram client not started, cannot send message')

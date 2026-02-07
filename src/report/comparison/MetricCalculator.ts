@@ -9,10 +9,7 @@ import type { TaskExecutionSnapshot, ComparisonResult } from './types.js'
 /**
  * 计算两个任务的相似度 (0-1)
  */
-export function calculateSimilarity(
-  t1: TaskExecutionSnapshot,
-  t2: TaskExecutionSnapshot
-): number {
+export function calculateSimilarity(t1: TaskExecutionSnapshot, t2: TaskExecutionSnapshot): number {
   // 同类型加权
   let score = t1.category === t2.category ? 0.4 : 0
 
@@ -40,27 +37,17 @@ export function compareTasks(
   t2: TaskExecutionSnapshot
 ): ComparisonResult {
   const durationDiffPercent =
-    t1.durationMs > 0
-      ? Math.round(((t2.durationMs - t1.durationMs) / t1.durationMs) * 100)
-      : 0
+    t1.durationMs > 0 ? Math.round(((t2.durationMs - t1.durationMs) / t1.durationMs) * 100) : 0
 
   const costDiffPercent =
-    t1.costUsd > 0
-      ? Math.round(((t2.costUsd - t1.costUsd) / t1.costUsd) * 100)
-      : 0
+    t1.costUsd > 0 ? Math.round(((t2.costUsd - t1.costUsd) / t1.costUsd) * 100) : 0
 
   const nodeCountDiff = t2.nodeCount - t1.nodeCount
 
   // 判断是否退化：时间增加 > 20% 或成本增加 > 30%
   const isRegression = durationDiffPercent > 20 || costDiffPercent > 30
 
-  const analysis = generateAnalysis(
-    t1,
-    t2,
-    durationDiffPercent,
-    costDiffPercent,
-    nodeCountDiff
-  )
+  const analysis = generateAnalysis(t1, t2, durationDiffPercent, costDiffPercent, nodeCountDiff)
 
   return {
     task1: t1,

@@ -7,7 +7,13 @@
  */
 
 import { runTask } from './runTask.js'
-import { getAllTasks, getTask, updateTask } from '../store/TaskStore.js'
+import {
+  getAllTasks,
+  getTask,
+  updateTask,
+  saveProcessInfo,
+  updateProcessInfo,
+} from '../store/TaskStore.js'
 import { createLogger } from '../shared/logger.js'
 import { releaseRunnerLock } from './spawnTask.js'
 
@@ -23,12 +29,12 @@ function setupSignalHandlers(): void {
 
   process.on('SIGINT', () => cleanup('SIGINT'))
   process.on('SIGTERM', () => cleanup('SIGTERM'))
-  process.on('uncaughtException', (err) => {
+  process.on('uncaughtException', err => {
     logger.error(`Uncaught exception: ${err.message}`)
     releaseRunnerLock()
     process.exit(1)
   })
-  process.on('unhandledRejection', (reason) => {
+  process.on('unhandledRejection', reason => {
     logger.error(`Unhandled rejection: ${reason}`)
     releaseRunnerLock()
     process.exit(1)
@@ -60,10 +66,19 @@ async function main(): Promise<void> {
 
       logger.info(`Executing task: ${task.title}`)
 
+      // 写入 process.json，防止 orphan detection 误判
+      saveProcessInfo(task.id, {
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        status: 'running',
+      })
+
       try {
         await runTask(task)
+        updateProcessInfo(task.id, { status: 'stopped' })
         logger.info(`Task completed: ${task.id}`)
       } catch (error) {
+        updateProcessInfo(task.id, { status: 'stopped' })
         const errorMessage = error instanceof Error ? error.message : String(error)
         logger.error(`Task failed: ${errorMessage}`)
         updateTask(task.id, { status: 'failed' })

@@ -59,7 +59,6 @@ function createDirectAnswerWorkflow(
  * 集成项目上下文和历史学习
  */
 export async function generateWorkflow(task: Task): Promise<Workflow> {
-
   // 获取可用 persona 列表
   const availablePersonas = Object.values(BUILTIN_PERSONAS)
 

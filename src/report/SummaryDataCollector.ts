@@ -10,7 +10,12 @@ import { estimateRemainingTime } from '../analysis/estimateTime.js'
 import type { Task } from '../types/task.js'
 import type { WorkflowInstance } from '../workflow/types.js'
 import type { ExecutionSummary } from '../store/ExecutionStatsStore.js'
-import type { RunningTaskInfo, QueuedTaskInfo, TodaySummary, LiveSummaryReport } from './LiveSummary.js'
+import type {
+  RunningTaskInfo,
+  QueuedTaskInfo,
+  TodaySummary,
+  LiveSummaryReport,
+} from './LiveSummary.js'
 
 /**
  * 获取运行中的任务
@@ -85,7 +90,10 @@ export function getRunningTasks(): RunningTaskInfo[] {
         nodeStatesForEstimate.push({
           name: workflowNode?.name || nodeId,
           type: workflowNode?.type || 'task',
-          status: state.status === 'done' ? 'completed' : state.status as 'pending' | 'running' | 'failed' | 'skipped',
+          status:
+            state.status === 'done'
+              ? 'completed'
+              : (state.status as 'pending' | 'running' | 'failed' | 'skipped'),
           durationMs: state.durationMs,
           startedAt: state.startedAt,
         })
@@ -232,9 +240,12 @@ export function getTodaySummary(): TodaySummary {
     }
   }
 
-  summary.avgSuccessRate = summary.tasksCreated > 0
-    ? Math.round(((summary.tasksCompleted) / (summary.tasksCompleted + summary.tasksFailed || 1)) * 100)
-    : 0
+  summary.avgSuccessRate =
+    summary.tasksCreated > 0
+      ? Math.round(
+          (summary.tasksCompleted / (summary.tasksCompleted + summary.tasksFailed || 1)) * 100
+        )
+      : 0
 
   return summary
 }
@@ -279,9 +290,7 @@ export function getRecentCompleted(limit: number = 5): LiveSummaryReport['recent
       ? new Date(instance.completedAt)
       : new Date(task.updatedAt || task.createdAt)
 
-    const startedAt = instance?.startedAt
-      ? new Date(instance.startedAt)
-      : new Date(task.createdAt)
+    const startedAt = instance?.startedAt ? new Date(instance.startedAt) : new Date(task.createdAt)
 
     completed.push({
       taskId: task.id,

@@ -44,8 +44,10 @@ export interface Store<T extends Entity> {
  * 带索引的 Store 接口
  * 支持按条件过滤列表
  */
-export interface IndexedStore<T extends Entity, TFilter = Record<string, unknown>>
-  extends Store<T> {
+export interface IndexedStore<
+  T extends Entity,
+  TFilter = Record<string, unknown>,
+> extends Store<T> {
   /** 按条件过滤列表 */
   listBy(filter: TFilter): T[]
 }
@@ -58,6 +60,8 @@ export interface IndexedStore<T extends Entity, TFilter = Record<string, unknown
 export interface JsonReadOptions {
   /** 文件不存在时返回的默认值 */
   defaultValue?: unknown
+  /** 运行时校验函数，返回 false 时视为无效数据 */
+  validate?: (data: unknown) => boolean
 }
 
 /**
@@ -76,23 +80,22 @@ export interface JsonWriteOptions {
  * 任务文件类型
  */
 export type TaskFileType =
-  | 'task'       // task.json
-  | 'workflow'   // workflow.json
-  | 'instance'   // instance.json
-  | 'process'    // process.json
+  | 'task' // task.json
+  | 'workflow' // workflow.json
+  | 'instance' // instance.json
+  | 'process' // process.json
 
 /**
  * 任务日志类型
  */
 export type TaskLogType =
-  | 'execution'     // logs/execution.log
-  | 'conversation'  // logs/conversation.log
+  | 'execution' // logs/execution.log
+  | 'conversation' // logs/conversation.log
 
 /**
  * 任务输出类型
  */
-export type TaskOutputType =
-  | 'result'  // outputs/result.md
+export type TaskOutputType = 'result' // outputs/result.md
 
 // ============ 存储事件类型 ============
 

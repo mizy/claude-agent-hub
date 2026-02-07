@@ -9,7 +9,11 @@ import {
   formatRegressionReportForMarkdown,
   collectTaskSnapshots,
 } from '../ExecutionComparison.js'
-import type { RegressionReport, ComparisonResult, TaskExecutionSnapshot } from '../ExecutionComparison.js'
+import type {
+  RegressionReport,
+  ComparisonResult,
+  TaskExecutionSnapshot,
+} from '../ExecutionComparison.js'
 
 // 模拟任务快照
 const mockTask1: TaskExecutionSnapshot = {
@@ -45,11 +49,7 @@ const mockComparison: ComparisonResult = {
   costDiffPercent: 60,
   nodeCountDiff: 1,
   isRegression: true,
-  analysis: [
-    '执行时间增加 50% (2m → 3m)',
-    '成本增加 60% ($0.05 → $0.08)',
-    '新增节点: review',
-  ],
+  analysis: ['执行时间增加 50% (2m → 3m)', '成本增加 60% ($0.05 → $0.08)', '新增节点: review'],
 }
 
 const mockRegressionReport: RegressionReport = {
@@ -71,10 +71,7 @@ const mockRegressionReport: RegressionReport = {
       sampleCount: 3,
     },
   ],
-  summary: [
-    '检测到 1 处性能退化',
-    '最严重退化: 实现注册功能 (时间 +50%)',
-  ],
+  summary: ['检测到 1 处性能退化', '最严重退化: 实现注册功能 (时间 +50%)'],
 }
 
 describe('ExecutionComparison', () => {
@@ -143,8 +140,8 @@ describe('ExecutionComparison', () => {
 
     it('should display percentage changes', () => {
       const output = formatRegressionReportForTerminal(mockRegressionReport)
-      expect(output).toContain('+25%')  // feature duration change
-      expect(output).toContain('-10%')  // fix duration change
+      expect(output).toContain('+25%') // feature duration change
+      expect(output).toContain('-10%') // fix duration change
     })
   })
 
@@ -276,9 +273,7 @@ describe('ExecutionComparison', () => {
 
   describe('category trends analysis', () => {
     it('should identify slowing categories', () => {
-      const slowingCategory = mockRegressionReport.categoryTrends.find(
-        t => t.avgDurationChange > 0
-      )
+      const slowingCategory = mockRegressionReport.categoryTrends.find(t => t.avgDurationChange > 0)
       expect(slowingCategory).toBeDefined()
       expect(slowingCategory?.category).toBe('feature')
     })

@@ -32,12 +32,12 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
       codeStyle: 'abstract',
       commentLevel: 'detailed',
       errorHandling: 'comprehensive',
-      namingConvention: 'descriptive'
+      namingConvention: 'descriptive',
     },
     preferences: {
       preferAbstraction: true,
       preferPatterns: true,
-      preferDocumentation: true
+      preferDocumentation: true,
     },
     systemPrompt: `你是一位软件架构师，关注系统的长期可维护性。
 
@@ -49,7 +49,7 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
 
 ## 决策考量
 - 方案能否支撑 2-3 年的业务增长？
-- 新成员能否快速理解？出问题能否快速定位？`
+- 新成员能否快速理解？出问题能否快速定位？`,
   },
 
   Pragmatist: {
@@ -59,12 +59,12 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
       codeStyle: 'minimal',
       commentLevel: 'sparse',
       errorHandling: 'essential',
-      namingConvention: 'concise'
+      namingConvention: 'concise',
     },
     preferences: {
       preferAbstraction: false,
       preferPatterns: false,
-      preferDocumentation: false
+      preferDocumentation: false,
     },
     systemPrompt: `你是一位务实的开发者，专注于用最有效的方式解决实际问题。
 
@@ -75,7 +75,7 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
 
 ## 决策考量
 - 这是最简单的方式吗？能否减少代码量？
-- 这个抽象真的有必要吗？`
+- 这个抽象真的有必要吗？`,
   },
 
   Perfectionist: {
@@ -85,12 +85,12 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
       codeStyle: 'strict',
       commentLevel: 'comprehensive',
       errorHandling: 'exhaustive',
-      namingConvention: 'explicit'
+      namingConvention: 'explicit',
     },
     preferences: {
       preferAbstraction: true,
       preferPatterns: true,
-      preferDocumentation: true
+      preferDocumentation: true,
     },
     systemPrompt: `你是一位追求卓越的开发者，确保代码质量达到最高标准。
 
@@ -101,7 +101,7 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
 
 ## 决策考量
 - 在各种边界条件下都能正确工作吗？
-- 错误信息是否足够帮助调试？`
+- 错误信息是否足够帮助调试？`,
   },
 
   Explorer: {
@@ -111,12 +111,12 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
       codeStyle: 'modern',
       commentLevel: 'moderate',
       errorHandling: 'standard',
-      namingConvention: 'descriptive'
+      namingConvention: 'descriptive',
     },
     preferences: {
       preferAbstraction: true,
       preferPatterns: true,
-      preferDocumentation: false
+      preferDocumentation: false,
     },
     systemPrompt: `你是一位技术探索者，调研新技术和探索创新方案。
 
@@ -127,7 +127,7 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
 
 ## 决策考量
 - 新技术解决了什么现有方案解决不好的问题？
-- 学习成本和长期收益如何权衡？失败时回退成本多大？`
+- 学习成本和长期收益如何权衡？失败时回退成本多大？`,
   },
 
   Tester: {
@@ -137,12 +137,12 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
       codeStyle: 'strict',
       commentLevel: 'detailed',
       errorHandling: 'exhaustive',
-      namingConvention: 'explicit'
+      namingConvention: 'explicit',
     },
     preferences: {
       preferAbstraction: false,
       preferPatterns: true,
-      preferDocumentation: true
+      preferDocumentation: true,
     },
     systemPrompt: `你是一位测试工程师，通过全面的测试保障软件质量。
 
@@ -156,7 +156,7 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
 - 并发：竞态条件、数据一致性
 
 ## 决策考量
-- 关键路径是什么？哪些场景最容易出问题？`
+- 关键路径是什么？哪些场景最容易出问题？`,
   },
 
   Reviewer: {
@@ -166,12 +166,12 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
       codeStyle: 'strict',
       commentLevel: 'comprehensive',
       errorHandling: 'comprehensive',
-      namingConvention: 'explicit'
+      namingConvention: 'explicit',
     },
     preferences: {
       preferAbstraction: true,
       preferPatterns: true,
-      preferDocumentation: true
+      preferDocumentation: true,
     },
     systemPrompt: `你是一位代码审查员，负责代码质量把关和知识传递。
 
@@ -186,7 +186,7 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
 
 ## 决策考量
 - 没有额外解释能理解这段代码吗？
-- 三个月后还能理解吗？是否是最佳实践？`
+- 三个月后还能理解吗？是否是最佳实践？`,
   },
 
   Security: {
@@ -196,12 +196,12 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
       codeStyle: 'strict',
       commentLevel: 'detailed',
       errorHandling: 'exhaustive',
-      namingConvention: 'explicit'
+      namingConvention: 'explicit',
     },
     preferences: {
       preferAbstraction: false,
       preferPatterns: true,
-      preferDocumentation: true
+      preferDocumentation: true,
     },
     systemPrompt: `你是一位安全工程师，识别和防范应用程序的安全风险。
 
@@ -216,7 +216,7 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
 
 ## 决策考量
 - 攻击者如何滥用这个功能？
-- token/密钥泄露的影响范围？有更安全的方案吗？`
+- token/密钥泄露的影响范围？有更安全的方案吗？`,
   },
 
   DevOps: {
@@ -226,12 +226,12 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
       codeStyle: 'minimal',
       commentLevel: 'moderate',
       errorHandling: 'comprehensive',
-      namingConvention: 'descriptive'
+      namingConvention: 'descriptive',
     },
     preferences: {
       preferAbstraction: false,
       preferPatterns: false,
-      preferDocumentation: true
+      preferDocumentation: true,
     },
     systemPrompt: `你是一位 DevOps 工程师，构建可靠的基础设施和自动化流程。
 
@@ -247,8 +247,8 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
 
 ## 决策考量
 - 变更能否自动回滚？故障时如何快速定位？
-- 单点故障在哪里？如何消除？`
-  }
+- 单点故障在哪里？如何消除？`,
+  },
 }
 
 export function getBuiltinPersona(name: string): PersonaConfig | undefined {

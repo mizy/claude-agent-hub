@@ -11,10 +11,7 @@ import {
   getInstance,
   createInstance,
 } from '../../store/WorkflowStore.js'
-import {
-  startWorkflowInstance,
-  markNodeDone,
-} from './StateManager.js'
+import { startWorkflowInstance, markNodeDone } from './StateManager.js'
 import { enqueueNodes } from '../queue/WorkflowQueue.js'
 import { getNextNodes } from './WorkflowExecution.js'
 import type { Workflow, WorkflowInstance } from '../types.js'
@@ -26,9 +23,7 @@ const logger = createLogger('workflow-lifecycle')
 /**
  * 创建并保存工作流
  */
-export function createWorkflow(
-  workflow: Omit<Workflow, 'id' | 'createdAt'>
-): Workflow {
+export function createWorkflow(workflow: Omit<Workflow, 'id' | 'createdAt'>): Workflow {
   const fullWorkflow: Workflow = {
     ...workflow,
     id: generateId(),

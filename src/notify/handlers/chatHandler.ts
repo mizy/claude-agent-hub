@@ -6,6 +6,7 @@
 import { invokeBackend } from '../../backend/index.js'
 import { createLogger } from '../../shared/logger.js'
 import { buildClientPrompt } from '../../prompts/chatPrompts.js'
+import { logConversation } from './conversationLog.js'
 import type { MessengerAdapter, ChatSession, ClientContext } from './types.js'
 
 const logger = createLogger('chat-handler')
@@ -16,6 +17,9 @@ const STREAM_THROTTLE_MS = 1500
 const STREAM_MIN_DELTA = 100 // chars
 
 const sessions = new Map<string, ChatSession>()
+
+// 每个 chatId 的消息队列，保证同一会话串行处理
+const chatQueues = new Map<string, Promise<void>>()
 
 // 定期清理过期会话
 let cleanupTimer: ReturnType<typeof setInterval> | null = null
@@ -66,21 +70,52 @@ export interface ChatOptions {
   client?: ClientContext
 }
 
-
 /**
  * 处理普通文本消息，调用 AI 后端获取回复
+ * 同一 chatId 的消息会串行处理，避免并发访问同一会话
  */
 export async function handleChat(
   chatId: string,
   text: string,
   messenger: MessengerAdapter,
-  options?: ChatOptions,
+  options?: ChatOptions
+): Promise<void> {
+  const prev = chatQueues.get(chatId) ?? Promise.resolve()
+  const task = prev.then(() => handleChatInternal(chatId, text, messenger, options))
+  // swallow errors so next queued message isn't blocked
+  const tail = task.catch(() => {})
+  chatQueues.set(chatId, tail)
+  // 队列跑完后清理
+  tail.then(() => {
+    if (chatQueues.get(chatId) === tail) chatQueues.delete(chatId)
+  })
+  return task
+}
+
+async function handleChatInternal(
+  chatId: string,
+  text: string,
+  messenger: MessengerAdapter,
+  options?: ChatOptions
 ): Promise<void> {
   const maxLen = options?.maxMessageLength ?? DEFAULT_MAX_LENGTH
+  const platform = options?.client?.platform ?? 'unknown'
+  const startTime = Date.now()
 
   // 获取或创建会话
   const session = sessions.get(chatId)
   const sessionId = session?.sessionId
+  logger.info(`💬 chat ${sessionId ? 'continue' : 'new'} [${chatId.slice(0, 8)}]`)
+
+  // 记录用户消息
+  logConversation({
+    ts: new Date().toISOString(),
+    dir: 'in',
+    platform,
+    chatId,
+    sessionId,
+    text,
+  })
 
   // 发送占位消息
   const placeholderId = await messenger.sendAndGetId(chatId, '🤔 思考中...')
@@ -98,18 +133,18 @@ export async function handleChat(
         if (now - lastEditAt > STREAM_THROTTLE_MS && deltaLen > STREAM_MIN_DELTA) {
           lastEditAt = now
           lastEditLength = accumulated.length
-          const preview = accumulated.length > maxLen
-            ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
-            : accumulated
+          const preview =
+            accumulated.length > maxLen
+              ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
+              : accumulated
           messenger.editMessage(chatId, placeholderId, preview).catch(() => {})
         }
       }
     : undefined
 
   // 首次对话注入客户端环境上下文
-  const clientPrefix = options?.client && !sessionId
-    ? buildClientPrompt(options.client) + '\n\n'
-    : ''
+  const clientPrefix =
+    options?.client && !sessionId ? buildClientPrompt(options.client) + '\n\n' : ''
 
   try {
     const result = await invokeBackend({
@@ -132,6 +167,19 @@ export async function handleChat(
 
     const response = result.value.response
     const newSessionId = result.value.sessionId
+    const durationMs = Date.now() - startTime
+    logger.info(`→ reply ${response.length} chars (${(durationMs / 1000).toFixed(1)}s)`)
+
+    // 记录 AI 回复
+    logConversation({
+      ts: new Date().toISOString(),
+      dir: 'out',
+      platform,
+      chatId,
+      sessionId: newSessionId ?? sessionId,
+      text: response,
+      durationMs,
+    })
 
     // 更新会话
     if (newSessionId) {
@@ -155,7 +203,7 @@ export async function handleChat(
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    logger.error(`Chat handler error: ${msg}`)
+    logger.error(`chat error [${chatId.slice(0, 8)}]: ${msg}`)
     const errorMsg = `❌ 处理失败: ${msg}`
     if (placeholderId) {
       await messenger.editMessage(chatId, placeholderId, errorMsg).catch(() => {})

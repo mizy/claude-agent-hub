@@ -27,10 +27,10 @@ import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
 import { getTaskFolder, getAllTasks } from '../store/TaskStore.js'
+import { withProcessTracking } from '../task/processTracking.js'
 import { getLogPath } from '../store/TaskLogStore.js'
 import { existsSync } from 'fs'
 import { spawn } from 'child_process'
-// TODO: 支持前台模式的流式输出 (stream option in invokeClaudeCode)
 import { setLogLevel } from '../shared/logger.js'
 import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
 import { detectOrphanedTasks, resumeAllOrphanedTasks } from '../task/resumeTask.js'
@@ -39,7 +39,18 @@ import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
 import { findClosestMatch } from '../shared/levenshtein.js'
 
 // 已知的 CLI 命令列表
-const KNOWN_COMMANDS = ['task', 'report', 'serve', 'stop', 'status', 'agent', 'init', 'run', 'logs', 'dashboard']
+const KNOWN_COMMANDS = [
+  'task',
+  'report',
+  'serve',
+  'stop',
+  'status',
+  'agent',
+  'init',
+  'run',
+  'logs',
+  'dashboard',
+]
 
 const program = new Command()
 
@@ -85,7 +96,13 @@ program
  */
 async function handleTaskDescription(
   description: string,
-  options: { priority?: string; agent?: string; run?: boolean; foreground?: boolean; verbose?: boolean }
+  options: {
+    priority?: string
+    agent?: string
+    run?: boolean
+    foreground?: boolean
+    verbose?: boolean
+  }
 ): Promise<void> {
   try {
     // 启用 debug 日志
@@ -101,8 +118,7 @@ async function handleTaskDescription(
     })
 
     // 截断长标题用于显示
-    const displayTitle =
-      task.title.length > 50 ? task.title.slice(0, 47) + '...' : task.title
+    const displayTitle = task.title.length > 50 ? task.title.slice(0, 47) + '...' : task.title
 
     success(`Created task: ${displayTitle}`)
     console.log(`  ID: ${task.id}`)
@@ -122,7 +138,7 @@ async function handleTaskDescription(
       // 前台模式启用 debug 日志
       setLogLevel('debug')
 
-      await runTask(task)
+      await withProcessTracking(task.id, () => runTask(task))
       success('Task completed!')
     } else {
       // 默认：创建任务后立即触发队列执行（后台）
@@ -169,12 +185,9 @@ program
 
       info(`Executing task: ${task.title}`)
 
-      // 执行任务
-      await executeTask(task, {
-        concurrency: 1,
-        saveToTaskFolder: false, // 保存到全局 outputs/
-        useConsole: true, // 使用 console.log
-      })
+      await withProcessTracking(task.id, () =>
+        executeTask(task, { concurrency: 1, useConsole: true })
+      )
 
       success('Task execution completed')
     } catch (err) {
@@ -222,7 +235,7 @@ program
     tailArgs.push(logPath)
 
     const tail = spawn('tail', tailArgs, { stdio: 'inherit' })
-    tail.on('error', (err) => {
+    tail.on('error', err => {
       error(`Failed to tail logs: ${err.message}`)
     })
   })

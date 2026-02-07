@@ -64,8 +64,10 @@ async function buildHistoryEntry(summary: TaskSummary): Promise<TaskHistoryEntry
       const taskNodes = workflow.nodes?.filter((n: WorkflowNode) => n.type === 'task') || []
       nodeCount = workflow.nodes?.length || 0
       nodeNames = taskNodes.map((n: WorkflowNode) => n.name)
-    } catch {
-      // ignore
+    } catch (e) {
+      logger.debug(
+        `Failed to parse workflow for ${summary.id}: ${e instanceof Error ? e.message : String(e)}`
+      )
     }
   }
 
@@ -81,7 +83,10 @@ async function buildHistoryEntry(summary: TaskSummary): Promise<TaskHistoryEntry
 
       // 获取失败节点和原因
       if (instance.nodeStates) {
-        const entries = Object.entries(instance.nodeStates) as [string, { status?: string; error?: string }][]
+        const entries = Object.entries(instance.nodeStates) as [
+          string,
+          { status?: string; error?: string },
+        ][]
         for (const [nodeId, state] of entries) {
           if (state.status === 'failed') {
             failedNodes.push(nodeId)
@@ -98,8 +103,10 @@ async function buildHistoryEntry(summary: TaskSummary): Promise<TaskHistoryEntry
         const end = new Date(instance.completedAt).getTime()
         durationSec = Math.round((end - start) / 1000)
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      logger.debug(
+        `Failed to parse instance for ${summary.id}: ${e instanceof Error ? e.message : String(e)}`
+      )
     }
   }
 
@@ -110,8 +117,10 @@ async function buildHistoryEntry(summary: TaskSummary): Promise<TaskHistoryEntry
     try {
       const task = JSON.parse(readFileSync(taskPath, 'utf-8'))
       description = task.description
-    } catch {
-      // ignore
+    } catch (e) {
+      logger.debug(
+        `Failed to parse task.json for ${summary.id}: ${e instanceof Error ? e.message : String(e)}`
+      )
     }
   }
 
@@ -136,9 +145,7 @@ async function buildHistoryEntry(summary: TaskSummary): Promise<TaskHistoryEntry
  * 从历史中学习
  * 分析与当前任务相似的历史任务，提取成功模式和失败教训
  */
-export async function learnFromHistory(
-  taskDescription: string
-): Promise<LearningInsights> {
+export async function learnFromHistory(taskDescription: string): Promise<LearningInsights> {
   const history = await getTaskHistory(50)
 
   logger.debug(`分析 ${history.length} 条历史任务`)
@@ -210,9 +217,7 @@ export async function learnFromHistory(
   insights.successfulNodePatterns = extractSuccessfulNodePatterns(history, taskCategory)
   const topPattern = insights.successfulNodePatterns[0]
   if (topPattern) {
-    insights.successPatterns.push(
-      `推荐节点流程: ${topPattern.nodeSequence.join(' → ')}`
-    )
+    insights.successPatterns.push(`推荐节点流程: ${topPattern.nodeSequence.join(' → ')}`)
   }
 
   // 提取失败教训
@@ -251,7 +256,9 @@ export async function learnFromHistory(
   // 添加类型特定的建议
   addCategorySpecificAdvice(insights, taskCategory)
 
-  logger.info(`学习完成: ${insights.relatedTasks.length} 个相关任务, ${insights.successPatterns.length} 个成功模式`)
+  logger.info(
+    `学习完成: ${insights.relatedTasks.length} 个相关任务, ${insights.successPatterns.length} 个成功模式`
+  )
 
   return insights
 }
@@ -277,7 +284,9 @@ export function formatInsightsForPrompt(insights: LearningInsights): string {
   if (insights.successfulNodePatterns.length > 0) {
     parts.push(`\n### 成功的节点模式`)
     for (const pattern of insights.successfulNodePatterns.slice(0, 2)) {
-      parts.push(`- ${pattern.nodeSequence.join(' → ')} (成功率: ${Math.round(pattern.successRate * 100)}%)`)
+      parts.push(
+        `- ${pattern.nodeSequence.join(' → ')} (成功率: ${Math.round(pattern.successRate * 100)}%)`
+      )
     }
   }
 
@@ -302,7 +311,9 @@ export function formatInsightsForPrompt(insights: LearningInsights): string {
   // 推荐
   parts.push(`\n### 节点设计建议`)
   if (insights.recommendedNodeCount) {
-    parts.push(`- **${insights.taskCategory}** 类型任务推荐 ${insights.recommendedNodeCount} 个左右的节点`)
+    parts.push(
+      `- **${insights.taskCategory}** 类型任务推荐 ${insights.recommendedNodeCount} 个左右的节点`
+    )
   }
 
   // 类型特定提示

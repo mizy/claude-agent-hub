@@ -1,7 +1,37 @@
 import type { ExecutionTiming } from './output.js'
 
 export type TaskPriority = 'low' | 'medium' | 'high'
-export type TaskStatus = 'pending' | 'planning' | 'developing' | 'reviewing' | 'completed' | 'failed' | 'cancelled'
+export type TaskStatus =
+  | 'pending'
+  | 'planning'
+  | 'developing'
+  | 'reviewing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+const VALID_PRIORITIES: readonly string[] = ['low', 'medium', 'high']
+const VALID_STATUSES: readonly string[] = [
+  'pending',
+  'planning',
+  'developing',
+  'reviewing',
+  'completed',
+  'failed',
+  'cancelled',
+]
+
+/** Parse and validate a TaskPriority string, returns 'medium' as fallback */
+export function parseTaskPriority(value: string | undefined): TaskPriority {
+  if (value && VALID_PRIORITIES.includes(value)) return value as TaskPriority
+  return 'medium'
+}
+
+/** Parse and validate a TaskStatus string, returns null if invalid */
+export function parseTaskStatus(value: string | undefined): TaskStatus | null {
+  if (value && VALID_STATUSES.includes(value)) return value as TaskStatus
+  return null
+}
 
 export interface Task {
   id: string

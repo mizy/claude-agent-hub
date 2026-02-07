@@ -84,7 +84,8 @@ function loadHistoricalData(): HistoricalData {
         const typeExisting = typeAverages.get(typeKey)
         if (typeExisting) {
           typeExisting.avgDurationMs =
-            (typeExisting.avgDurationMs * typeExisting.samples + node.durationMs) / (typeExisting.samples + 1)
+            (typeExisting.avgDurationMs * typeExisting.samples + node.durationMs) /
+            (typeExisting.samples + 1)
           typeExisting.samples++
         } else {
           typeAverages.set(typeKey, { avgDurationMs: node.durationMs, samples: 1 })
@@ -93,8 +94,10 @@ function loadHistoricalData(): HistoricalData {
         totalDuration += node.durationMs
         totalSamples++
       }
-    } catch {
-      // ignore invalid stats files
+    } catch (e) {
+      logger.debug(
+        `Failed to parse stats for ${taskDir}: ${e instanceof Error ? e.message : String(e)}`
+      )
     }
   }
 
@@ -103,7 +106,9 @@ function loadHistoricalData(): HistoricalData {
   cachedData = { nodeAverages, typeAverages, globalAvgDurationMs, totalSamples }
   cacheTimestamp = now
 
-  logger.debug(`Loaded historical data: ${totalSamples} samples, avg ${Math.round(globalAvgDurationMs / 1000)}s per node`)
+  logger.debug(
+    `Loaded historical data: ${totalSamples} samples, avg ${Math.round(globalAvgDurationMs / 1000)}s per node`
+  )
 
   return cachedData
 }
@@ -160,10 +165,7 @@ interface NodeState {
 /**
  * 预估工作流剩余时间
  */
-export function estimateRemainingTime(
-  nodes: NodeState[],
-  elapsedMs: number
-): TimeEstimate {
+export function estimateRemainingTime(nodes: NodeState[], elapsedMs: number): TimeEstimate {
   const data = loadHistoricalData()
 
   let completedCount = 0
@@ -196,7 +198,8 @@ export function estimateRemainingTime(
 
   // 计算置信度：样本越多越准确，已完成节点越多越准确
   const sampleConfidence = Math.min(data.totalSamples / 20, 1) // 20 个样本达到满分
-  const progressConfidence = completedCount > 0 ? Math.min(completedCount / nodes.length + 0.3, 1) : 0.3
+  const progressConfidence =
+    completedCount > 0 ? Math.min(completedCount / nodes.length + 0.3, 1) : 0.3
   const confidence = (sampleConfidence + progressConfidence) / 2
 
   return {
@@ -207,9 +210,6 @@ export function estimateRemainingTime(
     remainingFormatted: formatDuration(remainingMs),
   }
 }
-
-// Re-export formatDuration for backward compatibility
-export { formatDuration } from '../shared/formatTime.js'
 
 /**
  * 格式化时间预估为字符串

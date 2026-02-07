@@ -90,10 +90,7 @@ function killTaskProcess(taskId: string): boolean {
  * @param options.status - Clear tasks with specific status
  * @param options.all - Clear all tasks and kill running processes
  */
-export function clearTasks(options?: {
-  status?: TaskStatus
-  all?: boolean
-}): ClearTasksResult {
+export function clearTasks(options?: { status?: TaskStatus; all?: boolean }): ClearTasksResult {
   const allTasks = getAllTasks()
   let killedProcesses = 0
 
@@ -104,14 +101,10 @@ export function clearTasks(options?: {
     tasksToDelete = allTasks.map(t => t.id)
   } else if (options?.status) {
     // Clear tasks with specific status
-    tasksToDelete = allTasks
-      .filter(t => t.status === options.status)
-      .map(t => t.id)
+    tasksToDelete = allTasks.filter(t => t.status === options.status).map(t => t.id)
   } else {
     // Default: clear completed, failed, and cancelled tasks
-    tasksToDelete = allTasks
-      .filter(t => isTerminalStatus(t.status))
-      .map(t => t.id)
+    tasksToDelete = allTasks.filter(t => isTerminalStatus(t.status)).map(t => t.id)
   }
 
   // Kill processes and delete each task
@@ -172,9 +165,7 @@ export function stopTask(id: string): StopTaskResult {
 
   // Get current execution state for logging
   const instance = getTaskInstance(task.id)
-  const currentNodeInfo = instance
-    ? getActiveNodes(instance).join(', ')
-    : 'unknown'
+  const currentNodeInfo = instance ? getActiveNodes(instance).join(', ') : 'unknown'
 
   // Update task status
   updateTask(task.id, { status: 'cancelled' })

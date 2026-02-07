@@ -160,9 +160,10 @@ src/
 │
 ├── notify/                     # 通知系统
 │   ├── index.ts               # @entry
+│   ├── buildLarkCard.ts       # 飞书卡片构建器(纯函数)
 │   ├── larkServer.ts          # 飞书服务器
-│   ├── larkWsClient.ts        # 飞书 WebSocket 客户端
-│   ├── sendLarkNotify.ts      # 发送飞书通知
+│   ├── larkWsClient.ts        # 飞书 WebSocket 客户端(事件+卡片回调)
+│   ├── sendLarkNotify.ts      # 发送飞书通知(卡片+文本)
 │   ├── telegramClient.ts      # Telegram 客户端
 │   ├── telegramChatHandler.ts # Telegram 对话处理
 │   ├── telegramCommandHandler.ts # Telegram 命令处理
@@ -584,14 +585,30 @@ console.log(result.value.response)
 
 基于 WebSocket 的实时通知和交互:
 
-- **LarkWsClient**: WebSocket 客户端,接收飞书事件
-- **LarkServer**: Express 服务器,处理飞书回调(审批、消息等)
-- **sendLarkNotify**: 发送飞书卡片消息
+- **LarkWsClient**: WebSocket 客户端,接收飞书事件(消息、卡片按钮回调、入群等)
+- **buildLarkCard**: 卡片构建器,纯函数生成 Interactive Card JSON
+- **sendLarkNotify**: 发送卡片/文本消息(API 优先,webhook 降级)
 
 功能:
-- 任务状态变更通知
-- 人工审批节点交互
+- 交互式卡片消息(审批按钮、任务列表、任务详情、帮助指令)
+- 卡片按钮回调(`card.action.trigger` — 点击审批按钮直接通过/拒绝)
+- 任务完成/失败卡片通知(绿色/红色 header)
+- 首次对话欢迎卡片(`p2p_chat_create` 事件)
+- 人工审批节点交互(按钮 + 文字双通道)
 - 实时对话终端(通过飞书消息控制任务)
+
+卡片类型:
+| 卡片 | 触发时机 | Header 颜色 |
+|------|---------|------------|
+| 审批请求 | human 节点等待审批 | 橙色 |
+| 审批结果 | 审批通过/拒绝 | 绿色/红色 |
+| 任务完成 | 任务执行成功 | 绿色 |
+| 任务失败 | 任务执行失败 | 红色 |
+| 任务列表 | `/list` 指令 | 蓝色 |
+| 任务详情 | `/get` 指令 | 蓝色 |
+| 待审批状态 | `/status` 指令 | 橙色 |
+| 帮助指令 | `/help` 指令 | 蓝色 |
+| 欢迎卡片 | 首次与 bot 对话 | 蓝色 |
 
 ### Telegram 通知
 
@@ -616,6 +633,7 @@ notify:
     enabled: true
     appId: "cli_xxx"
     appSecret: "xxx"
+    chatId: "oc_xxx"       # 可选,默认推送通知目标(运行时也会自动记录)
     webhookUrl: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
 
   telegram:
@@ -667,7 +685,7 @@ pending ──► ready ──► running ──► done
 - [x] 多种节点类型(task/delay/schedule/loop/foreach/condition/parallel/join/human/assign/script/switch)
 - [x] 多 Backend 支持(claude-code/opencode/iflow/codebuddy)
 - [x] Persona 系统(Architect/Pragmatist/Explorer 等)
-- [x] 飞书通知(WebSocket + 双向对话)
+- [x] 飞书通知(WebSocket + 双向对话 + 交互式卡片 + 按钮回调)
 - [x] Telegram 通知(长轮询 + 对话终端)
 - [x] 项目上下文分析
 - [x] 历史执行学习

@@ -4,22 +4,18 @@
  * 统一所有 JSON 文件操作，支持原子写入。
  */
 
-import {
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  renameSync,
-  mkdirSync,
-  appendFileSync,
-} from 'fs'
+import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, appendFileSync } from 'fs'
 import { dirname } from 'path'
+import { createLogger } from '../shared/logger.js'
 import type { JsonReadOptions, JsonWriteOptions } from './types.js'
+
+const logger = createLogger('json-io')
 
 /**
  * 同步读取 JSON 文件
  *
  * @param filepath - 文件路径
- * @param options - 读取选项
+ * @param options - 读取选项（支持 validate 回调做运行时校验）
  * @returns 解析后的 JSON 对象，文件不存在或解析失败返回 null
  */
 export function readJson<T>(filepath: string, options?: JsonReadOptions): T | null {
@@ -28,8 +24,17 @@ export function readJson<T>(filepath: string, options?: JsonReadOptions): T | nu
       return (options?.defaultValue as T) ?? null
     }
     const content = readFileSync(filepath, 'utf-8')
-    return JSON.parse(content) as T
-  } catch {
+    const parsed = JSON.parse(content) as T
+
+    // Runtime validation if provided
+    if (options?.validate && !options.validate(parsed)) {
+      logger.warn(`JSON validation failed: ${filepath}`)
+      return (options?.defaultValue as T) ?? null
+    }
+
+    return parsed
+  } catch (e) {
+    logger.debug(`Failed to read JSON: ${filepath} (${e instanceof Error ? e.message : String(e)})`)
     return (options?.defaultValue as T) ?? null
   }
 }

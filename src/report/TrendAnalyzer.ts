@@ -31,7 +31,10 @@ import {
 import type { TrendReport } from './analyzers/types.js'
 
 // 重新导出格式化函数
-export { formatTrendReportForTerminal, formatTrendReportForMarkdown } from './analyzers/formatters.js'
+export {
+  formatTrendReportForTerminal,
+  formatTrendReportForMarkdown,
+} from './analyzers/formatters.js'
 
 /**
  * 生成趋势报告

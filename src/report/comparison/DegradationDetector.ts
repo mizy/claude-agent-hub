@@ -29,9 +29,7 @@ export interface RegressionReport {
 /**
  * 生成性能退化报告
  */
-export function generateRegressionReport(
-  snapshots: TaskExecutionSnapshot[]
-): RegressionReport {
+export function generateRegressionReport(snapshots: TaskExecutionSnapshot[]): RegressionReport {
   const regressions: ComparisonResult[] = []
   const improvements: ComparisonResult[] = []
   const categoryData = new Map<
@@ -53,10 +51,7 @@ export function generateRegressionReport(
 
       if (comparison.isRegression) {
         regressions.push(comparison)
-      } else if (
-        comparison.durationDiffPercent < -20 ||
-        comparison.costDiffPercent < -20
-      ) {
+      } else if (comparison.durationDiffPercent < -20 || comparison.costDiffPercent < -20) {
         improvements.push(comparison)
       }
 
@@ -79,10 +74,8 @@ export function generateRegressionReport(
   const categoryTrends = Array.from(categoryData.entries())
     .map(([category, data]) => ({
       category,
-      avgDurationChange:
-        data.count > 0 ? Math.round(data.totalDurationChange / data.count) : 0,
-      avgCostChange:
-        data.count > 0 ? Math.round(data.totalCostChange / data.count) : 0,
+      avgDurationChange: data.count > 0 ? Math.round(data.totalDurationChange / data.count) : 0,
+      avgCostChange: data.count > 0 ? Math.round(data.totalCostChange / data.count) : 0,
       sampleCount: data.count,
     }))
     .filter(t => t.sampleCount >= 2)
@@ -133,9 +126,7 @@ function generateSummary(
     )
   }
 
-  const improvingCategories = categoryTrends.filter(
-    t => t.avgDurationChange < -10
-  )
+  const improvingCategories = categoryTrends.filter(t => t.avgDurationChange < -10)
   if (improvingCategories.length > 0) {
     summary.push(
       `提速的任务类型: ${improvingCategories.map(c => `${c.category}(${c.avgDurationChange}%)`).join(', ')}`

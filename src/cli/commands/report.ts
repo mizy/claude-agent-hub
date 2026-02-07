@@ -14,9 +14,7 @@ import {
 import { success, warn } from '../output.js'
 
 export function registerReportCommands(program: Command) {
-  const report = program
-    .command('report')
-    .description('报告命令')
+  const report = program.command('report').description('报告命令')
 
   // 原有的工作报告
   report
@@ -25,7 +23,7 @@ export function registerReportCommands(program: Command) {
     .option('-a, --agent <name>', '指定 Agent')
     .option('-d, --days <days>', '报告天数', '1')
     .option('-o, --output <file>', '输出到文件')
-    .action(async (options) => {
+    .action(async options => {
       await generateReport(options)
     })
 
@@ -38,7 +36,7 @@ export function registerReportCommands(program: Command) {
     .option('--markdown', '输出 Markdown 格式')
     .option('--json', '输出 JSON 格式')
     .option('-o, --output <file>', '保存到文件')
-    .action((options) => {
+    .action(options => {
       const days = parseInt(options.days, 10)
       const period = options.period as 'day' | 'week' | 'month'
 
@@ -75,7 +73,7 @@ export function registerReportCommands(program: Command) {
     .option('--json', '输出 JSON 格式')
     .option('-w, --watch', '持续监控模式')
     .option('-i, --interval <ms>', '刷新间隔 (毫秒)', '3000')
-    .action(async (options) => {
+    .action(async options => {
       const showLive = () => {
         const liveReport = generateLiveSummary()
 
@@ -106,5 +104,4 @@ export function registerReportCommands(program: Command) {
         await new Promise(() => {})
       }
     })
-
 }

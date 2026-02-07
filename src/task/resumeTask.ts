@@ -63,7 +63,9 @@ function isProcessActive(processInfo: ProcessInfo | null): boolean {
   if (processInfo.startedAt) {
     const startedAt = new Date(processInfo.startedAt).getTime()
     if (now - startedAt < PROCESS_START_GRACE_MS) {
-      logger.debug(`Process started recently (${Math.round((now - startedAt) / 1000)}s ago), treating as active`)
+      logger.debug(
+        `Process started recently (${Math.round((now - startedAt) / 1000)}s ago), treating as active`
+      )
       return true
     }
   }
@@ -72,7 +74,9 @@ function isProcessActive(processInfo: ProcessInfo | null): boolean {
   if (processInfo.lastHeartbeat) {
     const lastHeartbeat = new Date(processInfo.lastHeartbeat).getTime()
     if (now - lastHeartbeat < HEARTBEAT_ALIVE_THRESHOLD_MS) {
-      logger.debug(`Process heartbeat recent (${Math.round((now - lastHeartbeat) / 1000)}s ago), treating as active`)
+      logger.debug(
+        `Process heartbeat recent (${Math.round((now - lastHeartbeat) / 1000)}s ago), treating as active`
+      )
       return true
     }
   }
@@ -101,15 +105,26 @@ export function detectOrphanedTasks(): OrphanedTask[] {
       // 检查任务是否在宽限期内（刚创建的任务可能还没写入 process.json）
       const taskAge = now - new Date(task.updatedAt || task.createdAt).getTime()
       if (taskAge < ORPHAN_GRACE_PERIOD_MS) {
-        logger.debug(`Task ${task.id} is within grace period (${Math.round(taskAge / 1000)}s old), skipping`)
+        logger.debug(
+          `Task ${task.id} is within grace period (${Math.round(taskAge / 1000)}s old), skipping`
+        )
         continue
       }
 
       const processInfo = getProcessInfo(task.id)
 
-      // 没有进程信息，可能是旧任务或异常创建的
+      // 没有进程信息 — 区分"从未执行"和"执行中断"
       if (!processInfo) {
-        logger.debug(`Task ${task.id} has no process info, treating as orphaned`)
+        const hasWorkflow = !!getTaskWorkflow(task.id)
+        if (!hasWorkflow) {
+          // 无 workflow 说明任务从未真正开始执行，不是 orphan
+          logger.debug(
+            `Task ${task.id} has no process info and no workflow, skipping (never executed)`
+          )
+          continue
+        }
+        // 有 workflow 但没有 process.json，说明执行中断且进程信息丢失
+        logger.info(`Task ${task.id} has workflow but no process info, treating as orphaned`)
         orphaned.push({
           task,
           pid: 0,
@@ -125,7 +140,9 @@ export function detectOrphanedTasks(): OrphanedTask[] {
 
       // 检查进程是否存活（使用 isProcessActive 综合判断：心跳、启动时间、PID）
       if (!isProcessActive(processInfo)) {
-        logger.info(`Task ${task.id} process ${processInfo.pid} not active (heartbeat: ${processInfo.lastHeartbeat})`)
+        logger.info(
+          `Task ${task.id} process ${processInfo.pid} not active (heartbeat: ${processInfo.lastHeartbeat})`
+        )
         orphaned.push({
           task,
           pid: processInfo.pid,
@@ -181,12 +198,16 @@ export function resumeTask(taskId: string): number | null {
 
   logger.info(`Resuming task: ${taskId}`)
   if (shouldResume) {
-    logger.info(`Found existing workflow: ${existingWorkflow!.id}, instance: ${existingInstance!.id}`)
+    logger.info(
+      `Found existing workflow: ${existingWorkflow!.id}, instance: ${existingInstance!.id}`
+    )
     logger.info(`Instance status: ${existingInstance!.status}`)
   }
 
   // 记录 resume 到执行日志
-  appendExecutionLog(taskId, `Task resumed, mode: ${shouldResume ? 'continue' : 'restart'}`, { scope: 'lifecycle' })
+  appendExecutionLog(taskId, `Task resumed, mode: ${shouldResume ? 'continue' : 'restart'}`, {
+    scope: 'lifecycle',
+  })
 
   // 写入结构化事件日志
   appendJsonlLog(taskId, {

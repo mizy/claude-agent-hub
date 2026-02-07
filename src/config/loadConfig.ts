@@ -3,7 +3,10 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import YAML from 'yaml'
+import { createLogger } from '../shared/logger.js'
 import { configSchema, type Config } from './schema.js'
+
+const logger = createLogger('config')
 
 const CONFIG_FILENAME = '.claude-agent-hub.yaml'
 
@@ -46,8 +49,7 @@ export async function loadConfig(cwd?: string): Promise<Config> {
   // 验证配置
   const result = configSchema.safeParse(parsed)
   if (!result.success) {
-    console.warn('配置文件格式错误，使用默认配置')
-    console.warn(result.error.issues)
+    logger.warn('Config file format error, using defaults', result.error.issues)
     return getDefaultConfig()
   }
 
@@ -75,12 +77,12 @@ export function getDefaultConfig(): Config {
     tasks: {
       default_priority: 'medium',
       max_retries: 3,
-      timeout: '30m'
+      timeout: '30m',
     },
     git: {
       base_branch: 'main',
       branch_prefix: 'agent/',
-      auto_push: false
+      auto_push: false,
     },
     backend: {
       type: 'claude-code',

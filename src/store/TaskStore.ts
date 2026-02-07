@@ -212,24 +212,21 @@ export function updateTask(taskId: string, updates: Partial<Task>): void {
     return
   }
 
-  // 状态变化时记录详细日志（用于问题追溯）
+  // 状态变化时记录日志
   if (updates.status && updates.status !== task.status) {
-    const caller = new Error().stack?.split('\n').slice(2, 5).join('\n') || 'unknown'
-    const logMsg =
-      `Task status change: ${task.id} [${task.status} → ${updates.status}]\n` +
-      `  Title: ${task.title.slice(0, 50)}...\n` +
-      `  Caller:\n${caller}`
-    logger.info(logMsg)
+    logger.info(`[STATUS] ${task.id.slice(0, 8)} ${task.status} → ${updates.status}`)
 
     // 同时写入任务日志文件（异步，延迟导入避免循环依赖）
-    import('./TaskLogStore.js').then(({ appendExecutionLog }) => {
-      appendExecutionLog(taskId, `[STATUS] ${task.status} → ${updates.status}\n${caller}`, {
-        scope: 'lifecycle',
-        level: updates.status === 'failed' ? 'error' : 'info',
+    import('./TaskLogStore.js')
+      .then(({ appendExecutionLog }) => {
+        appendExecutionLog(taskId, `[STATUS] ${task.status} → ${updates.status}`, {
+          scope: 'lifecycle',
+          level: updates.status === 'failed' ? 'error' : 'info',
+        })
       })
-    }).catch(() => {
-      // 忽略日志写入失败
-    })
+      .catch(() => {
+        // 忽略日志写入失败
+      })
   }
 
   const updated = { ...task, ...updates }

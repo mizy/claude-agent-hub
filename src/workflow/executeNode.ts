@@ -3,13 +3,8 @@
  * 作为 NodeWorker 的 processor 使用
  */
 
-import {
-  getWorkflow,
-  getInstance,
-  markNodeRunning,
-  markNodeFailed,
-  handleNodeResult,
-} from './index.js'
+import { markNodeRunning, markNodeFailed, handleNodeResult } from './index.js'
+import { getWorkflow, getInstance } from '../store/WorkflowStore.js'
 import { createLogger, logError as logErrorHelper } from '../shared/logger.js'
 import { logNodeStarted, logNodeCompleted, logNodeFailed } from './logNodeExecution.js'
 import { executeNodeByType } from './nodeTypeHandlers.js'

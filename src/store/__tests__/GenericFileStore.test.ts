@@ -33,7 +33,7 @@ describe('FileStore', () => {
 
     store = new FileStore<TestEntity, TestSummary>({
       dir: TEST_DIR,
-      toSummary: (e) => ({ id: e.id, name: e.name }),
+      toSummary: e => ({ id: e.id, name: e.name }),
     })
   })
 
@@ -152,7 +152,7 @@ describe('FileStore', () => {
     })
 
     it('query 使用函数过滤', async () => {
-      const highCount = await store.query((e) => e.count >= 20)
+      const highCount = await store.query(e => e.count >= 20)
       expect(highCount).toHaveLength(2)
       expect(highCount.map(e => e.id).sort()).toEqual(['entity-2', 'entity-3'])
     })
@@ -200,7 +200,7 @@ describe('FileStore', () => {
         mode: 'directory',
         dataFile: 'entity.json',
         partialIdMatch: true,
-        toSummary: (e) => ({ id: e.id, name: e.name }),
+        toSummary: e => ({ id: e.id, name: e.name }),
       })
     })
 

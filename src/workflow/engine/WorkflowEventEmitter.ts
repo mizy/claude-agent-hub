@@ -188,10 +188,18 @@ class WorkflowEventEmitter extends EventEmitter {
       error: errorMessage,
     })
 
-    logger.debug(`Event: node:failed - ${event.nodeId} (attempt ${event.attempt}, retry: ${event.willRetry})`)
+    logger.debug(
+      `Event: node:failed - ${event.nodeId} (attempt ${event.attempt}, retry: ${event.willRetry})`
+    )
   }
 
-  emitNodeSkipped(event: { workflowId: string; instanceId: string; nodeId: string; nodeName: string; nodeType: string }): void {
+  emitNodeSkipped(event: {
+    workflowId: string
+    instanceId: string
+    nodeId: string
+    nodeName: string
+    nodeType: string
+  }): void {
     const fullEvent: WorkflowEvent = {
       ...event,
       type: 'node:skipped',
@@ -263,7 +271,9 @@ class WorkflowEventEmitter extends EventEmitter {
       stats.summary.totalCostUsd = event.totalCostUsd
     }
 
-    logger.info(`Event: workflow:completed - ${event.workflowName} (${event.totalDurationMs}ms, $${event.totalCostUsd.toFixed(4)})`)
+    logger.info(
+      `Event: workflow:completed - ${event.workflowName} (${event.totalDurationMs}ms, $${event.totalCostUsd.toFixed(4)})`
+    )
   }
 
   emitWorkflowFailed(event: Omit<WorkflowFailedEvent, 'type' | 'timestamp'>): void {
@@ -375,7 +385,8 @@ class WorkflowEventEmitter extends EventEmitter {
       failedNodes,
       skippedNodes,
       runningNodes,
-      pendingNodes: stats.summary.totalNodes - completedNodes - failedNodes - skippedNodes - runningNodes,
+      pendingNodes:
+        stats.summary.totalNodes - completedNodes - failedNodes - skippedNodes - runningNodes,
       totalCostUsd,
       avgNodeDurationMs: completedCount > 0 ? Math.round(totalDurationMs / completedCount) : 0,
     }

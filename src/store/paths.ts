@@ -105,13 +105,17 @@ export const TASK_PATHS = {
   /** 获取进程信息文件路径 */
   getProcessPath: (taskId: string) => join(TASKS_DIR, taskId, FILE_NAMES.PROCESS),
   /** 获取执行日志路径 */
-  getExecutionLogPath: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.EXECUTION_LOG),
+  getExecutionLogPath: (taskId: string) =>
+    join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.EXECUTION_LOG),
   /** 获取对话日志路径 */
-  getConversationLogPath: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.CONVERSATION_LOG),
+  getConversationLogPath: (taskId: string) =>
+    join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.CONVERSATION_LOG),
   /** 获取 JSONL 日志路径 */
-  getJsonlLogPath: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.EVENTS_JSONL),
+  getJsonlLogPath: (taskId: string) =>
+    join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.EVENTS_JSONL),
   /** 获取对话 JSONL 路径 */
-  getConversationJsonlPath: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.CONVERSATION_JSONL),
+  getConversationJsonlPath: (taskId: string) =>
+    join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.CONVERSATION_JSONL),
   /** 获取结果文件路径 */
   getResultPath: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.OUTPUTS, FILE_NAMES.RESULT),
   /** @deprecated steps 目录已不再使用 */
@@ -157,4 +161,3 @@ export const getConversationJsonlPath = TASK_PATHS.getConversationJsonlPath
 export const getResultFilePath = TASK_PATHS.getResultPath
 /** @deprecated steps 目录已不再使用 */
 export const getStepFilePath = TASK_PATHS.getStepPath
-

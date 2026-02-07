@@ -32,11 +32,11 @@ describe('Low Priority Task Tests', () => {
       testTaskId = task.id
 
       expect(task).toBeDefined()
-      expect(task.id).toBeDefined()
+      expect(task.id).toMatch(/^[a-f0-9-]+$/)
       expect(task.title).toBe('Low优先级测试任务')
       expect(task.priority).toBe('low')
       expect(task.status).toBe('pending')
-      expect(task.createdAt).toBeDefined()
+      expect(task.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}/)
     })
 
     it('应该能够读取创建的任务', async () => {

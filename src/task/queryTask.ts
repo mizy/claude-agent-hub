@@ -13,7 +13,6 @@ import {
   isProcessRunning,
   getTaskFolder,
 } from '../store/TaskStore.js'
-import { ui } from '../cli/output.js'
 import { getStore } from '../store/index.js'
 import {
   getTaskWorkflow,
@@ -93,7 +92,7 @@ function formatProgressBar(percent: number, width = 10): string {
  */
 function renderTaskList(tasks: Task[], showProgress: boolean): void {
   if (tasks.length === 0) {
-    ui.warn('暂无任务')
+    console.warn(chalk.yellow('!'), '暂无任务')
     return
   }
 
@@ -138,13 +137,14 @@ function renderTaskList(tasks: Task[], showProgress: boolean): void {
     }
 
     // Format ID for display
-    const idDisplay = task.id.length > 24
-      ? task.id.slice(0, 24) + '...'
-      : task.id
+    const idDisplay = task.id.length > 24 ? task.id.slice(0, 24) + '...' : task.id
 
     // Progress display
     let progressDisplay = '-'
-    if (showProgress && (task.status === 'developing' || task.status === 'completed' || task.status === 'failed')) {
+    if (
+      showProgress &&
+      (task.status === 'developing' || task.status === 'completed' || task.status === 'failed')
+    ) {
       const progress = getTaskProgress(task.id)
       if (progress) {
         const bar = formatProgressBar(progress.percent)
@@ -177,7 +177,7 @@ function renderTaskList(tasks: Task[], showProgress: boolean): void {
         statusFn(task.status),
         pidDisplay,
         priorityFn(task.priority),
-        task.createdAt.split('T')[0] ?? ''
+        task.createdAt.split('T')[0] ?? '',
       ])
     }
   }
@@ -189,9 +189,7 @@ function renderTaskList(tasks: Task[], showProgress: boolean): void {
  * 获取过滤后的任务列表
  */
 function getFilteredTasks(options: ListOptions): Task[] {
-  let tasks = options.status
-    ? getTasksByStatus(options.status as TaskStatus)
-    : getAllTasks()
+  let tasks = options.status ? getTasksByStatus(options.status as TaskStatus) : getAllTasks()
 
   if (options.agent) {
     tasks = tasks.filter(t => t.assignee === options.agent)
@@ -204,7 +202,7 @@ function getFilteredTasks(options: ListOptions): Task[] {
  * 列出任务
  */
 export async function listTasks(options: ListOptions): Promise<void> {
-  const showProgress = options.progress ?? true  // 默认显示进度
+  const showProgress = options.progress ?? true // 默认显示进度
 
   if (options.watch) {
     // Watch 模式：持续更新
@@ -282,7 +280,7 @@ export async function getTaskDetail(id: string, options: GetTaskDetailOptions = 
     if (options.json) {
       console.log(JSON.stringify({ error: `Task "${id}" not found` }))
     } else {
-      ui.error(`Task "${id}" not found`)
+      console.error(chalk.red('✗'), `Task "${id}" not found`)
     }
     return
   }
@@ -349,12 +347,18 @@ export async function getTaskDetail(id: string, options: GetTaskDetailOptions = 
         if (node.type === 'start' || node.type === 'end') continue
 
         const state = instance.nodeStates[node.id]
-        const statusIcon = state?.status === 'done' ? chalk.green('✓') :
-                          state?.status === 'failed' ? chalk.red('✗') :
-                          state?.status === 'running' ? chalk.cyan('⏳') :
-                          chalk.gray('○')
+        const statusIcon =
+          state?.status === 'done'
+            ? chalk.green('✓')
+            : state?.status === 'failed'
+              ? chalk.red('✗')
+              : state?.status === 'running'
+                ? chalk.cyan('⏳')
+                : chalk.gray('○')
 
-        const durationStr = state?.durationMs ? chalk.gray(` (${Math.round(state.durationMs / 1000)}s)`) : ''
+        const durationStr = state?.durationMs
+          ? chalk.gray(` (${Math.round(state.durationMs / 1000)}s)`)
+          : ''
         console.log(`  ${statusIcon} ${node.name}${durationStr}`)
 
         if (state?.error) {
@@ -438,10 +442,6 @@ export async function pollPendingTask(): Promise<Task | null> {
 
   return pendingTasks[0] ?? null
 }
-
-// 向后兼容
-/** @deprecated 使用 pollPendingTask 代替 */
-export const pollTask = pollPendingTask
 
 // Re-export getAllTasks for external use
 export { getAllTasks }

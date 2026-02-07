@@ -5,6 +5,7 @@
 
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { createTask } from '../../src/task/createTask'
 import { getTask } from '../../src/store/TaskStore'
 
@@ -31,7 +32,7 @@ export async function initMediumTestEnv(): Promise<TestEnvResult> {
 
   try {
     // 1. 检查数据目录
-    const dataDir = process.env.CAH_DATA_DIR || resolve(process.cwd(), '.cah-data')
+    const dataDir = process.env.CAH_DATA_DIR || resolve(tmpdir(), 'cah-test-data')
     const tasksDir = resolve(dataDir, 'tasks')
 
     if (!existsSync(tasksDir)) {

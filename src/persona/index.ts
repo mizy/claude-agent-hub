@@ -10,11 +10,7 @@
  */
 
 // 内置 Persona
-export {
-  BUILTIN_PERSONAS,
-  getBuiltinPersona,
-  getAvailablePersonas,
-} from './builtinPersonas.js'
+export { BUILTIN_PERSONAS, getBuiltinPersona, getAvailablePersonas } from './builtinPersonas.js'
 
 // Persona 加载
 export { loadPersona } from './loadPersona.js'

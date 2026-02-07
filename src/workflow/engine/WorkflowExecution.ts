@@ -204,10 +204,7 @@ function canExecuteAsLoopBodyNode(
 /**
  * 获取可执行的节点列表
  */
-export function getReadyNodes(
-  workflow: Workflow,
-  instance: WorkflowInstance
-): string[] {
+export function getReadyNodes(workflow: Workflow, instance: WorkflowInstance): string[] {
   const readyNodes: string[] = []
 
   for (const node of workflow.nodes) {
@@ -278,7 +275,9 @@ export async function handleNodeResult(
           resetNodeState(instanceId, bodyNodeId)
         }
 
-        logger.debug(`Loop node ${nodeId}: continuing with body nodes ${loopOutput.bodyNodes.join(', ')}`)
+        logger.debug(
+          `Loop node ${nodeId}: continuing with body nodes ${loopOutput.bodyNodes.join(', ')}`
+        )
         // 只入队第一个节点（循环体入口），后续节点通过 edges 连接
         return [loopOutput.bodyNodes[0]!]
       } else {
@@ -304,8 +303,7 @@ export async function handleNodeResult(
 
         // 检查是否有显式的出边
         const outEdges = workflow.edges.filter(e => e.from === nodeId)
-        const hasExplicitEdges = outEdges.length > 0 &&
-          !outEdges.every(e => e.to === loopNodeId)
+        const hasExplicitEdges = outEdges.length > 0 && !outEdges.every(e => e.to === loopNodeId)
 
         if (isInBodyNodes && !hasExplicitEdges) {
           if (isLastBody) {
@@ -389,11 +387,7 @@ function findParentLoop(
 /**
  * 检查节点是否是循环体的最后一个节点
  */
-function isLastBodyNode(
-  nodeId: string,
-  bodyNodes: string[],
-  instance: WorkflowInstance
-): boolean {
+function isLastBodyNode(nodeId: string, bodyNodes: string[], instance: WorkflowInstance): boolean {
   // 如果 bodyNodes 只有一个节点，它就是最后一个
   if (bodyNodes.length === 1 && bodyNodes[0] === nodeId) {
     return true

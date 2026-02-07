@@ -13,7 +13,8 @@ import {
   markNodeDone,
   markNodeFailed as stateMarkNodeFailed,
 } from '../../workflow/engine/StateManager.js'
-import { handleNodeResult, getWorkflow } from '../../workflow/index.js'
+import { handleNodeResult } from '../../workflow/index.js'
+import { getWorkflow } from '../../store/WorkflowStore.js'
 import type { ParsedApproval, ApprovalResult } from './types.js'
 
 const logger = createLogger('approval-handler')
@@ -77,7 +78,7 @@ export function parseApprovalCommand(text: string): ParsedApproval | null {
  */
 export async function handleApproval(
   approval: ParsedApproval,
-  onResult?: (result: ApprovalResult) => Promise<void>,
+  onResult?: (result: ApprovalResult) => Promise<void>
 ): Promise<string> {
   const waitingJobs = getWaitingHumanJobs()
 
@@ -87,9 +88,8 @@ export async function handleApproval(
 
   let targetJob = waitingJobs[0]
   if (approval.nodeId) {
-    const found = waitingJobs.find(j =>
-      j.data.nodeId === approval.nodeId ||
-      j.data.nodeId.startsWith(approval.nodeId!)
+    const found = waitingJobs.find(
+      j => j.data.nodeId === approval.nodeId || j.data.nodeId.startsWith(approval.nodeId!)
     )
     if (!found) {
       return `未找到节点: ${approval.nodeId}\n当前等待审批的节点: ${waitingJobs.map(j => j.data.nodeId).join(', ')}`
@@ -102,6 +102,7 @@ export async function handleApproval(
   }
 
   const { instanceId, nodeId, workflowId } = targetJob.data
+  logger.info(`⚡ ${approval.action} node=${nodeId}`)
 
   try {
     if (approval.action === 'approve') {
@@ -134,7 +135,7 @@ export async function handleApproval(
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
-    logger.error(`Failed to handle approval: ${errorMessage}`)
+    logger.error(`approval failed node=${nodeId}: ${errorMessage}`)
     return `处理失败: ${errorMessage}`
   }
 }

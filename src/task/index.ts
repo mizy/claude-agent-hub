@@ -31,7 +31,6 @@ export {
   listTasks,
   getTaskDetail,
   pollPendingTask,
-  pollTask,
   getAllTasks,
   type ListOptions,
 } from './queryTask.js'

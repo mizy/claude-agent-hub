@@ -15,9 +15,7 @@ export interface ShowLogsOptions {
 }
 
 export async function showDaemonLogs(options: ShowLogsOptions): Promise<void> {
-  const logFile = options.error
-    ? join(DATA_DIR, 'daemon.err.log')
-    : join(DATA_DIR, 'daemon.log')
+  const logFile = options.error ? join(DATA_DIR, 'daemon.err.log') : join(DATA_DIR, 'daemon.log')
 
   if (!existsSync(logFile)) {
     console.log(chalk.yellow(`日志文件不存在: ${logFile}`))
@@ -41,7 +39,7 @@ export async function showDaemonLogs(options: ShowLogsOptions): Promise<void> {
     })
 
     // 等待 tail 进程结束
-    await new Promise<void>((resolve) => {
+    await new Promise<void>(resolve => {
       tail.on('close', () => resolve())
     })
   } else {

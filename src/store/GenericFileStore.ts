@@ -149,9 +149,7 @@ export class FileStore<T, S = T> {
     }
 
     // 文件模式：只返回对应扩展名的文件
-    return entries
-      .filter(f => f.endsWith(this.ext))
-      .map(f => this.getIdFromEntry(f))
+    return entries.filter(f => f.endsWith(this.ext)).map(f => this.getIdFromEntry(f))
   }
 
   /**
@@ -279,6 +277,7 @@ export class FileStore<T, S = T> {
   async getAllSummaries(): Promise<S[]> {
     const items = await this.getAll()
     if (!this.toSummary) {
+      // Safe: when toSummary is not provided, S defaults to T (class generic: FileStore<T, S = T>)
       return items as unknown as S[]
     }
     return items.map(this.toSummary)
@@ -291,16 +290,17 @@ export class FileStore<T, S = T> {
    */
   async query(filter: QueryFilter<T>): Promise<T[]> {
     const items = await this.getAll()
-    const predicate = typeof filter === 'function'
-      ? filter
-      : (item: T) => {
-          for (const [key, value] of Object.entries(filter)) {
-            if ((item as Record<string, unknown>)[key] !== value) {
-              return false
+    const predicate =
+      typeof filter === 'function'
+        ? filter
+        : (item: T) => {
+            for (const [key, value] of Object.entries(filter)) {
+              if ((item as Record<string, unknown>)[key] !== value) {
+                return false
+              }
             }
+            return true
           }
-          return true
-        }
     return items.filter(predicate)
   }
 
@@ -312,6 +312,7 @@ export class FileStore<T, S = T> {
   async querySummaries(filter: QueryFilter<T>): Promise<S[]> {
     const items = await this.query(filter)
     if (!this.toSummary) {
+      // Safe: when toSummary is not provided, S defaults to T (class generic: FileStore<T, S = T>)
       return items as unknown as S[]
     }
     return items.map(this.toSummary)

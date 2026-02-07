@@ -2,7 +2,13 @@ import { Command } from 'commander'
 import chalk from 'chalk'
 import { createTask } from '../../task/createTask.js'
 import { listTasks, getTaskDetail } from '../../task/queryTask.js'
-import { deleteTask, clearTasks, stopTask, completeTask, rejectTask } from '../../task/manageTaskLifecycle.js'
+import {
+  deleteTask,
+  clearTasks,
+  stopTask,
+  completeTask,
+  rejectTask,
+} from '../../task/manageTaskLifecycle.js'
 import {
   detectOrphanedTasks,
   resumeTask,
@@ -26,15 +32,13 @@ import {
 import { writeFileSync } from 'fs'
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
-import { success, error, info, warn } from '../output.js'
+import { success, error, info, warn, list } from '../output.js'
 import { AppError } from '../../shared/error.js'
 import { formatDuration } from '../../shared/formatTime.js'
-import type { TaskStatus } from '../../types/task.js'
+import { parseTaskStatus } from '../../types/task.js'
 
 export function registerTaskCommands(program: Command) {
-  const task = program
-    .command('task')
-    .description('任务管理命令')
+  const task = program.command('task').description('任务管理命令')
 
   task
     .command('add')
@@ -43,8 +47,18 @@ export function registerTaskCommands(program: Command) {
     .option('-d, --description <desc>', '任务描述')
     .option('-p, --priority <priority>', '优先级 (low/medium/high)', 'medium')
     .option('-a, --assignee <agent>', '指定 Agent')
-    .action(async (options) => {
-      await createTask(options)
+    .action(async options => {
+      const task = await createTask(options)
+      success('任务创建成功')
+      const items = [
+        { label: 'ID', value: task.id.slice(0, 8), dim: true },
+        { label: '标题', value: task.title, dim: true },
+        { label: '优先级', value: task.priority, dim: true },
+      ]
+      if (task.assignee) {
+        items.push({ label: '指派给', value: task.assignee, dim: true })
+      }
+      list(items)
     })
 
   task
@@ -55,7 +69,7 @@ export function registerTaskCommands(program: Command) {
     .option('--no-progress', '隐藏进度显示')
     .option('-w, --watch', '持续更新模式')
     .option('-i, --interval <ms>', '更新间隔 (毫秒)', '2000')
-    .action(async (options) => {
+    .action(async options => {
       await listTasks({
         ...options,
         interval: parseInt(options.interval, 10),
@@ -78,7 +92,7 @@ export function registerTaskCommands(program: Command) {
     .alias('rm')
     .description('删除任务')
     .argument('<id>', '任务 ID')
-    .action((id) => {
+    .action(id => {
       const result = deleteTask(id)
       if (result.success) {
         success(`Deleted task: ${result.task?.title}`)
@@ -93,7 +107,7 @@ export function registerTaskCommands(program: Command) {
     .alias('cancel')
     .description('停止/取消任务')
     .argument('<id>', '任务 ID')
-    .action((id) => {
+    .action(id => {
       const result = stopTask(id)
       if (result.success) {
         success(`Stopped task: ${result.task?.title}`)
@@ -108,9 +122,9 @@ export function registerTaskCommands(program: Command) {
     .description('清除任务')
     .option('-s, --status <status>', '按状态清除 (pending/completed/failed/cancelled)')
     .option('-a, --all', '清除所有任务 (包括运行中的，会杀掉进程)')
-    .action((options) => {
+    .action(options => {
       const result = clearTasks({
-        status: options.status as TaskStatus | undefined,
+        status: parseTaskStatus(options.status) ?? undefined,
         all: options.all,
       })
       if (result.success) {
@@ -132,7 +146,7 @@ export function registerTaskCommands(program: Command) {
     .alias('done')
     .description('完成任务 (审核通过)')
     .argument('<id>', '任务 ID')
-    .action((id) => {
+    .action(id => {
       const result = completeTask(id)
       if (result.success) {
         success(`Task completed: ${result.task?.title}`)
@@ -318,17 +332,29 @@ export function registerTaskCommands(program: Command) {
       // 显示节点详情
       console.log(chalk.cyan('\n📋 Node Details\n'))
       for (const node of stats.nodes) {
-        const statusIcon = node.status === 'completed' ? '✓' :
-                          node.status === 'failed' ? '✗' :
-                          node.status === 'skipped' ? '○' : '•'
-        const statusColor = node.status === 'completed' ? chalk.green :
-                           node.status === 'failed' ? chalk.red :
-                           node.status === 'skipped' ? chalk.gray : chalk.yellow
+        const statusIcon =
+          node.status === 'completed'
+            ? '✓'
+            : node.status === 'failed'
+              ? '✗'
+              : node.status === 'skipped'
+                ? '○'
+                : '•'
+        const statusColor =
+          node.status === 'completed'
+            ? chalk.green
+            : node.status === 'failed'
+              ? chalk.red
+              : node.status === 'skipped'
+                ? chalk.gray
+                : chalk.yellow
 
         const duration = node.durationMs ? ` (${formatDuration(node.durationMs)})` : ''
         const cost = node.costUsd ? ` $${node.costUsd.toFixed(4)}` : ''
 
-        console.log(statusColor(`  ${statusIcon} ${node.nodeName} [${node.nodeType}]${duration}${cost}`))
+        console.log(
+          statusColor(`  ${statusIcon} ${node.nodeName} [${node.nodeType}]${duration}${cost}`)
+        )
         if (node.error) {
           console.log(chalk.red(`      Error: ${node.error}`))
         }
@@ -378,7 +404,7 @@ export function registerTaskCommands(program: Command) {
         const head = spawn('head', ['-n', options.head, logPath], {
           stdio: 'inherit',
         })
-        head.on('error', (err) => {
+        head.on('error', err => {
           error(`Failed to read logs: ${err.message}`)
         })
       } else {
@@ -392,7 +418,7 @@ export function registerTaskCommands(program: Command) {
           stdio: 'inherit',
         })
 
-        tail.on('error', (err) => {
+        tail.on('error', err => {
           error(`Failed to tail logs: ${err.message}`)
         })
       }

@@ -1,102 +1,17 @@
 /**
- * 新节点类型执行器
- * 为 delay, schedule, loop, switch, assign, script, foreach 节点提供执行逻辑
+ * Node type executors
+ *
+ * Execution logic for delay, schedule, loop, switch, assign, script, foreach nodes.
  */
 
-import { Parser } from 'expr-eval'
 import { createLogger } from '../../shared/logger.js'
+import { evaluateExpression } from './ExpressionEvaluator.js'
 import { evaluateCondition } from './ConditionEvaluator.js'
-import type {
-  WorkflowNode,
-  WorkflowInstance,
-  EvalContext,
-} from '../types.js'
+import type { WorkflowNode, WorkflowInstance, EvalContext } from '../types.js'
+
+export { evaluateExpression } from './ExpressionEvaluator.js'
 
 const logger = createLogger('node-executor')
-
-// 创建通用表达式 Parser
-const parser = new Parser({
-  operators: {
-    assignment: false,
-    fndef: false,
-    logical: true,
-    comparison: true,
-    concatenate: true,
-    conditional: true,
-    add: true,
-    multiply: true,
-  },
-})
-
-// 添加内置函数
-parser.functions.len = (arr: unknown[]) => Array.isArray(arr) ? arr.length : 0
-parser.functions.has = (obj: Record<string, unknown>, key: string) =>
-  obj != null && typeof obj === 'object' && key in obj
-parser.functions.get = (obj: Record<string, unknown>, key: string, defaultValue?: unknown) =>
-  obj?.[key] ?? defaultValue
-parser.functions.str = (val: unknown) => String(val)
-parser.functions.num = (val: unknown) => Number(val)
-parser.functions.bool = (val: unknown) => Boolean(val)
-parser.functions.now = () => Date.now()
-parser.functions.floor = Math.floor
-parser.functions.ceil = Math.ceil
-parser.functions.round = Math.round
-parser.functions.min = Math.min
-parser.functions.max = Math.max
-parser.functions.abs = Math.abs
-
-/**
- * 通用表达式求值
- */
-export function evaluateExpression(
-  expression: string,
-  context: EvalContext
-): unknown {
-  try {
-    // 预处理表达式
-    let processed = expression.trim()
-
-    // 将 JavaScript 全局对象方法调用转换为内置函数
-    processed = processed.replace(/Date\.now\(\)/g, 'now()')
-    processed = processed.replace(/Math\.floor\(/g, 'floor(')
-    processed = processed.replace(/Math\.ceil\(/g, 'ceil(')
-    processed = processed.replace(/Math\.round\(/g, 'round(')
-    processed = processed.replace(/Math\.min\(/g, 'min(')
-    processed = processed.replace(/Math\.max\(/g, 'max(')
-    processed = processed.replace(/Math\.abs\(/g, 'abs(')
-
-    // 逻辑运算符
-    processed = processed.replace(/&&/g, ' and ')
-    processed = processed.replace(/\|\|/g, ' or ')
-    processed = processed.replace(/!/g, ' not ')
-
-    const expr = parser.parse(processed)
-
-    const evalScope: Record<string, unknown> = {
-      outputs: context.outputs ?? {},
-      variables: context.variables ?? {},
-      loopCount: context.loopCount ?? 0,
-      nodeStates: context.nodeStates ?? {},
-      inputs: context.inputs ?? {},
-      true: true,
-      false: false,
-      null: null,
-    }
-
-    // 添加 loopContext
-    if (context.loopContext) {
-      evalScope.index = context.loopContext.index
-      evalScope.item = context.loopContext.item
-      evalScope.total = context.loopContext.total
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return expr.evaluate(evalScope as any)
-  } catch (error) {
-    logger.error(`Failed to evaluate expression: "${expression}"`, error)
-    throw error
-  }
-}
 
 // ============ Delay Node ============
 
@@ -106,10 +21,7 @@ export interface DelayResult {
   error?: string
 }
 
-export function executeDelayNode(
-  node: WorkflowNode,
-  _instance: WorkflowInstance
-): DelayResult {
+export function executeDelayNode(node: WorkflowNode, _instance: WorkflowInstance): DelayResult {
   const config = node.delay
   if (!config) {
     return { success: false, delayMs: 0, error: 'Delay config missing' }
@@ -163,8 +75,6 @@ export function executeScheduleNode(
   }
 
   if (config.cron) {
-    // 计算下一次 cron 执行时间
-    // TODO: 使用 cron-parser 库
     const nextTime = calculateNextCronTime(config.cron, config.timezone)
     if (nextTime) {
       logger.info(`Schedule node ${node.id}: waiting for cron ${config.cron}`)
@@ -224,7 +134,9 @@ export function executeSwitchNode(
     for (const caseItem of config.cases) {
       if (caseItem.value === 'default') continue
       if (caseItem.value === value) {
-        logger.info(`Switch node ${node.id}: matched case ${caseItem.value} → ${caseItem.targetNode}`)
+        logger.info(
+          `Switch node ${node.id}: matched case ${caseItem.value} → ${caseItem.targetNode}`
+        )
         return { success: true, targetNode: caseItem.targetNode }
       }
     }
@@ -317,7 +229,9 @@ export function executeScriptNode(
         logger.debug(`Script node ${node.id}: ${assignment.variable} = ${JSON.stringify(value)}`)
       }
 
-      logger.info(`Script node ${node.id}: updated ${Object.keys(updates).length} variables via assignments`)
+      logger.info(
+        `Script node ${node.id}: updated ${Object.keys(updates).length} variables via assignments`
+      )
       return {
         success: true,
         updates,
@@ -415,7 +329,9 @@ export function executeLoopNode(
 
       const shouldContinue = (step > 0 && current < end) || (step < 0 && current > end)
 
-      logger.debug(`Loop node ${node.id} (for): ${loopVar}=${current}, end=${end}, continue=${shouldContinue}`)
+      logger.debug(
+        `Loop node ${node.id} (for): ${loopVar}=${current}, end=${end}, continue=${shouldContinue}`
+      )
 
       return {
         success: true,
@@ -463,7 +379,9 @@ export function executeForeachNode(
 
     // 检查最大迭代次数
     if (config.maxIterations && collection.length > config.maxIterations) {
-      logger.warn(`Foreach node ${node.id}: collection size (${collection.length}) exceeds max (${config.maxIterations})`)
+      logger.warn(
+        `Foreach node ${node.id}: collection size (${collection.length}) exceeds max (${config.maxIterations})`
+      )
       return {
         success: false,
         error: `Collection size (${collection.length}) exceeds maxIterations (${config.maxIterations})`,

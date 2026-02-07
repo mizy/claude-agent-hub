@@ -44,7 +44,6 @@ export {
 export {
   estimateNodeDuration,
   estimateRemainingTime,
-  formatDuration,
   formatTimeEstimate,
   clearCache,
   type TimeEstimate,

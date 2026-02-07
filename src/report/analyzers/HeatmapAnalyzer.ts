@@ -10,11 +10,14 @@ import type { TaskStats, NodeCombination } from './types.js'
  * 统计相邻节点的组合频率和成功率
  */
 export function analyzeNodeHeatmap(stats: TaskStats[]): NodeCombination[] {
-  const combinationMap = new Map<string, {
-    count: number
-    successCount: number
-    totalDurationMs: number
-  }>()
+  const combinationMap = new Map<
+    string,
+    {
+      count: number
+      successCount: number
+      totalDurationMs: number
+    }
+  >()
 
   for (const task of stats) {
     const nodeNames = task.nodeNames
@@ -25,7 +28,11 @@ export function analyzeNodeHeatmap(stats: TaskStats[]): NodeCombination[] {
     // 统计相邻节点对
     for (let i = 0; i < nodeNames.length - 1; i++) {
       const combo = `${nodeNames[i]} → ${nodeNames[i + 1]}`
-      const existing = combinationMap.get(combo) || { count: 0, successCount: 0, totalDurationMs: 0 }
+      const existing = combinationMap.get(combo) || {
+        count: 0,
+        successCount: 0,
+        totalDurationMs: 0,
+      }
       existing.count++
       if (isSuccess) existing.successCount++
 

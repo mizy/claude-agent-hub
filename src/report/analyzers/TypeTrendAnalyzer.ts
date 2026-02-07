@@ -64,14 +64,17 @@ export function calculatePeriodTrend(
  * 分析节点性能
  */
 export function analyzeNodePerformance(stats: TaskStats[]): NodePerformance[] {
-  const nodeMap = new Map<string, {
-    nodeName: string
-    nodeType: string
-    executions: number
-    successes: number
-    totalDurationMs: number
-    totalCostUsd: number
-  }>()
+  const nodeMap = new Map<
+    string,
+    {
+      nodeName: string
+      nodeType: string
+      executions: number
+      successes: number
+      totalDurationMs: number
+      totalCostUsd: number
+    }
+  >()
 
   for (const task of stats) {
     for (const node of task.nodes) {
@@ -113,13 +116,16 @@ export function analyzeNodePerformance(stats: TaskStats[]): NodePerformance[] {
  * 分析任务类型统计
  */
 export function analyzeCategoryStats(stats: TaskStats[]): CategoryStats[] {
-  const categoryMap = new Map<TaskCategory, {
-    taskCount: number
-    successCount: number
-    totalDurationMs: number
-    totalCostUsd: number
-    totalNodeCount: number
-  }>()
+  const categoryMap = new Map<
+    TaskCategory,
+    {
+      taskCount: number
+      successCount: number
+      totalDurationMs: number
+      totalCostUsd: number
+      totalNodeCount: number
+    }
+  >()
 
   for (const task of stats) {
     const cat = task.category || 'other'

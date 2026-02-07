@@ -34,7 +34,8 @@ export async function getDaemonStatus(): Promise<void> {
   console.log(`${chalk.bold('运行时间:')}   ${hours}h ${minutes}m`)
 
   // 显示运行中的任务
-  const runningTasks = store.getTasksByStatus('planning')
+  const runningTasks = store
+    .getTasksByStatus('planning')
     .concat(store.getTasksByStatus('developing'))
   if (runningTasks.length > 0) {
     console.log('')

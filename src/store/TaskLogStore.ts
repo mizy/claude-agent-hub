@@ -3,7 +3,13 @@
  */
 
 import { existsSync, mkdirSync } from 'fs'
-import { createLogger, formatFileLogLine, formatISOTimestamp, stripAnsi, type LogLevel } from '../shared/logger.js'
+import {
+  createLogger,
+  formatFileLogLine,
+  formatISOTimestamp,
+  stripAnsi,
+  type LogLevel,
+} from '../shared/logger.js'
 import {
   getTaskLogsDir,
   getExecutionLogPath,
@@ -161,7 +167,10 @@ export interface JsonlLogEntry {
  * - 日志分析工具解析
  * - 追加写入不影响已有数据
  */
-export function appendJsonlLog(taskId: string, entry: Omit<JsonlLogEntry, 'timestamp' | 'taskId'>): void {
+export function appendJsonlLog(
+  taskId: string,
+  entry: Omit<JsonlLogEntry, 'timestamp' | 'taskId'>
+): void {
   const logPath = getJsonlLogPath(taskId)
   const logDir = getTaskLogsDir(taskId)
 

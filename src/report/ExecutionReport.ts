@@ -3,7 +3,11 @@
  * 生成详细的任务执行报告，支持多种格式输出
  */
 
-import { getExecutionStats, getExecutionTimeline, formatDuration } from '../store/ExecutionStatsStore.js'
+import {
+  getExecutionStats,
+  getExecutionTimeline,
+  formatDuration,
+} from '../store/ExecutionStatsStore.js'
 import { getTask } from '../store/TaskStore.js'
 import { getTaskWorkflow, getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { createLogger } from '../shared/logger.js'
@@ -110,9 +114,10 @@ export function generateExecutionReport(taskId: string): ExecutionReport | null 
       status: instance?.status || task.status,
       startedAt: instance?.startedAt || task.createdAt,
       completedAt: instance?.completedAt,
-      totalDurationMs: stats?.summary?.avgNodeDurationMs && stats?.summary?.nodesCompleted
-        ? stats.summary.avgNodeDurationMs * stats.summary.nodesCompleted
-        : 0,
+      totalDurationMs:
+        stats?.summary?.avgNodeDurationMs && stats?.summary?.nodesCompleted
+          ? stats.summary.avgNodeDurationMs * stats.summary.nodesCompleted
+          : 0,
       totalCostUsd: stats?.summary?.totalCostUsd || summary.totalCostUsd,
     },
     nodes,
@@ -144,9 +149,7 @@ function buildNodeReports(
     let output: string | undefined
     const nodeOutput = instance?.outputs[node.id]
     if (nodeOutput) {
-      const resultStr = typeof nodeOutput === 'string'
-        ? nodeOutput
-        : JSON.stringify(nodeOutput)
+      const resultStr = typeof nodeOutput === 'string' ? nodeOutput : JSON.stringify(nodeOutput)
       output = resultStr.length > 200 ? resultStr.slice(0, 200) + '...' : resultStr
     }
 
@@ -169,11 +172,16 @@ function buildNodeReports(
  */
 function mapNodeStatus(status: string): NodeReport['status'] {
   switch (status) {
-    case 'done': return 'completed'
-    case 'failed': return 'failed'
-    case 'skipped': return 'skipped'
-    case 'running': return 'running'
-    default: return 'pending'
+    case 'done':
+      return 'completed'
+    case 'failed':
+      return 'failed'
+    case 'skipped':
+      return 'skipped'
+    case 'running':
+      return 'running'
+    default:
+      return 'pending'
   }
 }
 
@@ -182,7 +190,11 @@ function mapNodeStatus(status: string): NodeReport['status'] {
  */
 function calculateSummary(
   nodes: NodeReport[],
-  existingSummary?: { totalCostUsd?: number; avgNodeDurationMs?: number; nodesCompleted?: number } | null
+  existingSummary?: {
+    totalCostUsd?: number
+    avgNodeDurationMs?: number
+    nodesCompleted?: number
+  } | null
 ): ExecutionReport['summary'] {
   let completedNodes = 0
   let failedNodes = 0
@@ -294,7 +306,7 @@ export function formatReportForTerminal(report: ExecutionReport): string {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
-        hour12: false
+        hour12: false,
       })
 
       let delta = ''
@@ -401,7 +413,7 @@ export function formatReportForMarkdown(report: ExecutionReport): string {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
-        hour12: false
+        hour12: false,
       })
       const eventStr = formatTimelineEvent(event)
       lines.push(`${timeStr} ${eventStr}`)
@@ -442,11 +454,16 @@ function formatTime(isoString: string): string {
 
 function getStatusIcon(status: NodeReport['status']): string {
   switch (status) {
-    case 'completed': return '✓'
-    case 'failed': return '✗'
-    case 'skipped': return '○'
-    case 'running': return '►'
-    default: return '·'
+    case 'completed':
+      return '✓'
+    case 'failed':
+      return '✗'
+    case 'skipped':
+      return '○'
+    case 'running':
+      return '►'
+    default:
+      return '·'
   }
 }
 

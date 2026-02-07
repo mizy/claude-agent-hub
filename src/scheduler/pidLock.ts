@@ -1,5 +1,7 @@
 /**
- * PID 文件锁 - 防止多个守护进程同时运行
+ * PID 文件锁 - 防止多个服务实例同时运行
+ *
+ * 支持 daemon 和 dashboard 两种服务
  */
 
 import { join } from 'path'
@@ -9,7 +11,11 @@ import { createLogger } from '../shared/logger.js'
 
 const logger = createLogger('pid-lock')
 
-const PID_FILE = join(DATA_DIR, 'daemon.pid')
+export type ServiceName = 'daemon' | 'dashboard'
+
+function pidFilePath(service: ServiceName): string {
+  return join(DATA_DIR, `${service}.pid`)
+}
 
 export interface PidLockInfo {
   pid: number
@@ -23,10 +29,9 @@ export interface PidLockInfo {
  */
 function isProcessRunning(pid: number): boolean {
   try {
-    // 发送信号 0 不会杀死进程，只是检查进程是否存在
     process.kill(pid, 0)
     return true
-  } catch (error) {
+  } catch {
     return false
   }
 }
@@ -34,13 +39,14 @@ function isProcessRunning(pid: number): boolean {
 /**
  * 获取 PID 锁信息
  */
-export function getPidLock(): PidLockInfo | null {
-  if (!existsSync(PID_FILE)) {
+export function getPidLock(service: ServiceName = 'daemon'): PidLockInfo | null {
+  const file = pidFilePath(service)
+  if (!existsSync(file)) {
     return null
   }
 
   try {
-    const content = readFileSync(PID_FILE, 'utf-8')
+    const content = readFileSync(file, 'utf-8')
     return JSON.parse(content)
   } catch (error) {
     logger.warn(`Failed to read PID file: ${error}`)
@@ -50,24 +56,22 @@ export function getPidLock(): PidLockInfo | null {
 
 /**
  * 尝试获取锁
- * @returns true 如果成功获取锁，false 如果已有其他进程持有锁
  */
-export function acquirePidLock(): { success: true } | { success: false; existingLock: PidLockInfo } {
-  const existingLock = getPidLock()
+export function acquirePidLock(
+  service: ServiceName = 'daemon'
+): { success: true } | { success: false; existingLock: PidLockInfo } {
+  const existingLock = getPidLock(service)
 
   if (existingLock) {
-    // 检查该 PID 是否还在运行
     if (isProcessRunning(existingLock.pid)) {
-      logger.warn(`Another daemon is already running (PID: ${existingLock.pid})`)
+      logger.warn(`Another ${service} is already running (PID: ${existingLock.pid})`)
       return { success: false, existingLock }
     } else {
-      // 僵尸 PID，清理掉
       logger.info(`Cleaning up stale PID file (PID: ${existingLock.pid} is not running)`)
-      releasePidLock()
+      releasePidLock(service)
     }
   }
 
-  // 写入新的 PID 文件
   const lockInfo: PidLockInfo = {
     pid: process.pid,
     startedAt: new Date().toISOString(),
@@ -75,9 +79,10 @@ export function acquirePidLock(): { success: true } | { success: false; existing
     command: process.argv.join(' '),
   }
 
+  const file = pidFilePath(service)
   try {
-    writeFileSync(PID_FILE, JSON.stringify(lockInfo, null, 2), 'utf-8')
-    logger.info(`PID lock acquired: ${PID_FILE}`)
+    writeFileSync(file, JSON.stringify(lockInfo, null, 2), 'utf-8')
+    logger.info(`PID lock acquired: ${file}`)
     return { success: true }
   } catch (error) {
     logger.error(`Failed to write PID file: ${error}`)
@@ -88,11 +93,12 @@ export function acquirePidLock(): { success: true } | { success: false; existing
 /**
  * 释放锁
  */
-export function releasePidLock(): void {
-  if (existsSync(PID_FILE)) {
+export function releasePidLock(service: ServiceName = 'daemon'): void {
+  const file = pidFilePath(service)
+  if (existsSync(file)) {
     try {
-      unlinkSync(PID_FILE)
-      logger.info('PID lock released')
+      unlinkSync(file)
+      logger.info(`PID lock released: ${service}`)
     } catch (error) {
       logger.warn(`Failed to delete PID file: ${error}`)
     }
@@ -100,10 +106,12 @@ export function releasePidLock(): void {
 }
 
 /**
- * 检查是否有守护进程在运行
+ * 检查服务是否在运行
  */
-export function isDaemonRunning(): { running: boolean; lock?: PidLockInfo } {
-  const lock = getPidLock()
+export function isServiceRunning(
+  service: ServiceName = 'daemon'
+): { running: boolean; lock?: PidLockInfo } {
+  const lock = getPidLock(service)
   if (!lock) {
     return { running: false }
   }
@@ -111,3 +119,6 @@ export function isDaemonRunning(): { running: boolean; lock?: PidLockInfo } {
   const running = isProcessRunning(lock.pid)
   return { running, lock }
 }
+
+/** @deprecated Use isServiceRunning('daemon') */
+export const isDaemonRunning = () => isServiceRunning('daemon')

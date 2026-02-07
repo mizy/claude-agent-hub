@@ -26,25 +26,27 @@ export {
   formatRegressionReportForMarkdown,
 } from './comparison/index.js'
 
+import {
+  collectTaskSnapshots as _collectTaskSnapshots,
+  compareTasks as _compareTasks,
+} from './comparison/index.js'
+
 // 兼容性 API：对比两个指定的任务
 export function compareTasksById(
   taskId1: string,
   taskId2: string
 ): import('./comparison/types.js').ComparisonResult | null {
-  const { collectTaskSnapshots, compareTasks } = require('./comparison/index.js')
-  const snapshots = collectTaskSnapshots(90) // 扩大范围
+  const snapshots = _collectTaskSnapshots(90) // 扩大范围
   const t1 = snapshots.find(
-    (s: { taskId: string }) =>
-      s.taskId === taskId1 || s.taskId.includes(taskId1)
+    (s: { taskId: string }) => s.taskId === taskId1 || s.taskId.includes(taskId1)
   )
   const t2 = snapshots.find(
-    (s: { taskId: string }) =>
-      s.taskId === taskId2 || s.taskId.includes(taskId2)
+    (s: { taskId: string }) => s.taskId === taskId2 || s.taskId.includes(taskId2)
   )
 
   if (!t1 || !t2) {
     return null
   }
 
-  return compareTasks(t1, t2)
+  return _compareTasks(t1, t2)
 }

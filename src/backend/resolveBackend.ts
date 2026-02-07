@@ -14,9 +14,9 @@ import { createCodebuddyBackend } from './codebuddyBackend.js'
 /** 后端工厂注册表 */
 const BACKEND_REGISTRY: Record<string, () => BackendAdapter> = {
   'claude-code': createClaudeCodeBackend,
-  'opencode': createOpencodeBackend,
-  'iflow': createIflowBackend,
-  'codebuddy': createCodebuddyBackend,
+  opencode: createOpencodeBackend,
+  iflow: createIflowBackend,
+  codebuddy: createCodebuddyBackend,
 }
 
 /** 缓存的后端实例 */

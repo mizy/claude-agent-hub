@@ -3,7 +3,14 @@
  * 基于 SQLite 队列处理节点任务
  */
 
-import { getNextJob, completeJob, failJob, markJobFailed, markJobWaiting, enqueueNode } from './WorkflowQueue.js'
+import {
+  getNextJob,
+  completeJob,
+  failJob,
+  markJobFailed,
+  markJobWaiting,
+  enqueueNode,
+} from './WorkflowQueue.js'
 import { getInstance, getWorkflow } from '../../store/WorkflowStore.js'
 import { failWorkflowInstance, markNodeWaiting } from '../engine/StateManager.js'
 import { createLogger } from '../../shared/logger.js'
@@ -21,9 +28,9 @@ export type NodeProcessor = (data: NodeJobData) => Promise<NodeJobResult>
 
 export interface WorkerOptions {
   concurrency?: number
-  pollInterval?: number  // 轮询间隔，毫秒
+  pollInterval?: number // 轮询间隔，毫秒
   processor: NodeProcessor
-  instanceId?: string    // 绑定到特定 instance，实现队列隔离
+  instanceId?: string // 绑定到特定 instance，实现队列隔离
 }
 
 interface WorkerState {
@@ -31,7 +38,7 @@ interface WorkerState {
   paused: boolean
   activeJobs: number
   pollTimer: NodeJS.Timeout | null
-  retryTimers: Set<NodeJS.Timeout>  // 跟踪所有重试定时器
+  retryTimers: Set<NodeJS.Timeout> // 跟踪所有重试定时器
 }
 
 const state: WorkerState = {
@@ -61,9 +68,13 @@ export function createNodeWorker(options: WorkerOptions): void {
   }
 
   if (workerOptions.instanceId) {
-    logger.info(`Worker created with concurrency: ${workerOptions.concurrency}, bound to instance: ${workerOptions.instanceId}`)
+    logger.info(
+      `Worker created with concurrency: ${workerOptions.concurrency}, bound to instance: ${workerOptions.instanceId}`
+    )
   } else {
-    logger.info(`Worker created with concurrency: ${workerOptions.concurrency} (global, no instance filter)`)
+    logger.info(
+      `Worker created with concurrency: ${workerOptions.concurrency} (global, no instance filter)`
+    )
   }
 }
 
@@ -166,7 +177,9 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
   const nodeRetryConfig = getNodeRetryConfig(workflowId, nodeId)
   const maxAttempts = nodeRetryConfig?.maxAttempts ?? DEFAULT_RETRY_CONFIG.maxAttempts
 
-  logger.info(`Processing node: ${nodeId} (instance: ${instanceId}, attempt: ${currentAttempts + 1}/${maxAttempts})`)
+  logger.info(
+    `Processing node: ${nodeId} (instance: ${instanceId}, attempt: ${currentAttempts + 1}/${maxAttempts})`
+  )
 
   // Check if max attempts exceeded
   if (currentAttempts >= maxAttempts) {
@@ -234,13 +247,7 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
     }
 
     // Use smart retry strategy
-    await handleNodeFailure(
-      jobId,
-      data,
-      errorMessage,
-      currentAttempts,
-      nodeRetryConfig
-    )
+    await handleNodeFailure(jobId, data, errorMessage, currentAttempts, nodeRetryConfig)
   } finally {
     state.activeJobs--
   }

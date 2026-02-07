@@ -3,7 +3,12 @@
  * 显示当前运行的任务状态和今日统计
  */
 
-import { getRunningTasks, getQueuedTasks, getTodaySummary, getRecentCompleted } from './SummaryDataCollector.js'
+import {
+  getRunningTasks,
+  getQueuedTasks,
+  getTodaySummary,
+  getRecentCompleted,
+} from './SummaryDataCollector.js'
 
 // ============ 类型定义 ============
 

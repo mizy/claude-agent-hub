@@ -11,7 +11,10 @@ import { getTaskWorkflow } from '../store/TaskWorkflowStore.js'
 import { workflowEvents } from '../workflow/engine/WorkflowEventEmitter.js'
 import { createLogger } from '../shared/logger.js'
 import type { WorkflowInstance } from '../workflow/types.js'
-import type { NodeExecutionStats, WorkflowExecutionStats } from '../workflow/engine/WorkflowEventEmitter.js'
+import type {
+  NodeExecutionStats,
+  WorkflowExecutionStats,
+} from '../workflow/engine/WorkflowEventEmitter.js'
 
 const logger = createLogger('execution-stats')
 
@@ -37,9 +40,10 @@ export function deriveStatsFromInstance(
   for (const [nodeId, state] of Object.entries(instance.nodeStates)) {
     // 从 output 中提取 cost（如果有）
     const output = instance.outputs[nodeId]
-    const costUsd = typeof output === 'object' && output !== null && 'costUsd' in output
-      ? (output as { costUsd?: number }).costUsd
-      : undefined
+    const costUsd =
+      typeof output === 'object' && output !== null && 'costUsd' in output
+        ? (output as { costUsd?: number }).costUsd
+        : undefined
 
     const nodeStats: NodeExecutionStats = {
       nodeId,
@@ -84,9 +88,7 @@ export function deriveStatsFromInstance(
   let execTotalDurationMs = 0
   if (instance.startedAt) {
     const startTime = new Date(instance.startedAt).getTime()
-    const endTime = instance.completedAt
-      ? new Date(instance.completedAt).getTime()
-      : Date.now()
+    const endTime = instance.completedAt ? new Date(instance.completedAt).getTime() : Date.now()
     execTotalDurationMs = endTime - startTime
   }
 
@@ -166,10 +168,12 @@ export function setupIncrementalStatsSaving(taskId: string, instanceId: string):
   }
 
   // 订阅节点事件
-  const unsubscribe = workflowEvents.onNodeEvent((event) => {
-    if (event.type === 'node:started' ||
-        event.type === 'node:completed' ||
-        event.type === 'node:failed') {
+  const unsubscribe = workflowEvents.onNodeEvent(event => {
+    if (
+      event.type === 'node:started' ||
+      event.type === 'node:completed' ||
+      event.type === 'node:failed'
+    ) {
       saveHandler(true)
     }
   })

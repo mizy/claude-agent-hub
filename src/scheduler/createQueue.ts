@@ -67,7 +67,10 @@ export function createQueue<T>(): Queue<T> {
       const bestWeight = PRIORITY_WEIGHTS[best.priority]
 
       // 先按优先级，再按创建时间
-      if (currentWeight > bestWeight || (currentWeight === bestWeight && item.createdAt < best.createdAt)) {
+      if (
+        currentWeight > bestWeight ||
+        (currentWeight === bestWeight && item.createdAt < best.createdAt)
+      ) {
         best = item
       }
     }

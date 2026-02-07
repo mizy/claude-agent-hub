@@ -25,10 +25,11 @@ echo "=== Building CAH Single Executable ==="
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
-# 1. 复制静态资源
-echo "[1/4] Copying static assets..."
+# 1. 构建并复制 dashboard 静态资源
+echo "[1/4] Building dashboard and copying static assets..."
+cd "$PROJECT_DIR/src/server/dashboard" && pnpm run build
 mkdir -p "$BUILD_DIR/server/public"
-cp -r "$PROJECT_DIR/src/server/public/"* "$BUILD_DIR/server/public/" 2>/dev/null || true
+cp -r "$PROJECT_DIR/dist/server/public/"* "$BUILD_DIR/server/public/" 2>/dev/null || true
 
 # 2. esbuild 打包为单个 CJS 文件
 echo "[2/4] Bundling with esbuild..."

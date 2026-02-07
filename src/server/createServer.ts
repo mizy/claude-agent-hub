@@ -15,6 +15,7 @@ import {
   getTaskInstance,
   getExecutionTimeline,
   getLogPath,
+  getOutputPath,
 } from '../store/index.js'
 import {
   getRunningTasks,
@@ -22,19 +23,18 @@ import {
   getTodaySummary,
   getRecentCompleted,
 } from '../report/SummaryDataCollector.js'
-import {
-  stopTask,
-  deleteTask,
-  completeTask,
-} from '../task/manageTaskLifecycle.js'
+import { stopTask, deleteTask, completeTask } from '../task/manageTaskLifecycle.js'
 import { resumeTask } from '../task/resumeTask.js'
 import { spawnTaskProcess } from '../task/spawnTask.js'
 import { getStore } from '../store/index.js'
-import type { Task, TaskPriority } from '../types/task.js'
+import { parseTaskPriority } from '../types/task.js'
+import type { Task } from '../types/task.js'
 
 import { existsSync, readFileSync } from 'fs'
 
 const logger = createLogger('server')
+
+const DEFAULT_PORT = 3000
 
 // Get the public directory path
 // When bundled by tsup, the code is in dist/cli/index.js
@@ -54,7 +54,7 @@ export interface ServerOptions {
  * 启动 HTTP Server
  */
 export function startServer(options: ServerOptions = {}): void {
-  const port = options.port || 3000
+  const port = options.port || DEFAULT_PORT
   const host = options.host || 'localhost'
 
   const app = express()
@@ -156,7 +156,7 @@ export function startServer(options: ServerOptions = {}): void {
       }
 
       const store = getStore()
-      const taskPriority = (['low', 'medium', 'high'].includes(priority) ? priority : 'medium') as TaskPriority
+      const taskPriority = parseTaskPriority(priority)
       const title = description.length > 47 ? description.slice(0, 47) + '...' : description
 
       const task: Task = {
@@ -201,7 +201,12 @@ export function startServer(options: ServerOptions = {}): void {
     try {
       const pid = resumeTask(req.params.id)
       if (pid === null) {
-        res.status(400).json({ success: false, error: 'Task cannot be resumed (not found, still running, or already completed)' })
+        res
+          .status(400)
+          .json({
+            success: false,
+            error: 'Task cannot be resumed (not found, still running, or already completed)',
+          })
         return
       }
       const task = getTask(req.params.id)
@@ -274,6 +279,29 @@ export function startServer(options: ServerOptions = {}): void {
     }
   })
 
+  // GET /api/tasks/:id/result - 获取任务结果 Markdown
+  app.get('/api/tasks/:id/result', (req: Request<{ id: string }>, res: Response) => {
+    try {
+      const task = getTask(req.params.id)
+      if (!task) {
+        res.status(404).json({ success: false, error: 'Task not found' })
+        return
+      }
+
+      const resultPath = getOutputPath(task.id)
+      if (!existsSync(resultPath)) {
+        res.json({ success: true, data: { content: '' } })
+        return
+      }
+
+      const content = readFileSync(resultPath, 'utf-8')
+      res.json({ success: true, data: { content } })
+    } catch (err) {
+      logger.error('Failed to get result', err)
+      res.status(500).json({ success: false, error: 'Failed to get result' })
+    }
+  })
+
   // ============ Static Files ============
 
   // Serve static files from public directory
@@ -294,7 +322,12 @@ export function startServer(options: ServerOptions = {}): void {
     // Auto open browser
     if (options.open) {
       import('child_process').then(({ exec }) => {
-        const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'
+        const cmd =
+          process.platform === 'darwin'
+            ? 'open'
+            : process.platform === 'win32'
+              ? 'start'
+              : 'xdg-open'
         exec(`${cmd} ${url}`)
       })
     }

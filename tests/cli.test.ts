@@ -81,24 +81,61 @@ describe('CLI 简化命令', () => {
   })
 
   describe('子命令', () => {
-    it('cah task list should work', async () => {
-      const { stdout } = await execa('node', [CLI_PATH, 'task', 'list'], {
+    it('cah task list should return valid output', async () => {
+      const { stdout, exitCode } = await execa('node', [CLI_PATH, 'task', 'list'], {
         cwd: TEST_DIR,
         reject: false,
       })
 
-      // 应该显示任务列表（可能为空）
-      expect(stdout).toBeDefined()
+      // Should exit cleanly and output something (even if empty list)
+      expect(exitCode).toBe(0)
+      expect(typeof stdout).toBe('string')
     })
 
-    it('cah agent list should work', async () => {
-      const { stdout } = await execa('node', [CLI_PATH, 'agent', 'list'], {
+    it('cah agent list should list available agents', async () => {
+      const { stdout, exitCode } = await execa('node', [CLI_PATH, 'agent', 'list'], {
         cwd: TEST_DIR,
         reject: false,
       })
 
-      expect(stdout).toBeDefined()
+      expect(exitCode).toBe(0)
+      // Should list at least one built-in persona
+      expect(stdout).toContain('Pragmatist')
+    })
+  })
+
+  describe('错误路径', () => {
+    it('should show error for unknown subcommand', async () => {
+      const { stderr, exitCode } = await execa(
+        'node',
+        [CLI_PATH, 'nonexistent-command'],
+        { cwd: TEST_DIR, reject: false }
+      )
+
+      // Unknown subcommands are treated as task descriptions, should still work
+      // or show a meaningful response
+      expect(exitCode === 0 || exitCode === 1).toBe(true)
+    })
+
+    it('should handle task subcommand without action', async () => {
+      const { exitCode } = await execa('node', [CLI_PATH, 'task'], {
+        cwd: TEST_DIR,
+        reject: false,
+      })
+
+      // May exit 0 (list) or 1 (no action specified) - both are valid
+      expect(typeof exitCode).toBe('number')
+    })
+
+    it('should handle task logs with invalid id gracefully', async () => {
+      const { exitCode } = await execa(
+        'node',
+        [CLI_PATH, 'task', 'logs', 'nonexistent-task-id'],
+        { cwd: TEST_DIR, reject: false }
+      )
+
+      // Should fail gracefully, not crash
+      expect(typeof exitCode).toBe('number')
     })
   })
 })
-

@@ -3,8 +3,8 @@
  * 进度条和 ETA 显示逻辑
  */
 
-import { getInstance, getWorkflowProgress } from '../workflow/index.js'
-import { updateInstanceStatus } from '../store/WorkflowStore.js'
+import { getWorkflowProgress } from '../workflow/index.js'
+import { getInstance, updateInstanceStatus } from '../store/WorkflowStore.js'
 import { getTask } from '../store/TaskStore.js'
 import { estimateRemainingTime, formatTimeEstimate } from '../analysis/index.js'
 import { createLogger } from '../shared/logger.js'
@@ -91,8 +91,9 @@ export async function waitForWorkflowCompletion(
       runningNodes.length !== lastRunningNodes.length ||
       runningNodes.some((n, i) => n !== lastRunningNodes[i])
     const currentTime = Date.now()
-    const shouldLog = (progress.percentage !== lastProgress || runningNodesChanged) &&
-                      (currentTime - lastLogTime >= MIN_LOG_INTERVAL)
+    const shouldLog =
+      (progress.percentage !== lastProgress || runningNodesChanged) &&
+      currentTime - lastLogTime >= MIN_LOG_INTERVAL
 
     if (shouldLog) {
       // 计算时间预估
@@ -104,7 +105,12 @@ export async function waitForWorkflowCompletion(
           return {
             name: n.name,
             type: n.type,
-            status: (state?.status || 'pending') as 'pending' | 'running' | 'completed' | 'failed' | 'skipped',
+            status: (state?.status || 'pending') as
+              | 'pending'
+              | 'running'
+              | 'completed'
+              | 'failed'
+              | 'skipped',
             durationMs: state?.durationMs,
             startedAt: state?.startedAt,
           }
@@ -112,9 +118,7 @@ export async function waitForWorkflowCompletion(
 
       const estimate = estimateRemainingTime(nodeStates, elapsedMs)
       const progressBar = createProgressBar(progress.percentage)
-      const runningInfo = runningNodes.length > 0
-        ? ` [${runningNodes.join(', ')}]`
-        : ''
+      const runningInfo = runningNodes.length > 0 ? ` [${runningNodes.join(', ')}]` : ''
       const timeInfo = estimate.remainingMs > 0 ? ` ETA: ${formatTimeEstimate(estimate)}` : ''
 
       logger.info(`${progressBar} ${progress.completed}/${progress.total}${runningInfo}${timeInfo}`)

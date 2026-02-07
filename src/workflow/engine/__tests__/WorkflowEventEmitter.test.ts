@@ -230,14 +230,14 @@ describe('WorkflowEventEmitter', () => {
         totalDurationMs: 5000,
         nodesCompleted: 2,
         nodesFailed: 0,
-        totalCostUsd: 0.10,
+        totalCostUsd: 0.1,
       })
 
       expect(callback).toHaveBeenCalledTimes(1)
       const event = callback.mock.calls[0]![0] as WorkflowCompletedEvent
       expect(event.type).toBe('workflow:completed')
       expect(event.totalDurationMs).toBe(5000)
-      expect(event.totalCostUsd).toBe(0.10)
+      expect(event.totalCostUsd).toBe(0.1)
     })
 
     it('should update execution stats status', () => {
@@ -248,7 +248,7 @@ describe('WorkflowEventEmitter', () => {
         totalDurationMs: 5000,
         nodesCompleted: 2,
         nodesFailed: 0,
-        totalCostUsd: 0.10,
+        totalCostUsd: 0.1,
       })
 
       const stats = workflowEvents.getExecutionStats('inst-1')

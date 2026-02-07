@@ -8,9 +8,7 @@ import type { RegressionReport } from './DegradationDetector.js'
 /**
  * 格式化性能退化报告为终端输出
  */
-export function formatRegressionReportForTerminal(
-  report: RegressionReport
-): string {
+export function formatRegressionReportForTerminal(report: RegressionReport): string {
   const lines: string[] = []
 
   lines.push('═'.repeat(60))
@@ -33,9 +31,7 @@ export function formatRegressionReportForTerminal(
   if (report.regressions.length > 0) {
     lines.push('【性能退化】')
     for (const r of report.regressions.slice(0, 5)) {
-      lines.push(
-        `  ${r.task1.title.slice(0, 30)} → ${r.task2.title.slice(0, 30)}`
-      )
+      lines.push(`  ${r.task1.title.slice(0, 30)} → ${r.task2.title.slice(0, 30)}`)
       for (const a of r.analysis.slice(0, 2)) {
         lines.push(`    ⚠️ ${a}`)
       }
@@ -47,9 +43,7 @@ export function formatRegressionReportForTerminal(
   if (report.improvements.length > 0) {
     lines.push('【性能改进】')
     for (const r of report.improvements.slice(0, 3)) {
-      lines.push(
-        `  ${r.task1.title.slice(0, 30)} → ${r.task2.title.slice(0, 30)}`
-      )
+      lines.push(`  ${r.task1.title.slice(0, 30)} → ${r.task2.title.slice(0, 30)}`)
       for (const a of r.analysis.slice(0, 2)) {
         lines.push(`    ✅ ${a}`)
       }
@@ -64,12 +58,8 @@ export function formatRegressionReportForTerminal(
     lines.push('  ' + '-'.repeat(40))
     for (const t of report.categoryTrends) {
       const category = t.category.padEnd(10)
-      const duration = `${t.avgDurationChange >= 0 ? '+' : ''}${t.avgDurationChange}%`.padStart(
-        8
-      )
-      const cost = `${t.avgCostChange >= 0 ? '+' : ''}${t.avgCostChange}%`.padStart(
-        8
-      )
+      const duration = `${t.avgDurationChange >= 0 ? '+' : ''}${t.avgDurationChange}%`.padStart(8)
+      const cost = `${t.avgCostChange >= 0 ? '+' : ''}${t.avgCostChange}%`.padStart(8)
       const samples = String(t.sampleCount).padStart(6)
       lines.push(`  ${category} ${duration}  ${cost}  ${samples}`)
     }
@@ -84,9 +74,7 @@ export function formatRegressionReportForTerminal(
 /**
  * 格式化性能退化报告为 Markdown
  */
-export function formatRegressionReportForMarkdown(
-  report: RegressionReport
-): string {
+export function formatRegressionReportForMarkdown(report: RegressionReport): string {
   const lines: string[] = []
 
   lines.push('# 性能对比分析报告')
@@ -114,15 +102,9 @@ export function formatRegressionReportForMarkdown(
       lines.push('')
       lines.push('| 指标 | 变化 |')
       lines.push('|------|------|')
-      lines.push(
-        `| 执行时间 | ${r.durationDiffPercent >= 0 ? '+' : ''}${r.durationDiffPercent}% |`
-      )
-      lines.push(
-        `| 成本 | ${r.costDiffPercent >= 0 ? '+' : ''}${r.costDiffPercent}% |`
-      )
-      lines.push(
-        `| 节点数 | ${r.nodeCountDiff >= 0 ? '+' : ''}${r.nodeCountDiff} |`
-      )
+      lines.push(`| 执行时间 | ${r.durationDiffPercent >= 0 ? '+' : ''}${r.durationDiffPercent}% |`)
+      lines.push(`| 成本 | ${r.costDiffPercent >= 0 ? '+' : ''}${r.costDiffPercent}% |`)
+      lines.push(`| 节点数 | ${r.nodeCountDiff >= 0 ? '+' : ''}${r.nodeCountDiff} |`)
       lines.push('')
       if (r.analysis.length > 0) {
         lines.push('**分析**:')

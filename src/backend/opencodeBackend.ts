@@ -83,11 +83,7 @@ export function createOpencodeBackend(): BackendAdapter {
 
 // ============ Private Helpers ============
 
-function buildArgs(
-  prompt: string,
-  model?: string,
-  stream?: boolean,
-): string[] {
+function buildArgs(prompt: string, model?: string, stream?: boolean): string[] {
   // opencode v1.x: opencode run "prompt" -m provider/model --format json
   const args: string[] = ['run', prompt]
 
@@ -125,7 +121,7 @@ function parseOutput(raw: string, stream: boolean): string {
 
 async function streamOutput(
   subprocess: ResultPromise,
-  onChunk?: (chunk: string) => void,
+  onChunk?: (chunk: string) => void
 ): Promise<string> {
   const chunks: string[] = []
 

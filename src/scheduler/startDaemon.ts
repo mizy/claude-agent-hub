@@ -12,10 +12,11 @@ import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
+import { withProcessTracking } from '../task/processTracking.js'
 import { stopLarkServer } from '../notify/larkServer.js'
 import { startLarkWsClient, stopLarkWsClient } from '../notify/larkWsClient.js'
 import { startTelegramClient, stopTelegramClient } from '../notify/telegramClient.js'
-import { acquirePidLock, releasePidLock } from './pidLock.js'
+import { acquirePidLock, releasePidLock, isDaemonRunning } from './pidLock.js'
 
 interface DaemonOptions {
   detach?: boolean
@@ -64,6 +65,16 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
 
 /** fork 子进程后台运行 */
 async function spawnDetached(): Promise<void> {
+  // 先检查是否已有 daemon 在运行
+  const { running, lock } = isDaemonRunning()
+  if (running && lock) {
+    console.error(chalk.red('✗ 守护进程已在运行'))
+    console.error(chalk.yellow(`  PID: ${lock.pid}`))
+    console.error(chalk.yellow(`  启动时间: ${lock.startedAt}`))
+    console.error(chalk.gray(`\n  使用 'cah daemon stop' 停止现有进程`))
+    process.exit(1)
+  }
+
   const { DATA_DIR } = await import('../store/paths.js')
   const { mkdirSync, openSync } = await import('fs')
   const { join } = await import('path')
@@ -129,7 +140,10 @@ async function runDaemon(): Promise<void> {
       const task = await pollPendingTask()
       if (!task) return
       console.log(chalk.blue(`[${new Date().toLocaleTimeString()}] 执行任务: ${task.title}`))
-      await executeTask(task, { concurrency: 1, saveToTaskFolder: true, useConsole: false })
+
+      await withProcessTracking(task.id, () =>
+        executeTask(task, { concurrency: 1, useConsole: false })
+      )
     } catch (error) {
       console.error(chalk.red(`执行出错:`), error)
     }
@@ -179,13 +193,13 @@ async function runDaemon(): Promise<void> {
   process.on('SIGTERM', cleanup)
 
   // 进程异常退出时也要释放锁
-  process.on('uncaughtException', (error) => {
+  process.on('uncaughtException', error => {
     console.error(chalk.red('Uncaught exception:'), error)
     releasePidLock()
     process.exit(1)
   })
 
-  process.on('unhandledRejection', (reason) => {
+  process.on('unhandledRejection', reason => {
     console.error(chalk.red('Unhandled rejection:'), reason)
     releasePidLock()
     process.exit(1)

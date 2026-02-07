@@ -8,17 +8,17 @@ import chalk from 'chalk'
 // ============ 错误分类定义 ============
 
 export type ErrorCategory =
-  | 'CONFIG'       // 配置错误
-  | 'TASK'         // 任务错误
-  | 'WORKFLOW'     // 工作流错误
-  | 'NETWORK'      // 网络错误
-  | 'PERMISSION'   // 权限错误
-  | 'RUNTIME'      // 运行时错误
-  | 'API'          // API 调用错误
-  | 'RESOURCE'     // 资源错误（文件不存在等）
-  | 'VALIDATION'   // 输入验证错误
-  | 'TIMEOUT'      // 超时错误
-  | 'UNKNOWN'      // 未知错误
+  | 'CONFIG' // 配置错误
+  | 'TASK' // 任务错误
+  | 'WORKFLOW' // 工作流错误
+  | 'NETWORK' // 网络错误
+  | 'PERMISSION' // 权限错误
+  | 'RUNTIME' // 运行时错误
+  | 'API' // API 调用错误
+  | 'RESOURCE' // 资源错误（文件不存在等）
+  | 'VALIDATION' // 输入验证错误
+  | 'TIMEOUT' // 超时错误
+  | 'UNKNOWN' // 未知错误
 
 // 为向后兼容保留的 ErrorCode 类型
 export type ErrorCode =
@@ -83,7 +83,9 @@ export class AppError extends Error {
     const colorFn = categoryColors[this.category]
 
     lines.push('')
-    lines.push(chalk.red('✗') + ' ' + chalk.bold('错误') + ` [${colorFn(categoryLabels[this.category])}]`)
+    lines.push(
+      chalk.red('✗') + ' ' + chalk.bold('错误') + ` [${colorFn(categoryLabels[this.category])}]`
+    )
     lines.push('')
     lines.push(chalk.dim(`  代码: ${this.code}`))
     lines.push(`  ${this.message}`)
@@ -283,11 +285,7 @@ const errorPatterns: ErrorPattern[] = [
     pattern: /ECONNREFUSED|ENOTFOUND|network|connection refused/i,
     category: 'NETWORK',
     code: 'ERR_NETWORK',
-    getSuggestions: () => [
-      '检查网络连接',
-      '检查 VPN/代理设置',
-      '重试: cah task resume <task-id>',
-    ],
+    getSuggestions: () => ['检查网络连接', '检查 VPN/代理设置', '重试: cah task resume <task-id>'],
   },
 
   // API 错误 - Rate Limit
@@ -319,10 +317,7 @@ const errorPatterns: ErrorPattern[] = [
     pattern: /quota|credit|billing|payment|402/i,
     category: 'API',
     code: 'ERR_QUOTA',
-    getSuggestions: () => [
-      '检查 Anthropic 账户余额',
-      '升级 API 计划',
-    ],
+    getSuggestions: () => ['检查 Anthropic 账户余额', '升级 API 计划'],
   },
 
   // 资源错误 - 文件不存在
@@ -330,14 +325,10 @@ const errorPatterns: ErrorPattern[] = [
     pattern: /ENOENT|no such file|file not found|not found/i,
     category: 'RESOURCE',
     code: 'ERR_FILE_NOT_FOUND',
-    getSuggestions: (error) => {
+    getSuggestions: error => {
       const pathMatch = error.match(/['"]([^'"]+)['"]/)
       const path = pathMatch?.[1] || '文件路径'
-      return [
-        `确认文件存在: ls -la ${path}`,
-        '检查文件路径是否正确',
-        '检查工作目录: pwd',
-      ]
+      return [`确认文件存在: ls -la ${path}`, '检查文件路径是否正确', '检查工作目录: pwd']
     },
   },
 
@@ -346,7 +337,7 @@ const errorPatterns: ErrorPattern[] = [
     pattern: /EACCES|permission denied|EPERM/i,
     category: 'PERMISSION',
     code: 'ERR_PERMISSION',
-    getSuggestions: (error) => {
+    getSuggestions: error => {
       const pathMatch = error.match(/['"]([^'"]+)['"]/)
       const path = pathMatch?.[1] || '路径'
       return [
@@ -374,10 +365,7 @@ const errorPatterns: ErrorPattern[] = [
     pattern: /invalid|validation|malformed|parse error|syntax error/i,
     category: 'VALIDATION',
     code: 'ERR_VALIDATION',
-    getSuggestions: () => [
-      '检查输入格式是否正确',
-      '查看错误详情确认问题字段',
-    ],
+    getSuggestions: () => ['检查输入格式是否正确', '查看错误详情确认问题字段'],
   },
 
   // 执行错误 - 进程相关

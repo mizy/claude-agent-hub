@@ -6,7 +6,9 @@
 import { getStore } from '../store/index.js'
 import { createLogger } from '../shared/logger.js'
 import { executeTask } from './executeTask.js'
+import { withProcessTracking } from './processTracking.js'
 import { pollPendingTask } from './queryTask.js'
+import { parseTaskPriority } from '../types/task.js'
 import type { Task, TaskPriority } from '../types/task.js'
 
 const logger = createLogger('task')
@@ -23,7 +25,8 @@ interface CreateAndRunOptions {
  */
 function hasRunningTask(): boolean {
   const store = getStore()
-  const runningTasks = store.getTasksByStatus('planning')
+  const runningTasks = store
+    .getTasksByStatus('planning')
     .concat(store.getTasksByStatus('developing'))
   return runningTasks.length > 0
 }
@@ -35,14 +38,11 @@ export async function createAndRunTask(options: CreateAndRunOptions): Promise<Ta
   const store = getStore()
 
   // 创建任务
-  const priority = (['low', 'medium', 'high'].includes(options.priority || '')
-    ? options.priority
-    : 'medium') as TaskPriority
+  const priority = parseTaskPriority(options.priority)
 
   // 标题：如果描述超过47字，截断并加...
-  const title = options.description.length > 47
-    ? options.description.slice(0, 47) + '...'
-    : options.description
+  const title =
+    options.description.length > 47 ? options.description.slice(0, 47) + '...' : options.description
 
   const task: Task = {
     id: crypto.randomUUID(),
@@ -76,7 +76,9 @@ export async function createAndRunTask(options: CreateAndRunOptions): Promise<Ta
   // 轮询并执行任务
   const nextTask = await pollPendingTask()
   if (nextTask) {
-    await executeTask(nextTask, { concurrency: 1, saveToTaskFolder: true, useConsole: false })
+    await withProcessTracking(nextTask.id, () =>
+      executeTask(nextTask, { concurrency: 1, useConsole: false })
+    )
   }
 
   // 返回更新后的任务

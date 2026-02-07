@@ -10,13 +10,23 @@ import type { TaskStatus } from './task.js'
 const RUNNING_STATUSES: readonly TaskStatus[] = ['planning', 'developing'] as const
 
 /** 活跃状态（未完成的任务） */
-const ACTIVE_STATUSES: readonly TaskStatus[] = ['pending', 'planning', 'developing', 'reviewing'] as const
+const ACTIVE_STATUSES: readonly TaskStatus[] = [
+  'pending',
+  'planning',
+  'developing',
+  'reviewing',
+] as const
 
 /** 终结状态（已结束的任务） */
 const TERMINAL_STATUSES: readonly TaskStatus[] = ['completed', 'failed', 'cancelled'] as const
 
 /** 可停止的状态 */
-const STOPPABLE_STATUSES: readonly TaskStatus[] = ['pending', 'planning', 'developing', 'reviewing'] as const
+const STOPPABLE_STATUSES: readonly TaskStatus[] = [
+  'pending',
+  'planning',
+  'developing',
+  'reviewing',
+] as const
 
 /**
  * 判断任务是否正在执行中

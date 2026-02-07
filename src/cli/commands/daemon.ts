@@ -9,7 +9,7 @@ export function registerDaemonCommands(program: Command) {
     .command('serve')
     .description('启动守护进程（自动检测配置启动飞书/Telegram）')
     .option('-D, --detach', '后台运行（fork 子进程）')
-    .action(async (options) => {
+    .action(async options => {
       await startDaemon(options)
     })
 
@@ -18,7 +18,7 @@ export function registerDaemonCommands(program: Command) {
     .command('stop')
     .description('停止守护进程')
     .option('-a, --agent <name>', '只停止指定 Agent')
-    .action(async (options) => {
+    .action(async options => {
       await stopDaemon(options)
     })
 

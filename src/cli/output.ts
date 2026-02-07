@@ -133,10 +133,7 @@ export interface TableColumn {
 }
 
 /** 输出简单表格 */
-export function table<T extends Record<string, unknown>>(
-  data: T[],
-  columns: TableColumn[]
-): void {
+export function table<T extends Record<string, unknown>>(data: T[], columns: TableColumn[]): void {
   if (data.length === 0) {
     console.log(chalk.dim('  (无数据)'))
     return
@@ -151,11 +148,13 @@ export function table<T extends Record<string, unknown>>(
   })
 
   // 输出表头
-  const headerRow = columns.map((col, i) => {
-    const width = widths[i] ?? col.header.length
-    const text = col.header.padEnd(width)
-    return chalk.bold(text)
-  }).join('  ')
+  const headerRow = columns
+    .map((col, i) => {
+      const width = widths[i] ?? col.header.length
+      const text = col.header.padEnd(width)
+      return chalk.bold(text)
+    })
+    .join('  ')
   console.log('  ' + headerRow)
 
   // 输出分隔线
@@ -164,13 +163,13 @@ export function table<T extends Record<string, unknown>>(
 
   // 输出数据行
   for (const row of data) {
-    const rowStr = columns.map((col, i) => {
-      const width = widths[i] ?? 10
-      const value = String(row[col.key] ?? '')
-      return col.align === 'right'
-        ? value.padStart(width)
-        : value.padEnd(width)
-    }).join('  ')
+    const rowStr = columns
+      .map((col, i) => {
+        const width = widths[i] ?? 10
+        const value = String(row[col.key] ?? '')
+        return col.align === 'right' ? value.padStart(width) : value.padEnd(width)
+      })
+      .join('  ')
     console.log('  ' + rowStr)
   }
 }

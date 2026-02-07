@@ -3,9 +3,7 @@
  * 避免 try-catch 污染业务代码，使错误处理显式化
  */
 
-export type Result<T, E = Error> =
-  | { ok: true; value: T }
-  | { ok: false; error: E }
+export type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E }
 
 // 构造函数
 export function ok<T>(value: T): Result<T, never> {

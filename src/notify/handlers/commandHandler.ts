@@ -7,6 +7,7 @@
  */
 
 import { readFileSync } from 'fs'
+import { createLogger } from '../../shared/logger.js'
 import { getAllTasks } from '../../store/TaskStore.js'
 import { getLogPath } from '../../store/TaskLogStore.js'
 import { createAndRunTask } from '../../task/createAndRun.js'
@@ -14,12 +15,23 @@ import { stopTask } from '../../task/manageTaskLifecycle.js'
 import { resumeTask } from '../../task/resumeTask.js'
 import { formatDuration } from '../../shared/formatTime.js'
 import { getWaitingHumanJobs } from '../../workflow/queue/WorkflowQueue.js'
-import type { Task, TaskStatus } from '../../types/task.js'
+import { parseTaskStatus } from '../../types/task.js'
+import {
+  buildTaskListCard,
+  buildTaskDetailCard,
+  buildStatusCard,
+  buildHelpCard,
+} from '../buildLarkCard.js'
+import type { Task } from '../../types/task.js'
 import type { CommandResult } from './types.js'
+
+const logger = createLogger('command-handler')
 
 // ── taskId prefix matching ──
 
-function resolveTaskId(prefix: string): { task: Task; error?: never } | { task?: never; error: string } {
+function resolveTaskId(
+  prefix: string
+): { task: Task; error?: never } | { task?: never; error: string } {
   const tasks = getAllTasks()
   const matches = tasks.filter(t => t.id.startsWith(prefix) || t.id.includes(prefix))
 
@@ -27,7 +39,10 @@ function resolveTaskId(prefix: string): { task: Task; error?: never } | { task?:
     return { error: `未找到匹配的任务: ${prefix}` }
   }
   if (matches.length > 1) {
-    const ids = matches.slice(0, 5).map(t => `\`${t.id.slice(0, 20)}\``).join('\n')
+    const ids = matches
+      .slice(0, 5)
+      .map(t => `\`${t.id.slice(0, 20)}\``)
+      .join('\n')
     return { error: `匹配到多个任务，请提供更长的前缀:\n${ids}` }
   }
   return { task: matches[0]! }
@@ -55,6 +70,9 @@ function statusEmoji(status: string): string {
  * 统一入口：根据 command + args 分发到具体处理函数
  */
 export async function handleCommand(command: string, args: string): Promise<CommandResult> {
+  const argsPreview = args.length > 40 ? args.slice(0, 37) + '...' : args
+  logger.info(`⚡ ${command}${argsPreview ? ' ' + argsPreview : ''}`)
+
   switch (command) {
     case '/run':
       return handleRun(args)
@@ -84,6 +102,7 @@ export async function handleRun(description: string): Promise<CommandResult> {
 
   try {
     const task = await createAndRunTask({ description: description.trim() })
+    logger.info(`→ task created: ${task.id.slice(0, 20)}`)
     return {
       text: [
         `✅ 任务已创建`,
@@ -93,6 +112,7 @@ export async function handleRun(description: string): Promise<CommandResult> {
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
+    logger.error(`/run failed: ${msg}`)
     return { text: `❌ 创建任务失败: ${msg}` }
   }
 }
@@ -102,8 +122,10 @@ export async function handleList(statusFilter?: string): Promise<CommandResult> 
     let tasks = getAllTasks()
 
     if (statusFilter) {
-      const filter = statusFilter.toLowerCase() as TaskStatus
-      tasks = tasks.filter(t => t.status === filter)
+      const filter = parseTaskStatus(statusFilter.toLowerCase())
+      if (filter) {
+        tasks = tasks.filter(t => t.status === filter)
+      }
     }
 
     if (tasks.length === 0) {
@@ -121,7 +143,13 @@ export async function handleList(statusFilter?: string): Promise<CommandResult> 
       lines.push(`\n... 还有 ${tasks.length - 15} 个任务`)
     }
 
-    return { text: `📋 任务列表 (${tasks.length}):\n\n${lines.join('\n')}` }
+    return {
+      text: `📋 任务列表 (${tasks.length}):\n\n${lines.join('\n')}`,
+      larkCard: buildTaskListCard(
+        display.map(t => ({ id: t.id, title: t.title, status: t.status })),
+        tasks.length
+      ),
+    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return { text: `❌ 获取任务列表失败: ${msg}` }
@@ -174,12 +202,15 @@ export async function handleStop(taskIdPrefix: string): Promise<CommandResult> {
 
     const stopResult = stopTask(task.id)
     if (stopResult.success) {
+      logger.info(`→ task stopped: ${task.id.slice(0, 20)}`)
       return { text: `🛑 已停止任务: \`${task.id.slice(0, 20)}\`` }
     } else {
+      logger.warn(`→ stop failed: ${stopResult.error}`)
       return { text: `❌ 停止失败: ${stopResult.error}` }
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
+    logger.error(`/stop failed: ${msg}`)
     return { text: `❌ 停止任务失败: ${msg}` }
   }
 }
@@ -198,12 +229,15 @@ export async function handleResume(taskIdPrefix: string): Promise<CommandResult>
 
     const pid = resumeTask(task.id)
     if (pid) {
+      logger.info(`→ task resumed: ${task.id.slice(0, 20)} pid=${pid}`)
       return { text: `▶️ 已恢复任务: \`${task.id.slice(0, 20)}\`\nPID: ${pid}` }
     } else {
+      logger.warn(`→ resume skipped: ${task.id.slice(0, 20)} (running or completed)`)
       return { text: `⚠️ 无法恢复任务（可能仍在运行或已完成）` }
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
+    logger.error(`/resume failed: ${msg}`)
     return { text: `❌ 恢复任务失败: ${msg}` }
   }
 }
@@ -245,13 +279,12 @@ export async function handleGet(taskIdPrefix: string): Promise<CommandResult> {
     }
 
     if (task.description && task.description !== task.title) {
-      const desc = task.description.length > 200
-        ? task.description.slice(0, 197) + '...'
-        : task.description
+      const desc =
+        task.description.length > 200 ? task.description.slice(0, 197) + '...' : task.description
       lines.push('', `描述: ${desc}`)
     }
 
-    return { text: lines.join('\n') }
+    return { text: lines.join('\n'), larkCard: buildTaskDetailCard(task) }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return { text: `❌ 获取任务详情失败: ${msg}` }
@@ -284,6 +317,7 @@ export function handleHelp(): CommandResult {
       '💡 直接发送文字即可与 AI 对话',
       '💡 taskId 支持前缀匹配',
     ].join('\n'),
+    larkCard: buildHelpCard(),
   }
 }
 
@@ -291,7 +325,7 @@ export function handleStatus(): CommandResult {
   const jobs = getWaitingHumanJobs()
 
   if (jobs.length === 0) {
-    return { text: '没有待审批的节点' }
+    return { text: '没有待审批的节点', larkCard: buildStatusCard([]) }
   }
 
   const lines = ['待审批节点:\n']
@@ -299,5 +333,8 @@ export function handleStatus(): CommandResult {
     lines.push(`• \`${job.data.nodeId}\``)
   }
   lines.push('\n使用 /approve [nodeId] 或 /reject [原因] 操作')
-  return { text: lines.join('\n') }
+  return {
+    text: lines.join('\n'),
+    larkCard: buildStatusCard(jobs.map(j => ({ nodeId: j.data.nodeId }))),
+  }
 }

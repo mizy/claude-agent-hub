@@ -114,8 +114,8 @@ describe('LiveSummary', () => {
     it('should show colored status icons', () => {
       const output = formatLiveSummaryForTerminal(mockReport)
       // 使用 chalk 会添加 ANSI 颜色代码
-      expect(output).toContain('✓')  // 完成
-      expect(output).toContain('✗')  // 失败
+      expect(output).toContain('✓') // 完成
+      expect(output).toContain('✗') // 失败
     })
   })
 
@@ -211,7 +211,7 @@ describe('LiveSummary', () => {
 
     it('should show estimated all completion time', () => {
       const output = formatLiveSummaryForTerminal(mockReport)
-      expect(output).toContain('21:30')  // estimatedAllCompletionTime
+      expect(output).toContain('21:30') // estimatedAllCompletionTime
     })
 
     it('should handle missing estimate confidence', () => {

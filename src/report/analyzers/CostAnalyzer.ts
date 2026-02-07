@@ -68,7 +68,8 @@ export function generateCostOptimizations(
   if (highCostNodes.length > 0) {
     const topExpensive = highCostNodes.slice(0, 3)
     const potentialSaving = topExpensive.reduce(
-      (sum, n) => sum + (n.totalCostUsd / n.executionCount - avgCostPerNode) * n.executionCount * 0.5,
+      (sum, n) =>
+        sum + (n.totalCostUsd / n.executionCount - avgCostPerNode) * n.executionCount * 0.5,
       0
     )
     optimizations.push({
@@ -119,8 +120,9 @@ export function generateCostOptimizations(
     const cat = task.category || 'other'
     sameCategoryTasks.set(cat, (sameCategoryTasks.get(cat) || 0) + 1)
   }
-  const batchableTasks = Array.from(sameCategoryTasks.entries())
-    .filter(([cat, count]) => count >= 5 && (cat === 'git' || cat === 'docs'))
+  const batchableTasks = Array.from(sameCategoryTasks.entries()).filter(
+    ([cat, count]) => count >= 5 && (cat === 'git' || cat === 'docs')
+  )
   if (batchableTasks.length > 0) {
     const totalBatchable = batchableTasks.reduce((sum, [, count]) => sum + count, 0)
     optimizations.push({
@@ -138,7 +140,12 @@ export function generateCostOptimizations(
  * 生成洞察
  */
 export function generateInsights(
-  trends: { period: { label: string }; successRate: number; avgDurationMs: number; failureReasons: { reason: string; count: number }[] }[],
+  trends: {
+    period: { label: string }
+    successRate: number
+    avgDurationMs: number
+    failureReasons: { reason: string; count: number }[]
+  }[],
   nodePerformance: NodePerformance[],
   costBreakdown: CostBreakdown
 ): string[] {
@@ -158,7 +165,8 @@ export function generateInsights(
 
     // 执行时间趋势
     if (previous.avgDurationMs > 0) {
-      const change = ((recent.avgDurationMs - previous.avgDurationMs) / previous.avgDurationMs) * 100
+      const change =
+        ((recent.avgDurationMs - previous.avgDurationMs) / previous.avgDurationMs) * 100
 
       if (change > 30) {
         insights.push(`⚠️ 平均执行时间增加 ${Math.round(change)}%`)
@@ -171,7 +179,10 @@ export function generateInsights(
   // 高失败率节点
   const failingNodes = nodePerformance.filter(n => n.successRate < 80 && n.executionCount >= 3)
   if (failingNodes.length > 0) {
-    const nodeNames = failingNodes.slice(0, 3).map(n => n.nodeName).join(', ')
+    const nodeNames = failingNodes
+      .slice(0, 3)
+      .map(n => n.nodeName)
+      .join(', ')
     insights.push(`⚠️ 需要关注的节点 (成功率<80%): ${nodeNames}`)
   }
 

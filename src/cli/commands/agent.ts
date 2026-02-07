@@ -8,9 +8,7 @@ import chalk from 'chalk'
 import { BUILTIN_PERSONAS } from '../../persona/builtinPersonas.js'
 
 export function registerAgentCommands(program: Command): void {
-  const agent = program
-    .command('agent')
-    .description('Agent (Persona) 管理')
+  const agent = program.command('agent').description('Agent (Persona) 管理')
 
   agent
     .command('list')
@@ -34,7 +32,7 @@ export function registerAgentCommands(program: Command): void {
     .command('show')
     .description('查看 Agent 详情')
     .argument('<name>', 'Agent 名称')
-    .action((name) => {
+    .action(name => {
       const persona = BUILTIN_PERSONAS[name]
       if (!persona) {
         console.log(chalk.red(`  未找到 Agent: ${name}`))

@@ -4,22 +4,24 @@ export const agentConfigSchema = z.object({
   name: z.string(),
   persona: z.string().default('Pragmatist'),
   role: z.enum(['developer', 'reviewer', 'both']).default('developer'),
-  schedule: z.object({
-    poll_interval: z.string().default('5m'),
-    work_hours: z.string().optional()
-  }).optional()
+  schedule: z
+    .object({
+      poll_interval: z.string().default('5m'),
+      work_hours: z.string().optional(),
+    })
+    .optional(),
 })
 
 export const taskConfigSchema = z.object({
   default_priority: z.enum(['low', 'medium', 'high']).default('medium'),
   max_retries: z.number().default(3),
-  timeout: z.string().default('30m')
+  timeout: z.string().default('30m'),
 })
 
 export const gitConfigSchema = z.object({
   base_branch: z.string().default('main'),
   branch_prefix: z.string().default('agent/'),
-  auto_push: z.boolean().default(false)
+  auto_push: z.boolean().default(false),
 })
 
 export const backendConfigSchema = z.object({
@@ -34,18 +36,19 @@ export const backendConfigSchema = z.object({
 /** @deprecated 使用 backendConfigSchema */
 export const claudeConfigSchema = z.object({
   model: z.enum(['haiku', 'sonnet', 'opus']).default('opus'),
-  max_tokens: z.number().default(8000)
+  max_tokens: z.number().default(8000),
 })
 
 export const larkConfigSchema = z.object({
-  webhookUrl: z.string().optional(),        // 飞书 webhook URL（向后兼容）
-  appId: z.string(),                        // 飞书应用 ID（WSClient 必需）
-  appSecret: z.string(),                    // 飞书应用密钥（WSClient 必需）
+  webhookUrl: z.string().optional(), // 飞书 webhook URL（向后兼容）
+  appId: z.string(), // 飞书应用 ID（WSClient 必需）
+  appSecret: z.string(), // 飞书应用密钥（WSClient 必需）
+  chatId: z.string().optional(), // 默认 Chat ID（用于推送通知）
 })
 
 export const telegramConfigSchema = z.object({
-  botToken: z.string(),                     // Telegram Bot Token
-  chatId: z.string().optional(),            // 默认 Chat ID
+  botToken: z.string(), // Telegram Bot Token
+  chatId: z.string().optional(), // 默认 Chat ID
 })
 
 export const notifyConfigSchema = z.object({

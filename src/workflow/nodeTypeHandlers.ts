@@ -20,7 +20,12 @@ import {
   executeLoopNode,
   executeForeachNode,
 } from './engine/executeNewNodes.js'
-import { extractStructuredOutput, resolvePersona, buildNodeContext, buildEvalContext } from './nodeResultProcessor.js'
+import {
+  extractStructuredOutput,
+  resolvePersona,
+  buildNodeContext,
+  buildEvalContext,
+} from './nodeResultProcessor.js'
 import type { Workflow, WorkflowNode, WorkflowInstance } from './types.js'
 
 const logger = createLogger('node-handlers')

@@ -26,6 +26,16 @@ interface CodebuddyJsonOutput {
   total_cost_usd?: number
 }
 
+/** Validate parsed JSON has the expected shape */
+function isCodebuddyJsonOutput(data: unknown): data is CodebuddyJsonOutput {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'result' in data &&
+    typeof (data as Record<string, unknown>).result === 'string'
+  )
+}
+
 interface StreamJsonEvent {
   type: string
   message?: {
@@ -131,7 +141,7 @@ function buildArgs(
   prompt: string,
   model?: string,
   skipPermissions?: boolean,
-  stream?: boolean,
+  stream?: boolean
 ): string[] {
   const args: string[] = []
 
@@ -164,12 +174,14 @@ function parseOutput(raw: string): {
 } {
   // 尝试单行 JSON
   try {
-    const json = JSON.parse(raw) as CodebuddyJsonOutput
-    return {
-      response: json.result,
-      sessionId: json.session_id ?? '',
-      durationApiMs: json.duration_api_ms,
-      costUsd: json.total_cost_usd,
+    const parsed = JSON.parse(raw)
+    if (isCodebuddyJsonOutput(parsed)) {
+      return {
+        response: parsed.result,
+        sessionId: parsed.session_id ?? '',
+        durationApiMs: parsed.duration_api_ms,
+        costUsd: parsed.total_cost_usd,
+      }
     }
   } catch {
     // 可能是多行 JSON
@@ -179,13 +191,13 @@ function parseOutput(raw: string): {
   const lines = raw.split('\n').filter(l => l.trim())
   for (const line of lines) {
     try {
-      const json = JSON.parse(line) as CodebuddyJsonOutput
-      if (json.type === 'result') {
+      const parsed = JSON.parse(line)
+      if (isCodebuddyJsonOutput(parsed) && parsed.type === 'result') {
         return {
-          response: json.result,
-          sessionId: json.session_id ?? '',
-          durationApiMs: json.duration_api_ms,
-          costUsd: json.total_cost_usd,
+          response: parsed.result,
+          sessionId: parsed.session_id ?? '',
+          durationApiMs: parsed.duration_api_ms,
+          costUsd: parsed.total_cost_usd,
         }
       }
     } catch {
@@ -198,7 +210,7 @@ function parseOutput(raw: string): {
 
 async function streamOutput(
   subprocess: ResultPromise,
-  onChunk?: (chunk: string) => void,
+  onChunk?: (chunk: string) => void
 ): Promise<string> {
   const chunks: string[] = []
   let buffer = ''

@@ -15,10 +15,28 @@
 
 // ── 平台无关的 handlers ──
 
-export { handleCommand, handleRun, handleList, handleLogs, handleStop, handleResume, handleGet, handleHelp, handleStatus } from './handlers/commandHandler.js'
+export {
+  handleCommand,
+  handleRun,
+  handleList,
+  handleLogs,
+  handleStop,
+  handleResume,
+  handleGet,
+  handleHelp,
+  handleStatus,
+} from './handlers/commandHandler.js'
 export { handleApproval, parseApprovalCommand } from './handlers/approvalHandler.js'
 export { handleChat, clearChatSession, getChatSessionInfo } from './handlers/chatHandler.js'
-export type { MessengerAdapter, SendOptions, ParsedApproval, ApprovalResult, ChatSession, CommandResult, IncomingMessage } from './handlers/types.js'
+export type {
+  MessengerAdapter,
+  SendOptions,
+  ParsedApproval,
+  ApprovalResult,
+  ChatSession,
+  CommandResult,
+  IncomingMessage,
+} from './handlers/types.js'
 
 // ── 飞书 ──
 
@@ -27,19 +45,31 @@ export {
   sendLarkMessage,
   sendLarkMessageViaApi,
   sendApprovalResultNotification,
+  sendLarkCardViaApi,
+  updateLarkCard,
 } from './sendLarkNotify.js'
 
 export {
-  startLarkServer,
-  stopLarkServer,
-  isLarkServerRunning,
-} from './larkServer.js'
+  buildCard,
+  buildTaskCompletedCard,
+  buildTaskFailedCard,
+  buildApprovalCard,
+  buildWelcomeCard,
+  buildTaskListCard,
+  buildTaskDetailCard,
+  buildStatusCard,
+  buildHelpCard,
+} from './buildLarkCard.js'
+export type { LarkCard, LarkCardElement, LarkCardButton } from './buildLarkCard.js'
+
+export { startLarkServer, stopLarkServer, isLarkServerRunning } from './larkServer.js'
 
 export {
   startLarkWsClient,
   stopLarkWsClient,
   isLarkWsClientRunning,
   getLarkClient,
+  getDefaultLarkChatId,
 } from './larkWsClient.js'
 
 // ── Telegram ──

@@ -8,7 +8,10 @@
 
 import { createLogger } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
-import { sendTelegramMessage as sendViaBotClient, isTelegramClientRunning } from './telegramClient.js'
+import {
+  sendTelegramMessage as sendViaBotClient,
+  isTelegramClientRunning,
+} from './telegramClient.js'
 
 const logger = createLogger('telegram-notify')
 
@@ -31,7 +34,7 @@ async function sendDirectMessage(
   botToken: string,
   chatId: string,
   text: string,
-  parseMode?: string,
+  parseMode?: string
 ): Promise<boolean> {
   try {
     const response = await fetch(`${TELEGRAM_API}${botToken}/sendMessage`, {
@@ -44,7 +47,7 @@ async function sendDirectMessage(
       }),
     })
 
-    const result = await response.json() as { ok: boolean; description?: string }
+    const result = (await response.json()) as { ok: boolean; description?: string }
     if (!result.ok) {
       logger.error(`Telegram send failed: ${result.description}`)
       return false
@@ -74,7 +77,7 @@ async function getTelegramConfig(): Promise<{ botToken: string; chatId: string }
  * 发送审批通知到 Telegram
  */
 export async function sendTelegramReviewNotification(
-  options: TelegramReviewNotificationOptions,
+  options: TelegramReviewNotificationOptions
 ): Promise<boolean> {
   const {
     taskTitle,
@@ -130,10 +133,7 @@ export async function sendTelegramReviewNotification(
  *
  * 策略：优先通过已启动的 client 发送，否则降级到直接 API 调用
  */
-export async function sendTelegramTextMessage(
-  text: string,
-  chatId?: string,
-): Promise<boolean> {
+export async function sendTelegramTextMessage(text: string, chatId?: string): Promise<boolean> {
   // 优先使用已启动的 client
   if (chatId && isTelegramClientRunning()) {
     const ok = await sendViaBotClient(chatId, text)
@@ -159,7 +159,7 @@ export async function sendTelegramApprovalResult(
     nodeName: string
     approved: boolean
     reason?: string
-  },
+  }
 ): Promise<boolean> {
   const { nodeId, nodeName, approved, reason } = options
   const status = approved ? '✅ 已通过' : '❌ 已拒绝'

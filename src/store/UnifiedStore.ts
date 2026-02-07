@@ -54,7 +54,11 @@ export interface UnifiedStore {
   getWorkflow(taskId: string): Workflow | null
   saveInstance(taskId: string, instance: WorkflowInstance): void
   getInstance(taskId: string): WorkflowInstance | null
-  appendLog(taskId: string, type: 'execution' | 'conversation', content: string | ConversationEntry): void
+  appendLog(
+    taskId: string,
+    type: 'execution' | 'conversation',
+    content: string | ConversationEntry
+  ): void
   saveOutput(taskId: string, nodeId: string, output: unknown): void
 
   // ============ Meta 相关 ============
@@ -113,7 +117,11 @@ class DefaultFileStore implements UnifiedStore {
     return getTaskInstance(taskId)
   }
 
-  appendLog(taskId: string, type: 'execution' | 'conversation', content: string | ConversationEntry): void {
+  appendLog(
+    taskId: string,
+    type: 'execution' | 'conversation',
+    content: string | ConversationEntry
+  ): void {
     if (type === 'execution' && typeof content === 'string') {
       _appendExecutionLog(taskId, content)
     } else if (type === 'conversation' && typeof content === 'object') {

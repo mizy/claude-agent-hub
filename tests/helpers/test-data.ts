@@ -3,6 +3,8 @@
  * 提供标准化的测试数据创建函数
  */
 
+import { join } from 'path'
+import { tmpdir } from 'os'
 import type { Task, TaskPriority } from '../../src/types/task.js'
 import type { Workflow, WorkflowNode, WorkflowEdge, WorkflowInstance } from '../../src/workflow/types.js'
 
@@ -212,7 +214,7 @@ export interface TestConfig {
  */
 export function getTestConfig(): TestConfig {
   return {
-    dataDir: process.env.CAH_DATA_DIR || '.cah-data',
+    dataDir: process.env.CAH_DATA_DIR || join(tmpdir(), 'cah-test-data'),
     testTimeout: 30000,
     cleanupAfterTest: true,
   }

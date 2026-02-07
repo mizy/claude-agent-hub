@@ -85,11 +85,7 @@ export function createIflowBackend(): BackendAdapter {
 
 // ============ Private Helpers ============
 
-function buildArgs(
-  prompt: string,
-  model?: string,
-  sessionId?: string,
-): string[] {
+function buildArgs(prompt: string, model?: string, sessionId?: string): string[] {
   const args: string[] = []
 
   // 恢复会话
@@ -132,16 +128,14 @@ function parseOutput(raw: string): { response: string; sessionId: string } {
   }
 
   // 回答是 <Execution Info> 之前的部分
-  const response = execInfoMatch
-    ? raw.slice(0, execInfoMatch.index).trim()
-    : raw.trim()
+  const response = execInfoMatch ? raw.slice(0, execInfoMatch.index).trim() : raw.trim()
 
   return { response, sessionId }
 }
 
 async function streamOutput(
   subprocess: ResultPromise,
-  onChunk?: (chunk: string) => void,
+  onChunk?: (chunk: string) => void
 ): Promise<string> {
   const chunks: string[] = []
 

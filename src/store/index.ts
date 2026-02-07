@@ -98,10 +98,7 @@ export {
 // UnifiedStore 提供 Task, Workflow 的存储操作方法
 // 使用 getStore() 获取单例实例
 // 注意：队列操作请直接使用 workflow/queue/WorkflowQueue.js
-export {
-  getStore,
-  type UnifiedStore,
-} from './UnifiedStore.js'
+export { getStore, type UnifiedStore } from './UnifiedStore.js'
 
 // WorkflowStore - Workflow 和 Instance 存储
 export {

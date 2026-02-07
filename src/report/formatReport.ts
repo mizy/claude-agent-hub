@@ -67,7 +67,9 @@ export function formatReport(data: ReportData): string {
     lines.push(chalk.gray('───────────────────────────────────────'))
     for (const agent of data.agents) {
       lines.push(`  ${agent.name}`)
-      lines.push(chalk.gray(`    完成: ${agent.stats.tasksCompleted} | 失败: ${agent.stats.tasksFailed}`))
+      lines.push(
+        chalk.gray(`    完成: ${agent.stats.tasksCompleted} | 失败: ${agent.stats.tasksFailed}`)
+      )
     }
     lines.push('')
   }

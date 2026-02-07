@@ -9,6 +9,8 @@ import { createLogger } from '../shared/logger.js'
 
 const logger = createLogger('project-context')
 
+const README_SUMMARY_MAX_LENGTH = 500
+
 /**
  * 项目上下文信息
  */
@@ -62,8 +64,8 @@ export async function analyzeProjectContext(cwd: string = process.cwd()): Promis
     try {
       const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf-8'))
       context.scripts = pkg.scripts || {}
-    } catch {
-      // ignore
+    } catch (e) {
+      logger.debug(`Failed to parse package.json: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
@@ -78,8 +80,8 @@ export async function analyzeProjectContext(cwd: string = process.cwd()): Promis
   if (existsSync(claudeMdPath)) {
     try {
       context.claudeMdContent = readFileSync(claudeMdPath, 'utf-8')
-    } catch {
-      // ignore
+    } catch (e) {
+      logger.debug(`Failed to read CLAUDE.md: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
@@ -184,8 +186,8 @@ function detectNodeFrameworks(cwd: string, context: ProjectContext): void {
     if (deps['webpack']) context.frameworks.push('webpack')
     if (deps['esbuild']) context.frameworks.push('esbuild')
     if (deps['tsup']) context.frameworks.push('tsup')
-  } catch {
-    // ignore
+  } catch (e) {
+    logger.debug(`Failed to detect frameworks: ${e instanceof Error ? e.message : String(e)}`)
   }
 }
 
@@ -303,8 +305,7 @@ function findReadme(cwd: string): string | null {
 function extractReadmeSummary(path: string): string {
   try {
     const content = readFileSync(path, 'utf-8')
-    // 取前 500 字符，截断到完整行
-    const truncated = content.slice(0, 500)
+    const truncated = content.slice(0, README_SUMMARY_MAX_LENGTH)
     const lastNewline = truncated.lastIndexOf('\n')
     return lastNewline > 0 ? truncated.slice(0, lastNewline) : truncated
   } catch {
@@ -328,14 +329,6 @@ export function formatProjectContextForPrompt(context: ProjectContext): string {
   if (context.frameworks.length > 0) {
     parts.push(`- 框架: ${context.frameworks.join(', ')}`)
   }
-
-  // 目录结构 - 不输出，让 AI 自行探索
-  // if (context.directoryStructure) {
-  //   parts.push(`\n## 目录结构`)
-  //   parts.push('```')
-  //   parts.push(context.directoryStructure)
-  //   parts.push('```')
-  // }
 
   // 可用脚本
   const scriptEntries = Object.entries(context.scripts)

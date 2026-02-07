@@ -71,8 +71,18 @@ describe('ExecutionReport', () => {
         description: 'Test workflow',
         nodes: [
           { id: 'start', type: 'start', name: 'Start' },
-          { id: 'node-1', type: 'task', name: 'Task Node 1', task: { persona: 'dev', prompt: 'Do something' } },
-          { id: 'node-2', type: 'task', name: 'Task Node 2', task: { persona: 'dev', prompt: 'Do something else' } },
+          {
+            id: 'node-1',
+            type: 'task',
+            name: 'Task Node 1',
+            task: { persona: 'dev', prompt: 'Do something' },
+          },
+          {
+            id: 'node-2',
+            type: 'task',
+            name: 'Task Node 2',
+            task: { persona: 'dev', prompt: 'Do something else' },
+          },
           { id: 'end', type: 'end', name: 'End' },
         ],
         edges: [
@@ -91,10 +101,10 @@ describe('ExecutionReport', () => {
         startedAt: '2026-02-01T10:00:00Z',
         completedAt: '2026-02-01T10:05:00Z',
         nodeStates: {
-          'start': { status: 'done', attempts: 0 },
+          start: { status: 'done', attempts: 0 },
           'node-1': { status: 'done', attempts: 1 },
           'node-2': { status: 'done', attempts: 1 },
-          'end': { status: 'done', attempts: 0 },
+          end: { status: 'done', attempts: 0 },
         },
         variables: {},
         outputs: {
@@ -123,20 +133,59 @@ describe('ExecutionReport', () => {
           avgNodeDurationMs: 150000,
         },
         nodes: [
-          { nodeId: 'node-1', nodeName: 'Task Node 1', nodeType: 'task', status: 'completed', attempts: 1, durationMs: 120000, costUsd: 0.08 },
-          { nodeId: 'node-2', nodeName: 'Task Node 2', nodeType: 'task', status: 'completed', attempts: 1, durationMs: 180000, costUsd: 0.07 },
+          {
+            nodeId: 'node-1',
+            nodeName: 'Task Node 1',
+            nodeType: 'task',
+            status: 'completed',
+            attempts: 1,
+            durationMs: 120000,
+            costUsd: 0.08,
+          },
+          {
+            nodeId: 'node-2',
+            nodeName: 'Task Node 2',
+            nodeType: 'task',
+            status: 'completed',
+            attempts: 1,
+            durationMs: 180000,
+            costUsd: 0.07,
+          },
         ],
       })
 
       vi.mocked(getExecutionTimeline).mockReturnValue([
         { timestamp: '2026-02-01T10:00:00Z', event: 'workflow:started', instanceId: 'inst-1' },
-        { timestamp: '2026-02-01T10:00:01Z', event: 'node:started', nodeId: 'node-1', nodeName: 'Task Node 1', instanceId: 'inst-1' },
-        { timestamp: '2026-02-01T10:02:00Z', event: 'node:completed', nodeId: 'node-1', nodeName: 'Task Node 1', instanceId: 'inst-1' },
-        { timestamp: '2026-02-01T10:02:01Z', event: 'node:started', nodeId: 'node-2', nodeName: 'Task Node 2', instanceId: 'inst-1' },
-        { timestamp: '2026-02-01T10:05:00Z', event: 'node:completed', nodeId: 'node-2', nodeName: 'Task Node 2', instanceId: 'inst-1' },
+        {
+          timestamp: '2026-02-01T10:00:01Z',
+          event: 'node:started',
+          nodeId: 'node-1',
+          nodeName: 'Task Node 1',
+          instanceId: 'inst-1',
+        },
+        {
+          timestamp: '2026-02-01T10:02:00Z',
+          event: 'node:completed',
+          nodeId: 'node-1',
+          nodeName: 'Task Node 1',
+          instanceId: 'inst-1',
+        },
+        {
+          timestamp: '2026-02-01T10:02:01Z',
+          event: 'node:started',
+          nodeId: 'node-2',
+          nodeName: 'Task Node 2',
+          instanceId: 'inst-1',
+        },
+        {
+          timestamp: '2026-02-01T10:05:00Z',
+          event: 'node:completed',
+          nodeId: 'node-2',
+          nodeName: 'Task Node 2',
+          instanceId: 'inst-1',
+        },
         { timestamp: '2026-02-01T10:05:00Z', event: 'workflow:completed', instanceId: 'inst-1' },
       ])
-
 
       const report = generateExecutionReport('task-1')
 
@@ -170,7 +219,12 @@ describe('ExecutionReport', () => {
         description: 'Workflow that fails',
         nodes: [
           { id: 'start', type: 'start', name: 'Start' },
-          { id: 'node-1', type: 'task', name: 'Failing Node', task: { persona: 'dev', prompt: 'Fail' } },
+          {
+            id: 'node-1',
+            type: 'task',
+            name: 'Failing Node',
+            task: { persona: 'dev', prompt: 'Fail' },
+          },
           { id: 'end', type: 'end', name: 'End' },
         ],
         edges: [
@@ -189,9 +243,9 @@ describe('ExecutionReport', () => {
         completedAt: '2026-02-01T10:01:00Z',
         error: 'Node failed: Failing Node',
         nodeStates: {
-          'start': { status: 'done', attempts: 0 },
+          start: { status: 'done', attempts: 0 },
           'node-1': { status: 'failed', attempts: 3, error: 'Timeout exceeded' },
-          'end': { status: 'pending', attempts: 0 },
+          end: { status: 'pending', attempts: 0 },
         },
         variables: {},
         outputs: {},
@@ -235,8 +289,24 @@ describe('ExecutionReport', () => {
           totalCostUsd: 0.15,
         },
         nodes: [
-          { id: 'node-1', name: 'Task Node 1', type: 'task', status: 'completed', attempts: 1, durationMs: 150000, costUsd: 0.08 },
-          { id: 'node-2', name: 'Task Node 2', type: 'task', status: 'completed', attempts: 1, durationMs: 150000, costUsd: 0.07 },
+          {
+            id: 'node-1',
+            name: 'Task Node 1',
+            type: 'task',
+            status: 'completed',
+            attempts: 1,
+            durationMs: 150000,
+            costUsd: 0.08,
+          },
+          {
+            id: 'node-2',
+            name: 'Task Node 2',
+            type: 'task',
+            status: 'completed',
+            attempts: 1,
+            durationMs: 150000,
+            costUsd: 0.07,
+          },
         ],
         timeline: [
           { timestamp: '2026-02-01T10:00:00Z', event: 'workflow:started', instanceId: 'inst-1' },
@@ -283,7 +353,14 @@ describe('ExecutionReport', () => {
           totalCostUsd: 0.05,
         },
         nodes: [
-          { id: 'node-1', name: 'Failing Node', type: 'task', status: 'failed', attempts: 3, error: 'Connection timeout' },
+          {
+            id: 'node-1',
+            name: 'Failing Node',
+            type: 'task',
+            status: 'failed',
+            attempts: 3,
+            error: 'Connection timeout',
+          },
         ],
         timeline: [],
         summary: {
@@ -372,7 +449,14 @@ describe('ExecutionReport', () => {
           totalCostUsd: 0.05,
         },
         nodes: [
-          { id: 'node-1', name: 'Failing Node', type: 'task', status: 'failed', attempts: 3, error: 'API Error: rate limit' },
+          {
+            id: 'node-1',
+            name: 'Failing Node',
+            type: 'task',
+            status: 'failed',
+            attempts: 3,
+            error: 'API Error: rate limit',
+          },
         ],
         timeline: [],
         summary: {

@@ -28,9 +28,7 @@ export interface JsonWorkflowInput {
  * 解析 JSON 内容为 Workflow
  */
 export function parseJson(input: JsonWorkflowInput | string, sourceFile?: string): Workflow {
-  const data: JsonWorkflowInput = typeof input === 'string'
-    ? JSON.parse(input)
-    : input
+  const data: JsonWorkflowInput = typeof input === 'string' ? JSON.parse(input) : input
 
   // 验证必填字段
   if (!data.name) {
@@ -90,7 +88,9 @@ export function parseJson(input: JsonWorkflowInput | string, sourceFile?: string
     if (node.switch?.cases) {
       for (const caseItem of node.switch.cases) {
         if (caseItem.value !== 'default' && !nodeIds.has(caseItem.targetNode)) {
-          throw new Error(`Switch node ${node.id} references unknown target node: ${caseItem.targetNode}`)
+          throw new Error(
+            `Switch node ${node.id} references unknown target node: ${caseItem.targetNode}`
+          )
         }
       }
     }
@@ -111,7 +111,9 @@ export function parseJson(input: JsonWorkflowInput | string, sourceFile?: string
     sourceFile,
   }
 
-  logger.info(`Parsed JSON workflow: ${workflow.name} (${nodes.length} nodes, ${edges.length} edges)`)
+  logger.info(
+    `Parsed JSON workflow: ${workflow.name} (${nodes.length} nodes, ${edges.length} edges)`
+  )
 
   return workflow
 }

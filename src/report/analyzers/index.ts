@@ -10,13 +10,21 @@ export * from './types.js'
 export { collectAllTaskStats, groupByPeriod, categorizeTask } from './dataCollector.js'
 
 // 类型趋势分析
-export { calculatePeriodTrend, analyzeNodePerformance, analyzeCategoryStats } from './TypeTrendAnalyzer.js'
+export {
+  calculatePeriodTrend,
+  analyzeNodePerformance,
+  analyzeCategoryStats,
+} from './TypeTrendAnalyzer.js'
 
 // 热力图分析
 export { analyzeNodeHeatmap } from './HeatmapAnalyzer.js'
 
 // 成本分析
-export { analyzeCostBreakdown, generateCostOptimizations, generateInsights } from './CostAnalyzer.js'
+export {
+  analyzeCostBreakdown,
+  generateCostOptimizations,
+  generateInsights,
+} from './CostAnalyzer.js'
 
 // 格式化
 export { formatTrendReportForTerminal, formatTrendReportForMarkdown } from './formatters.js'

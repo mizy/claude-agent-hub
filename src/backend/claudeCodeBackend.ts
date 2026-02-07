@@ -26,6 +26,16 @@ interface ClaudeJsonOutput {
   total_cost_usd: number
 }
 
+/** Validate parsed JSON has the expected shape */
+function isClaudeJsonOutput(data: unknown): data is ClaudeJsonOutput {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'result' in data &&
+    typeof (data as Record<string, unknown>).result === 'string'
+  )
+}
+
 interface StreamJsonEvent {
   type: string
   message?: {
@@ -87,7 +97,9 @@ export function createClaudeCodeBackend(): BackendAdapter {
         const durationMs = Date.now() - startTime
         const parsed = parseClaudeOutput(rawOutput)
 
-        logger.info(`完成 (${(durationMs / 1000).toFixed(1)}s, API: ${((parsed.durationApiMs ?? 0) / 1000).toFixed(1)}s)`)
+        logger.info(
+          `完成 (${(durationMs / 1000).toFixed(1)}s, API: ${((parsed.durationApiMs ?? 0) / 1000).toFixed(1)}s)`
+        )
 
         return ok({
           prompt,
@@ -161,12 +173,14 @@ function parseClaudeOutput(raw: string): {
 } {
   // 尝试解析为单行 JSON
   try {
-    const json = JSON.parse(raw) as ClaudeJsonOutput
-    return {
-      response: json.result,
-      sessionId: json.session_id,
-      durationApiMs: json.duration_api_ms,
-      costUsd: json.total_cost_usd,
+    const parsed = JSON.parse(raw)
+    if (isClaudeJsonOutput(parsed)) {
+      return {
+        response: parsed.result,
+        sessionId: parsed.session_id ?? '',
+        durationApiMs: parsed.duration_api_ms,
+        costUsd: parsed.total_cost_usd,
+      }
     }
   } catch {
     // 可能是多行 JSON (stream-json 格式)
@@ -176,13 +190,13 @@ function parseClaudeOutput(raw: string): {
   const lines = raw.split('\n').filter(line => line.trim())
   for (const line of lines) {
     try {
-      const json = JSON.parse(line) as ClaudeJsonOutput & { type?: string }
-      if (json.type === 'result') {
+      const parsed = JSON.parse(line)
+      if (isClaudeJsonOutput(parsed) && parsed.type === 'result') {
         return {
-          response: json.result,
-          sessionId: json.session_id,
-          durationApiMs: json.duration_api_ms,
-          costUsd: json.total_cost_usd,
+          response: parsed.result,
+          sessionId: parsed.session_id ?? '',
+          durationApiMs: parsed.duration_api_ms,
+          costUsd: parsed.total_cost_usd,
         }
       }
     } catch {

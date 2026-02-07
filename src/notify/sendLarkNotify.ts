@@ -6,7 +6,9 @@
  */
 
 import { createLogger } from '../shared/logger.js'
-import { getLarkClient } from './larkWsClient.js'
+import { getLarkClient, getDefaultLarkChatId } from './larkWsClient.js'
+import { buildApprovalCard } from './buildLarkCard.js'
+import type { LarkCard } from './buildLarkCard.js'
 
 const logger = createLogger('lark-notify')
 
@@ -18,96 +20,35 @@ export interface ReviewNotificationOptions {
   instanceId: string
   nodeId: string
   nodeName: string
-}
-
-interface LarkCardMessage {
-  msg_type: 'interactive'
-  card: {
-    config?: {
-      wide_screen_mode: boolean
-    }
-    header: {
-      title: {
-        tag: 'plain_text'
-        content: string
-      }
-      template?: string
-    }
-    elements: Array<{
-      tag: string
-      content?: string
-      actions?: Array<{
-        tag: 'button'
-        text: { tag: 'plain_text'; content: string }
-        type?: string
-        value?: Record<string, string>
-        url?: string
-      }>
-    }>
-  }
+  chatId?: string
 }
 
 /**
- * 发送审批通知到飞书
+ * Send approval notification to Lark with interactive buttons.
+ * Strategy: try API client first (buttons work), fall back to webhook (buttons won't trigger callbacks).
  */
-export async function sendReviewNotification(
-  options: ReviewNotificationOptions
-): Promise<boolean> {
-  const {
-    webhookUrl,
-    taskTitle,
-    workflowName,
-    workflowId,
-    instanceId,
-    nodeId,
-    nodeName,
-  } = options
+export async function sendReviewNotification(options: ReviewNotificationOptions): Promise<boolean> {
+  const { webhookUrl, taskTitle, workflowName, workflowId, instanceId, nodeId, nodeName } = options
 
-  const shortInstanceId = instanceId.slice(0, 8)
+  const card = buildApprovalCard({ taskTitle, workflowName, workflowId, instanceId, nodeId, nodeName })
 
-  const message: LarkCardMessage = {
-    msg_type: 'interactive',
-    card: {
-      config: {
-        wide_screen_mode: true,
-      },
-      header: {
-        title: {
-          tag: 'plain_text',
-          content: '🔔 需要审批',
-        },
-        template: 'orange',
-      },
-      elements: [
-        {
-          tag: 'markdown',
-          content: [
-            `**任务**: ${taskTitle}`,
-            `**工作流**: ${workflowName}`,
-            `**节点**: ${nodeName}`,
-            `**实例**: ${shortInstanceId}`,
-            '',
-            '---',
-            '',
-            '通过 CLI 命令审批:',
-            '```',
-            `cah workflow approve ${workflowId.slice(0, 8)} ${nodeId}`,
-            '```',
-            '',
-            '或回复本消息: `通过` / `拒绝 [原因]`',
-          ].join('\n'),
-        },
-      ],
-    },
+  // Try API first — buttons only work when sent via API
+  const chatId = options.chatId || getDefaultLarkChatId()
+  if (chatId) {
+    const ok = await sendLarkCardViaApi(chatId, card)
+    if (ok) {
+      logger.info(`Sent review notification for node ${nodeId} via API`)
+      return true
+    }
+    logger.warn('API card send failed, falling back to webhook')
   }
 
+  // Webhook fallback — card renders but button callbacks won't work
   try {
     const response = await fetch(webhookUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(message),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg_type: 'interactive', card }),
     })
 
     if (!response.ok) {
@@ -116,13 +57,13 @@ export async function sendReviewNotification(
       return false
     }
 
-    const result = await response.json() as { code?: number; msg?: string }
+    const result = (await response.json()) as { code?: number; msg?: string }
     if (result.code !== 0) {
       logger.error(`Lark webhook error: ${result.msg}`)
       return false
     }
 
-    logger.info(`Sent review notification for node ${nodeId}`)
+    logger.info(`Sent review notification for node ${nodeId} via webhook`)
     return true
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
@@ -134,10 +75,7 @@ export async function sendReviewNotification(
 /**
  * 通过 Lark API client 发送消息到指定 chat
  */
-export async function sendLarkMessageViaApi(
-  chatId: string,
-  text: string
-): Promise<boolean> {
+export async function sendLarkMessageViaApi(chatId: string, text: string): Promise<boolean> {
   const client = getLarkClient()
   if (!client) {
     logger.warn('Lark API client not available, cannot send via API')
@@ -171,7 +109,7 @@ export async function sendLarkMessageViaApi(
 export async function sendLarkMessage(
   webhookUrl: string,
   text: string,
-  chatId?: string,
+  chatId?: string
 ): Promise<boolean> {
   // 优先使用 API client
   if (chatId && getLarkClient()) {
@@ -252,6 +190,57 @@ export async function sendApprovalResultNotification(
 
     return response.ok
   } catch {
+    return false
+  }
+}
+
+/**
+ * Send an interactive card via Lark API client
+ */
+export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promise<boolean> {
+  const client = getLarkClient()
+  if (!client) {
+    logger.warn('Lark API client not available, cannot send card via API')
+    return false
+  }
+
+  try {
+    await client.im.v1.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: chatId,
+        content: JSON.stringify(card),
+        msg_type: 'interactive',
+      },
+    })
+    logger.info(`Sent card via Lark API to chat ${chatId}`)
+    return true
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logger.error(`Failed to send Lark card via API: ${errorMessage}`)
+    return false
+  }
+}
+
+/**
+ * Update an existing card message
+ */
+export async function updateLarkCard(messageId: string, card: LarkCard): Promise<boolean> {
+  const client = getLarkClient()
+  if (!client) {
+    logger.warn('Lark API client not available, cannot update card')
+    return false
+  }
+
+  try {
+    await client.im.v1.message.patch({
+      path: { message_id: messageId },
+      data: { content: JSON.stringify(card) },
+    })
+    return true
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logger.error(`Failed to update Lark card: ${errorMessage}`)
     return false
   }
 }

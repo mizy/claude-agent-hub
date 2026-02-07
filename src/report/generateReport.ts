@@ -35,9 +35,10 @@ export async function generateReport(options: ReportOptions): Promise<void> {
   const stats = {
     totalTasks: tasks.length,
     completed: tasks.filter(t => t.status === 'completed').length,
-    inProgress: tasks.filter(t => ['planning', 'developing', 'reviewing'].includes(t.status)).length,
+    inProgress: tasks.filter(t => ['planning', 'developing', 'reviewing'].includes(t.status))
+      .length,
     pending: tasks.filter(t => t.status === 'pending').length,
-    failed: tasks.filter(t => t.status === 'failed').length
+    failed: tasks.filter(t => t.status === 'failed').length,
   }
 
   // 待审批的分支
@@ -46,7 +47,7 @@ export async function generateReport(options: ReportOptions): Promise<void> {
     .map(t => ({
       branch: t.branch!,
       task: t.title,
-      agent: t.assignee
+      agent: t.assignee,
     }))
 
   // 生成报告
@@ -55,7 +56,7 @@ export async function generateReport(options: ReportOptions): Promise<void> {
     agents: [],
     tasks,
     stats,
-    pendingBranches
+    pendingBranches,
   })
 
   // 输出

@@ -19,7 +19,9 @@ const DEFAULT_PERSONA_NAME = 'Pragmatist'
  * 如果响应包含 JSON 代码块，则解析并返回结构化对象
  * 同时保留原始文本以便展示
  */
-export function extractStructuredOutput(response: string): { _raw: string } & Record<string, unknown> {
+export function extractStructuredOutput(
+  response: string
+): { _raw: string } & Record<string, unknown> {
   const output: { _raw: string } & Record<string, unknown> = { _raw: response }
 
   // 尝试提取 JSON 代码块 (```json ... ```)
@@ -44,7 +46,9 @@ export function extractStructuredOutput(response: string): { _raw: string } & Re
 
       if (typeof parsed === 'object' && parsed !== null) {
         Object.assign(output, parsed)
-        logger.debug(`Extracted structured output from JSON block: ${Object.keys(parsed).join(', ')}`)
+        logger.debug(
+          `Extracted structured output from JSON block: ${Object.keys(parsed).join(', ')}`
+        )
       }
     } catch {
       // JSON 解析失败，忽略
@@ -103,13 +107,34 @@ export function resolvePersona(personaName?: string): PersonaConfig {
   return defaultPersona
 }
 
+const MAX_CONTEXT_OUTPUT_LENGTH = 3000
+
+/**
+ * 提取节点输出的可读文本，优先使用 _raw 字段
+ */
+function summarizeNodeOutput(output: unknown): string {
+  if (!output) return 'completed'
+  if (typeof output === 'string') return output
+  if (typeof output === 'object' && output !== null && '_raw' in output) {
+    const raw = (output as Record<string, unknown>)._raw
+    if (typeof raw === 'string') return raw
+  }
+  return JSON.stringify(output)
+}
+
 /**
  * 构建节点执行上下文
  */
 export function buildNodeContext(instance: WorkflowInstance): string {
   const completedNodes = Object.entries(instance.nodeStates)
     .filter(([, state]) => state.status === 'done')
-    .map(([nodeId]) => `- ${nodeId}: ${JSON.stringify(instance.outputs[nodeId] || 'completed')}`)
+    .map(([nodeId]) => {
+      let text = summarizeNodeOutput(instance.outputs[nodeId])
+      if (text.length > MAX_CONTEXT_OUTPUT_LENGTH) {
+        text = text.slice(0, MAX_CONTEXT_OUTPUT_LENGTH) + '... (truncated)'
+      }
+      return `- ${nodeId}: ${text}`
+    })
 
   if (completedNodes.length === 0) {
     return ''

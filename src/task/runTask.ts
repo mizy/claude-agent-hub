@@ -28,8 +28,7 @@ const NODE_CONCURRENCY = 3
 export async function runTask(task: Task): Promise<void> {
   await executeTask(task, {
     concurrency: NODE_CONCURRENCY,
-    saveToTaskFolder: true,
-    useConsole: false, // 使用 logger
+    useConsole: false,
   })
 }
 
@@ -45,8 +44,6 @@ export async function resumeTask(task: Task): Promise<void> {
   await executeTask(task, {
     concurrency: NODE_CONCURRENCY,
     resume: true,
-    saveToTaskFolder: true,
-    useConsole: false, // 使用 logger
+    useConsole: false,
   })
 }
-

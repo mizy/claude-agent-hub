@@ -94,10 +94,10 @@ describe('RetryStrategy', () => {
         backoffMultiplier: 2,
       }
 
-      expect(calculateRetryDelay(1, config)).toBe(1000)  // 1000 * 2^0
-      expect(calculateRetryDelay(2, config)).toBe(2000)  // 1000 * 2^1
-      expect(calculateRetryDelay(3, config)).toBe(4000)  // 1000 * 2^2
-      expect(calculateRetryDelay(4, config)).toBe(8000)  // 1000 * 2^3
+      expect(calculateRetryDelay(1, config)).toBe(1000) // 1000 * 2^0
+      expect(calculateRetryDelay(2, config)).toBe(2000) // 1000 * 2^1
+      expect(calculateRetryDelay(3, config)).toBe(4000) // 1000 * 2^2
+      expect(calculateRetryDelay(4, config)).toBe(8000) // 1000 * 2^3
     })
 
     it('should cap delay at maxDelayMs', () => {
@@ -201,7 +201,8 @@ describe('RetryStrategy', () => {
     })
 
     it('should retry on transient failure', async () => {
-      const operation = vi.fn()
+      const operation = vi
+        .fn()
         .mockRejectedValueOnce(new Error('timeout'))
         .mockResolvedValue('success')
 
@@ -252,31 +253,31 @@ describe('RetryStrategy', () => {
     })
 
     it('should call onRetry callback', async () => {
-      const operation = vi.fn()
+      const operation = vi
+        .fn()
         .mockRejectedValueOnce(new Error('timeout'))
         .mockResolvedValue('success')
 
       const onRetry = vi.fn()
 
-      const resultPromise = withRetry(
-        operation,
-        { baseDelayMs: 100, jitterFactor: 0 },
-        onRetry
-      )
+      const resultPromise = withRetry(operation, { baseDelayMs: 100, jitterFactor: 0 }, onRetry)
 
       await vi.runAllTimersAsync()
 
       await resultPromise
       expect(onRetry).toHaveBeenCalledTimes(1)
-      expect(onRetry).toHaveBeenCalledWith(expect.objectContaining({
-        shouldRetry: true,
-        attempt: 1,
-        nextAttempt: 2,
-      }))
+      expect(onRetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shouldRetry: true,
+          attempt: 1,
+          nextAttempt: 2,
+        })
+      )
     })
 
     it('should track total delay time', async () => {
-      const operation = vi.fn()
+      const operation = vi
+        .fn()
         .mockRejectedValueOnce(new Error('some random error'))
         .mockRejectedValueOnce(new Error('some random error'))
         .mockResolvedValue('success')

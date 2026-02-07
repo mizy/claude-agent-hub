@@ -1,21 +1,33 @@
 # Claude Agent Hub
 
-> **成为开发者的自主进化伙伴 — 让每个开发者都拥有一支永不疲倦的 AI 工程团队**
+> **从工具到生命体 — 一个拥有记忆、本能和进化能力的自驱软件智能体**
 
-基于 Claude Code CLI 的自举式 AI 任务系统。用自己来维护和开发自己。
+自举式 AI 任务系统。用自己来维护和开发自己。目标不是"更好的工具"，而是"有生命力的系统"。
 
-## 特性
+> *selfcheck 是生存本能，selfevolution 是成长欲望，self-drive 是生命的起点。*
+> 详见 [VISION.md](./VISION.md)
+
+## 当前能力
 
 - **一行命令** — `cah "重构登录模块"` 自动分析、规划、执行
-- **智能 Workflow** — AI 生成执行计划，支持条件、循环、并行等复杂流程
+- **智能 Workflow** — AI 生成执行计划，14 种节点类型，支持条件、循环、并行
 - **项目感知** — 自动分析项目结构、框架、规范，生成更精准的任务计划
-- **历史学习** — 从过去任务中学习成功模式，任务分类，节点模式提取
-- **时间预估** — 基于历史数据预估剩余时间，ETA 显示，置信度标识
-- **趋势分析** — 成功率追踪、类型统计、节点热力图、成本优化建议
-- **执行对比** — 性能退化检测，相似任务自动对比，趋势分析
-- **模板系统** — 12 个内置模板，智能推荐，有效性评分，从历史任务创建
-- **实时监控** — 可视化进度条，任务队列预览，全局 ETA
-- **零配置** — 直接使用 Claude Code 认证，开箱即用
+- **经验学习** — 从过去任务中学习成功模式，任务分类，节点模式提取
+- **可观测性** — 进度条 + ETA、趋势分析、执行对比、性能退化检测
+- **多后端** — Claude Code / OpenCode / iFlow / CodeBuddy
+- **自举** — 用 CAH 开发 CAH，dogfooding 到极致
+
+## 进化路线
+
+```
+Phase 1 ✅       Phase 2 🚧       Phase 3 🔜       Phase 4 🔮       Phase 5 ♾️
+能做事            能理解            不死              成长              想活
+Foundation       Intelligence     Self-Healing     Self-Evolution   Self-Drive
+─────────────────────────────────────────────────────────────────────────────►
+  CLI/Workflow     项目感知          selfcheck        记忆/进化引擎     本能/意识
+  14节点/9人格     经验学习          自愈循环          能力扩展          自驱运行
+  多后端           可观测性          环境隔离          Multi-Agent      适应度函数
+```
 
 ## 架构
 
@@ -25,14 +37,14 @@
 ├─────────────────────────────────────────────────────────────────────┤
 │  CLI Layer                                                          │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │  cah "task"    task    template    report    daemon          │   │
+│  │  cah "task"    task    serve    report    dashboard          │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────────────────────┤
 │  Agent Layer                                                        │
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐        │
 │  │ Project        │  │ Execution      │  │ Workflow       │        │
 │  │ Context        │  │ History        │  │ Generator      │        │
-│  │ (项目分析)     │  │ (历史学习)      │  │ (计划生成)     │        │
+│  │ (项目分析)     │  │ (经验学习)      │  │ (计划生成)     │        │
 │  └────────────────┘  └────────────────┘  └────────────────┘        │
 ├─────────────────────────────────────────────────────────────────────┤
 │  Workflow Engine                                                    │
@@ -43,8 +55,8 @@
 ├─────────────────────────────────────────────────────────────────────┤
 │  Infrastructure                                                     │
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐        │
-│  │ Claude Code    │  │ Task Store     │  │ Report         │        │
-│  │ Integration    │  │ (文件存储)      │  │ (报告分析)     │        │
+│  │ Multi-Backend  │  │ Task Store     │  │ Report         │        │
+│  │ (4种后端)      │  │ (文件存储)      │  │ (报告分析)     │        │
 │  └────────────────┘  └────────────────┘  └────────────────┘        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -76,8 +88,8 @@ cah "修复登录 bug"
 # 前台模式（实时看日志）
 cah "添加用户认证" -F
 
-# 使用模板快速创建任务
-cah template use feature --var name="用户认证"
+# 后台模式（守护进程调度）
+cah serve -D
 ```
 
 ## 命令参考
@@ -102,33 +114,6 @@ cah task stop <id>         # 停止任务
 cah task delete <id>       # 删除任务
 cah task stats <id>        # 查看执行统计
 ```
-
-### 模板系统 (template)
-
-```bash
-cah template list          # 列出所有模板
-cah template show <id>     # 查看模板详情
-cah template use <id>      # 使用模板创建任务
-  --var name=value         # 传入变量
-cah template search <q>    # 搜索模板
-cah template create        # 创建自定义模板
-cah template suggest <d>   # 根据描述推荐模板
-cah template from-task [id]  # 从历史任务创建模板
-cah template ranking       # 模板有效性排行榜
-cah template recalculate   # 重新计算有效性评分
-```
-
-**内置模板**：
-| 类型 | 模板 |
-|------|------|
-| 开发 | feature, fix-bug, api-endpoint |
-| 测试 | unit-test, integration-test |
-| 重构 | refactor, extract-component |
-| 文档 | docs, readme |
-| DevOps | ci-cd, docker |
-| 分析 | performance, code-review |
-
-**模板推荐**：系统会根据任务描述自动推荐最匹配的模板，评分基于关键词匹配、标签匹配、任务类型、历史有效性等维度。
 
 ### 报告分析 (report)
 
@@ -239,11 +224,15 @@ CAH_DATA_DIR=/path/to/data cah "任务描述"
 └── task-20260201-HHMMSS-xxx/
     ├── task.json          # 任务元数据
     ├── workflow.json      # 生成的 workflow
-    ├── instance.json      # 执行状态
-    ├── stats.json         # 执行统计
+    ├── instance.json      # 执行状态（唯一数据源）
+    ├── stats.json         # 聚合统计（从 instance 派生）
+    ├── timeline.json      # 事件时间线
     ├── process.json       # 进程信息
-    └── logs/
-        └── execution.log  # 执行日志
+    ├── logs/
+    │   ├── execution.log  # 人类可读日志
+    │   └── events.jsonl   # 结构化事件流
+    └── outputs/
+        └── result.md      # 执行报告
 ```
 
 ## 配置
@@ -270,11 +259,10 @@ npm run lint         # 代码检查
 npm test             # 测试
 ```
 
-## 相关文档
+## 文档
 
-- [VISION.md](./VISION.md) — 项目愿景、使命和路线图
-- [CLAUDE.md](./CLAUDE.md) — AI 开发指南
-- [CHANGELOG.md](./CHANGELOG.md) — 版本变更记录
+- [VISION.md](./VISION.md) — 终极愿景：从工具到生命体的进化路线图
+- [CLAUDE.md](./CLAUDE.md) — AI 开发指南与模块索引
 
 ## License
 

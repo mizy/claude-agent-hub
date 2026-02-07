@@ -125,7 +125,11 @@ function parseTaskProperty(task: Partial<ParsedTask>, text: string): void {
     }
   }
   // 依赖: A, B / depends: A, B
-  else if (lowerText.startsWith('依赖:') || lowerText.startsWith('depends:') || lowerText.startsWith('dependencies:')) {
+  else if (
+    lowerText.startsWith('依赖:') ||
+    lowerText.startsWith('depends:') ||
+    lowerText.startsWith('dependencies:')
+  ) {
     const depsStr = text.split(':')[1]?.trim() ?? ''
     task.dependencies = depsStr
       .split(/[,，]/)
@@ -158,7 +162,7 @@ function parseLoopRule(text: string): LoopRule | null {
   if (!from || !to || !options) return null
 
   let condition: string | undefined
-  let maxLoops = 3  // 默认最多 3 次
+  let maxLoops = 3 // 默认最多 3 次
 
   // 解析选项
   const parts = options.split(/[,，]/)
@@ -208,7 +212,7 @@ function buildWorkflow(
         type: 'human',
         name: task.name,
         human: {
-          timeout: 24 * 60 * 60 * 1000,  // 24小时
+          timeout: 24 * 60 * 60 * 1000, // 24小时
         },
       })
     } else {

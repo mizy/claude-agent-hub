@@ -16,12 +16,7 @@
 import { parseArgs } from 'util'
 import { runTask, resumeTask } from './runTask.js'
 import { ResumeConflictError } from './executeTask.js'
-import {
-  getTask,
-  updateTask,
-  updateProcessInfo,
-  getProcessInfo,
-} from '../store/TaskStore.js'
+import { getTask, updateTask, updateProcessInfo, getProcessInfo } from '../store/TaskStore.js'
 import { createLogger } from '../shared/logger.js'
 
 const logger = createLogger('task-process')

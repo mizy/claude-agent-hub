@@ -11,6 +11,11 @@ import type { NodeJobData } from '../types.js'
 
 const logger = createLogger('workflow-queue')
 
+const LOCK_TIMEOUT_MS = 30_000
+const MAX_JOB_ATTEMPTS = 3
+const LOCK_RETRY_COUNT = 10
+const LOCK_RETRY_DELAY_MS = 100
+
 type JobStatus = 'waiting' | 'active' | 'completed' | 'failed' | 'delayed' | 'human_waiting'
 
 interface Job {
@@ -46,7 +51,7 @@ function acquireLock(): boolean {
       // 检查锁是否过期（超过 30 秒视为死锁）
       const stat = statSync(LOCK_FILE)
       const age = Date.now() - stat.mtimeMs
-      if (age < 30000) {
+      if (age < LOCK_TIMEOUT_MS) {
         return false
       }
       // 锁过期，删除旧锁
@@ -80,8 +85,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function withLockAsync<T>(fn: () => T | Promise<T>): Promise<T> {
-  const maxRetries = 10
-  const retryDelay = 100
+  const maxRetries = LOCK_RETRY_COUNT
+  const retryDelay = LOCK_RETRY_DELAY_MS
 
   for (let i = 0; i < maxRetries; i++) {
     if (acquireLock()) {
@@ -100,8 +105,8 @@ async function withLockAsync<T>(fn: () => T | Promise<T>): Promise<T> {
 
 // 保留同步版本以便向后兼容
 function withLock<T>(fn: () => T): T {
-  const maxRetries = 10
-  const retryDelay = 100
+  const maxRetries = LOCK_RETRY_COUNT
+  const retryDelay = LOCK_RETRY_DELAY_MS
 
   for (let i = 0; i < maxRetries; i++) {
     if (acquireLock()) {
@@ -123,7 +128,11 @@ function withLock<T>(fn: () => T): T {
 
 function getQueueData(): QueueData {
   ensureDir(DATA_DIR)
-  return readJson<QueueData>(QUEUE_FILE, { defaultValue: { jobs: [], updatedAt: new Date().toISOString() } }) ?? { jobs: [], updatedAt: new Date().toISOString() }
+  return (
+    readJson<QueueData>(QUEUE_FILE, {
+      defaultValue: { jobs: [], updatedAt: new Date().toISOString() },
+    }) ?? { jobs: [], updatedAt: new Date().toISOString() }
+  )
 }
 
 function saveQueueData(data: QueueData): void {
@@ -144,9 +153,7 @@ export async function enqueueNode(
 
     const jobId = `${data.instanceId}:${data.nodeId}:${data.attempt}`
     const now = new Date()
-    const processAt = options?.delay
-      ? new Date(now.getTime() + options.delay)
-      : now
+    const processAt = options?.delay ? new Date(now.getTime() + options.delay) : now
 
     // 查找是否已存在
     const existingIndex = queueData.jobs.findIndex(j => j.id === jobId)
@@ -159,7 +166,7 @@ export async function enqueueNode(
       priority: options?.priority || 0,
       delay: options?.delay || 0,
       attempts: 0,
-      maxAttempts: 3,
+      maxAttempts: MAX_JOB_ATTEMPTS,
       createdAt: now.toISOString(),
       processAt: processAt.toISOString(),
     }
@@ -191,9 +198,7 @@ export async function enqueueNodes(
 
     for (const { data, options } of nodes) {
       const jobId = `${data.instanceId}:${data.nodeId}:${data.attempt}`
-      const processAt = options?.delay
-        ? new Date(now.getTime() + options.delay)
-        : now
+      const processAt = options?.delay ? new Date(now.getTime() + options.delay) : now
 
       const job: Job = {
         id: jobId,
@@ -203,7 +208,7 @@ export async function enqueueNodes(
         priority: options?.priority || 0,
         delay: options?.delay || 0,
         attempts: 0,
-        maxAttempts: 3,
+        maxAttempts: MAX_JOB_ATTEMPTS,
         createdAt: now.toISOString(),
         processAt: processAt.toISOString(),
       }
@@ -232,9 +237,7 @@ export function getNextJob(instanceId?: string): Job | null {
     const now = new Date().toISOString()
 
     // 过滤出待处理的任务
-    let candidates = queueData.jobs.filter(
-      j => j.status === 'waiting' && j.processAt <= now
-    )
+    let candidates = queueData.jobs.filter(j => j.status === 'waiting' && j.processAt <= now)
 
     if (instanceId) {
       candidates = candidates.filter(j => j.data.instanceId === instanceId)
@@ -350,9 +353,7 @@ export function getWaitingHumanJobs(): Array<{ id: string; data: NodeJobData }> 
 export function resumeWaitingJob(jobId: string): void {
   withLock(() => {
     const queueData = getQueueData()
-    const job = queueData.jobs.find(
-      j => j.id === jobId && j.status === 'human_waiting'
-    )
+    const job = queueData.jobs.find(j => j.id === jobId && j.status === 'human_waiting')
 
     if (job) {
       job.status = 'completed'
@@ -417,9 +418,7 @@ export function getWaitingJobs(): Job[] {
 export async function drainQueue(): Promise<void> {
   await withLockAsync(() => {
     const queueData = getQueueData()
-    queueData.jobs = queueData.jobs.filter(
-      j => j.status !== 'waiting' && j.status !== 'delayed'
-    )
+    queueData.jobs = queueData.jobs.filter(j => j.status !== 'waiting' && j.status !== 'delayed')
     saveQueueData(queueData)
   })
 
@@ -439,11 +438,7 @@ export async function removeWorkflowJobs(instanceId: string): Promise<number> {
     const initialCount = queueData.jobs.length
 
     queueData.jobs = queueData.jobs.filter(
-      j =>
-        !(
-          (j.status === 'waiting' || j.status === 'delayed') &&
-          j.data.instanceId === instanceId
-        )
+      j => !((j.status === 'waiting' || j.status === 'delayed') && j.data.instanceId === instanceId)
     )
 
     const removedCount = initialCount - queueData.jobs.length
@@ -467,13 +462,9 @@ export function cleanupOldJobs(keepCount: number = 100): number {
     if (completedJobs.length <= keepCount) return 0
 
     // 按完成时间排序，保留最新的
-    completedJobs.sort((a, b) =>
-      (b.completedAt || '').localeCompare(a.completedAt || '')
-    )
+    completedJobs.sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
 
-    const jobsToKeep = new Set(
-      completedJobs.slice(0, keepCount).map(j => j.id)
-    )
+    const jobsToKeep = new Set(completedJobs.slice(0, keepCount).map(j => j.id))
 
     const initialCount = queueData.jobs.length
     queueData.jobs = queueData.jobs.filter(

@@ -10,10 +10,10 @@ const logger = createLogger('retry-strategy')
 // ============ 错误分类 ============
 
 export type ErrorCategory =
-  | 'transient'      // 暂时性错误，应该重试 (网络超时、API 限流等)
-  | 'recoverable'    // 可恢复错误，可以重试但成功率低 (服务暂时不可用)
-  | 'permanent'      // 永久性错误，不应重试 (认证失败、资源不存在)
-  | 'unknown'        // 未知错误，使用默认策略
+  | 'transient' // 暂时性错误，应该重试 (网络超时、API 限流等)
+  | 'recoverable' // 可恢复错误，可以重试但成功率低 (服务暂时不可用)
+  | 'permanent' // 永久性错误，不应重试 (认证失败、资源不存在)
+  | 'unknown' // 未知错误，使用默认策略
 
 export interface ClassifiedError {
   category: ErrorCategory
@@ -52,9 +52,9 @@ export function classifyError(error: unknown): ClassifiedError {
   ) {
     let suggestedDelayMs: number | undefined
     if (lowerMessage.includes('rate limit') || lowerMessage.includes('429')) {
-      suggestedDelayMs = 30000  // rate limit 需要更长等待
+      suggestedDelayMs = 30000 // rate limit 需要更长等待
     } else if (lowerMessage.includes('overloaded')) {
-      suggestedDelayMs = 15000  // API 过载等 15 秒
+      suggestedDelayMs = 15000 // API 过载等 15 秒
     }
     return {
       category: 'transient',
@@ -119,34 +119,34 @@ export function classifyError(error: unknown): ClassifiedError {
 // ============ 重试配置 ============
 
 export interface RetryConfig {
-  maxAttempts: number           // 最大重试次数
-  baseDelayMs: number           // 基础延迟（毫秒）
-  maxDelayMs: number            // 最大延迟（毫秒）
-  backoffMultiplier: number     // 退避乘数
-  jitterFactor: number          // 抖动因子 (0-1)
+  maxAttempts: number // 最大重试次数
+  baseDelayMs: number // 基础延迟（毫秒）
+  maxDelayMs: number // 最大延迟（毫秒）
+  backoffMultiplier: number // 退避乘数
+  jitterFactor: number // 抖动因子 (0-1)
 }
 
 export const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxAttempts: 3,
-  baseDelayMs: 1000,           // 1 秒起始
-  maxDelayMs: 60000,           // 最多等待 1 分钟
-  backoffMultiplier: 2,        // 指数退避
-  jitterFactor: 0.2,           // 20% 随机抖动
+  baseDelayMs: 1000, // 1 秒起始
+  maxDelayMs: 60000, // 最多等待 1 分钟
+  backoffMultiplier: 2, // 指数退避
+  jitterFactor: 0.2, // 20% 随机抖动
 }
 
 // 针对不同错误类别的配置调整
 export const RETRY_CONFIG_BY_CATEGORY: Record<ErrorCategory, Partial<RetryConfig>> = {
   transient: {
-    maxAttempts: 5,            // 暂时性错误多重试几次
+    maxAttempts: 5, // 暂时性错误多重试几次
     baseDelayMs: 2000,
   },
   recoverable: {
     maxAttempts: 3,
-    baseDelayMs: 5000,         // 等久一点
+    baseDelayMs: 5000, // 等久一点
     backoffMultiplier: 3,
   },
   permanent: {
-    maxAttempts: 1,            // 不重试
+    maxAttempts: 1, // 不重试
   },
   unknown: {
     maxAttempts: 3,

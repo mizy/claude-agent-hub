@@ -1,38 +1,31 @@
 /**
  * 状态管理器 - 管理工作流和节点的状态转换
  *
- * 导出结构:
- * - WorkflowState: 工作流状态操作 (start, pause, resume, complete, fail, cancel, recover)
- * - NodeState: 节点状态操作 (markReady, markRunning, markDone, markFailed, markSkipped, markWaiting)
- * - StateQuery: 状态查询 (isCompleted, isRunnable, getActive, getPending, getCompleted, getFailed)
- * - checkWorkflowCompletion, getWorkflowProgress: 进度相关
+ * 导出:
+ * - Workflow 状态: startWorkflowInstance, pauseWorkflowInstance, resumeWorkflowInstance,
+ *   completeWorkflowInstance, failWorkflowInstance, cancelWorkflowInstance, recoverWorkflowInstance
+ * - Node 状态: markNodeReady, markNodeRunning, markNodeDone, markNodeFailed, markNodeSkipped, markNodeWaiting
+ * - 状态查询: isNodeCompleted, isNodeRunnable, getActiveNodes, getPendingNodes, getCompletedNodes, getFailedNodes
+ * - 进度: checkWorkflowCompletion, getWorkflowProgress
  */
 
 import { createLogger } from '../../shared/logger.js'
 import { now } from '../../shared/formatTime.js'
 import {
   getInstance,
+  saveInstance,
   updateInstanceStatus,
   updateNodeState,
   setNodeOutput,
 } from '../../store/WorkflowStore.js'
-import type {
-  WorkflowInstance,
-  NodeState,
-  Workflow,
-} from '../types.js'
-import {
-  isNodeDone,
-  isNodeRunning,
-  isNodeFailed,
-  isNodeWaiting,
-} from '../../types/nodeStatus.js'
+import type { WorkflowInstance, NodeState, Workflow } from '../types.js'
+import { isNodeDone, isNodeRunning, isNodeFailed, isNodeWaiting } from '../../types/nodeStatus.js'
 
 const logger = createLogger('state-manager')
 
-// ============ 工作流状态转换 (内部实现) ============
+// ============ 工作流状态转换 ============
 
-async function startWorkflowInstanceFn(instanceId: string): Promise<void> {
+export async function startWorkflowInstance(instanceId: string): Promise<void> {
   const instance = getInstance(instanceId)
   if (!instance) {
     throw new Error(`Instance not found: ${instanceId}`)
@@ -46,7 +39,7 @@ async function startWorkflowInstanceFn(instanceId: string): Promise<void> {
   logger.info(`Workflow instance started: ${instanceId}`)
 }
 
-async function pauseWorkflowInstanceFn(instanceId: string): Promise<void> {
+export async function pauseWorkflowInstance(instanceId: string): Promise<void> {
   const instance = getInstance(instanceId)
   if (!instance) {
     throw new Error(`Instance not found: ${instanceId}`)
@@ -60,7 +53,7 @@ async function pauseWorkflowInstanceFn(instanceId: string): Promise<void> {
   logger.info(`Workflow instance paused: ${instanceId}`)
 }
 
-async function resumeWorkflowInstanceFn(instanceId: string): Promise<void> {
+export async function resumeWorkflowInstance(instanceId: string): Promise<void> {
   const instance = getInstance(instanceId)
   if (!instance) {
     throw new Error(`Instance not found: ${instanceId}`)
@@ -74,23 +67,23 @@ async function resumeWorkflowInstanceFn(instanceId: string): Promise<void> {
   logger.info(`Workflow instance resumed: ${instanceId}`)
 }
 
-async function completeWorkflowInstanceFn(instanceId: string): Promise<void> {
+export async function completeWorkflowInstance(instanceId: string): Promise<void> {
   updateInstanceStatus(instanceId, 'completed')
   logger.info(`Workflow instance completed: ${instanceId}`)
 }
 
-async function failWorkflowInstanceFn(instanceId: string, error: string): Promise<void> {
+export async function failWorkflowInstance(instanceId: string, error: string): Promise<void> {
   const errorMessage = error || 'Unknown error (no error message provided)'
   updateInstanceStatus(instanceId, 'failed', errorMessage)
   logger.error(`Workflow instance failed: ${instanceId} - ${errorMessage}`)
 }
 
-async function cancelWorkflowInstanceFn(instanceId: string): Promise<void> {
+export async function cancelWorkflowInstance(instanceId: string): Promise<void> {
   updateInstanceStatus(instanceId, 'cancelled')
   logger.info(`Workflow instance cancelled: ${instanceId}`)
 }
 
-async function recoverWorkflowInstanceFn(instanceId: string): Promise<{
+export async function recoverWorkflowInstance(instanceId: string): Promise<{
   success: boolean
   failedNodeId?: string
   error?: string
@@ -129,7 +122,6 @@ async function recoverWorkflowInstanceFn(instanceId: string): Promise<{
   updatedInstance.completedAt = undefined
   updatedInstance.error = undefined
 
-  const { saveInstance } = await import('../../store/WorkflowStore.js')
   saveInstance(updatedInstance)
 
   logger.info(`Workflow instance recovered: ${instanceId}, will retry node: ${failedNodeId}`)
@@ -137,34 +129,14 @@ async function recoverWorkflowInstanceFn(instanceId: string): Promise<{
   return { success: true, failedNodeId }
 }
 
-/** 工作流状态操作聚合对象 */
-export const WORKFLOW_STATE = {
-  start: startWorkflowInstanceFn,
-  pause: pauseWorkflowInstanceFn,
-  resume: resumeWorkflowInstanceFn,
-  complete: completeWorkflowInstanceFn,
-  fail: failWorkflowInstanceFn,
-  cancel: cancelWorkflowInstanceFn,
-  recover: recoverWorkflowInstanceFn,
-}
+// ============ 节点状态转换 ============
 
-// 兼容性单独导出
-export const startWorkflowInstance = startWorkflowInstanceFn
-export const pauseWorkflowInstance = pauseWorkflowInstanceFn
-export const resumeWorkflowInstance = resumeWorkflowInstanceFn
-export const completeWorkflowInstance = completeWorkflowInstanceFn
-export const failWorkflowInstance = failWorkflowInstanceFn
-export const cancelWorkflowInstance = cancelWorkflowInstanceFn
-export const recoverWorkflowInstance = recoverWorkflowInstanceFn
-
-// ============ 节点状态转换 (内部实现) ============
-
-async function markNodeReadyFn(instanceId: string, nodeId: string): Promise<void> {
+export async function markNodeReady(instanceId: string, nodeId: string): Promise<void> {
   updateNodeState(instanceId, nodeId, { status: 'ready' })
   logger.debug(`Node ready: ${nodeId}`)
 }
 
-async function markNodeRunningFn(instanceId: string, nodeId: string): Promise<void> {
+export async function markNodeRunning(instanceId: string, nodeId: string): Promise<void> {
   const instance = getInstance(instanceId)
   if (!instance) return
 
@@ -179,7 +151,7 @@ async function markNodeRunningFn(instanceId: string, nodeId: string): Promise<vo
   logger.debug(`Node running: ${nodeId} (attempt ${attempts})`)
 }
 
-async function markNodeDoneFn(
+export async function markNodeDone(
   instanceId: string,
   nodeId: string,
   output?: unknown
@@ -202,7 +174,7 @@ async function markNodeDoneFn(
   logger.debug(`Node done: ${nodeId}${durationMs ? ` (${durationMs}ms)` : ''}`)
 }
 
-async function markNodeFailedFn(
+export async function markNodeFailed(
   instanceId: string,
   nodeId: string,
   error: string
@@ -216,85 +188,49 @@ async function markNodeFailedFn(
   logger.debug(`Node failed: ${nodeId} - ${errorMessage}`)
 }
 
-async function markNodeSkippedFn(instanceId: string, nodeId: string): Promise<void> {
+export async function markNodeSkipped(instanceId: string, nodeId: string): Promise<void> {
   updateNodeState(instanceId, nodeId, { status: 'skipped', completedAt: now() })
   logger.debug(`Node skipped: ${nodeId}`)
 }
 
-async function markNodeWaitingFn(instanceId: string, nodeId: string): Promise<void> {
+export async function markNodeWaiting(instanceId: string, nodeId: string): Promise<void> {
   updateNodeState(instanceId, nodeId, { status: 'waiting' })
   logger.debug(`Node waiting for approval: ${nodeId}`)
 }
 
-/** 节点状态操作聚合对象 */
-export const NODE_STATE_MARK = {
-  ready: markNodeReadyFn,
-  running: markNodeRunningFn,
-  done: markNodeDoneFn,
-  failed: markNodeFailedFn,
-  skipped: markNodeSkippedFn,
-  waiting: markNodeWaitingFn,
-}
+// ============ 状态查询 ============
 
-// 兼容性单独导出
-export const markNodeReady = markNodeReadyFn
-export const markNodeRunning = markNodeRunningFn
-export const markNodeDone = markNodeDoneFn
-export const markNodeFailed = markNodeFailedFn
-export const markNodeSkipped = markNodeSkippedFn
-export const markNodeWaiting = markNodeWaitingFn
-
-// ============ 状态查询 (内部实现) ============
-
-function isNodeCompletedFn(state: NodeState): boolean {
+export function isNodeCompleted(state: NodeState): boolean {
   return isNodeDone(state.status)
 }
 
-function isNodeRunnableFn(state: NodeState): boolean {
+export function isNodeRunnable(state: NodeState): boolean {
   return isNodeWaiting(state.status)
 }
 
-function getActiveNodesFn(instance: WorkflowInstance): string[] {
+export function getActiveNodes(instance: WorkflowInstance): string[] {
   return Object.entries(instance.nodeStates)
     .filter(([_, state]) => isNodeRunning(state.status))
     .map(([nodeId]) => nodeId)
 }
 
-function getPendingNodesFn(instance: WorkflowInstance): string[] {
+export function getPendingNodes(instance: WorkflowInstance): string[] {
   return Object.entries(instance.nodeStates)
     .filter(([_, state]) => isNodeWaiting(state.status))
     .map(([nodeId]) => nodeId)
 }
 
-function getCompletedNodesFn(instance: WorkflowInstance): string[] {
+export function getCompletedNodes(instance: WorkflowInstance): string[] {
   return Object.entries(instance.nodeStates)
-    .filter(([_, state]) => isNodeCompletedFn(state))
+    .filter(([_, state]) => isNodeCompleted(state))
     .map(([nodeId]) => nodeId)
 }
 
-function getFailedNodesFn(instance: WorkflowInstance): string[] {
+export function getFailedNodes(instance: WorkflowInstance): string[] {
   return Object.entries(instance.nodeStates)
     .filter(([_, state]) => isNodeFailed(state.status))
     .map(([nodeId]) => nodeId)
 }
-
-/** 状态查询聚合对象 */
-export const STATE_QUERY = {
-  isCompleted: isNodeCompletedFn,
-  isRunnable: isNodeRunnableFn,
-  getActive: getActiveNodesFn,
-  getPending: getPendingNodesFn,
-  getCompleted: getCompletedNodesFn,
-  getFailed: getFailedNodesFn,
-}
-
-// 兼容性单独导出
-export const isNodeCompleted = isNodeCompletedFn
-export const isNodeRunnable = isNodeRunnableFn
-export const getActiveNodes = getActiveNodesFn
-export const getPendingNodes = getPendingNodesFn
-export const getCompletedNodes = getCompletedNodesFn
-export const getFailedNodes = getFailedNodesFn
 
 // ============ 工作流完成检查 ============
 
