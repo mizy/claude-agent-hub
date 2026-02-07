@@ -5,6 +5,7 @@
 
 import { invokeBackend } from '../../backend/index.js'
 import { createLogger } from '../../shared/logger.js'
+import { buildClientPrompt } from '../../prompts/chatPrompts.js'
 import type { MessengerAdapter, ChatSession, ClientContext } from './types.js'
 
 const logger = createLogger('chat-handler')
@@ -65,25 +66,6 @@ export interface ChatOptions {
   client?: ClientContext
 }
 
-function buildClientPrompt(client: ClientContext): string {
-  const lines = [
-    `[客户端环境]`,
-    `平台: ${client.platform}`,
-    `单条消息长度上限: ${client.maxMessageLength} 字符`,
-    `支持的格式: ${client.supportedFormats.join(', ')}`,
-  ]
-  if (client.isGroup) lines.push('场景: 群聊')
-
-  lines.push(
-    '',
-    '请根据以上终端环境调整回复：',
-    '- 回复要简洁，避免超长输出',
-    '- 不要使用终端不支持的格式（如 Telegram 不支持标准 Markdown 表格）',
-    '- 代码块用纯文本围栏（```），不要用复杂格式',
-    '- 优先用纯文本，必要时才用简单格式',
-  )
-  return lines.join('\n')
-}
 
 /**
  * 处理普通文本消息，调用 AI 后端获取回复

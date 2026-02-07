@@ -156,18 +156,24 @@ function renderTaskList(tasks: Task[], showProgress: boolean): void {
     }
 
     if (showProgress) {
+      const titleDisplay = task.title
+        ? task.title.slice(0, 20) + (task.title.length > 20 ? '...' : '')
+        : chalk.gray('(无标题)')
       data.push([
         idDisplay,
-        task.title.slice(0, 20) + (task.title.length > 20 ? '...' : ''),
+        titleDisplay,
         statusFn(task.status),
         progressDisplay,
         pidDisplay,
         priorityFn(task.priority),
       ])
     } else {
+      const titleDisplay = task.title
+        ? task.title.slice(0, 25) + (task.title.length > 25 ? '...' : '')
+        : chalk.gray('(无标题)')
       data.push([
         idDisplay,
-        task.title.slice(0, 25) + (task.title.length > 25 ? '...' : ''),
+        titleDisplay,
         statusFn(task.status),
         pidDisplay,
         priorityFn(task.priority),

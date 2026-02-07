@@ -56,4 +56,15 @@ export function registerDaemonCommands(program: Command) {
     .action(async () => {
       await getDaemonStatus()
     })
+
+  daemon
+    .command('logs')
+    .description('查看守护进程日志')
+    .option('-f, --follow', '持续监听日志（类似 tail -f）')
+    .option('-n, --lines <count>', '显示最后 N 行', '50')
+    .option('-e, --error', '查看错误日志')
+    .action(async (options: { follow?: boolean; lines?: string; error?: boolean }) => {
+      const { showDaemonLogs } = await import('../../scheduler/showDaemonLogs.js')
+      await showDaemonLogs(options)
+    })
 }
