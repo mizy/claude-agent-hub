@@ -314,6 +314,14 @@ export async function executeTask(
 
     // 发送任务完成通知（失败不影响任务状态）
     const taskNodes = workflow.nodes.filter(n => n.type !== 'start' && n.type !== 'end')
+    const nodeInfos = taskNodes.map(n => {
+      const state = finalInstance.nodeStates[n.id]
+      return {
+        name: n.name,
+        status: state?.status ?? 'pending',
+        durationMs: state?.durationMs,
+      }
+    })
     await sendTaskCompletionNotify(task, success, {
       durationMs: totalDurationMs,
       error: finalInstance.error,
@@ -322,6 +330,7 @@ export async function executeTask(
       nodesFailed,
       totalNodes: taskNodes.length,
       totalCostUsd,
+      nodes: nodeInfos,
     })
 
     logger.info(`输出保存至: ${outputPath}`)

@@ -41,4 +41,5 @@ export {
 // 守护进程（原有）
 export { startDaemon } from './startDaemon.js'
 export { stopDaemon } from './stopDaemon.js'
+export { restartDaemon } from './restartDaemon.js'
 export { getDaemonStatus } from './getDaemonStatus.js'

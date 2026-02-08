@@ -63,6 +63,7 @@ export {
   buildWelcomeCard,
   buildTaskListCard,
   buildTaskDetailCard,
+  buildTaskLogsCard,
   buildStatusCard,
   buildHelpCard,
 } from './buildLarkCard.js'

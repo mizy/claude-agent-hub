@@ -64,8 +64,17 @@ export function button(
 }
 
 import { statusEmoji } from './handlers/constants.js'
+import { formatDuration } from '../shared/formatTime.js'
+import type { WorkflowInstance, Workflow, WorkflowNode } from '../workflow/types.js'
 
 // ── Pre-built card templates ──
+
+/** Node info passed from sendTaskNotify */
+export interface TaskNodeInfo {
+  name: string
+  status: string
+  durationMs?: number
+}
 
 export interface TaskCardInfo {
   id: string
@@ -76,38 +85,98 @@ export interface TaskCardInfo {
   totalNodes?: number
   totalCostUsd?: number
   outputSummary?: string
+  nodes?: TaskNodeInfo[]
 }
 
-function buildTaskStatsLines(task: TaskCardInfo, duration: string): string[] {
-  const lines = [`**标题**: ${task.title}`, `**耗时**: ${duration}`]
-  if (task.workflowName) {
-    lines.push(`**工作流**: ${task.workflowName}`)
-  }
+/** Compact one-line stats: ⏱️ 7m 46s  |  📊 4/4 节点  |  💰 $0.69 */
+function buildCompactStats(task: TaskCardInfo, duration: string): string {
+  const parts = [`⏱️ ${duration}`]
   if (task.totalNodes != null) {
-    const failedPart = task.nodesFailed ? `，${task.nodesFailed} 失败` : ''
-    lines.push(`**节点**: ${task.nodesCompleted ?? 0}/${task.totalNodes} 完成${failedPart}`)
+    parts.push(`📊 ${task.nodesCompleted ?? 0}/${task.totalNodes} 节点`)
   }
   if (task.totalCostUsd != null && task.totalCostUsd > 0) {
-    lines.push(`**费用**: $${task.totalCostUsd.toFixed(4)}`)
+    parts.push(`💰 $${task.totalCostUsd.toFixed(2)}`)
   }
-  lines.push(`**ID**: ${task.id.slice(0, 20)}`)
-  return lines
+  return parts.join('  |  ')
+}
+
+/** Build node execution overview lines */
+function buildNodeOverview(nodes: TaskNodeInfo[]): string {
+  return nodes
+    .map(n => {
+      const emoji = nodeStatusEmoji(n.status)
+      const dur = n.durationMs ? formatDuration(n.durationMs) : ''
+      return dur ? `${emoji} ${n.name} (${dur})` : `${emoji} ${n.name}`
+    })
+    .join('\n')
 }
 
 export function buildTaskCompletedCard(task: TaskCardInfo, duration: string): LarkCard {
-  const elements: LarkCardElement[] = [mdElement(buildTaskStatsLines(task, duration).join('\n'))]
-  if (task.outputSummary) {
+  const elements: LarkCardElement[] = []
+
+  // Title (full, no truncation)
+  elements.push(mdElement(`**${task.title}**`))
+
+  // Compact stats line
+  elements.push(mdElement(buildCompactStats(task, duration)))
+
+  // Node execution overview
+  if (task.nodes && task.nodes.length > 0) {
     elements.push(hrElement())
-    elements.push(mdElement(`📝 **输出摘要**\n${task.outputSummary}`))
+    elements.push(mdElement(buildNodeOverview(task.nodes)))
   }
+
+  // Action buttons
+  elements.push(hrElement())
+  elements.push(
+    actionElement([
+      button('📋 查看详情', 'primary', { action: 'task_detail', taskId: task.id }),
+      button('📝 查看日志', 'default', { action: 'task_logs', taskId: task.id }),
+    ])
+  )
+
+  // Footer note
+  const completedTime = new Date().toLocaleString('zh-CN')
+  elements.push(noteElement(`${task.id.slice(0, 20)} · ${completedTime}`))
+
   return buildCard('✅ 任务完成', 'green', elements)
 }
 
 export function buildTaskFailedCard(task: TaskCardInfo, duration: string, error: string): LarkCard {
+  const elements: LarkCardElement[] = []
+
+  // Title
+  elements.push(mdElement(`**${task.title}**`))
+
+  // Compact stats line
+  elements.push(mdElement(buildCompactStats(task, duration)))
+
+  // Node execution overview
+  if (task.nodes && task.nodes.length > 0) {
+    elements.push(hrElement())
+    elements.push(mdElement(buildNodeOverview(task.nodes)))
+  }
+
+  // Error info
   const truncatedError = error.length > 200 ? error.slice(0, 197) + '...' : error
-  const lines = buildTaskStatsLines(task, duration)
-  lines.push('', `**错误**: ${truncatedError}`)
-  return buildCard('❌ 任务失败', 'red', [mdElement(lines.join('\n'))])
+  elements.push(hrElement())
+  elements.push(mdElement(`❌ **错误**: ${truncatedError}`))
+
+  // Action buttons (with retry)
+  elements.push(hrElement())
+  elements.push(
+    actionElement([
+      button('📋 查看详情', 'default', { action: 'task_detail', taskId: task.id }),
+      button('📝 查看日志', 'default', { action: 'task_logs', taskId: task.id }),
+      button('🔄 重试', 'primary', { action: 'task_retry', taskId: task.id }),
+    ])
+  )
+
+  // Footer note
+  const failedTime = new Date().toLocaleString('zh-CN')
+  elements.push(noteElement(`${task.id.slice(0, 20)} · ${failedTime}`))
+
+  return buildCard('❌ 任务失败', 'red', elements)
 }
 
 export function buildApprovalCard(options: {
@@ -242,7 +311,22 @@ export function buildTaskListCard(
   return buildCard(`📋 任务列表 (${counts.total})`, 'blue', elements)
 }
 
-export function buildTaskDetailCard(task: {
+// Node status emoji for workflow timeline
+const NODE_STATUS_EMOJI: Record<string, string> = {
+  pending: '⏳',
+  ready: '🔵',
+  running: '🔄',
+  waiting: '⏸️',
+  done: '✅',
+  failed: '❌',
+  skipped: '⏭️',
+}
+
+function nodeStatusEmoji(status: string): string {
+  return NODE_STATUS_EMOJI[status] || '❓'
+}
+
+export interface TaskDetailInput {
   id: string
   title: string
   status: string
@@ -251,7 +335,16 @@ export function buildTaskDetailCard(task: {
   assignee?: string
   description?: string
   output?: { timing?: { startedAt?: string; completedAt?: string } }
-}): LarkCard {
+}
+
+export function buildTaskDetailCard(
+  task: TaskDetailInput,
+  instance?: WorkflowInstance | null,
+  workflow?: Workflow | null
+): LarkCard {
+  const elements: LarkCardElement[] = []
+
+  // Basic info
   const createdAt = new Date(task.createdAt).toLocaleString('zh-CN')
   const lines = [
     `**ID**: \`${task.id}\``,
@@ -267,10 +360,7 @@ export function buildTaskDetailCard(task: {
       new Date(task.output.timing.completedAt).getTime() -
       new Date(task.output.timing.startedAt).getTime()
     if (duration > 0) {
-      const secs = Math.round(duration / 1000)
-      const m = Math.floor(secs / 60)
-      const s = secs % 60
-      lines.push(`**耗时**: ${m}m ${s}s`)
+      lines.push(`**耗时**: ${formatDuration(duration)}`)
     }
   }
 
@@ -280,7 +370,70 @@ export function buildTaskDetailCard(task: {
     lines.push('', `**描述**: ${desc}`)
   }
 
-  return buildCard(`📌 ${task.title}`, 'blue', [mdElement(lines.join('\n'))])
+  elements.push(mdElement(lines.join('\n')))
+
+  // Node timeline (if instance and workflow available)
+  if (instance && workflow) {
+    const nodeMap = new Map<string, WorkflowNode>()
+    for (const node of workflow.nodes) nodeMap.set(node.id, node)
+
+    const timelineLines: string[] = ['**📊 节点执行时间线**', '']
+
+    // Sort nodes by startedAt, put unstarted ones at the end
+    const nodeEntries = Object.entries(instance.nodeStates).sort((a, b) => {
+      const aTime = a[1].startedAt ? new Date(a[1].startedAt).getTime() : Infinity
+      const bTime = b[1].startedAt ? new Date(b[1].startedAt).getTime() : Infinity
+      return aTime - bTime
+    })
+
+    for (const [nodeId, state] of nodeEntries) {
+      const node = nodeMap.get(nodeId)
+      const name = node?.name || nodeId
+      const emoji = nodeStatusEmoji(state.status)
+      const dur = state.durationMs ? formatDuration(state.durationMs) : '-'
+
+      timelineLines.push(`${emoji} **${name}**  ${dur}`)
+
+      // Show first 3 lines of output if available
+      const output = instance.outputs[nodeId]
+      if (output && typeof output === 'string') {
+        const preview = output.split('\n').slice(0, 3).join('\n')
+        const truncated = preview.length > 200 ? preview.slice(0, 197) + '...' : preview
+        timelineLines.push(`> ${truncated.replace(/\n/g, '\n> ')}`)
+      }
+
+      if (state.error) {
+        const errPreview =
+          state.error.length > 100 ? state.error.slice(0, 97) + '...' : state.error
+        timelineLines.push(`> ❌ ${errPreview}`)
+      }
+    }
+
+    elements.push(hrElement())
+    elements.push(mdElement(timelineLines.join('\n')))
+  }
+
+  // Action buttons
+  const buttons: LarkCardButton[] = [
+    button('📜 日志', 'default', { action: 'task_logs', taskId: task.id }),
+  ]
+  if (task.status === 'failed') {
+    buttons.push(button('🔄 重试', 'primary', { action: 'task_retry', taskId: task.id }))
+  }
+  elements.push(hrElement())
+  elements.push(actionElement(buttons))
+
+  return buildCard(`📌 ${task.title}`, 'blue', elements)
+}
+
+export function buildTaskLogsCard(taskId: string, logs: string): LarkCard {
+  const shortId = taskId.replace(/^task-/, '').slice(0, 8)
+  // Lark markdown code block for logs
+  const truncated = logs.length > 3000 ? '...\n' + logs.slice(-3000) : logs
+  return buildCard(`📜 日志 ${shortId}`, 'blue', [
+    mdElement(`\`\`\`\n${truncated}\n\`\`\``),
+    noteElement(`任务 ID: ${taskId}`),
+  ])
 }
 
 export function buildStatusCard(jobs: Array<{ nodeId: string; nodeName?: string }>): LarkCard {
@@ -315,6 +468,9 @@ export function buildHelpCard(): LarkCard {
         '`/new` - 开始新对话',
         '`/chat` - 查看对话状态',
         '`/help` - 显示此帮助',
+        '',
+        '**🔧 系统**',
+        '`/reload` - 重启守护进程（加载新代码）',
       ].join('\n')
     ),
     noteElement('直接发送文字即可与 AI 对话 | taskId 支持前缀匹配'),

@@ -12,11 +12,14 @@ import { createLogger } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { DATA_DIR } from '../store/paths.js'
 import { sendApprovalResultNotification, uploadLarkImage, sendLarkImage } from './sendLarkNotify.js'
-import { buildWelcomeCard } from './buildLarkCard.js'
+import { buildWelcomeCard, buildTaskDetailCard, buildTaskLogsCard } from './buildLarkCard.js'
 import { buildMarkdownCard } from './larkCardWrapper.js'
 import { routeMessage } from './handlers/messageRouter.js'
 import { handleApproval } from './handlers/approvalHandler.js'
-import { handleList, handleGet } from './handlers/commandHandler.js'
+import { handleList } from './handlers/commandHandler.js'
+import { loadTaskFolder } from '../store/TaskWorkflowStore.js'
+import { getLogPath } from '../store/TaskLogStore.js'
+import { resumeTask } from '../task/resumeTask.js'
 import type { LarkCard } from './buildLarkCard.js'
 import type { MessengerAdapter, ParsedApproval, ClientContext } from './handlers/types.js'
 
@@ -40,6 +43,10 @@ interface LarkCardActionEvent {
   open_message_id?: string
   action?: {
     value?: Record<string, string>
+  }
+  context?: {
+    open_chat_id?: string
+    open_message_id?: string
   }
 }
 
@@ -240,13 +247,15 @@ async function handleLarkMessage(
 
 // ── Card action + new chat handlers ──
 
-async function handleCardAction(data: LarkCardActionEvent): Promise<void> {
-  const chatId = data?.open_chat_id
+async function handleCardAction(data: LarkCardActionEvent): Promise<LarkCard | void> {
+  // SDK v2 flattens event fields: open_chat_id/open_message_id live under context
+  const chatId = data?.open_chat_id ?? data?.context?.open_chat_id
+  const messageId = data?.open_message_id ?? data?.context?.open_message_id
   const value = data?.action?.value
   if (!chatId || !value) return
 
   const actionType = value.action
-  logger.info(`← [card] action=${actionType} nodeId=${value.nodeId ?? '?'}`)
+  logger.info(`← [card] action=${actionType} chatId=${chatId} msgId=${messageId ?? '?'}`)
 
   if (actionType === 'approve' || actionType === 'reject') {
     const approval: ParsedApproval = {
@@ -261,27 +270,69 @@ async function handleCardAction(data: LarkCardActionEvent): Promise<void> {
     const page = parseInt(value.page ?? '1', 10) || 1
     const filter = value.filter
     const result = await handleList(filter, page)
-    const messenger = createAdapter()
-    const messageId = data?.open_message_id
-    if (result.larkCard && messageId && messenger.editCard) {
-      await messenger.editCard(chatId, messageId, result.larkCard)
-    } else if (result.larkCard) {
-      await messenger.replyCard?.(chatId, result.larkCard)
-    } else {
-      await messenger.reply(chatId, result.text)
+    if (result.larkCard) {
+      // Also edit via API as fallback (in case SDK callback response doesn't update card)
+      if (messageId) {
+        const messenger = createAdapter()
+        await messenger.editCard?.(chatId, messageId, result.larkCard)
+      }
+      // Return card to update in-place via SDK callback response
+      return result.larkCard
     }
+    const messenger = createAdapter()
+    await messenger.reply(chatId, result.text)
   } else if (actionType === 'task_detail') {
     const taskId = value.taskId
     if (!taskId) {
       logger.warn('task_detail action missing taskId')
       return
     }
-    const result = await handleGet(taskId)
     const messenger = createAdapter()
-    if (result.larkCard) {
-      await messenger.replyCard?.(chatId, result.larkCard)
-    } else {
-      await messenger.reply(chatId, result.text)
+    const folder = loadTaskFolder(taskId)
+    if (!folder) {
+      await messenger.reply(chatId, `未找到任务: ${taskId}`)
+      return
+    }
+    const card = buildTaskDetailCard(folder.task, folder.instance, folder.workflow)
+    await messenger.replyCard?.(chatId, card)
+  } else if (actionType === 'task_logs') {
+    const taskId = value.taskId
+    if (!taskId) {
+      logger.warn('task_logs action missing taskId')
+      return
+    }
+    const messenger = createAdapter()
+    const logPath = getLogPath(taskId)
+    let content: string
+    try {
+      content = readFileSync(logPath, 'utf-8')
+    } catch {
+      await messenger.reply(chatId, `暂无日志: ${taskId.slice(0, 20)}`)
+      return
+    }
+    const lines = content.trim().split('\n')
+    const tail = lines.slice(-50).join('\n')
+    const card = buildTaskLogsCard(taskId, tail)
+    await messenger.replyCard?.(chatId, card)
+  } else if (actionType === 'task_retry') {
+    const taskId = value.taskId
+    if (!taskId) {
+      logger.warn('task_retry action missing taskId')
+      return
+    }
+    const messenger = createAdapter()
+    try {
+      const pid = resumeTask(taskId)
+      if (pid) {
+        logger.info(`→ task retried: ${taskId.slice(0, 20)} pid=${pid}`)
+        await messenger.reply(chatId, `▶️ 已恢复任务: \`${taskId.slice(0, 20)}\`\nPID: ${pid}`)
+      } else {
+        await messenger.reply(chatId, `⚠️ 无法恢复任务（可能仍在运行或已完成）`)
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      logger.error(`task_retry failed: ${msg}`)
+      await messenger.reply(chatId, `❌ 恢复任务失败: ${msg}`)
     }
   } else {
     logger.warn(`Unknown card action: ${actionType}`)
@@ -372,6 +423,7 @@ export async function startLarkWsClient(): Promise<void> {
 
   // Card button callback
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Lark SDK lacks type defs for card actions
     dispatcher.register({ 'card.action.trigger': handleCardAction } as any)
   } catch {
     logger.warn('card.action.trigger registration not supported by SDK, skipping')
@@ -379,6 +431,7 @@ export async function startLarkWsClient(): Promise<void> {
 
   // New chat created (welcome message)
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Lark SDK lacks type defs for this event
     dispatcher.register({ p2p_chat_create: handleP2pChatCreate } as any)
   } catch {
     logger.warn('p2p_chat_create registration not supported by SDK, skipping')
@@ -395,6 +448,7 @@ export async function startLarkWsClient(): Promise<void> {
       'im.message.recalled_v1': logEvent('message.recalled'),
       'im.chat.member.user.added_v1': logEvent('chat.member.added'),
       'im.message.bot_muted_v1': logEvent('bot.muted'),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Lark SDK lacks type defs for these events
     } as any)
   } catch {
     logger.debug('Some log-only event registrations not supported, skipping')

@@ -244,6 +244,7 @@ export async function uploadLarkImage(
   imageData: Buffer
 ): Promise<string | null> {
   try {
+    logger.info(`Uploading image to Lark (${imageData.length} bytes)`)
     const res = await client.im.v1.image.create({
       data: {
         image_type: 'message',
@@ -253,13 +254,17 @@ export async function uploadLarkImage(
     const imageKey = (res as { data?: { image_key?: string } })?.data?.image_key
     if (!imageKey) {
       logger.error('Lark image upload returned no image_key')
+      logger.error(`Response: ${JSON.stringify(res).slice(0, 500)}`)
       return null
     }
-    logger.info(`Uploaded image to Lark: ${imageKey}`)
+    logger.info(`✓ Uploaded image to Lark: ${imageKey}`)
     return imageKey
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    logger.error(`Failed to upload image to Lark: ${msg}`)
+    logger.error(`✗ Failed to upload image to Lark: ${msg}`)
+    if (error instanceof Error && error.stack) {
+      logger.debug(error.stack)
+    }
     return null
   }
 }
@@ -273,6 +278,7 @@ export async function sendLarkImage(
   imageKey: string
 ): Promise<boolean> {
   try {
+    logger.info(`Sending image to Lark chat ${chatId.slice(0, 8)} (key: ${imageKey})`)
     await client.im.v1.message.create({
       params: { receive_id_type: 'chat_id' },
       data: {
@@ -281,11 +287,14 @@ export async function sendLarkImage(
         content: JSON.stringify({ image_key: imageKey }),
       },
     })
-    logger.info(`Sent image to Lark chat ${chatId}`)
+    logger.info(`✓ Image sent to Lark chat ${chatId.slice(0, 8)}`)
     return true
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    logger.error(`Failed to send image to Lark: ${msg}`)
+    logger.error(`✗ Failed to send image to Lark: ${msg}`)
+    if (error instanceof Error && error.stack) {
+      logger.debug(error.stack)
+    }
     return false
   }
 }

@@ -10,6 +10,7 @@ import { readFileSync } from 'fs'
 import { createLogger } from '../../shared/logger.js'
 import { getAllTasks } from '../../store/TaskStore.js'
 import { getLogPath } from '../../store/TaskLogStore.js'
+import { getTaskWorkflow, getTaskInstance } from '../../store/TaskWorkflowStore.js'
 import { createAndRunTask } from '../../task/createAndRun.js'
 import { stopTask } from '../../task/manageTaskLifecycle.js'
 import { resumeTask } from '../../task/resumeTask.js'
@@ -76,6 +77,8 @@ export async function handleCommand(command: string, args: string): Promise<Comm
       return handleHelp()
     case '/status':
       return handleStatus()
+    case '/reload':
+      return handleReload()
     default:
       return { text: `未知指令: ${command}\n输入 /help 查看可用指令` }
   }
@@ -333,7 +336,9 @@ export async function handleGet(taskIdPrefix: string): Promise<CommandResult> {
       lines.push('', `描述: ${desc}`)
     }
 
-    return { text: lines.join('\n'), larkCard: buildTaskDetailCard(task) }
+    const instance = getTaskInstance(task.id)
+    const workflow = getTaskWorkflow(task.id)
+    return { text: lines.join('\n'), larkCard: buildTaskDetailCard(task, instance, workflow) }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return { text: `❌ 获取任务详情失败: ${msg}` }
@@ -363,6 +368,9 @@ export function handleHelp(): CommandResult {
       '/chat - 查看对话状态',
       '/help - 显示此帮助',
       '',
+      '🔧 系统:',
+      '/reload - 重启守护进程（加载新代码）',
+      '',
       '💡 直接发送文字即可与 AI 对话',
       '💡 taskId 支持前缀匹配',
     ].join('\n'),
@@ -385,5 +393,26 @@ export function handleStatus(): CommandResult {
   return {
     text: lines.join('\n'),
     larkCard: buildStatusCard(jobs.map(j => ({ nodeId: j.data.nodeId }))),
+  }
+}
+
+export function handleReload(): CommandResult {
+  // 通过 spawn 子进程执行 cah restart，避免阻塞当前消息回复
+  const { spawn } = require('child_process')
+  const child = spawn(process.execPath, [...process.execArgv, ...process.argv.slice(1, 2), 'restart'], {
+    detached: true,
+    stdio: 'ignore',
+  })
+  child.unref()
+
+  logger.info('→ reload initiated via child process')
+  return {
+    text: [
+      '🔄 正在重启守护进程...',
+      '',
+      '约 2 秒后生效，期间消息可能延迟',
+      '',
+      '💡 使用 /status 确认重启完成',
+    ].join('\n'),
   }
 }

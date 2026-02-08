@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { startDaemon } from '../../scheduler/startDaemon.js'
 import { stopDaemon } from '../../scheduler/stopDaemon.js'
+import { restartDaemon } from '../../scheduler/restartDaemon.js'
 import { getDaemonStatus } from '../../scheduler/getDaemonStatus.js'
 
 export function registerDaemonCommands(program: Command) {
@@ -27,6 +28,14 @@ export function registerDaemonCommands(program: Command) {
     .description('查看守护进程 / 任务队列状态')
     .action(async () => {
       await getDaemonStatus()
+    })
+
+  program
+    .command('restart')
+    .description('重启守护进程（优雅停止 + 启动）')
+    .option('-D, --detach', '后台运行（默认启用）', true)
+    .action(async options => {
+      await restartDaemon(options)
     })
 
   // cah daemon — 隐藏的向后兼容别名

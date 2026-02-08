@@ -68,18 +68,54 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bm
 
 /** Extract local image file paths from text */
 function extractImagePaths(text: string): string[] {
-  // Match absolute paths ending with image extensions
-  const pathRegex = /(?:^|\s)(\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|[)\]},;:])/gim
   const paths: string[] = []
+
+  // Pattern 1: Absolute paths (/path/to/image.png)
+  const absoluteRegex = /(?:^|\s|["'`])(\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
   let match: RegExpExecArray | null
-  while ((match = pathRegex.exec(text)) !== null) {
+  while ((match = absoluteRegex.exec(text)) !== null) {
     const filePath = match[1]!
-    const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase()
-    if (IMAGE_EXTENSIONS.has(ext) && existsSync(filePath)) {
-      paths.push(filePath)
-    }
+    if (existsSync(filePath)) paths.push(filePath)
   }
+
+  // Pattern 2: Markdown image syntax ![alt](path)
+  const markdownRegex = /!\[.*?\]\(([\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))\)/gi
+  while ((match = markdownRegex.exec(text)) !== null) {
+    const filePath = match[1]!
+    const resolved = resolveImagePath(filePath)
+    if (resolved && existsSync(resolved)) paths.push(resolved)
+  }
+
+  // Pattern 3: Relative paths mentioned in text (./image.png or image.png)
+  const relativeRegex = /(?:^|\s|["'`])(\.?\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp)|[\w-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
+  while ((match = relativeRegex.exec(text)) !== null) {
+    const filePath = match[1]!
+    const resolved = resolveImagePath(filePath)
+    if (resolved && existsSync(resolved)) paths.push(resolved)
+  }
+
   return [...new Set(paths)] // dedupe
+}
+
+/** Resolve relative path to absolute, trying cwd and common temp dirs */
+function resolveImagePath(path: string): string | null {
+  const { resolve, isAbsolute } = require('path')
+  const { existsSync } = require('fs')
+
+  if (isAbsolute(path)) return path
+
+  // Try cwd
+  const cwdPath = resolve(process.cwd(), path)
+  if (existsSync(cwdPath)) return cwdPath
+
+  // Try common temp directories
+  const tempDirs = ['/tmp', '/var/tmp', process.env.TMPDIR || ''].filter(Boolean)
+  for (const dir of tempDirs) {
+    const fullPath = resolve(dir, path)
+    if (existsSync(fullPath)) return fullPath
+  }
+
+  return null
 }
 
 export interface ChatOptions {
@@ -228,13 +264,18 @@ async function handleChatInternal(
     // Detect and send local image files mentioned in the response
     if (messenger.replyImage) {
       const imagePaths = extractImagePaths(response)
+      if (imagePaths.length > 0) {
+        logger.info(`Detected ${imagePaths.length} image(s) in response`)
+      }
       for (const imgPath of imagePaths) {
         try {
+          logger.info(`Reading image: ${imgPath}`)
           const imageData = readFileSync(imgPath)
+          logger.info(`Sending image (${imageData.length} bytes) to ${chatId.slice(0, 8)}`)
           await messenger.replyImage(chatId, imageData, imgPath)
-          logger.info(`Sent image: ${imgPath}`)
+          logger.info(`✓ Image sent: ${imgPath}`)
         } catch (e) {
-          logger.debug(`Failed to send image ${imgPath}: ${e instanceof Error ? e.message : e}`)
+          logger.error(`✗ Failed to send image ${imgPath}: ${e instanceof Error ? e.message : e}`)
         }
       }
     }
