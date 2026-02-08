@@ -2,15 +2,34 @@
  * 飞书/Lark 通知模块
  * 发送卡片消息通知用户审批
  *
- * 发送策略：优先使用 Lark API client（需 WSClient 已启动），否则降级到 webhook
+ * 发送策略：优先使用 Lark API client（需 WSClient 已启动），
+ * 否则用配置创建临时 client 发送（支持子进程场景）
  */
 
+import * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
+import { loadConfig } from '../config/loadConfig.js'
 import { getLarkClient, getDefaultLarkChatId } from './larkWsClient.js'
-import { buildApprovalCard } from './buildLarkCard.js'
+import { buildApprovalCard, buildCard, mdElement } from './buildLarkCard.js'
 import type { LarkCard } from './buildLarkCard.js'
 
 const logger = createLogger('lark-notify')
+
+/**
+ * Get a usable Lark client: prefer the shared WSClient instance,
+ * fall back to creating a standalone client from config (for subprocess use).
+ */
+async function getOrCreateLarkClient(): Promise<Lark.Client | null> {
+  const shared = getLarkClient()
+  if (shared) return shared
+
+  const config = await loadConfig()
+  const { appId, appSecret } = config.notify?.lark || {}
+  if (!appId || !appSecret) return null
+
+  logger.debug('Creating standalone Lark client for notification')
+  return new Lark.Client({ appId, appSecret })
+}
 
 export interface ReviewNotificationOptions {
   webhookUrl: string
@@ -76,9 +95,9 @@ export async function sendReviewNotification(options: ReviewNotificationOptions)
  * 通过 Lark API client 发送消息到指定 chat
  */
 export async function sendLarkMessageViaApi(chatId: string, text: string): Promise<boolean> {
-  const client = getLarkClient()
+  const client = await getOrCreateLarkClient()
   if (!client) {
-    logger.warn('Lark API client not available, cannot send via API')
+    logger.warn('No Lark credentials available, cannot send message')
     return false
   }
 
@@ -158,38 +177,25 @@ export async function sendApprovalResultNotification(
 ): Promise<boolean> {
   const { nodeId, nodeName, approved, reason } = options
   const status = approved ? '✅ 已通过' : '❌ 已拒绝'
-  const reasonText = reason ? `\n原因: ${reason}` : ''
+  const reasonText = reason ? `\n**原因**: ${reason}` : ''
 
-  const message = {
-    msg_type: 'interactive',
-    card: {
-      header: {
-        title: {
-          tag: 'plain_text',
-          content: `审批结果: ${nodeName}`,
-        },
-        template: approved ? 'green' : 'red',
-      },
-      elements: [
-        {
-          tag: 'markdown',
-          content: `**状态**: ${status}${reasonText}\n**节点**: ${nodeId}`,
-        },
-      ],
-    },
-  }
+  const card = buildCard(
+    `审批结果: ${nodeName}`,
+    approved ? 'green' : 'red',
+    [mdElement(`**状态**: ${status}${reasonText}\n**节点**: ${nodeId}`)]
+  )
 
   try {
     const response = await fetch(webhookUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(message),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg_type: 'interactive', card }),
     })
 
     return response.ok
-  } catch {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logger.warn(`Failed to send approval result notification: ${errorMessage}`)
     return false
   }
 }
@@ -198,9 +204,9 @@ export async function sendApprovalResultNotification(
  * Send an interactive card via Lark API client
  */
 export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promise<boolean> {
-  const client = getLarkClient()
+  const client = await getOrCreateLarkClient()
   if (!client) {
-    logger.warn('Lark API client not available, cannot send card via API')
+    logger.warn('No Lark credentials available, cannot send card')
     return false
   }
 
@@ -225,10 +231,57 @@ export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promis
 /**
  * Update an existing card message
  */
+/**
+ * Upload an image to Lark and return the image_key
+ */
+export async function uploadLarkImage(client: Lark.Client, imageData: Buffer): Promise<string | null> {
+  try {
+    const res = await client.im.v1.image.create({
+      data: {
+        image_type: 'message',
+        image: imageData,
+      },
+    })
+    const imageKey = (res as { data?: { image_key?: string } })?.data?.image_key
+    if (!imageKey) {
+      logger.error('Lark image upload returned no image_key')
+      return null
+    }
+    logger.info(`Uploaded image to Lark: ${imageKey}`)
+    return imageKey
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logger.error(`Failed to upload image to Lark: ${msg}`)
+    return null
+  }
+}
+
+/**
+ * Send an image message to a Lark chat
+ */
+export async function sendLarkImage(client: Lark.Client, chatId: string, imageKey: string): Promise<boolean> {
+  try {
+    await client.im.v1.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: chatId,
+        msg_type: 'image',
+        content: JSON.stringify({ image_key: imageKey }),
+      },
+    })
+    logger.info(`Sent image to Lark chat ${chatId}`)
+    return true
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logger.error(`Failed to send image to Lark: ${msg}`)
+    return false
+  }
+}
+
 export async function updateLarkCard(messageId: string, card: LarkCard): Promise<boolean> {
-  const client = getLarkClient()
+  const client = await getOrCreateLarkClient()
   if (!client) {
-    logger.warn('Lark API client not available, cannot update card')
+    logger.warn('No Lark credentials available, cannot update card')
     return false
   }
 

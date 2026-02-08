@@ -8,6 +8,8 @@
  * messageId 统一用 string（Telegram number → toString，飞书 message_id 是 string）
  */
 
+import type { LarkCard } from '../buildLarkCard.js'
+
 // ── MessengerAdapter：平台消息收发能力 ──
 
 export interface MessengerAdapter {
@@ -21,7 +23,10 @@ export interface MessengerAdapter {
   editMessage(chatId: string, messageId: string, text: string, options?: SendOptions): Promise<void>
 
   /** Optional: send a rich card message (Lark only) */
-  replyCard?(chatId: string, card: unknown): Promise<void>
+  replyCard?(chatId: string, card: LarkCard): Promise<void>
+
+  /** Optional: send an image message */
+  replyImage?(chatId: string, imageData: Buffer, fileName?: string): Promise<void>
 }
 
 export interface SendOptions {
@@ -57,7 +62,7 @@ export interface CommandResult {
   text: string
   parseMode?: 'markdown' | 'html'
   /** Optional Lark card for rich display (adapter falls back to text if unsupported) */
-  larkCard?: unknown
+  larkCard?: LarkCard
 }
 
 // ── 客户端环境上下文 ──

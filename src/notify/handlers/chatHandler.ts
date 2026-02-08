@@ -3,6 +3,7 @@
  * 将文本消息转发给 AI 后端，支持会话复用和流式响应
  */
 
+import { readFileSync, existsSync } from 'fs'
 import { invokeBackend } from '../../backend/index.js'
 import { createLogger } from '../../shared/logger.js'
 import { buildClientPrompt } from '../../prompts/chatPrompts.js'
@@ -63,6 +64,24 @@ function splitMessage(text: string, maxLength: number = DEFAULT_MAX_LENGTH): str
   return parts
 }
 
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'])
+
+/** Extract local image file paths from text */
+function extractImagePaths(text: string): string[] {
+  // Match absolute paths ending with image extensions
+  const pathRegex = /(?:^|\s)(\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|[)\]},;:])/gim
+  const paths: string[] = []
+  let match: RegExpExecArray | null
+  while ((match = pathRegex.exec(text)) !== null) {
+    const filePath = match[1]!
+    const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase()
+    if (IMAGE_EXTENSIONS.has(ext) && existsSync(filePath)) {
+      paths.push(filePath)
+    }
+  }
+  return [...new Set(paths)] // dedupe
+}
+
 export interface ChatOptions {
   /** 单条消息最大长度，默认 4096（Telegram 限制） */
   maxMessageLength?: number
@@ -83,7 +102,9 @@ export async function handleChat(
   const prev = chatQueues.get(chatId) ?? Promise.resolve()
   const task = prev.then(() => handleChatInternal(chatId, text, messenger, options))
   // swallow errors so next queued message isn't blocked
-  const tail = task.catch(() => {})
+  const tail = task.catch(e => {
+    logger.debug(`chat queue error [${chatId.slice(0, 8)}]: ${e instanceof Error ? e.message : e}`)
+  })
   chatQueues.set(chatId, tail)
   // 队列跑完后清理
   tail.then(() => {
@@ -137,7 +158,9 @@ async function handleChatInternal(
             accumulated.length > maxLen
               ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
               : accumulated
-          messenger.editMessage(chatId, placeholderId, preview).catch(() => {})
+          messenger.editMessage(chatId, placeholderId, preview).catch(e => {
+            logger.debug(`stream edit failed: ${e instanceof Error ? e.message : e}`)
+          })
         }
       }
     : undefined
@@ -201,12 +224,28 @@ async function handleChatInternal(
         await messenger.reply(chatId, part)
       }
     }
+
+    // Detect and send local image files mentioned in the response
+    if (messenger.replyImage) {
+      const imagePaths = extractImagePaths(response)
+      for (const imgPath of imagePaths) {
+        try {
+          const imageData = readFileSync(imgPath)
+          await messenger.replyImage(chatId, imageData, imgPath)
+          logger.info(`Sent image: ${imgPath}`)
+        } catch (e) {
+          logger.debug(`Failed to send image ${imgPath}: ${e instanceof Error ? e.message : e}`)
+        }
+      }
+    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     logger.error(`chat error [${chatId.slice(0, 8)}]: ${msg}`)
     const errorMsg = `❌ 处理失败: ${msg}`
     if (placeholderId) {
-      await messenger.editMessage(chatId, placeholderId, errorMsg).catch(() => {})
+      await messenger.editMessage(chatId, placeholderId, errorMsg).catch(e => {
+        logger.debug(`error edit failed: ${e instanceof Error ? e.message : e}`)
+      })
     } else {
       await messenger.reply(chatId, errorMsg)
     }

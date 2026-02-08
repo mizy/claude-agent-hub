@@ -21,6 +21,32 @@ import { createLogger } from '../shared/logger.js'
 
 const logger = createLogger('task-process')
 
+// Track current taskId for global error handlers
+let currentTaskId: string | undefined
+
+function handleFatalError(type: string, error: unknown): void {
+  const message = error instanceof Error ? error.stack ?? error.message : String(error)
+  logger.error(`${type}: ${message}`)
+
+  if (currentTaskId) {
+    try {
+      updateTask(currentTaskId, { status: 'failed' })
+      updateProcessInfo(currentTaskId, {
+        status: 'crashed',
+        error: `${type}: ${message}`,
+        exitCode: 1,
+      })
+    } catch {
+      // Best effort — don't throw in fatal handler
+    }
+  }
+
+  process.exit(1)
+}
+
+process.on('uncaughtException', error => handleFatalError('uncaughtException', error))
+process.on('unhandledRejection', reason => handleFatalError('unhandledRejection', reason))
+
 // Heartbeat interval (10 seconds)
 const HEARTBEAT_INTERVAL = 10000
 
@@ -44,6 +70,8 @@ async function main(): Promise<void> {
     logger.error('Missing --task-id argument')
     process.exit(1)
   }
+
+  currentTaskId = taskId
 
   logger.info(`Starting task process: ${taskId}`)
   if (isResume) {
@@ -146,7 +174,4 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(err => {
-  logger.error(`Fatal error: ${err instanceof Error ? err.message : String(err)}`)
-  process.exit(1)
-})
+main().catch(err => handleFatalError('main() rejected', err))
