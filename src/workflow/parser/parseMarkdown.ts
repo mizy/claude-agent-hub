@@ -40,6 +40,19 @@ export function parseMarkdown(content: string, sourceFile?: string): Workflow {
 
   let currentTask: Partial<ParsedTask> | null = null
 
+  function pushCurrentTask() {
+    if (currentTask?.name) {
+      tasks.push({
+        name: currentTask.name,
+        agent: currentTask.agent,
+        type: currentTask.type,
+        dependencies: currentTask.dependencies ?? [],
+        description: currentTask.description ?? '',
+        condition: currentTask.condition,
+      })
+    }
+  }
+
   for (const token of tokens) {
     if (token.type === 'heading') {
       // 一级标题 = 工作流名称
@@ -48,19 +61,13 @@ export function parseMarkdown(content: string, sourceFile?: string): Workflow {
       }
       // 二级标题 = 章节
       else if (token.depth === 2) {
-        // 保存当前任务
-        if (currentTask?.name) {
-          tasks.push(currentTask as ParsedTask)
-        }
+        pushCurrentTask()
         currentTask = null
         currentSection = token.text.toLowerCase()
       }
       // 三级标题 = 任务节点
       else if (token.depth === 3) {
-        // 保存上一个任务
-        if (currentTask?.name) {
-          tasks.push(currentTask as ParsedTask)
-        }
+        pushCurrentTask()
 
         if (currentSection === '任务' || currentSection === 'tasks') {
           // 解析任务名称（去掉序号）
@@ -70,6 +77,8 @@ export function parseMarkdown(content: string, sourceFile?: string): Workflow {
             dependencies: [],
             description: '',
           }
+        } else {
+          currentTask = null
         }
       }
     }
@@ -99,9 +108,7 @@ export function parseMarkdown(content: string, sourceFile?: string): Workflow {
   }
 
   // 保存最后一个任务
-  if (currentTask?.name) {
-    tasks.push(currentTask as ParsedTask)
-  }
+  pushCurrentTask()
 
   // 构建 Workflow
   return buildWorkflow(workflowName, workflowDescription, tasks, loopRules, sourceFile)

@@ -87,8 +87,6 @@ export {
   // Path helpers
   getLogPath,
   getOutputPath,
-  // Step records (deprecated - 节点输出现在存储在 instance.json)
-  saveStepOutput,
   // Types
   type ConversationEntry,
   type ExecutionLogOptions,

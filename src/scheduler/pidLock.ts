@@ -108,9 +108,10 @@ export function releasePidLock(service: ServiceName = 'daemon'): void {
 /**
  * 检查服务是否在运行
  */
-export function isServiceRunning(
-  service: ServiceName = 'daemon'
-): { running: boolean; lock?: PidLockInfo } {
+export function isServiceRunning(service: ServiceName = 'daemon'): {
+  running: boolean
+  lock?: PidLockInfo
+} {
   const lock = getPidLock(service)
   if (!lock) {
     return { running: false }
@@ -119,6 +120,3 @@ export function isServiceRunning(
   const running = isProcessRunning(lock.pid)
   return { running, lock }
 }
-
-/** @deprecated Use isServiceRunning('daemon') */
-export const isDaemonRunning = () => isServiceRunning('daemon')

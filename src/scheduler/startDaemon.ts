@@ -13,10 +13,13 @@ import { loadConfig } from '../config/loadConfig.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
 import { withProcessTracking } from '../task/processTracking.js'
-import { stopLarkServer } from '../notify/larkServer.js'
-import { startLarkWsClient, stopLarkWsClient } from '../notify/larkWsClient.js'
-import { startTelegramClient, stopTelegramClient } from '../notify/telegramClient.js'
-import { acquirePidLock, releasePidLock, isDaemonRunning } from './pidLock.js'
+import {
+  startLarkWsClient,
+  stopLarkWsClient,
+  startTelegramClient,
+  stopTelegramClient,
+} from '../notify/index.js'
+import { acquirePidLock, releasePidLock, isServiceRunning } from './pidLock.js'
 
 interface DaemonOptions {
   detach?: boolean
@@ -66,7 +69,7 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
 /** fork 子进程后台运行 */
 async function spawnDetached(): Promise<void> {
   // 先检查是否已有 daemon 在运行
-  const { running, lock } = isDaemonRunning()
+  const { running, lock } = isServiceRunning('daemon')
   if (running && lock) {
     console.error(chalk.red('✗ 守护进程已在运行'))
     console.error(chalk.yellow(`  PID: ${lock.pid}`))
@@ -182,7 +185,6 @@ async function runDaemon(): Promise<void> {
     console.log(chalk.yellow('\n停止守护进程...'))
     stopSleepPrevention()
     stopAllJobs()
-    await stopLarkServer()
     await stopLarkWsClient()
     stopTelegramClient()
     releasePidLock()

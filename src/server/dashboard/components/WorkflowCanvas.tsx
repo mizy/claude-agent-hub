@@ -83,6 +83,7 @@ export function WorkflowCanvas() {
   const drag = useRef({ on: false, sx: 0, sy: 0, lx: 0, ly: 0, moved: false })
   const anim = useRef<number | null>(null)
   const touch = useRef({ dist: 0, mx: 0, my: 0, on: false, lx: 0, ly: 0, sx: 0, sy: 0, moved: false })
+  const prevWorkflowKey = useRef<string | null>(null)
 
   const draw = useCallback(() => {
     const cv = canvasRef.current, co = contRef.current
@@ -184,9 +185,13 @@ export function WorkflowCanvas() {
   }, [animTo])
 
   useEffect(() => {
-    if (!taskData?.workflow) { nodePos.current = {}; draw(); return }
+    if (!taskData?.workflow) { nodePos.current = {}; prevWorkflowKey.current = null; draw(); return }
+    const key = taskData.workflow.nodes.map(n => n.id).join(',') + '|' + (taskData.workflow.edges || []).map(e => e.from + '-' + e.to).join(',')
+    const structureChanged = key !== prevWorkflowKey.current
+    prevWorkflowKey.current = key
     nodePos.current = layoutNodes(taskData.workflow.nodes, taskData.workflow.edges)
-    draw(); requestAnimationFrame(() => fitView())
+    draw()
+    if (structureChanged) requestAnimationFrame(() => fitView())
   }, [taskData?.workflow, draw, fitView])
 
   useEffect(() => { draw() }, [selectedNodeId, draw])

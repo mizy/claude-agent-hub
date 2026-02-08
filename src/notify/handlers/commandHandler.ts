@@ -14,7 +14,7 @@ import { createAndRunTask } from '../../task/createAndRun.js'
 import { stopTask } from '../../task/manageTaskLifecycle.js'
 import { resumeTask } from '../../task/resumeTask.js'
 import { formatDuration } from '../../shared/formatTime.js'
-import { getWaitingHumanJobs } from '../../workflow/queue/WorkflowQueue.js'
+import { getWaitingHumanJobs } from '../../workflow/index.js'
 import { parseTaskStatus } from '../../types/task.js'
 import {
   buildTaskListCard,
@@ -22,6 +22,8 @@ import {
   buildStatusCard,
   buildHelpCard,
 } from '../buildLarkCard.js'
+import type { TaskListItem } from '../buildLarkCard.js'
+import { statusEmoji } from './constants.js'
 import type { Task } from '../../types/task.js'
 import type { CommandResult } from './types.js'
 
@@ -33,7 +35,7 @@ function resolveTaskId(
   prefix: string
 ): { task: Task; error?: never } | { task?: never; error: string } {
   const tasks = getAllTasks()
-  const matches = tasks.filter(t => t.id.startsWith(prefix) || t.id.includes(prefix))
+  const matches = tasks.filter(t => t.id.startsWith(prefix))
 
   if (matches.length === 0) {
     return { error: `未找到匹配的任务: ${prefix}` }
@@ -46,22 +48,6 @@ function resolveTaskId(
     return { error: `匹配到多个任务，请提供更长的前缀:\n${ids}` }
   }
   return { task: matches[0]! }
-}
-
-// ── Status emoji ──
-
-const STATUS_EMOJI: Record<string, string> = {
-  pending: '⏳',
-  planning: '📋',
-  developing: '🔨',
-  reviewing: '👀',
-  completed: '✅',
-  failed: '❌',
-  cancelled: '🚫',
-}
-
-function statusEmoji(status: string): string {
-  return STATUS_EMOJI[status] || '❓'
 }
 
 // ── Command handlers ──
@@ -117,7 +103,40 @@ export async function handleRun(description: string): Promise<CommandResult> {
   }
 }
 
-export async function handleList(statusFilter?: string): Promise<CommandResult> {
+const ACTIVE_STATUSES = new Set(['pending', 'planning', 'developing', 'reviewing'])
+const PAGE_SIZE = 10
+
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  if (diff < 0) return '刚刚'
+  const seconds = Math.floor(diff / 1000)
+  if (seconds < 60) return '刚刚'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h前`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d前`
+  const months = Math.floor(days / 30)
+  return `${months}mo前`
+}
+
+function buildTaskListItems(tasks: Task[]): TaskListItem[] {
+  return tasks.map(t => ({
+    id: t.id,
+    shortId: t.id.replace(/^task-/, '').slice(0, 4),
+    title: t.title.length > 30 ? t.title.slice(0, 27) + '...' : t.title,
+    status: t.status,
+    priority: t.priority,
+    relativeTime: formatRelativeTime(t.updatedAt || t.createdAt),
+  }))
+}
+
+function formatTaskLine(item: TaskListItem): string {
+  return `${statusEmoji(item.status)} ${item.shortId}  ${item.title}  ${item.priority}  ${item.relativeTime}`
+}
+
+export async function handleList(statusFilter?: string, page = 1): Promise<CommandResult> {
   try {
     let tasks = getAllTasks()
 
@@ -132,22 +151,52 @@ export async function handleList(statusFilter?: string): Promise<CommandResult> 
       return { text: statusFilter ? `没有 ${statusFilter} 状态的任务` : '暂无任务' }
     }
 
-    const display = tasks.slice(0, 15)
-    const lines = display.map(t => {
-      const shortId = t.id.slice(0, 20)
-      const title = t.title.length > 25 ? t.title.slice(0, 22) + '...' : t.title
-      return `${statusEmoji(t.status)} \`${shortId}\` ${title}`
-    })
+    // Split into active and completed groups
+    const activeTasks = tasks.filter(t => ACTIVE_STATUSES.has(t.status))
+    const completedTasks = tasks.filter(t => !ACTIVE_STATUSES.has(t.status))
 
-    if (tasks.length > 15) {
-      lines.push(`\n... 还有 ${tasks.length - 15} 个任务`)
+    // Paginate: each page shows up to GROUP_SIZE per group, PAGE_SIZE total
+    const totalPages = Math.ceil(tasks.length / PAGE_SIZE)
+    const safePage = Math.max(1, Math.min(page, totalPages))
+    const startIdx = (safePage - 1) * PAGE_SIZE
+
+    // Simple pagination: slice from all tasks then re-split
+    const pageTasks = tasks.slice(startIdx, startIdx + PAGE_SIZE)
+    const pageActive = pageTasks.filter(t => ACTIVE_STATUSES.has(t.status))
+    const pageCompleted = pageTasks.filter(t => !ACTIVE_STATUSES.has(t.status))
+
+    const activeItems = buildTaskListItems(pageActive)
+    const completedItems = buildTaskListItems(pageCompleted)
+
+    // Build text for Telegram/plain fallback
+    const lines: string[] = []
+    if (activeItems.length > 0) {
+      lines.push(`🔄 进行中 (${activeTasks.length})`)
+      lines.push(...activeItems.map(formatTaskLine))
+    }
+    if (activeItems.length > 0 && completedItems.length > 0) {
+      lines.push('')
+    }
+    if (completedItems.length > 0) {
+      lines.push(`✅ 已完成 (${completedTasks.length})`)
+      lines.push(...completedItems.map(formatTaskLine))
+    }
+    if (totalPages > 1) {
+      lines.push('', `第 ${safePage}/${totalPages} 页`)
     }
 
     return {
       text: `📋 任务列表 (${tasks.length}):\n\n${lines.join('\n')}`,
       larkCard: buildTaskListCard(
-        display.map(t => ({ id: t.id, title: t.title, status: t.status })),
-        tasks.length
+        { active: activeItems, completed: completedItems },
+        {
+          total: tasks.length,
+          activeCount: activeTasks.length,
+          completedCount: completedTasks.length,
+        },
+        safePage,
+        totalPages,
+        statusFilter
       ),
     }
   } catch (error) {

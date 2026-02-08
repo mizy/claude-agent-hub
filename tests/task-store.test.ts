@@ -32,7 +32,6 @@ import {
   getTaskInstance,
   loadTaskFolder,
   // From TaskLogStore
-  saveStepOutput,
   appendConversation,
   type ConversationEntry,
   // From paths
@@ -329,24 +328,6 @@ describe('TaskStore', () => {
     it('不存在的 PID 应返回 false', () => {
       // 使用一个很大的 PID，几乎肯定不存在
       expect(isProcessRunning(999999999)).toBe(false)
-    })
-  })
-
-  // NOTE: Step 存储已废弃，节点输出现在存储在 instance.json 的 outputs 字段中
-  // 保留测试以验证向后兼容性
-  describe('Step 存储 (deprecated)', () => {
-    it('应保存步骤输出（向后兼容）', () => {
-      const task = createTestTask()
-      saveTask(task)
-
-      const stepOutput = { result: 'success', data: [1, 2, 3] }
-      saveStepOutput(task.id, 1, stepOutput)
-
-      const stepPath = join(TASKS_DIR, task.id, 'steps', 'step-001.json')
-      expect(existsSync(stepPath)).toBe(true)
-
-      const content = JSON.parse(readFileSync(stepPath, 'utf-8'))
-      expect(content).toEqual(stepOutput)
     })
   })
 

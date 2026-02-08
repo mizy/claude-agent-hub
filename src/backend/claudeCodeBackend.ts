@@ -231,7 +231,9 @@ async function streamOutput(
       if (!truncated) {
         if (totalBytes > MAX_OUTPUT_BYTES) {
           truncated = true
-          logger.warn(`Output exceeded ${MAX_OUTPUT_BYTES / 1024 / 1024}MB limit, truncating collection`)
+          logger.warn(
+            `Output exceeded ${MAX_OUTPUT_BYTES / 1024 / 1024}MB limit, truncating collection`
+          )
         } else {
           chunks.push(text)
         }
@@ -286,7 +288,10 @@ async function streamOutput(
 
   const output = chunks.join('')
   if (truncated) {
-    return output + `\n\n[OUTPUT TRUNCATED: exceeded ${MAX_OUTPUT_BYTES / 1024 / 1024}MB limit, ${(totalBytes / 1024 / 1024).toFixed(1)}MB total]`
+    return (
+      output +
+      `\n\n[OUTPUT TRUNCATED: exceeded ${MAX_OUTPUT_BYTES / 1024 / 1024}MB limit, ${(totalBytes / 1024 / 1024).toFixed(1)}MB total]`
+    )
   }
   return output
 }

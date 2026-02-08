@@ -60,7 +60,8 @@ export function preprocessExpression(expr: string): string {
   // Logical operators
   processed = processed.replace(/&&/g, ' and ')
   processed = processed.replace(/\|\|/g, ' or ')
-  processed = processed.replace(/!/g, ' not ')
+  // Replace ! but not != and !==
+  processed = processed.replace(/!(?!=)/g, ' not ')
 
   return processed
 }

@@ -16,6 +16,7 @@ import { buildWelcomeCard } from './buildLarkCard.js'
 import { buildMarkdownCard } from './larkCardWrapper.js'
 import { routeMessage } from './handlers/messageRouter.js'
 import { handleApproval } from './handlers/approvalHandler.js'
+import { handleList, handleGet } from './handlers/commandHandler.js'
 import type { LarkCard } from './buildLarkCard.js'
 import type { MessengerAdapter, ParsedApproval, ClientContext } from './handlers/types.js'
 
@@ -36,6 +37,7 @@ interface LarkMessageEvent {
 
 interface LarkCardActionEvent {
   open_chat_id?: string
+  open_message_id?: string
   action?: {
     value?: Record<string, string>
   }
@@ -155,6 +157,19 @@ function createAdapter(): MessengerAdapter {
         logger.error(`→ card send failed: ${error instanceof Error ? error.message : error}`)
       }
     },
+    async editCard(_chatId: string, messageId: string, card: LarkCard) {
+      if (!larkClient || !messageId) return
+      try {
+        await larkClient.im.v1.message.patch({
+          path: { message_id: messageId },
+          data: {
+            content: JSON.stringify(card),
+          },
+        })
+      } catch (error) {
+        logger.error(`→ editCard failed: ${error instanceof Error ? error.message : error}`)
+      }
+    },
     async replyImage(chatId: string, imageData: Buffer) {
       if (!larkClient) return
       const imageKey = await uploadLarkImage(larkClient, imageData)
@@ -182,7 +197,12 @@ async function createApprovalCallback() {
   const cfg = await loadConfig()
   const webhookUrl = cfg.notify?.lark?.webhookUrl
   if (!webhookUrl) return undefined
-  return async (result: { nodeId: string; nodeName: string; approved: boolean; reason?: string }) => {
+  return async (result: {
+    nodeId: string
+    nodeName: string
+    approved: boolean
+    reason?: string
+  }) => {
     await sendApprovalResultNotification(webhookUrl, result)
   }
 }
@@ -237,6 +257,32 @@ async function handleCardAction(data: LarkCardActionEvent): Promise<void> {
     const result = await handleApproval(approval, await createApprovalCallback())
     logger.info(`→ approval: ${approval.action} ${approval.nodeId ?? '(auto)'}`)
     await messenger.reply(chatId, result)
+  } else if (actionType === 'list_page') {
+    const page = parseInt(value.page ?? '1', 10) || 1
+    const filter = value.filter
+    const result = await handleList(filter, page)
+    const messenger = createAdapter()
+    const messageId = data?.open_message_id
+    if (result.larkCard && messageId && messenger.editCard) {
+      await messenger.editCard(chatId, messageId, result.larkCard)
+    } else if (result.larkCard) {
+      await messenger.replyCard?.(chatId, result.larkCard)
+    } else {
+      await messenger.reply(chatId, result.text)
+    }
+  } else if (actionType === 'task_detail') {
+    const taskId = value.taskId
+    if (!taskId) {
+      logger.warn('task_detail action missing taskId')
+      return
+    }
+    const result = await handleGet(taskId)
+    const messenger = createAdapter()
+    if (result.larkCard) {
+      await messenger.replyCard?.(chatId, result.larkCard)
+    } else {
+      await messenger.reply(chatId, result.text)
+    }
   } else {
     logger.warn(`Unknown card action: ${actionType}`)
   }
@@ -333,7 +379,7 @@ export async function startLarkWsClient(): Promise<void> {
 
   // New chat created (welcome message)
   try {
-    dispatcher.register({ 'p2p_chat_create': handleP2pChatCreate } as any)
+    dispatcher.register({ p2p_chat_create: handleP2pChatCreate } as any)
   } catch {
     logger.warn('p2p_chat_create registration not supported by SDK, skipping')
   }

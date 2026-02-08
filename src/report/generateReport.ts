@@ -1,6 +1,6 @@
 import chalk from 'chalk'
 import { writeFile } from 'fs/promises'
-import { getStore } from '../store/index.js'
+import { getAllTasks } from '../task/index.js'
 import { formatReport } from './formatReport.js'
 
 interface ReportOptions {
@@ -13,7 +13,6 @@ interface ReportOptions {
  * 生成工作报告
  */
 export async function generateReport(options: ReportOptions): Promise<void> {
-  const store = getStore()
   const days = parseInt(options.days || '1', 10)
 
   // 计算时间范围
@@ -21,7 +20,7 @@ export async function generateReport(options: ReportOptions): Promise<void> {
   since.setDate(since.getDate() - days)
 
   // 获取任务
-  let tasks = store.getAllTasks()
+  let tasks = getAllTasks()
 
   // 筛选时间范围
   tasks = tasks.filter(t => new Date(t.createdAt) >= since)

@@ -16,14 +16,15 @@ import {
   resumeFailedTask,
   getFailedTasks,
 } from '../../task/resumeTask.js'
-import { getTask, getTaskFolder } from '../../store/TaskStore.js'
-import { getLogPath } from '../../store/TaskLogStore.js'
 import {
+  getTask,
+  getTaskFolder,
+  getLogPath,
   getExecutionStats,
   getExecutionTimeline,
   formatExecutionSummary,
   formatTimeline,
-} from '../../store/ExecutionStatsStore.js'
+} from '../../task/index.js'
 import {
   generateExecutionReport,
   formatReportForTerminal,

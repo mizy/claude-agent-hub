@@ -21,7 +21,8 @@ import {
   getInstancePath,
 } from '../store/TaskWorkflowStore.js'
 import { getLogPath, getOutputPath } from '../store/TaskLogStore.js'
-import type { Task, TaskStatus } from '../types/task.js'
+import type { Task } from '../types/task.js'
+import { parseTaskStatus } from '../types/task.js'
 
 // ============ List Tasks ============
 
@@ -189,7 +190,8 @@ function renderTaskList(tasks: Task[], showProgress: boolean): void {
  * 获取过滤后的任务列表
  */
 function getFilteredTasks(options: ListOptions): Task[] {
-  let tasks = options.status ? getTasksByStatus(options.status as TaskStatus) : getAllTasks()
+  const status = options.status ? parseTaskStatus(options.status) : null
+  let tasks = status ? getTasksByStatus(status) : getAllTasks()
 
   if (options.agent) {
     tasks = tasks.filter(t => t.assignee === options.agent)

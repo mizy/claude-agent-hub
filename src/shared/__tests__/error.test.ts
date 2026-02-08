@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { AppError, analyzeError, formatError } from '../error.js'
+import { AppError } from '../error.js'
 
 describe('AppError.fromError', () => {
   it('should detect timeout errors', () => {
@@ -133,20 +133,5 @@ describe('AppError factory methods', () => {
     const auth = AppError.apiError('ERR_AUTH', 'Invalid API key')
     expect(auth.category).toBe('API')
     expect(auth.suggestion).toContain('ANTHROPIC_API_KEY')
-  })
-})
-
-describe('backward compatibility', () => {
-  it('analyzeError should return AppError', () => {
-    const result = analyzeError('timeout error')
-    expect(result).toBeInstanceOf(AppError)
-    expect(result.category).toBe('TIMEOUT')
-  })
-
-  it('formatError should return formatted string', () => {
-    const appError = AppError.timeout('test')
-    const formatted = formatError(appError)
-    expect(typeof formatted).toBe('string')
-    expect(formatted).toContain('错误')
   })
 })

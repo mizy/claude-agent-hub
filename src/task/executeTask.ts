@@ -312,10 +312,16 @@ export async function executeTask(
       },
     })
 
-    // 发送 Telegram 任务完成通知（失败不影响任务状态）
+    // 发送任务完成通知（失败不影响任务状态）
+    const taskNodes = workflow.nodes.filter(n => n.type !== 'start' && n.type !== 'end')
     await sendTaskCompletionNotify(task, success, {
       durationMs: totalDurationMs,
       error: finalInstance.error,
+      workflowName: workflow.name,
+      nodesCompleted,
+      nodesFailed,
+      totalNodes: taskNodes.length,
+      totalCostUsd,
     })
 
     logger.info(`输出保存至: ${outputPath}`)

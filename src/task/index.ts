@@ -52,3 +52,15 @@ export { runTask, resumeTask } from './runTask.js'
 // Execution utilities
 export { waitForWorkflowCompletion, createProgressBar } from './ExecutionProgress.js'
 export { setupIncrementalStatsSaving } from './ExecutionStats.js'
+
+// Task data access (re-exported from store for upper layers)
+// Upper layers (CLI, Server, Report) should use these instead of importing store directly
+export { getTask, getTaskFolder, getProcessInfo, isProcessRunning } from '../store/TaskStore.js'
+export { getTaskWorkflow, getTaskInstance } from '../store/TaskWorkflowStore.js'
+export { getLogPath, getOutputPath } from '../store/TaskLogStore.js'
+export {
+  getExecutionStats,
+  getExecutionTimeline,
+  formatExecutionSummary,
+  formatTimeline,
+} from '../store/ExecutionStatsStore.js'

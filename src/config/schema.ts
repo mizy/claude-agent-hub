@@ -76,8 +76,6 @@ export type AgentConfig = z.infer<typeof agentConfigSchema>
 export type TaskConfig = z.infer<typeof taskConfigSchema>
 export type GitConfig = z.infer<typeof gitConfigSchema>
 export type BackendConfig = z.infer<typeof backendConfigSchema>
-/** @deprecated 使用 BackendConfig */
-export type ClaudeConfig = z.infer<typeof claudeConfigSchema>
 export type LarkConfig = z.infer<typeof larkConfigSchema>
 export type TelegramConfig = z.infer<typeof telegramConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>

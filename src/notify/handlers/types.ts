@@ -25,6 +25,9 @@ export interface MessengerAdapter {
   /** Optional: send a rich card message (Lark only) */
   replyCard?(chatId: string, card: LarkCard): Promise<void>
 
+  /** Optional: edit an existing card message in-place (Lark only) */
+  editCard?(chatId: string, messageId: string, card: LarkCard): Promise<void>
+
   /** Optional: send an image message */
   replyImage?(chatId: string, imageData: Buffer, fileName?: string): Promise<void>
 }

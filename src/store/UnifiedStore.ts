@@ -28,7 +28,6 @@ import {
 import {
   appendExecutionLog as _appendExecutionLog,
   appendConversation as _appendConversation,
-  saveStepOutput as _saveStepOutput,
   type ConversationEntry,
 } from './TaskLogStore.js'
 import { META_FILE } from './paths.js'
@@ -59,7 +58,6 @@ export interface UnifiedStore {
     type: 'execution' | 'conversation',
     content: string | ConversationEntry
   ): void
-  saveOutput(taskId: string, nodeId: string, output: unknown): void
 
   // ============ Meta 相关 ============
   getDaemonPid(): number | null
@@ -127,15 +125,6 @@ class DefaultFileStore implements UnifiedStore {
     } else if (type === 'conversation' && typeof content === 'object') {
       _appendConversation(taskId, content as ConversationEntry)
     }
-  }
-
-  /**
-   * @deprecated 节点输出现在存储在 instance.json 的 outputs 字段中
-   */
-  saveOutput(taskId: string, nodeId: string, output: unknown): void {
-    // nodeId 转换为 step number
-    const stepNumber = parseInt(nodeId.replace(/\D/g, ''), 10) || 0
-    _saveStepOutput(taskId, stepNumber, output)
   }
 
   // ============ Meta 相关 ============

@@ -4,7 +4,7 @@
  */
 
 import chalk from 'chalk'
-import { formatDuration } from '../store/ExecutionStatsStore.js'
+import { formatDuration } from '../shared/formatTime.js'
 import type { LiveSummaryReport } from './LiveSummary.js'
 
 /**

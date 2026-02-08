@@ -36,8 +36,6 @@ export {
   assertNever,
   printError,
   printWarning,
-  analyzeError,
-  formatError,
 } from './error.js'
 
 // 日志

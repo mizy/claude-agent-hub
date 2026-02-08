@@ -1,4 +1,7 @@
+import { useState, useEffect } from 'react'
+import { marked } from 'marked'
 import { useStore } from '../store/useStore'
+import { extractNodeOutputText } from '../utils/extractNodeOutput'
 
 const STATUS_COLORS: Record<string, string> = {
   pending: '#6b7280', ready: '#6b7280', running: '#3b82f6', waiting: '#3b82f6',
@@ -6,6 +9,16 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 function fmtDur(ms: number) { return ms < 1000 ? `${ms}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${(ms / 60000).toFixed(1)}m` }
+
+function NodeOutputMarkdown({ output }: { output: unknown }) {
+  const [html, setHtml] = useState('')
+  useEffect(() => {
+    const text = extractNodeOutputText(output)
+    marked.parse(text).then(setHtml).catch(() => setHtml(text))
+  }, [output])
+  if (!html) return <div className="output-box">Loading...</div>
+  return <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+}
 
 export function DetailsTab() {
   const taskData = useStore((s) => s.taskData)
@@ -59,7 +72,7 @@ export function DetailsTab() {
         {output != null && (
           <div className="panel-section">
             <div className="panel-section-title">Output</div>
-            <div className="output-box">{typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output)}</div>
+            <NodeOutputMarkdown output={output} />
           </div>
         )}
       </div>

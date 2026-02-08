@@ -32,10 +32,12 @@ function createEventBus(): EventBus {
 
   return {
     on<T>(event: string, handler: EventHandler<T>): () => void {
-      if (!handlers.has(event)) {
-        handlers.set(event, new Set())
+      let set = handlers.get(event)
+      if (!set) {
+        set = new Set()
+        handlers.set(event, set)
       }
-      handlers.get(event)!.add(handler as EventHandler)
+      set.add(handler as EventHandler)
       return () => this.off(event, handler as EventHandler)
     },
 

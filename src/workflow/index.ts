@@ -58,7 +58,15 @@ export {
 
 // ============ 队列（常用） ============
 
-export { enqueueNode, enqueueNodes, getQueueStats, closeQueue } from './queue/WorkflowQueue.js'
+export {
+  enqueueNode,
+  enqueueNodes,
+  getQueueStats,
+  closeQueue,
+  getWaitingHumanJobs,
+  resumeWaitingJob,
+  markJobFailed,
+} from './queue/WorkflowQueue.js'
 
 // Worker
 export {

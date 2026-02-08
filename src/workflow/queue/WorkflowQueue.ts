@@ -116,11 +116,10 @@ function withLock<T>(fn: () => T): T {
         releaseLock()
       }
     }
-    // 同步等待（使用 busy wait，避免 execSync）
-    const start = Date.now()
-    while (Date.now() - start < retryDelay) {
-      // busy wait
-    }
+    // 同步等待：使用 Atomics.wait 避免 CPU spin
+    const buf = new SharedArrayBuffer(4)
+    const arr = new Int32Array(buf)
+    Atomics.wait(arr, 0, 0, retryDelay)
   }
 
   throw new Error('Failed to acquire queue lock')
@@ -140,47 +139,47 @@ function saveQueueData(data: QueueData): void {
   writeJson(QUEUE_FILE, data)
 }
 
+function createJob(
+  data: NodeJobData,
+  now: Date,
+  options?: { delay?: number; priority?: number }
+): Job {
+  const processAt = options?.delay ? new Date(now.getTime() + options.delay) : now
+  return {
+    id: `${data.instanceId}:${data.nodeId}:${data.attempt}`,
+    name: `node:${data.nodeId}`,
+    data,
+    status: 'waiting',
+    priority: options?.priority || 0,
+    delay: options?.delay || 0,
+    attempts: 0,
+    maxAttempts: MAX_JOB_ATTEMPTS,
+    createdAt: now.toISOString(),
+    processAt: processAt.toISOString(),
+  }
+}
+
+function upsertJob(queueData: QueueData, job: Job): void {
+  const existingIndex = queueData.jobs.findIndex(j => j.id === job.id)
+  if (existingIndex >= 0) {
+    queueData.jobs[existingIndex] = job
+  } else {
+    queueData.jobs.push(job)
+  }
+}
+
 // 入队节点任务
 export async function enqueueNode(
   data: NodeJobData,
-  options?: {
-    delay?: number
-    priority?: number
-  }
+  options?: { delay?: number; priority?: number }
 ): Promise<string> {
   return withLockAsync(() => {
     const queueData = getQueueData()
-
-    const jobId = `${data.instanceId}:${data.nodeId}:${data.attempt}`
-    const now = new Date()
-    const processAt = options?.delay ? new Date(now.getTime() + options.delay) : now
-
-    // 查找是否已存在
-    const existingIndex = queueData.jobs.findIndex(j => j.id === jobId)
-
-    const job: Job = {
-      id: jobId,
-      name: `node:${data.nodeId}`,
-      data,
-      status: 'waiting',
-      priority: options?.priority || 0,
-      delay: options?.delay || 0,
-      attempts: 0,
-      maxAttempts: MAX_JOB_ATTEMPTS,
-      createdAt: now.toISOString(),
-      processAt: processAt.toISOString(),
-    }
-
-    if (existingIndex >= 0) {
-      queueData.jobs[existingIndex] = job
-    } else {
-      queueData.jobs.push(job)
-    }
-
+    const job = createJob(data, new Date(), options)
+    upsertJob(queueData, job)
     saveQueueData(queueData)
-    logger.debug(`Enqueued node job: ${jobId}`)
-
-    return jobId
+    logger.debug(`Enqueued node job: ${job.id}`)
+    return job.id
   })
 }
 
@@ -193,39 +192,17 @@ export async function enqueueNodes(
 ): Promise<string[]> {
   return withLockAsync(() => {
     const queueData = getQueueData()
-    const ids: string[] = []
     const now = new Date()
+    const ids: string[] = []
 
     for (const { data, options } of nodes) {
-      const jobId = `${data.instanceId}:${data.nodeId}:${data.attempt}`
-      const processAt = options?.delay ? new Date(now.getTime() + options.delay) : now
-
-      const job: Job = {
-        id: jobId,
-        name: `node:${data.nodeId}`,
-        data,
-        status: 'waiting',
-        priority: options?.priority || 0,
-        delay: options?.delay || 0,
-        attempts: 0,
-        maxAttempts: MAX_JOB_ATTEMPTS,
-        createdAt: now.toISOString(),
-        processAt: processAt.toISOString(),
-      }
-
-      const existingIndex = queueData.jobs.findIndex(j => j.id === jobId)
-      if (existingIndex >= 0) {
-        queueData.jobs[existingIndex] = job
-      } else {
-        queueData.jobs.push(job)
-      }
-
-      ids.push(jobId)
+      const job = createJob(data, now, options)
+      upsertJob(queueData, job)
+      ids.push(job.id)
     }
 
     saveQueueData(queueData)
     logger.debug(`Enqueued ${ids.length} node jobs`)
-
     return ids
   })
 }

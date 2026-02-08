@@ -197,11 +197,9 @@ export function resumeTask(taskId: string): number | null {
   const shouldResume = !!(existingWorkflow && existingInstance)
 
   logger.info(`Resuming task: ${taskId}`)
-  if (shouldResume) {
-    logger.info(
-      `Found existing workflow: ${existingWorkflow!.id}, instance: ${existingInstance!.id}`
-    )
-    logger.info(`Instance status: ${existingInstance!.status}`)
+  if (shouldResume && existingWorkflow && existingInstance) {
+    logger.info(`Found existing workflow: ${existingWorkflow.id}, instance: ${existingInstance.id}`)
+    logger.info(`Instance status: ${existingInstance.status}`)
   }
 
   // 记录 resume 到执行日志

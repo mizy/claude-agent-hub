@@ -455,19 +455,3 @@ export function printWarning(message: string, suggestion?: string): void {
 export function assertNever(x: never): never {
   throw new Error(`Unexpected value: ${x}`)
 }
-
-// ============ 向后兼容的导出 ============
-
-/**
- * @deprecated 使用 AppError.fromError() 代替
- */
-export function analyzeError(error: Error | string): AppError {
-  return AppError.fromError(error)
-}
-
-/**
- * @deprecated 使用 AppError.format() 或 printError() 代替
- */
-export function formatError(error: AppError): string {
-  return error.format()
-}

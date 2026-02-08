@@ -111,14 +111,14 @@ export const useStore = create<DashboardStore>((set, get) => ({
   rightPanelOpen: false,
   rightPanelCollapsed: false,
 
-  selectTask: (id) => {
+  selectTask: id => {
     set({ selectedTaskId: id, selectedNodeId: null })
     get().refreshTaskData()
     if (window.innerWidth <= 768) get().closeMobilePanels()
   },
 
-  selectNode: (id) => set({ selectedNodeId: id }),
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  selectNode: id => set({ selectedNodeId: id }),
+  setActiveTab: tab => set({ activeTab: tab }),
 
   refreshTasks: async () => {
     const tasks = await fetchApi<Task[]>('/api/tasks')
@@ -138,13 +138,13 @@ export const useStore = create<DashboardStore>((set, get) => ({
 
   addToast: (message, type = 'info') => {
     const id = ++toastId
-    set((s) => ({ toasts: [...s.toasts, { id, message, type }] }))
+    set(s => ({ toasts: [...s.toasts, { id, message, type }] }))
     setTimeout(() => {
-      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
+      set(s => ({ toasts: s.toasts.filter(t => t.id !== id) }))
     }, 3000)
   },
 
-  createTask: async (description) => {
+  createTask: async description => {
     const res = await postApi<{ success: boolean }>('/api/tasks', { description })
     if (res) {
       get().addToast('Task created and started', 'success')
@@ -155,7 +155,7 @@ export const useStore = create<DashboardStore>((set, get) => ({
     return false
   },
 
-  stopTask: async (id) => {
+  stopTask: async id => {
     const res = await postApi<{ success: boolean }>(`/api/tasks/${id}/stop`)
     if (res) {
       get().addToast('Task stopped', 'success')
@@ -164,7 +164,7 @@ export const useStore = create<DashboardStore>((set, get) => ({
     } else get().addToast('Failed to stop task', 'error')
   },
 
-  resumeTask: async (id) => {
+  resumeTask: async id => {
     const res = await postApi<{ success: boolean }>(`/api/tasks/${id}/resume`)
     if (res) {
       get().addToast('Task resumed', 'success')
@@ -173,7 +173,7 @@ export const useStore = create<DashboardStore>((set, get) => ({
     } else get().addToast('Failed to resume task', 'error')
   },
 
-  completeTask: async (id) => {
+  completeTask: async id => {
     const res = await postApi<{ success: boolean }>(`/api/tasks/${id}/complete`)
     if (res) {
       get().addToast('Task completed', 'success')
@@ -182,7 +182,7 @@ export const useStore = create<DashboardStore>((set, get) => ({
     } else get().addToast('Failed to complete task', 'error')
   },
 
-  deleteTask: async (id) => {
+  deleteTask: async id => {
     const res = await deleteApi<{ success: boolean }>(`/api/tasks/${id}`)
     if (res) {
       get().addToast('Task deleted', 'success')
@@ -191,10 +191,10 @@ export const useStore = create<DashboardStore>((set, get) => ({
     } else get().addToast('Failed to delete task', 'error')
   },
 
-  setShowNewTaskModal: (v) => set({ showNewTaskModal: v }),
-  setPendingDeleteTask: (v) => set({ pendingDeleteTask: v }),
-  setSidebarOpen: (v) => set({ sidebarOpen: v }),
-  setRightPanelOpen: (v) => set({ rightPanelOpen: v }),
-  toggleRightPanelCollapsed: () => set((s) => ({ rightPanelCollapsed: !s.rightPanelCollapsed })),
+  setShowNewTaskModal: v => set({ showNewTaskModal: v }),
+  setPendingDeleteTask: v => set({ pendingDeleteTask: v }),
+  setSidebarOpen: v => set({ sidebarOpen: v }),
+  setRightPanelOpen: v => set({ rightPanelOpen: v }),
+  toggleRightPanelCollapsed: () => set(s => ({ rightPanelCollapsed: !s.rightPanelCollapsed })),
   closeMobilePanels: () => set({ sidebarOpen: false, rightPanelOpen: false }),
 }))

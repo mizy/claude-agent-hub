@@ -16,19 +16,19 @@ import {
   getExecutionTimeline,
   getLogPath,
   getOutputPath,
-} from '../store/index.js'
+  stopTask,
+  deleteTask,
+  completeTask,
+} from '../task/index.js'
 import {
   getRunningTasks,
   getQueuedTasks,
   getTodaySummary,
   getRecentCompleted,
 } from '../report/SummaryDataCollector.js'
-import { stopTask, deleteTask, completeTask } from '../task/manageTaskLifecycle.js'
 import { resumeTask } from '../task/resumeTask.js'
 import { spawnTaskProcess } from '../task/spawnTask.js'
-import { getStore } from '../store/index.js'
-import { parseTaskPriority } from '../types/task.js'
-import type { Task } from '../types/task.js'
+import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
 
 import { existsSync, readFileSync } from 'fs'
 
@@ -155,21 +155,7 @@ export function startServer(options: ServerOptions = {}): void {
         return
       }
 
-      const store = getStore()
-      const taskPriority = parseTaskPriority(priority)
-      const title = description.length > 47 ? description.slice(0, 47) + '...' : description
-
-      const task: Task = {
-        id: crypto.randomUUID(),
-        title,
-        description,
-        priority: taskPriority,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        retryCount: 0,
-      }
-
-      store.saveTask(task)
+      const task = createTaskWithFolder({ description, priority })
 
       // 启动后台进程执行任务
       const pid = spawnTaskProcess({ taskId: task.id })
@@ -201,12 +187,10 @@ export function startServer(options: ServerOptions = {}): void {
     try {
       const pid = resumeTask(req.params.id)
       if (pid === null) {
-        res
-          .status(400)
-          .json({
-            success: false,
-            error: 'Task cannot be resumed (not found, still running, or already completed)',
-          })
+        res.status(400).json({
+          success: false,
+          error: 'Task cannot be resumed (not found, still running, or already completed)',
+        })
         return
       }
       const task = getTask(req.params.id)
@@ -315,21 +299,32 @@ export function startServer(options: ServerOptions = {}): void {
   // ============ Start Server ============
 
   app.listen(port, host, () => {
-    const url = `http://${host}:${port}`
+    const displayHost = host === '0.0.0.0' ? 'localhost' : host
+    const url = `http://${displayHost}:${port}`
     logger.info(`Server started at ${url}`)
-    console.log(`\n  Workflow Visualizer running at: ${url}\n`)
+    import('chalk')
+      .then(({ default: chalk }) => {
+        console.log(chalk.green(`\n  ✓ Dashboard: ${url}\n`))
+      })
+      .catch(() => {
+        console.log(`\n  ✓ Dashboard: ${url}\n`)
+      })
 
     // Auto open browser
     if (options.open) {
-      import('child_process').then(({ exec }) => {
-        const cmd =
-          process.platform === 'darwin'
-            ? 'open'
-            : process.platform === 'win32'
-              ? 'start'
-              : 'xdg-open'
-        exec(`${cmd} ${url}`)
-      })
+      import('child_process')
+        .then(({ exec }) => {
+          const cmd =
+            process.platform === 'darwin'
+              ? 'open'
+              : process.platform === 'win32'
+                ? 'start'
+                : 'xdg-open'
+          exec(`${cmd} ${url}`)
+        })
+        .catch(() => {
+          /* browser open is best-effort */
+        })
     }
   })
 }

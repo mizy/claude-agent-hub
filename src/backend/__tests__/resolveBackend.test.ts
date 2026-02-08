@@ -41,8 +41,7 @@ describe('registerBackend', () => {
         supportsMcpConfig: false,
       },
       checkAvailable: async () => true,
-      invoke: async () =>
-        ok({ prompt: '', response: '', durationMs: 0, sessionId: '' }),
+      invoke: async () => ok({ prompt: '', response: '', durationMs: 0, sessionId: '' }),
     })
 
     registerBackend('custom', mockFactory)

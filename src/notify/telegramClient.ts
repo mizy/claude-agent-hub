@@ -1,16 +1,14 @@
 /**
  * Telegram Bot 长轮询客户端
  *
- * 薄适配层：Telegram Bot API 调用 + 消息路由
- * 业务逻辑委托给 handlers/ 下的平台无关处理器
+ * 薄适配层：Telegram Bot API 调用 + MessengerAdapter 构建
+ * 消息路由委托给 handlers/messageRouter，业务逻辑在 handlers/ 下
  */
 
 import { createLogger } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { sendTelegramApprovalResult } from './sendTelegramNotify.js'
-import { parseApprovalCommand, handleApproval } from './handlers/approvalHandler.js'
-import { handleCommand } from './handlers/commandHandler.js'
-import { handleChat, clearChatSession, getChatSessionInfo } from './handlers/chatHandler.js'
+import { routeMessage } from './handlers/messageRouter.js'
 import type { MessengerAdapter, ClientContext } from './handlers/types.js'
 
 const logger = createLogger('telegram')
@@ -58,26 +56,26 @@ async function callApi<T>(method: string, params?: Record<string, unknown>): Pro
 
 // ── MessengerAdapter（number ↔ string 转换） ──
 
-function createAdapter(numericChatId: number): MessengerAdapter {
+function createAdapter(): MessengerAdapter {
   return {
-    async reply(_chatId, text, options) {
+    async reply(chatId, text, options) {
       await callApi('sendMessage', {
-        chat_id: numericChatId,
+        chat_id: chatId,
         text,
         parse_mode: options?.parseMode === 'markdown' ? 'MarkdownV2' : undefined,
       })
     },
-    async sendAndGetId(_chatId, text) {
+    async sendAndGetId(chatId, text) {
       const r = await callApi<{ message_id: number }>('sendMessage', {
-        chat_id: numericChatId,
+        chat_id: chatId,
         text,
       })
       return r?.message_id != null ? String(r.message_id) : null
     },
-    async editMessage(_chatId, messageId, text) {
-      // "message is not modified" 是 Telegram 正常行为（流式更新内容未变），静默忽略
+    async editMessage(chatId, messageId, text) {
+      // "message is not modified" is normal Telegram behavior (stream update unchanged), silently ignore
       await callApi('editMessageText', {
-        chat_id: numericChatId,
+        chat_id: chatId,
         message_id: Number(messageId),
         text,
       })
@@ -85,14 +83,7 @@ function createAdapter(numericChatId: number): MessengerAdapter {
   }
 }
 
-// ── Message routing ──
-
-function parseCommandText(text: string): { cmd: string; args: string } {
-  const clean = text.trim()
-  const spaceIdx = clean.indexOf(' ')
-  if (spaceIdx === -1) return { cmd: clean.toLowerCase(), args: '' }
-  return { cmd: clean.slice(0, spaceIdx).toLowerCase(), args: clean.slice(spaceIdx + 1).trim() }
-}
+// ── Client context ──
 
 function getTelegramClientContext(): ClientContext {
   return {
@@ -104,95 +95,42 @@ function getTelegramClientContext(): ClientContext {
   }
 }
 
-const APPROVAL_COMMANDS = new Set(['/approve', '/通过', '/批准', '/reject', '/拒绝', '/否决'])
-const TASK_COMMANDS = new Set([
-  '/run',
-  '/list',
-  '/logs',
-  '/stop',
-  '/resume',
-  '/get',
-  '/help',
-  '/status',
-])
+// ── Telegram approval notification callback ──
+
+async function createApprovalCallback() {
+  const config = await loadConfig()
+  const tgChatId = config.notify?.telegram?.chatId
+  if (!tgChatId) return undefined
+  return async (result: {
+    nodeId: string
+    nodeName: string
+    approved: boolean
+    reason?: string
+  }) => {
+    await sendTelegramApprovalResult(tgChatId, result)
+  }
+}
+
+// ── Message handling (delegates to router) ──
 
 async function handleUpdate(update: TelegramUpdate): Promise<void> {
   const message = update.message
   if (!message?.text) return
 
   const text = message.text
-  const chatId = message.chat.id
-  const chatIdStr = String(chatId)
-  const messenger = createAdapter(chatId)
+  const chatIdStr = String(message.chat.id)
 
   const preview = text.length > 60 ? text.slice(0, 57) + '...' : text
   logger.info(`← ${preview}`)
 
-  // 非命令 → 自由对话
-  if (!text.startsWith('/')) {
-    await handleChat(chatIdStr, text, messenger, {
-      client: getTelegramClientContext(),
-    })
-    return
-  }
-
-  const { cmd, args } = parseCommandText(text)
-
-  // 对话会话命令
-  if (cmd === '/new') {
-    const cleared = clearChatSession(chatIdStr)
-    await messenger.reply(chatIdStr, cleared ? '✅ 已开始新对话' : '当前没有活跃会话')
-    return
-  }
-  if (cmd === '/chat') {
-    const info = getChatSessionInfo(chatIdStr)
-    if (!info) {
-      await messenger.reply(chatIdStr, '当前没有活跃会话，直接发送文字即可开始对话')
-    } else {
-      const elapsed = Math.round((Date.now() - info.lastActiveAt) / 1000 / 60)
-      await messenger.reply(
-        chatIdStr,
-        [
-          '💬 当前会话信息',
-          `会话 ID: ${info.sessionId.slice(0, 12)}...`,
-          `最后活跃: ${elapsed} 分钟前`,
-          '',
-          '发送 /new 可开始新对话',
-        ].join('\n')
-      )
-    }
-    return
-  }
-
-  // 审批命令 → handlers/approvalHandler
-  if (APPROVAL_COMMANDS.has(cmd)) {
-    const approval = parseApprovalCommand(text)
-    if (approval) {
-      const config = await loadConfig()
-      const tgChatId = config.notify?.telegram?.chatId
-      const result = await handleApproval(
-        approval,
-        tgChatId
-          ? async r => {
-              await sendTelegramApprovalResult(tgChatId, r)
-            }
-          : undefined
-      )
-      logger.info(`→ approval: ${approval.action} ${approval.nodeId ?? '(auto)'}`)
-      await messenger.reply(chatIdStr, result)
-    }
-    return
-  }
-
-  // 任务管理命令 → handlers/commandHandler
-  if (TASK_COMMANDS.has(cmd)) {
-    const result = await handleCommand(cmd, args)
-    await messenger.reply(chatIdStr, result.text)
-    return
-  }
-
-  // 未知命令 → 当作对话
-  await handleChat(chatIdStr, text, messenger, { client: getTelegramClientContext() })
+  await routeMessage({
+    chatId: chatIdStr,
+    text,
+    messenger: createAdapter(),
+    clientContext: getTelegramClientContext(),
+    onApprovalResult: await createApprovalCallback(),
+    checkBareApproval: false,
+  })
 }
 
 // ── Long polling ──
@@ -241,7 +179,6 @@ export async function startTelegramClient(): Promise<void> {
   offset = 0
   running = true
 
-  // 获取机器人信息
   const me = await callApi<{ first_name: string; username?: string }>('getMe')
   botName = me?.first_name ?? me?.username ?? null
 

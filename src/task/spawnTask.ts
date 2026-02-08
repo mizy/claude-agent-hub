@@ -158,7 +158,10 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
   // Allow CLI to exit
   child.unref()
 
-  const pid = child.pid!
+  const pid = child.pid
+  if (!pid) {
+    throw new Error(`Failed to spawn task process for ${taskId}: no PID assigned`)
+  }
 
   // 启动 caffeinate 防止 Mac 休眠
   spawnCaffeinate(pid)

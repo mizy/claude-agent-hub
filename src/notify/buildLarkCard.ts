@@ -63,54 +63,51 @@ export function button(
   return { tag: 'button', text: { tag: 'plain_text', content: label }, type, value }
 }
 
-// ── Status emoji (reuse from commandHandler pattern) ──
-
-const STATUS_EMOJI: Record<string, string> = {
-  pending: '⏳',
-  planning: '📋',
-  developing: '🔨',
-  reviewing: '👀',
-  completed: '✅',
-  failed: '❌',
-  cancelled: '🚫',
-}
-
-function statusEmoji(status: string): string {
-  return STATUS_EMOJI[status] || '❓'
-}
+import { statusEmoji } from './handlers/constants.js'
 
 // ── Pre-built card templates ──
 
-export function buildTaskCompletedCard(
-  task: { id: string; title: string },
-  duration: string
-): LarkCard {
-  return buildCard('✅ 任务完成', 'green', [
-    mdElement(
-      [`**标题**: ${task.title}`, `**耗时**: ${duration}`, `**ID**: ${task.id.slice(0, 20)}`].join(
-        '\n'
-      )
-    ),
-  ])
+export interface TaskCardInfo {
+  id: string
+  title: string
+  workflowName?: string
+  nodesCompleted?: number
+  nodesFailed?: number
+  totalNodes?: number
+  totalCostUsd?: number
+  outputSummary?: string
 }
 
-export function buildTaskFailedCard(
-  task: { id: string; title: string },
-  duration: string,
-  error: string
-): LarkCard {
+function buildTaskStatsLines(task: TaskCardInfo, duration: string): string[] {
+  const lines = [`**标题**: ${task.title}`, `**耗时**: ${duration}`]
+  if (task.workflowName) {
+    lines.push(`**工作流**: ${task.workflowName}`)
+  }
+  if (task.totalNodes != null) {
+    const failedPart = task.nodesFailed ? `，${task.nodesFailed} 失败` : ''
+    lines.push(`**节点**: ${task.nodesCompleted ?? 0}/${task.totalNodes} 完成${failedPart}`)
+  }
+  if (task.totalCostUsd != null && task.totalCostUsd > 0) {
+    lines.push(`**费用**: $${task.totalCostUsd.toFixed(4)}`)
+  }
+  lines.push(`**ID**: ${task.id.slice(0, 20)}`)
+  return lines
+}
+
+export function buildTaskCompletedCard(task: TaskCardInfo, duration: string): LarkCard {
+  const elements: LarkCardElement[] = [mdElement(buildTaskStatsLines(task, duration).join('\n'))]
+  if (task.outputSummary) {
+    elements.push(hrElement())
+    elements.push(mdElement(`📝 **输出摘要**\n${task.outputSummary}`))
+  }
+  return buildCard('✅ 任务完成', 'green', elements)
+}
+
+export function buildTaskFailedCard(task: TaskCardInfo, duration: string, error: string): LarkCard {
   const truncatedError = error.length > 200 ? error.slice(0, 197) + '...' : error
-  return buildCard('❌ 任务失败', 'red', [
-    mdElement(
-      [
-        `**标题**: ${task.title}`,
-        `**耗时**: ${duration}`,
-        `**ID**: ${task.id.slice(0, 20)}`,
-        '',
-        `**错误**: ${truncatedError}`,
-      ].join('\n')
-    ),
-  ])
+  const lines = buildTaskStatsLines(task, duration)
+  lines.push('', `**错误**: ${truncatedError}`)
+  return buildCard('❌ 任务失败', 'red', [mdElement(lines.join('\n'))])
 }
 
 export function buildApprovalCard(options: {
@@ -168,21 +165,81 @@ export function buildWelcomeCard(): LarkCard {
   ])
 }
 
-export function buildTaskListCard(
-  tasks: Array<{ id: string; title: string; status: string }>,
-  total: number
-): LarkCard {
-  const lines = tasks.map(t => {
-    const shortId = t.id.slice(0, 20)
-    const title = t.title.length > 25 ? t.title.slice(0, 22) + '...' : t.title
-    return `${statusEmoji(t.status)} \`${shortId}\` ${title}`
-  })
+export interface TaskListItem {
+  id: string
+  shortId: string
+  title: string
+  status: string
+  priority: string
+  relativeTime: string
+}
 
-  if (total > tasks.length) {
-    lines.push(`\n... 还有 ${total - tasks.length} 个任务`)
+function formatTaskLineLark(item: TaskListItem): string {
+  return `${statusEmoji(item.status)} \`${item.shortId}\`  ${item.title}  ${item.priority}  ${item.relativeTime}`
+}
+
+export function buildTaskListCard(
+  groups: { active: TaskListItem[]; completed: TaskListItem[] },
+  counts: { total: number; activeCount: number; completedCount: number },
+  page: number,
+  totalPages: number,
+  statusFilter?: string
+): LarkCard {
+  const elements: LarkCardElement[] = []
+
+  // Active group
+  if (groups.active.length > 0) {
+    const lines = [`**🔄 进行中 (${counts.activeCount})**`, '']
+    lines.push(...groups.active.map(formatTaskLineLark))
+    elements.push(mdElement(lines.join('\n')))
   }
 
-  return buildCard(`📋 任务列表 (${total})`, 'blue', [mdElement(lines.join('\n'))])
+  // Separator between groups
+  if (groups.active.length > 0 && groups.completed.length > 0) {
+    elements.push(hrElement())
+  }
+
+  // Completed group
+  if (groups.completed.length > 0) {
+    const lines = [`**✅ 已完成 (${counts.completedCount})**`, '']
+    lines.push(...groups.completed.map(formatTaskLineLark))
+    elements.push(mdElement(lines.join('\n')))
+  }
+
+  // Empty state (shouldn't happen but safe)
+  if (groups.active.length === 0 && groups.completed.length === 0) {
+    elements.push(mdElement('暂无任务'))
+  }
+
+  // Pagination
+  if (totalPages > 1) {
+    elements.push(hrElement())
+    const buttons: LarkCardButton[] = []
+    if (page > 1) {
+      buttons.push(
+        button('⬅️ 上一页', 'default', {
+          action: 'list_page',
+          page: String(page - 1),
+          ...(statusFilter ? { filter: statusFilter } : {}),
+        })
+      )
+    }
+    if (page < totalPages) {
+      buttons.push(
+        button('➡️ 下一页', 'default', {
+          action: 'list_page',
+          page: String(page + 1),
+          ...(statusFilter ? { filter: statusFilter } : {}),
+        })
+      )
+    }
+    elements.push(actionElement(buttons))
+    elements.push(noteElement(`第 ${page}/${totalPages} 页 · 共 ${counts.total} 个任务`))
+  }
+
+  elements.push(noteElement('💡 发送 /get <ID> 查看任务详情'))
+
+  return buildCard(`📋 任务列表 (${counts.total})`, 'blue', elements)
 }
 
 export function buildTaskDetailCard(task: {

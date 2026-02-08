@@ -8,9 +8,9 @@ const REFRESH_INTERVAL = 3000
  * Called once in App — drives all polling.
  */
 export function useAutoRefresh() {
-  const refreshTasks = useStore((s) => s.refreshTasks)
-  const refreshTaskData = useStore((s) => s.refreshTaskData)
-  const selectedTaskId = useStore((s) => s.selectedTaskId)
+  const refreshTasks = useStore(s => s.refreshTasks)
+  const refreshTaskData = useStore(s => s.refreshTaskData)
+  const selectedTaskId = useStore(s => s.selectedTaskId)
 
   // Initial load + periodic refresh
   useEffect(() => {

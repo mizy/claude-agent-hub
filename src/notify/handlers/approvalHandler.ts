@@ -8,12 +8,10 @@ import {
   getWaitingHumanJobs,
   resumeWaitingJob,
   markJobFailed,
-} from '../../workflow/queue/WorkflowQueue.js'
-import {
   markNodeDone,
   markNodeFailed as stateMarkNodeFailed,
-} from '../../workflow/engine/StateManager.js'
-import { handleNodeResult } from '../../workflow/index.js'
+  handleNodeResult,
+} from '../../workflow/index.js'
 import { getWorkflow } from '../../store/WorkflowStore.js'
 import type { ParsedApproval, ApprovalResult } from './types.js'
 

@@ -17,10 +17,8 @@ import {
   getConversationJsonlPath,
   getJsonlLogPath,
   getResultFilePath,
-  getStepFilePath,
 } from './paths.js'
-import { writeJson, appendToFile } from './readWriteJson.js'
-import { getTaskFolder } from './TaskStore.js'
+import { appendToFile } from './readWriteJson.js'
 
 const logger = createLogger('task-log-store')
 
@@ -198,16 +196,4 @@ export function getLogPath(taskId: string): string {
 // Get output file path
 export function getOutputPath(taskId: string): string {
   return getResultFilePath(taskId)
-}
-
-// ============ Step Records ============
-
-/**
- * @deprecated steps 目录已不再使用
- * 节点输出现在存储在 instance.json 的 outputs 字段中
- */
-export function saveStepOutput(taskId: string, stepNumber: number, output: unknown): void {
-  const taskDir = getTaskFolder(taskId)
-  if (!taskDir) return
-  writeJson(getStepFilePath(taskId, stepNumber), output)
 }

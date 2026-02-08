@@ -10,7 +10,7 @@ import { personaNeedsMcp } from '../persona/personaMcpConfig.js'
 import { updateInstanceVariables } from '../store/WorkflowStore.js'
 import { createLogger } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
-import { sendReviewNotification } from '../notify/sendLarkNotify.js'
+import { sendReviewNotification } from '../notify/index.js'
 import {
   executeDelayNode,
   executeScheduleNode,

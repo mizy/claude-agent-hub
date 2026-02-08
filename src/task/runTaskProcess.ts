@@ -25,7 +25,7 @@ const logger = createLogger('task-process')
 let currentTaskId: string | undefined
 
 function handleFatalError(type: string, error: unknown): void {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error)
+  const message = error instanceof Error ? (error.stack ?? error.message) : String(error)
   logger.error(`${type}: ${message}`)
 
   if (currentTaskId) {

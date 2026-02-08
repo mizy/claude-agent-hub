@@ -1,10 +1,10 @@
 import chalk from 'chalk'
 import { getStore } from '../store/index.js'
-import { isDaemonRunning } from './pidLock.js'
+import { isServiceRunning } from './pidLock.js'
 
 export async function getDaemonStatus(): Promise<void> {
   const store = getStore()
-  const { running, lock } = isDaemonRunning()
+  const { running, lock } = isServiceRunning('daemon')
 
   if (!running) {
     console.log(chalk.yellow('守护进程未运行'))

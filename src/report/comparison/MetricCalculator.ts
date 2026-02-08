@@ -3,7 +3,7 @@
  * 计算任务相似度和性能差异
  */
 
-import { formatDuration } from '../../store/ExecutionStatsStore.js'
+import { formatDuration } from '../../shared/formatTime.js'
 import type { TaskExecutionSnapshot, ComparisonResult } from './types.js'
 
 /**

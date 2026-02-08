@@ -1,36 +1,67 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { marked } from 'marked'
 import { useStore } from '../store/useStore'
 import { fetchApi } from '../api/fetchApi'
+import { extractNodeOutputText } from '../utils/extractNodeOutput'
 
 export function OutputTab() {
   const selectedTaskId = useStore((s) => s.selectedTaskId)
   const taskData = useStore((s) => s.taskData)
-  const [html, setHtml] = useState('')
-  const [fallback, setFallback] = useState(false)
+  const [resultHtml, setResultHtml] = useState('')
+  const [nodeHtmls, setNodeHtmls] = useState<Record<string, string>>({})
+  const lastTaskId = useRef<string | null>(null)
+  const hasResult = useRef(false)
 
+  // Re-fetch result.md on task change and on each poll update
   useEffect(() => {
     if (!selectedTaskId) return
-    setHtml('')
-    setFallback(false)
 
-    // Try result.md first
+    // Reset on task switch
+    if (lastTaskId.current !== selectedTaskId) {
+      lastTaskId.current = selectedTaskId
+      hasResult.current = false
+      setResultHtml('')
+      setNodeHtmls({})
+    }
+
+    // If we already have result.md, refresh it
+    // If not, check if it appeared (task may have completed)
     fetchApi<{ content: string }>(`/api/tasks/${selectedTaskId}/result`).then(async (res) => {
       if (res?.content) {
-        setHtml(await marked.parse(res.content))
-      } else {
-        setFallback(true)
+        hasResult.current = true
+        setResultHtml(await marked.parse(res.content))
       }
-    })
-  }, [selectedTaskId])
+    }).catch(() => { /* result.md may not exist yet */ })
+  }, [selectedTaskId, taskData])
+
+  // Parse node outputs as markdown when in fallback mode
+  useEffect(() => {
+    if (hasResult.current || !taskData?.instance?.outputs) return
+
+    const outputs = taskData.instance.outputs
+    const entries = Object.entries(outputs)
+    if (entries.length === 0) return
+
+    Promise.all(
+      entries.map(async ([nodeId, output]) => {
+        const text = extractNodeOutputText(output)
+        const html = await marked.parse(text)
+        return [nodeId, html] as const
+      })
+    ).then((results) => {
+      const map: Record<string, string> = {}
+      for (const [nodeId, html] of results) map[nodeId] = html
+      setNodeHtmls(map)
+    }).catch(() => { /* markdown parse error */ })
+  }, [taskData?.instance?.outputs])
 
   if (!selectedTaskId) return <div className="empty-state">Select a task to view output</div>
 
   // Rendered markdown from result.md
-  if (html) return <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+  if (resultHtml) return <div className="markdown-body" dangerouslySetInnerHTML={{ __html: resultHtml }} />
 
-  // Fallback: show node outputs
-  if (fallback && taskData?.instance?.outputs) {
+  // Fallback: show node outputs as rendered markdown
+  if (taskData?.instance?.outputs) {
     const outputs = taskData.instance.outputs
     const nodes = taskData.workflow?.nodes || []
     const entries = Object.entries(outputs)
@@ -39,12 +70,16 @@ export function OutputTab() {
 
     return (
       <div>
-        {entries.map(([nodeId, output]) => {
+        {entries.map(([nodeId]) => {
           const node = nodes.find(n => n.id === nodeId)
+          const html = nodeHtmls[nodeId]
           return (
             <div key={nodeId} className="panel-section">
               <div className="panel-section-title">{node?.name || nodeId}</div>
-              <div className="output-box">{typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output)}</div>
+              {html
+                ? <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+                : <div className="output-box">Loading...</div>
+              }
             </div>
           )
         })}

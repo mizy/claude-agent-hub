@@ -80,8 +80,6 @@ export const FILE_NAMES = {
 export const DIR_NAMES = {
   LOGS: 'logs',
   OUTPUTS: 'outputs',
-  /** @deprecated steps 目录已不再使用 */
-  STEPS: 'steps',
 } as const
 
 // ============ 路径构建函数（聚合导出） ============
@@ -96,8 +94,6 @@ export const TASK_PATHS = {
   getLogsDir: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.LOGS),
   /** 获取输出目录 */
   getOutputsDir: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.OUTPUTS),
-  /** @deprecated steps 目录已不再使用 */
-  getStepsDir: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.STEPS),
   /** 获取 Workflow 文件路径 */
   getWorkflowPath: (taskId: string) => join(TASKS_DIR, taskId, FILE_NAMES.WORKFLOW),
   /** 获取 Instance 文件路径 */
@@ -118,11 +114,6 @@ export const TASK_PATHS = {
     join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.CONVERSATION_JSONL),
   /** 获取结果文件路径 */
   getResultPath: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.OUTPUTS, FILE_NAMES.RESULT),
-  /** @deprecated steps 目录已不再使用 */
-  getStepPath: (taskId: string, stepNumber: number) => {
-    const paddedNumber = stepNumber.toString().padStart(3, '0')
-    return join(TASKS_DIR, taskId, DIR_NAMES.STEPS, `step-${paddedNumber}.json`)
-  },
 }
 
 // ============ 兼容性别名（保留旧 API） ============
@@ -132,8 +123,6 @@ export const META_FILE = join(DATA_DIR, FILE_NAMES.META)
 export const TASKS_INDEX_FILE = join(TASKS_DIR, FILE_NAMES.TASKS_INDEX)
 export const TASK_LOGS_DIR = DIR_NAMES.LOGS
 export const TASK_OUTPUTS_DIR = DIR_NAMES.OUTPUTS
-/** @deprecated steps 目录已不再使用 */
-export const TASK_STEPS_DIR = DIR_NAMES.STEPS
 export const TASK_FILE = FILE_NAMES.TASK
 export const WORKFLOW_FILE = FILE_NAMES.WORKFLOW
 export const INSTANCE_FILE = FILE_NAMES.INSTANCE
@@ -149,8 +138,6 @@ export const getTaskDir = TASK_PATHS.getDir
 export const getTaskFilePath = TASK_PATHS.getFilePath
 export const getTaskLogsDir = TASK_PATHS.getLogsDir
 export const getTaskOutputsDir = TASK_PATHS.getOutputsDir
-/** @deprecated steps 目录已不再使用 */
-export const getTaskStepsDir = TASK_PATHS.getStepsDir
 export const getWorkflowFilePath = TASK_PATHS.getWorkflowPath
 export const getInstanceFilePath = TASK_PATHS.getInstancePath
 export const getProcessFilePath = TASK_PATHS.getProcessPath
@@ -159,5 +146,3 @@ export const getConversationLogFilePath = TASK_PATHS.getConversationLogPath
 export const getJsonlLogPath = TASK_PATHS.getJsonlLogPath
 export const getConversationJsonlPath = TASK_PATHS.getConversationJsonlPath
 export const getResultFilePath = TASK_PATHS.getResultPath
-/** @deprecated steps 目录已不再使用 */
-export const getStepFilePath = TASK_PATHS.getStepPath

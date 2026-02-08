@@ -4,11 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import {
-  BUILTIN_PERSONAS,
-  getBuiltinPersona,
-  getAvailablePersonas,
-} from '../builtinPersonas.js'
+import { BUILTIN_PERSONAS, getBuiltinPersona, getAvailablePersonas } from '../builtinPersonas.js'
 
 describe('BUILTIN_PERSONAS', () => {
   it('should contain expected personas', () => {

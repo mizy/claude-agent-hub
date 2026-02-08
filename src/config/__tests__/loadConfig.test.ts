@@ -87,10 +87,13 @@ tasks:
   })
 
   it('should handle invalid YAML gracefully', async () => {
-    writeFileSync(join(TEST_DIR, '.claude-agent-hub.yaml'), `
+    writeFileSync(
+      join(TEST_DIR, '.claude-agent-hub.yaml'),
+      `
 tasks:
   default_priority: invalid_value_not_in_enum
-`)
+`
+    )
 
     const config = await loadConfig(TEST_DIR)
     // Should fall back to defaults on validation failure
@@ -98,11 +101,14 @@ tasks:
   })
 
   it('should handle backward compat: claude -> backend mapping', async () => {
-    writeFileSync(join(TEST_DIR, '.claude-agent-hub.yaml'), `
+    writeFileSync(
+      join(TEST_DIR, '.claude-agent-hub.yaml'),
+      `
 claude:
   model: sonnet
   max_tokens: 4000
-`)
+`
+    )
 
     const config = await loadConfig(TEST_DIR)
     // claude config should be mapped to backend

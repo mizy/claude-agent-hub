@@ -49,7 +49,14 @@ export interface ReviewNotificationOptions {
 export async function sendReviewNotification(options: ReviewNotificationOptions): Promise<boolean> {
   const { webhookUrl, taskTitle, workflowName, workflowId, instanceId, nodeId, nodeName } = options
 
-  const card = buildApprovalCard({ taskTitle, workflowName, workflowId, instanceId, nodeId, nodeName })
+  const card = buildApprovalCard({
+    taskTitle,
+    workflowName,
+    workflowId,
+    instanceId,
+    nodeId,
+    nodeName,
+  })
 
   // Try API first — buttons only work when sent via API
   const chatId = options.chatId || getDefaultLarkChatId()
@@ -179,11 +186,9 @@ export async function sendApprovalResultNotification(
   const status = approved ? '✅ 已通过' : '❌ 已拒绝'
   const reasonText = reason ? `\n**原因**: ${reason}` : ''
 
-  const card = buildCard(
-    `审批结果: ${nodeName}`,
-    approved ? 'green' : 'red',
-    [mdElement(`**状态**: ${status}${reasonText}\n**节点**: ${nodeId}`)]
-  )
+  const card = buildCard(`审批结果: ${nodeName}`, approved ? 'green' : 'red', [
+    mdElement(`**状态**: ${status}${reasonText}\n**节点**: ${nodeId}`),
+  ])
 
   try {
     const response = await fetch(webhookUrl, {
@@ -234,7 +239,10 @@ export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promis
 /**
  * Upload an image to Lark and return the image_key
  */
-export async function uploadLarkImage(client: Lark.Client, imageData: Buffer): Promise<string | null> {
+export async function uploadLarkImage(
+  client: Lark.Client,
+  imageData: Buffer
+): Promise<string | null> {
   try {
     const res = await client.im.v1.image.create({
       data: {
@@ -259,7 +267,11 @@ export async function uploadLarkImage(client: Lark.Client, imageData: Buffer): P
 /**
  * Send an image message to a Lark chat
  */
-export async function sendLarkImage(client: Lark.Client, chatId: string, imageKey: string): Promise<boolean> {
+export async function sendLarkImage(
+  client: Lark.Client,
+  chatId: string,
+  imageKey: string
+): Promise<boolean> {
   try {
     await client.im.v1.message.create({
       params: { receive_id_type: 'chat_id' },

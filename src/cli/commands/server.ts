@@ -111,7 +111,8 @@ async function spawnDashboardDetached(options: { port: string; host: string }) {
   })
   child.unref()
 
-  const url = `http://${options.host}:${options.port}`
+  const displayHost = options.host === '0.0.0.0' ? 'localhost' : options.host
+  const url = `http://${displayHost}:${options.port}`
   console.log(chalk.green(`✓ Dashboard 已在后台启动 (PID: ${child.pid})`))
   console.log(chalk.gray(`  地址: ${url}`))
   console.log(chalk.gray(`  日志: ${logFile}`))
@@ -133,7 +134,11 @@ async function stopDashboard(): Promise<void> {
     releasePidLock('dashboard')
     console.log(chalk.green(`✓ 已停止 Dashboard (PID: ${lock.pid})`))
   } catch (error) {
-    if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ESRCH') {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      (error as NodeJS.ErrnoException).code === 'ESRCH'
+    ) {
       console.log(chalk.yellow('进程已不存在，清理残留文件'))
       releasePidLock('dashboard')
     } else {

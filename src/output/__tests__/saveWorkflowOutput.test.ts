@@ -13,10 +13,7 @@ import {
 
 describe('calculateTotalDuration', () => {
   it('should calculate duration between two timestamps', () => {
-    const result = calculateTotalDuration(
-      '2024-01-01T00:00:00.000Z',
-      '2024-01-01T00:05:30.000Z'
-    )
+    const result = calculateTotalDuration('2024-01-01T00:00:00.000Z', '2024-01-01T00:05:30.000Z')
     expect(result).toContain('5')
     expect(result).toContain('30')
   })
@@ -126,12 +123,7 @@ describe('formatNodeState', () => {
 
   it('should truncate output exceeding MAX_NODE_OUTPUT_LENGTH', () => {
     const longOutput = 'x'.repeat(15000)
-    const result = formatNodeState(
-      'node-5',
-      'Long',
-      { status: 'done', attempts: 1 },
-      longOutput
-    )
+    const result = formatNodeState('node-5', 'Long', { status: 'done', attempts: 1 }, longOutput)
 
     expect(result).toContain('... (truncated)')
     // Should be significantly shorter than the original
@@ -142,12 +134,7 @@ describe('formatNodeState', () => {
 
   it('should not truncate output within limit', () => {
     const output = 'y'.repeat(5000)
-    const result = formatNodeState(
-      'node-5b',
-      'Short',
-      { status: 'done', attempts: 1 },
-      output
-    )
+    const result = formatNodeState('node-5b', 'Short', { status: 'done', attempts: 1 }, output)
 
     expect(result).not.toContain('truncated')
     expect(result).toContain(output)
@@ -185,7 +172,12 @@ describe('formatWorkflowOutput', () => {
       version: '2.0',
       nodes: [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'build', type: 'task', name: 'Build', task: { persona: 'Pragmatist', prompt: 'build it' } },
+        {
+          id: 'build',
+          type: 'task',
+          name: 'Build',
+          task: { persona: 'Pragmatist', prompt: 'build it' },
+        },
         { id: 'end', type: 'end', name: 'End' },
       ],
       edges: [
@@ -200,7 +192,12 @@ describe('formatWorkflowOutput', () => {
       workflowId: 'wf-xyz',
       status: 'completed',
       nodeStates: {
-        build: { status: 'done', attempts: 1, startedAt: '2024-01-01T00:00:10Z', completedAt: '2024-01-01T00:01:00Z' },
+        build: {
+          status: 'done',
+          attempts: 1,
+          startedAt: '2024-01-01T00:00:10Z',
+          completedAt: '2024-01-01T00:01:00Z',
+        },
       },
       outputs: {
         build: 'Build successful',

@@ -45,6 +45,8 @@ export function logConversation(entry: ConversationEntry): void {
     ensureDir()
     appendFileSync(CONVERSATION_LOG_PATH, JSON.stringify(entry) + '\n', 'utf-8')
   } catch (error) {
-    logger.warn(`Failed to write conversation log: ${error instanceof Error ? error.message : error}`)
+    logger.warn(
+      `Failed to write conversation log: ${error instanceof Error ? error.message : error}`
+    )
   }
 }

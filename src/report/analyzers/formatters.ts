@@ -3,7 +3,7 @@
  * 将趋势报告格式化为终端或 Markdown 输出
  */
 
-import { formatDuration } from '../../store/ExecutionStatsStore.js'
+import { formatDuration } from '../../shared/formatTime.js'
 import type { TrendReport } from './types.js'
 
 /**

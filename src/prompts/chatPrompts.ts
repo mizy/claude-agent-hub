@@ -2,7 +2,7 @@
  * 对话相关的 Prompt 模板
  */
 
-import type { ClientContext } from '../notify/handlers/types.js'
+import type { ClientContext } from '../notify/index.js'
 
 /**
  * 构建客户端环境上下文 prompt
@@ -42,7 +42,7 @@ export function buildClientPrompt(client: ClientContext): string {
       '[格式注意]',
       '当前平台使用飞书卡片渲染，支持: **加粗** *斜体* `代码` 代码块 列表 链接',
       '不要使用 markdown 表格（| 语法），改用列表或缩进展示表格数据',
-      '标题只支持 # 和 ##',
+      '标题只支持 # 和 ##'
     )
   }
 
@@ -53,7 +53,7 @@ export function buildClientPrompt(client: ClientContext): string {
     '[重要]',
     '以上是你的背景设定，不需要自我介绍。',
     '直接回答用户的问题，简洁准确。',
-    '用户的消息如下：',
+    '用户的消息如下：'
   )
 
   return lines.join('\n')
