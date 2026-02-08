@@ -19,7 +19,7 @@ export async function showDaemonLogs(options: ShowLogsOptions): Promise<void> {
 
   if (!existsSync(logFile)) {
     console.log(chalk.yellow(`日志文件不存在: ${logFile}`))
-    console.log(chalk.gray('提示: 使用 cah serve -D 启动后台守护进程后会生成日志'))
+    console.log(chalk.gray('提示: 使用 cah start -D 启动后台守护进程后会生成日志'))
     return
   }
 

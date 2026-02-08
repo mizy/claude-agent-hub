@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { loadConfig, getDefaultConfig, clearConfigCache } from '../loadConfig.js'
+import { loadConfig, getDefaultConfig, clearConfigCache, stopConfigWatch } from '../loadConfig.js'
 
 const TEST_DIR = join(tmpdir(), `cah-config-test-${Date.now()}`)
 
@@ -18,6 +18,7 @@ beforeEach(() => {
 
 afterEach(() => {
   clearConfigCache()
+  stopConfigWatch()
   try {
     rmSync(TEST_DIR, { recursive: true, force: true })
   } catch {
@@ -39,7 +40,7 @@ describe('getDefaultConfig', () => {
 
 describe('loadConfig', () => {
   it('should return default config when no config file exists', async () => {
-    const config = await loadConfig(TEST_DIR)
+    const config = await loadConfig({ cwd: TEST_DIR })
     expect(config).toEqual(getDefaultConfig())
   })
 
@@ -58,7 +59,7 @@ backend:
 `
     writeFileSync(join(TEST_DIR, '.claude-agent-hub.yaml'), yamlContent)
 
-    const config = await loadConfig(TEST_DIR)
+    const config = await loadConfig({ cwd: TEST_DIR })
     expect(config.tasks.default_priority).toBe('high')
     expect(config.tasks.max_retries).toBe(5)
     expect(config.git.base_branch).toBe('develop')
@@ -73,15 +74,15 @@ tasks:
 `
     writeFileSync(join(TEST_DIR, '.claude-agent-hub.yaml'), yamlContent)
 
-    const config1 = await loadConfig(TEST_DIR)
-    const config2 = await loadConfig(TEST_DIR)
+    const config1 = await loadConfig({ cwd: TEST_DIR })
+    const config2 = await loadConfig({ cwd: TEST_DIR })
     expect(config1).toBe(config2) // Same reference (cached)
   })
 
   it('should return fresh config after cache clear', async () => {
-    const config1 = await loadConfig(TEST_DIR)
+    const config1 = await loadConfig({ cwd: TEST_DIR })
     clearConfigCache()
-    const config2 = await loadConfig(TEST_DIR)
+    const config2 = await loadConfig({ cwd: TEST_DIR })
     expect(config1).not.toBe(config2) // Different reference
     expect(config1).toEqual(config2) // Same content
   })
@@ -95,7 +96,7 @@ tasks:
 `
     )
 
-    const config = await loadConfig(TEST_DIR)
+    const config = await loadConfig({ cwd: TEST_DIR })
     // Should fall back to defaults on validation failure
     expect(config).toEqual(getDefaultConfig())
   })
@@ -110,7 +111,7 @@ claude:
 `
     )
 
-    const config = await loadConfig(TEST_DIR)
+    const config = await loadConfig({ cwd: TEST_DIR })
     // claude config should be mapped to backend
     expect(config.backend?.type).toBe('claude-code')
     expect(config.backend?.model).toBe('sonnet')

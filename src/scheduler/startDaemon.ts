@@ -95,6 +95,8 @@ async function spawnDetached(): Promise<void> {
   const child = spawn(process.execPath, [...process.execArgv, ...getEntryArgs(), ...args], {
     detached: true,
     stdio: ['ignore', logFd, errFd],
+    cwd: process.cwd(), // 确保工作目录正确，能找到 dist 文件
+    env: process.env, // 传递环境变量（包括 CAH_DATA_DIR）
   })
   child.unref()
 
@@ -109,7 +111,22 @@ async function spawnDetached(): Promise<void> {
 function getEntryArgs(): string[] {
   // process.argv: [node, script, ...args]
   const script = process.argv[1]
-  return script ? [script] : []
+  if (!script) return []
+
+  // 如果是通过 bin/cah.js 启动，直接使用
+  if (script.endsWith('bin/cah.js') || script.endsWith('bin/cah')) {
+    return [script]
+  }
+
+  // 如果是 dist 文件（如 dist/cli/index.js），替换为 bin/cah.js
+  // 避免 rebuild 后 chunk hash 变化导致模块找不到
+  if (script.includes('/dist/')) {
+    const projectRoot = script.split('/dist/')[0]
+    return [projectRoot + '/bin/cah.js']
+  }
+
+  // Fallback: 使用原脚本路径
+  return [script]
 }
 
 /** 实际运行守护进程（前台阻塞） */
@@ -127,7 +144,8 @@ async function runDaemon(): Promise<void> {
     process.exit(1)
   }
 
-  const config = await loadConfig()
+  // 启用配置文件监听（自动重载）
+  const config = await loadConfig({ watch: true })
   const store = getStore()
 
   const agentConfig = config.agents?.[0]
@@ -187,6 +205,11 @@ async function runDaemon(): Promise<void> {
     stopAllJobs()
     await stopLarkWsClient()
     stopTelegramClient()
+
+    // 停止配置文件监听
+    const { stopConfigWatch } = await import('../config/loadConfig.js')
+    stopConfigWatch()
+
     releasePidLock()
     process.exit(0)
   }

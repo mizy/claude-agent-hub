@@ -34,7 +34,7 @@ describe('levenshteinDistance', () => {
 })
 
 describe('findClosestMatch', () => {
-  const commands = ['task', 'serve', 'stop', 'status', 'report', 'dashboard', 'agent']
+  const commands = ['task', 'start', 'stop', 'restart', 'status', 'report', 'dashboard', 'agent']
 
   it('should find exact match with distance 0', () => {
     const result = findClosestMatch('task', commands)
@@ -48,8 +48,8 @@ describe('findClosestMatch', () => {
   })
 
   it('should find match within default max distance', () => {
-    const result = findClosestMatch('serv', commands)
-    expect(result?.match).toBe('serve')
+    const result = findClosestMatch('star', commands)
+    expect(result?.match).toBe('start')
     expect(result!.distance).toBeLessThanOrEqual(2)
   })
 

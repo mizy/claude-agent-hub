@@ -16,9 +16,10 @@ cah task logs <id> -f    # 实时查看任务日志
 cah task resume <id>     # 恢复中断的任务
 
 # 守护进程
-cah serve                # 启动守护进程（前台，自动检测飞书/Telegram）
-cah serve -D             # 后台运行（fork 子进程）
+cah start                # 启动守护进程（前台，自动检测飞书/Telegram）
+cah start -D             # 后台运行（fork 子进程）
 cah stop                 # 停止守护进程
+cah restart              # 重启守护进程
 cah status               # 查看运行状态
 
 # 报告 & 工具
@@ -57,7 +58,7 @@ Types (types/)                           类型定义
 
 | 模块 | 入口 | 核心能力 |
 |------|------|----------|
-| CLI | `cli/index.ts` | 命令行主入口、子命令（task/serve/stop/status/report/dashboard） |
+| CLI | `cli/index.ts` | 命令行主入口、子命令（task/start/stop/restart/status/report/dashboard） |
 | Backend | `backend/index.ts` | CLI 后端抽象层（claude-code/opencode/iflow/codebuddy） |
 | Task | `task/index.ts` | 创建、执行（进度条/ETA/统计）、查询、恢复、生命周期 |
 | Workflow | `workflow/index.ts` | AI 生成工作流、节点执行（Persona）、状态管理、重试 |
@@ -116,7 +117,7 @@ pnpm run format:check # 格式检查
 
 ## 常见问题排查
 
-- **Daemon 不响应**: `cah stop && cah serve -D` 重启；rebuild 后必须重启 daemon 才能加载新代码
+- **Daemon 不响应**: `cah stop && cah start -D` 重启（或 `cah restart`）；rebuild 后必须重启 daemon 才能加载新代码
 - **任务卡在 running**: 检查 `process.json` 中 PID 是否存活（`kill -0 <pid>`），若进程已死则为 orphan，下次 `cah` 调用会自动恢复
 - **Orphan detection 误判**: `checkAndResumeOrphanedTasks()` 在每次 CLI 调用时执行，依赖 `process.json` 存在。缺少 process.json 的 running 任务不会被检测到
 - **测试删除生产数据**: 测试必须使用隔离数据目录（`vitest.config.ts` 设置 `CAH_DATA_DIR` 为 tmpdir），`tests/setup.ts` 有安全检查拒绝清理非 tmp 目录

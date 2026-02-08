@@ -12,6 +12,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   target: 'node18',
+  splitting: false, // 禁用代码分割，避免 hash chunk 导致热重载问题
   // 构建后执行 chmod +x（dashboard 由 vite 单独构建到 dist/server/public/）
   onSuccess: 'chmod +x dist/cli/index.js',
 })

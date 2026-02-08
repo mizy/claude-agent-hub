@@ -5,16 +5,16 @@ import { restartDaemon } from '../../scheduler/restartDaemon.js'
 import { getDaemonStatus } from '../../scheduler/getDaemonStatus.js'
 
 export function registerDaemonCommands(program: Command) {
-  // cah serve — 默认前台阻塞运行，自动启动配置的通知平台
+  // cah start — start daemon (foreground by default)
   program
-    .command('serve')
+    .command('start')
     .description('启动守护进程（自动检测配置启动飞书/Telegram）')
     .option('-D, --detach', '后台运行（fork 子进程）')
     .action(async options => {
       await startDaemon(options)
     })
 
-  // cah serve stop / cah serve status — 守护进程管理
+  // cah stop — stop daemon
   program
     .command('stop')
     .description('停止守护进程')
@@ -23,13 +23,7 @@ export function registerDaemonCommands(program: Command) {
       await stopDaemon(options)
     })
 
-  program
-    .command('status')
-    .description('查看守护进程 / 任务队列状态')
-    .action(async () => {
-      await getDaemonStatus()
-    })
-
+  // cah restart — graceful restart
   program
     .command('restart')
     .description('重启守护进程（优雅停止 + 启动）')
@@ -38,10 +32,27 @@ export function registerDaemonCommands(program: Command) {
       await restartDaemon(options)
     })
 
-  // cah daemon — 隐藏的向后兼容别名
+  // cah status — daemon & queue status
+  program
+    .command('status')
+    .description('查看守护进程 / 任务队列状态')
+    .action(async () => {
+      await getDaemonStatus()
+    })
+
+  // cah serve — hidden backward-compatible alias for `start`
+  program
+    .command('serve', { hidden: true })
+    .description('启动守护进程（请使用 cah start）')
+    .option('-D, --detach', '后台运行（fork 子进程）')
+    .action(async options => {
+      await startDaemon(options)
+    })
+
+  // cah daemon — hidden backward-compatible alias group
   const daemon = program
     .command('daemon', { hidden: true })
-    .description('守护进程管理（请使用 serve/stop/status）')
+    .description('守护进程管理（请使用 start/stop/restart/status）')
 
   daemon
     .command('start')

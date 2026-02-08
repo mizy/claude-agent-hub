@@ -9,8 +9,9 @@
  *   cah task list            - 查看任务列表
  *
  * 守护进程：
- *   cah serve               - 启动守护进程（前台阻塞）
+ *   cah start               - 启动守护进程（前台阻塞）
  *   cah stop                - 停止守护进程
+ *   cah restart              - 重启守护进程
  *   cah status              - 查看运行状态
  */
 
@@ -41,8 +42,9 @@ import { findClosestMatch } from '../shared/levenshtein.js'
 const KNOWN_COMMANDS = [
   'task',
   'report',
-  'serve',
+  'start',
   'stop',
+  'restart',
   'status',
   'agent',
   'init',

@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises'
-import { existsSync } from 'fs'
+import { existsSync, watch, type FSWatcher } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import YAML from 'yaml'
@@ -11,6 +11,8 @@ const logger = createLogger('config')
 const CONFIG_FILENAME = '.claude-agent-hub.yaml'
 
 let cachedConfig: Config | null = null
+let configWatcher: FSWatcher | null = null
+let watchedPath: string | null = null
 
 /**
  * 查找配置文件路径
@@ -31,9 +33,18 @@ function findConfigPath(cwd?: string): string | null {
 /**
  * 加载项目配置
  * 查找顺序：项目目录 → ~/.claude-agent-hub.yaml → 默认配置
+ * @param options - 配置选项或 cwd 字符串（向后兼容）
+ * @param options.cwd - 工作目录
+ * @param options.watch - 是否监听配置文件变化（daemon 模式推荐开启）
  */
-export async function loadConfig(cwd?: string): Promise<Config> {
-  if (cachedConfig) {
+export async function loadConfig(
+  options?: { cwd?: string; watch?: boolean } | string
+): Promise<Config> {
+  // 向后兼容：支持直接传 cwd 字符串
+  const { cwd, watch: enableWatch = false } =
+    typeof options === 'string' ? { cwd: options, watch: false } : options || {}
+
+  if (cachedConfig && !enableWatch) {
     return cachedConfig
   }
 
@@ -43,6 +54,21 @@ export async function loadConfig(cwd?: string): Promise<Config> {
     return getDefaultConfig()
   }
 
+  const config = await loadConfigFromFile(configPath)
+
+  // 启动监听（仅在首次加载且 watch=true 时）
+  if (enableWatch && !configWatcher) {
+    startWatching(configPath)
+  }
+
+  cachedConfig = config
+  return cachedConfig
+}
+
+/**
+ * 从文件加载并解析配置
+ */
+async function loadConfigFromFile(configPath: string): Promise<Config> {
   const content = await readFile(configPath, 'utf-8')
   const parsed = YAML.parse(content)
 
@@ -64,8 +90,59 @@ export async function loadConfig(cwd?: string): Promise<Config> {
     }
   }
 
-  cachedConfig = config
-  return cachedConfig
+  return config
+}
+
+/**
+ * 启动配置文件监听
+ */
+function startWatching(configPath: string): void {
+  if (configWatcher && watchedPath === configPath) {
+    return // 已在监听同一文件
+  }
+
+  // 停止旧的监听器
+  stopWatching()
+
+  logger.info(`Watching config file: ${configPath}`)
+  watchedPath = configPath
+
+  // 使用防抖避免多次触发
+  let reloadTimer: NodeJS.Timeout | null = null
+
+  configWatcher = watch(configPath, async (eventType) => {
+    if (eventType !== 'change') return
+
+    // 防抖 500ms
+    if (reloadTimer) clearTimeout(reloadTimer)
+    reloadTimer = setTimeout(async () => {
+      try {
+        logger.info('Config file changed, reloading...')
+        const newConfig = await loadConfigFromFile(configPath)
+        cachedConfig = newConfig
+        logger.info('✓ Config reloaded successfully')
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        logger.error(`Failed to reload config: ${msg}`)
+      }
+    }, 500)
+  })
+
+  configWatcher.on('error', error => {
+    logger.error(`Config watcher error: ${error.message}`)
+  })
+}
+
+/**
+ * 停止监听配置文件
+ */
+function stopWatching(): void {
+  if (configWatcher) {
+    configWatcher.close()
+    configWatcher = null
+    watchedPath = null
+    logger.debug('Config file watching stopped')
+  }
 }
 
 /**
@@ -96,4 +173,11 @@ export function getDefaultConfig(): Config {
  */
 export function clearConfigCache(): void {
   cachedConfig = null
+}
+
+/**
+ * 停止配置文件监听（用于进程退出时清理）
+ */
+export function stopConfigWatch(): void {
+  stopWatching()
 }
