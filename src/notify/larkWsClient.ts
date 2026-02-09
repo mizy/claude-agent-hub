@@ -167,12 +167,14 @@ function createAdapter(): MessengerAdapter {
     async editCard(_chatId: string, messageId: string, card: LarkCard) {
       if (!larkClient || !messageId) return
       try {
-        await larkClient.im.v1.message.patch({
+        logger.debug(`→ editCard called for msgId=${messageId}`)
+        const res = await larkClient.im.v1.message.patch({
           path: { message_id: messageId },
           data: {
             content: JSON.stringify(card),
           },
         })
+        logger.debug(`→ editCard response: ${JSON.stringify(res).slice(0, 200)}`)
       } catch (error) {
         logger.error(`→ editCard failed: ${error instanceof Error ? error.message : error}`)
       }
@@ -247,12 +249,12 @@ async function handleLarkMessage(
 
 // ── Card action + new chat handlers ──
 
-async function handleCardAction(data: LarkCardActionEvent): Promise<LarkCard | void> {
+async function handleCardAction(data: LarkCardActionEvent): Promise<unknown> {
   // SDK v2 flattens event fields: open_chat_id/open_message_id live under context
   const chatId = data?.open_chat_id ?? data?.context?.open_chat_id
   const messageId = data?.open_message_id ?? data?.context?.open_message_id
   const value = data?.action?.value
-  if (!chatId || !value) return
+  if (!chatId || !value) return undefined
 
   const actionType = value.action
   logger.info(`← [card] action=${actionType} chatId=${chatId} msgId=${messageId ?? '?'}`)
@@ -270,14 +272,19 @@ async function handleCardAction(data: LarkCardActionEvent): Promise<LarkCard | v
     const page = parseInt(value.page ?? '1', 10) || 1
     const filter = value.filter
     const result = await handleList(filter, page)
-    if (result.larkCard) {
-      // Also edit via API as fallback (in case SDK callback response doesn't update card)
-      if (messageId) {
-        const messenger = createAdapter()
-        await messenger.editCard?.(chatId, messageId, result.larkCard)
-      }
-      // Return card to update in-place via SDK callback response
-      return result.larkCard
+    if (result.larkCard && messageId) {
+      // Directly update via API - this is more reliable than relying on callback return
+      const messenger = createAdapter()
+      logger.info(`→ [card] list_page updating via API to page ${page}`)
+
+      // Use a small delay to prevent race conditions
+      setTimeout(async () => {
+        await messenger.editCard?.(chatId, messageId, result.larkCard!)
+        logger.debug(`→ [card] update completed for page ${page}`)
+      }, 100)
+
+      // Return empty response to prevent SDK auto-handling
+      return {}
     }
     const messenger = createAdapter()
     await messenger.reply(chatId, result.text)
@@ -337,6 +344,8 @@ async function handleCardAction(data: LarkCardActionEvent): Promise<LarkCard | v
   } else {
     logger.warn(`Unknown card action: ${actionType}`)
   }
+
+  return undefined
 }
 
 async function handleP2pChatCreate(data: LarkP2pChatCreateEvent): Promise<void> {

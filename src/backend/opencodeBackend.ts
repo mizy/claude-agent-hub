@@ -23,6 +23,7 @@ export function createOpencodeBackend(): BackendAdapter {
       supportsSessionReuse: true,
       supportsCostTracking: false,
       supportsMcpConfig: false,
+      supportsAgentTeams: false,
     },
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {

@@ -55,6 +55,7 @@ export interface BackendCapabilities {
   supportsSessionReuse: boolean
   supportsCostTracking: boolean
   supportsMcpConfig: boolean
+  supportsAgentTeams: boolean
 }
 
 /** CLI 后端适配器接口 */

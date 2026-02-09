@@ -128,7 +128,7 @@ function buildTaskListItems(tasks: Task[]): TaskListItem[] {
   return tasks.map(t => ({
     id: t.id,
     shortId: t.id.replace(/^task-/, '').slice(0, 4),
-    title: t.title.length > 30 ? t.title.slice(0, 27) + '...' : t.title,
+    title: t.title.length > 40 ? t.title.slice(0, 37) + '...' : t.title,
     status: t.status,
     priority: t.priority,
     relativeTime: formatRelativeTime(t.updatedAt || t.createdAt),
@@ -136,7 +136,7 @@ function buildTaskListItems(tasks: Task[]): TaskListItem[] {
 }
 
 function formatTaskLine(item: TaskListItem): string {
-  return `${statusEmoji(item.status)} ${item.shortId}  ${item.title}  ${item.priority}  ${item.relativeTime}`
+  return `${statusEmoji(item.status)} ${item.title}  ${item.priority}  ${item.relativeTime}`
 }
 
 export async function handleList(statusFilter?: string, page = 1): Promise<CommandResult> {

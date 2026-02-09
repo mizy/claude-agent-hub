@@ -7,7 +7,7 @@
  * - 执行历史学习：从历史任务中学习，避免重复错误
  */
 
-import { invokeBackend } from '../backend/index.js'
+import { invokeBackend, resolveBackend } from '../backend/index.js'
 import { buildJsonWorkflowPrompt } from '../prompts/index.js'
 import { parseJson, validateJsonWorkflow, extractJson } from './index.js'
 import { appendConversation, appendJsonlLog } from '../store/TaskLogStore.js'
@@ -22,6 +22,7 @@ import {
 import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from './types.js'
+import type { InvokeOptions } from '../backend/types.js'
 
 const logger = createLogger('workflow-gen')
 
@@ -76,19 +77,29 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   logger.debug(`项目类型: ${projectContext.projectType}, 语言: ${projectContext.mainLanguage}`)
   logger.debug(`相关历史任务: ${learningInsights.relatedTasks.length} 个`)
 
+  // 检查是否启用 Agent Teams
+  const config = await loadConfig()
+  const backend = await resolveBackend()
+  const useAgentTeams =
+    backend.capabilities.supportsAgentTeams && (config.backend?.enableAgentTeams ?? false)
+
+  if (useAgentTeams) {
+    logger.info('🤝 启用 Agent Teams 协作生成 workflow')
+  }
+
   // 构建 prompt（生成 Workflow 固定使用"软件架构师"角色）
   logger.debug('构建 prompt...')
   const prompt = buildJsonWorkflowPrompt(
     task,
     availablePersonas,
     projectContextPrompt,
-    learningPrompt
+    learningPrompt,
+    useAgentTeams
   )
   logger.debug(`Prompt 长度: ${prompt.length} 字符`)
 
   // 调用 Claude (不传 persona，因为模板中已定义"软件架构师"角色)
   logger.info('调用 Claude 生成执行计划...')
-  const config = await loadConfig()
   const model = config.backend?.model ?? config.claude?.model ?? 'opus'
 
   const result = await invokeBackend({

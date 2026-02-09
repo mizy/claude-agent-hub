@@ -51,9 +51,23 @@ export function convertMarkdownTables(text: string): string {
   )
 }
 
+/**
+ * Normalize markdown for Lark card rendering
+ * - Lark only supports # and ## headings; ### and deeper are converted to bold text
+ * - Convert markdown tables to Lark table tags
+ */
+export function normalizeLarkMarkdown(text: string): string {
+  let result = convertMarkdownTables(text)
+  // Lark cards only support # and ##, convert ### and deeper to bold
+  result = result.replace(/^(#{3,})\s+(.+)$/gm, (_match, _hashes: string, title: string) => {
+    return `**${title}**`
+  })
+  return result
+}
+
 /** Wrap text into a Lark markdown interactive card JSON string */
 export function buildMarkdownCard(text: string): string {
-  const content = convertMarkdownTables(text)
+  const content = normalizeLarkMarkdown(text)
   return JSON.stringify({
     config: { wide_screen_mode: true },
     elements: [{ tag: 'markdown', content }],

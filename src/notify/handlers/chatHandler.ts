@@ -201,9 +201,9 @@ async function handleChatInternal(
       }
     : undefined
 
-  // 首次对话注入客户端环境上下文
-  const clientPrefix =
-    options?.client && !sessionId ? buildClientPrompt(options.client) + '\n\n' : ''
+  // 每条消息都注入客户端环境上下文（botName + 平台格式约束）
+  // AI session 不会自动记住身份和格式限制，必须持续注入
+  const clientPrefix = options?.client ? buildClientPrompt(options.client) + '\n\n' : ''
 
   try {
     const result = await invokeBackend({

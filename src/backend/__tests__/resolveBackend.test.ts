@@ -39,6 +39,7 @@ describe('registerBackend', () => {
         supportsSessionReuse: false,
         supportsCostTracking: false,
         supportsMcpConfig: false,
+        supportsAgentTeams: false,
       },
       checkAvailable: async () => true,
       invoke: async () => ok({ prompt: '', response: '', durationMs: 0, sessionId: '' }),

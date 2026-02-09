@@ -58,6 +58,7 @@ export function createCodebuddyBackend(): BackendAdapter {
       supportsSessionReuse: false,
       supportsCostTracking: true,
       supportsMcpConfig: false,
+      supportsAgentTeams: false,
     },
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {

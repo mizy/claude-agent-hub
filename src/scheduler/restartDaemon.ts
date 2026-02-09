@@ -41,7 +41,7 @@ export async function restartDaemon(options: RestartOptions): Promise<void> {
   const binPath = resolve(process.cwd(), 'bin/cah.js')
   const child = spawn(process.execPath, [binPath, 'start', '-D'], {
     detached: true,
-    stdio: 'inherit',
+    stdio: 'ignore', // 完全分离子进程，避免阻塞父进程
     env: process.env,
   })
   child.unref()

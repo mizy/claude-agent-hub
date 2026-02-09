@@ -244,7 +244,7 @@ export interface TaskListItem {
 }
 
 function formatTaskLineLark(item: TaskListItem): string {
-  return `${statusEmoji(item.status)} \`${item.shortId}\`  ${item.title}  ${item.priority}  ${item.relativeTime}`
+  return `${statusEmoji(item.status)} ${item.title}  ${item.priority}  ${item.relativeTime}`
 }
 
 export function buildTaskListCard(

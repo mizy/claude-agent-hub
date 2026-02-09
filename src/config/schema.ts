@@ -31,6 +31,8 @@ export const backendConfigSchema = z.object({
   model: z.string().default('opus'),
   /** 最大 token 数（部分后端支持） */
   max_tokens: z.number().optional(),
+  /** 启用 Agent Teams（实验性功能，仅 claude-code 支持）用于 workflow 生成 */
+  enableAgentTeams: z.boolean().optional().default(false),
 })
 
 /** @deprecated 使用 backendConfigSchema */

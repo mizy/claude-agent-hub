@@ -93,7 +93,7 @@ describe('Image Path Extraction', () => {
   })
 
   it('should extract relative paths from /tmp', () => {
-    const relativePath = testImages[0].replace(/^\/tmp\//, '')
+    const relativePath = testImages[0]?.replace(/^\/tmp\//, '') ?? ''
     const text = `Saved as ${relativePath}`
     const paths = extractImagePaths(text)
     expect(paths.length).toBeGreaterThan(0)

@@ -60,6 +60,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
       supportsSessionReuse: true,
       supportsCostTracking: true,
       supportsMcpConfig: true,
+      supportsAgentTeams: true,
     },
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {

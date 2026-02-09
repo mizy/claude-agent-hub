@@ -67,6 +67,8 @@ Return ONLY the title text, nothing else. Use the same language as the content (
   GENERATE_JSON_WORKFLOW: `
 你是一位软件架构师，负责将任务拆分为可独立执行的子任务，并分配给合适的 agent。
 
+{{agentTeamsInstruction}}
+
 ## 任务拆分原则
 
 1. **单一职责**：每个节点只做一件事，职责明确
@@ -268,6 +270,34 @@ function formatPersonaDescriptions(personas: PersonaConfig[]): string {
 }
 
 /**
+ * Agent Teams 指令文本
+ * 用于引导 Claude 使用 agent teams 协作生成更好的 workflow
+ */
+const AGENT_TEAMS_INSTRUCTION = `
+## 🤝 协作模式：Agent Teams
+
+为了更全面地设计这个工作流，请创建一个 agent team 来协作完成规划：
+
+**团队成员：**
+1. **Requirements Analyst** - 负责深入分析任务需求、项目上下文和潜在风险
+2. **Workflow Architect** - 负责设计节点划分、依赖关系和执行顺序
+3. **QA Reviewer** - 负责审查方案的完整性、可靠性和最佳实践
+
+**协作流程：**
+1. Requirements Analyst 先分析任务，识别关键要素和潜在问题
+2. Workflow Architect 基于分析结果设计工作流结构
+3. QA Reviewer 审查设计，提出优化建议
+4. 团队成员相互讨论，完善方案后输出最终 JSON workflow
+
+**团队协作优势：**
+- 从多个视角分析问题，发现盲区
+- 通过辩论验证设计合理性
+- 确保工作流既全面又优雅
+
+请创建这个 agent team 并开始协作设计工作流。
+`
+
+/**
  * 构建生成 JSON Workflow 的 prompt
  * 支持项目上下文和历史学习
  */
@@ -275,9 +305,11 @@ export function buildJsonWorkflowPrompt(
   task: Task,
   availablePersonas: PersonaConfig[] = [],
   projectContext: string = '',
-  learningInsights: string = ''
+  learningInsights: string = '',
+  useAgentTeams: boolean = false
 ): string {
   const personaDescriptions = formatPersonaDescriptions(availablePersonas)
+  const agentTeamsInstruction = useAgentTeams ? AGENT_TEAMS_INSTRUCTION : ''
 
   // 生成 Workflow 固定使用"软件架构师"角色，不受 persona 参数影响
   return TASK_PROMPTS.GENERATE_JSON_WORKFLOW.replace('{{currentTime}}', getCurrentTime())
@@ -288,6 +320,7 @@ export function buildJsonWorkflowPrompt(
     .replace('{{agentDescriptions}}', personaDescriptions)
     .replace('{{projectContext}}', projectContext)
     .replace('{{learningInsights}}', learningInsights)
+    .replace('{{agentTeamsInstruction}}', agentTeamsInstruction)
 }
 
 /**

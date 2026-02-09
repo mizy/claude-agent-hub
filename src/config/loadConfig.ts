@@ -87,6 +87,7 @@ async function loadConfigFromFile(configPath: string): Promise<Config> {
       type: 'claude-code' as const,
       model: config.claude.model,
       max_tokens: config.claude.max_tokens,
+      enableAgentTeams: false,
     }
   }
 
@@ -164,6 +165,7 @@ export function getDefaultConfig(): Config {
     backend: {
       type: 'claude-code',
       model: 'opus',
+      enableAgentTeams: false,
     },
   }
 }
