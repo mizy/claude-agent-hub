@@ -4,7 +4,7 @@
  */
 
 import { formatDuration } from '../shared/formatTime.js'
-import type { ExecutionTimeline as TimelineEvent } from '../store/ExecutionStatsStore.js'
+import type { ExecutionTimeline as TimelineEvent } from '../task/index.js'
 import type { ExecutionReport, NodeReport } from './ExecutionReport.js'
 
 // ============ Terminal 格式化 ============

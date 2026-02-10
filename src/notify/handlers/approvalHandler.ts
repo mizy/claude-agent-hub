@@ -4,6 +4,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
+import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import {
   getWaitingHumanJobs,
   resumeWaitingJob,
@@ -11,8 +12,8 @@ import {
   markNodeDone,
   markNodeFailed as stateMarkNodeFailed,
   handleNodeResult,
+  getWorkflow,
 } from '../../workflow/index.js'
-import { getWorkflow } from '../../store/WorkflowStore.js'
 import type { ParsedApproval, ApprovalResult } from './types.js'
 
 const logger = createLogger('approval-handler')
@@ -132,8 +133,8 @@ export async function handleApproval(
       return `❌ 已拒绝节点: ${nodeId}\n原因: ${reason}`
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logger.error(`approval failed node=${nodeId}: ${errorMessage}`)
-    return `处理失败: ${errorMessage}`
+    const msg = formatErrorMessage(error)
+    logger.error(`approval failed node=${nodeId}: ${msg}`)
+    return `处理失败: ${msg}`
   }
 }

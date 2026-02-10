@@ -82,9 +82,12 @@ function getScriptConfig(scriptName: string): { execPath: string; args: string[]
   }
 
   // 可能的脚本位置（按优先级排序）
+  // tsup bundling 时 currentDir 可能是 dist/cli/，但脚本在 dist/task/
+  const parentDir = dirname(currentDir)
   const possiblePaths = [
     join(currentDir, `${scriptName}.js`),
     join(currentDir, 'task', `${scriptName}.js`),
+    join(parentDir, 'task', `${scriptName}.js`),
     join(currentDir, `${scriptName}.ts`),
   ]
 
@@ -265,7 +268,8 @@ export function spawnTaskRunner(): void {
     createRunnerLock(child.pid)
     // 启动 caffeinate 防止 Mac 休眠
     spawnCaffeinate(child.pid)
+    logger.debug(`Queue runner spawned: PID ${child.pid}`)
+  } else {
+    logger.warn('Queue runner spawned but no PID assigned')
   }
-
-  logger.debug(`Queue runner spawned: PID ${child.pid}`)
 }

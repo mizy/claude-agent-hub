@@ -15,6 +15,7 @@ import {
   updateProcessInfo,
 } from '../store/TaskStore.js'
 import { createLogger } from '../shared/logger.js'
+import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { releaseRunnerLock } from './spawnTask.js'
 
 const logger = createLogger('queue-runner')
@@ -79,7 +80,7 @@ async function main(): Promise<void> {
         logger.info(`Task completed: ${task.id}`)
       } catch (error) {
         updateProcessInfo(task.id, { status: 'stopped' })
-        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorMessage = formatErrorMessage(error)
         logger.error(`Task failed: ${errorMessage}`)
         updateTask(task.id, { status: 'failed' })
       }
@@ -93,6 +94,6 @@ async function main(): Promise<void> {
 
 main().catch(err => {
   releaseRunnerLock()
-  logger.error(`Fatal error: ${err instanceof Error ? err.message : String(err)}`)
+  logger.error(`Fatal error: ${formatErrorMessage(err)}`)
   process.exit(1)
 })

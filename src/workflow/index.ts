@@ -47,6 +47,9 @@ export { createInitialNodeState, createInitialInstance } from './types.js'
 // Workflow 创建和启动
 export { createWorkflow, startWorkflow, handleNodeResult } from './engine/WorkflowEngine.js'
 
+// Workflow 数据查询 (re-exported from store for upper layers)
+export { getWorkflow } from '../store/WorkflowStore.js'
+
 // 状态管理（常用）
 export {
   recoverWorkflowInstance,

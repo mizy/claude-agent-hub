@@ -7,7 +7,7 @@ import { readdirSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { TASKS_DIR } from '../../store/paths.js'
 import { readJson } from '../../store/readWriteJson.js'
-import type { ExecutionSummary } from '../../store/ExecutionStatsStore.js'
+import type { ExecutionSummary } from '../../task/index.js'
 import type { TaskCategory } from '../../analysis/index.js'
 import type { TaskExecutionSnapshot } from './types.js'
 

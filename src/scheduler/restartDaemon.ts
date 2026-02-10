@@ -6,7 +6,6 @@
 
 import chalk from 'chalk'
 import { stopDaemon } from './stopDaemon.js'
-import { startDaemon } from './startDaemon.js'
 import { isServiceRunning } from './pidLock.js'
 
 export interface RestartOptions {
@@ -19,7 +18,7 @@ export interface RestartOptions {
  * 2. 等待停止完成
  * 3. 通过 spawn 新进程启动（避免模块缓存问题）
  */
-export async function restartDaemon(options: RestartOptions): Promise<void> {
+export async function restartDaemon(_options: RestartOptions): Promise<void> {
   const { running } = isServiceRunning('daemon')
 
   if (running) {
@@ -44,8 +43,21 @@ export async function restartDaemon(options: RestartOptions): Promise<void> {
     stdio: 'ignore', // 完全分离子进程，避免阻塞父进程
     env: process.env,
   })
+
+  if (!child.pid) {
+    console.log(chalk.red('✗ 守护进程启动失败：无法获取进程 PID'))
+    return
+  }
+
   child.unref()
 
-  console.log(chalk.green('✓ 守护进程启动命令已发送'))
-  console.log(chalk.gray('  约 2 秒后生效，使用 cah status 确认状态'))
+  // 等待并验证进程启动
+  await new Promise(resolve => setTimeout(resolve, 2000))
+  const { running: started } = isServiceRunning('daemon')
+  if (started) {
+    console.log(chalk.green('✓ 守护进程已成功重启'))
+  } else {
+    console.log(chalk.yellow('⚠ 启动命令已发送，但守护进程尚未就绪'))
+    console.log(chalk.gray('  使用 cah status 确认状态'))
+  }
 }

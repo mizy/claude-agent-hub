@@ -9,7 +9,7 @@ import { readJson } from '../store/readWriteJson.js'
 import { estimateRemainingTime } from '../analysis/estimateTime.js'
 import type { Task } from '../types/task.js'
 import type { WorkflowInstance } from '../workflow/types.js'
-import type { ExecutionSummary } from '../store/ExecutionStatsStore.js'
+import type { ExecutionSummary } from '../task/index.js'
 import type {
   RunningTaskInfo,
   QueuedTaskInfo,

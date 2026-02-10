@@ -3,6 +3,10 @@
  * 简单的发布订阅模式，用于模块间解耦通信
  */
 
+import { createLogger } from '../shared/logger.js'
+
+const logger = createLogger('event-bus')
+
 export type EventHandler<T = unknown> = (payload: T) => void | Promise<void>
 
 interface EventBus {
@@ -51,9 +55,11 @@ function createEventBus(): EventBus {
 
       const promises = Array.from(eventHandlers).map(handler => {
         try {
-          return Promise.resolve(handler(payload))
+          return Promise.resolve(handler(payload)).catch(e => {
+            logger.error(`Event handler error for ${event}: ${e instanceof Error ? e.message : e}`)
+          })
         } catch (e) {
-          console.error(`Event handler error for ${event}:`, e)
+          logger.error(`Event handler error for ${event}: ${e instanceof Error ? e.message : e}`)
           return Promise.resolve()
         }
       })

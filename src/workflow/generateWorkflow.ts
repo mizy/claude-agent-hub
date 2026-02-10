@@ -22,7 +22,6 @@ import {
 import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from './types.js'
-import type { InvokeOptions } from '../backend/types.js'
 
 const logger = createLogger('workflow-gen')
 

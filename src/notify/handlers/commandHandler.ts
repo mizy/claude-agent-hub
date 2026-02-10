@@ -7,13 +7,18 @@
  */
 
 import { readFileSync } from 'fs'
+import { spawn } from 'child_process'
 import { createLogger } from '../../shared/logger.js'
-import { getAllTasks } from '../../store/TaskStore.js'
-import { getLogPath } from '../../store/TaskLogStore.js'
-import { getTaskWorkflow, getTaskInstance } from '../../store/TaskWorkflowStore.js'
-import { createAndRunTask } from '../../task/createAndRun.js'
-import { stopTask } from '../../task/manageTaskLifecycle.js'
-import { resumeTask } from '../../task/resumeTask.js'
+import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import {
+  getAllTasks,
+  getLogPath,
+  getTaskWorkflow,
+  getTaskInstance,
+  createAndRunTask,
+  stopTask,
+  resumeOrphanedTask as resumeTask,
+} from '../../task/index.js'
 import { formatDuration } from '../../shared/formatTime.js'
 import { getWaitingHumanJobs } from '../../workflow/index.js'
 import { parseTaskStatus } from '../../types/task.js'
@@ -100,7 +105,7 @@ export async function handleRun(description: string): Promise<CommandResult> {
       ].join('\n'),
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     logger.error(`/run failed: ${msg}`)
     return { text: `❌ 创建任务失败: ${msg}` }
   }
@@ -203,7 +208,7 @@ export async function handleList(statusFilter?: string, page = 1): Promise<Comma
       ),
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     return { text: `❌ 获取任务列表失败: ${msg}` }
   }
 }
@@ -235,7 +240,7 @@ export async function handleLogs(taskIdPrefix: string): Promise<CommandResult> {
 
     return { text: `📜 日志 \`${task.id.slice(0, 20)}\`:\n\n\`\`\`\n${truncated}\n\`\`\`` }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     return { text: `❌ 获取日志失败: ${msg}` }
   }
 }
@@ -261,7 +266,7 @@ export async function handleStop(taskIdPrefix: string): Promise<CommandResult> {
       return { text: `❌ 停止失败: ${stopResult.error}` }
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     logger.error(`/stop failed: ${msg}`)
     return { text: `❌ 停止任务失败: ${msg}` }
   }
@@ -288,7 +293,7 @@ export async function handleResume(taskIdPrefix: string): Promise<CommandResult>
       return { text: `⚠️ 无法恢复任务（可能仍在运行或已完成）` }
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     logger.error(`/resume failed: ${msg}`)
     return { text: `❌ 恢复任务失败: ${msg}` }
   }
@@ -340,7 +345,7 @@ export async function handleGet(taskIdPrefix: string): Promise<CommandResult> {
     const workflow = getTaskWorkflow(task.id)
     return { text: lines.join('\n'), larkCard: buildTaskDetailCard(task, instance, workflow) }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     return { text: `❌ 获取任务详情失败: ${msg}` }
   }
 }
@@ -398,7 +403,6 @@ export function handleStatus(): CommandResult {
 
 export function handleReload(): CommandResult {
   // 通过 spawn 子进程执行 cah restart，避免阻塞当前消息回复
-  const { spawn } = require('child_process')
   const child = spawn(process.execPath, [...process.execArgv, ...process.argv.slice(1, 2), 'restart'], {
     detached: true,
     stdio: 'ignore',

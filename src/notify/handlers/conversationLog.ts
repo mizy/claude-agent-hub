@@ -10,6 +10,7 @@ import { join } from 'path'
 import { appendFileSync, mkdirSync } from 'fs'
 import { DATA_DIR } from '../../store/paths.js'
 import { createLogger } from '../../shared/logger.js'
+import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 
 const logger = createLogger('conv-log')
 
@@ -46,7 +47,7 @@ export function logConversation(entry: ConversationEntry): void {
     appendFileSync(CONVERSATION_LOG_PATH, JSON.stringify(entry) + '\n', 'utf-8')
   } catch (error) {
     logger.warn(
-      `Failed to write conversation log: ${error instanceof Error ? error.message : error}`
+      `Failed to write conversation log: ${formatErrorMessage(error)}`
     )
   }
 }

@@ -1,14 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { writeFileSync, unlinkSync, mkdtempSync } from 'fs'
-import { join } from 'path'
+import { writeFileSync, unlinkSync, mkdtempSync, existsSync } from 'fs'
+import { join, resolve, isAbsolute } from 'path'
 import { tmpdir } from 'os'
 
 // Copy the extraction logic for testing
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'])
-
 function extractImagePaths(text: string): string[] {
-  const { resolve, isAbsolute } = require('path')
-  const { existsSync } = require('fs')
 
   const paths: string[] = []
 
@@ -76,7 +72,9 @@ describe('Image Path Extraction', () => {
     for (const img of testImages) {
       try {
         unlinkSync(img)
-      } catch {}
+      } catch {
+        // ignore cleanup errors
+      }
     }
   })
 

@@ -138,7 +138,12 @@ export class FileStore<T, S = T> {
     if (!existsSync(this.dir)) {
       return []
     }
-    const entries = readdirSync(this.dir)
+    let entries: string[]
+    try {
+      entries = readdirSync(this.dir)
+    } catch {
+      return []
+    }
 
     if (this.mode === 'directory') {
       // 目录模式：只返回包含数据文件的目录
@@ -210,17 +215,21 @@ export class FileStore<T, S = T> {
     const resolvedId = this.resolveId(id)
     if (!resolvedId) return false
 
-    if (this.mode === 'directory') {
-      const dirPath = join(this.dir, resolvedId)
-      if (!existsSync(dirPath)) return false
-      rmSync(dirPath, { recursive: true, force: true })
-      return true
-    }
+    try {
+      if (this.mode === 'directory') {
+        const dirPath = join(this.dir, resolvedId)
+        if (!existsSync(dirPath)) return false
+        rmSync(dirPath, { recursive: true, force: true })
+        return true
+      }
 
-    const filepath = this.getDataPath(resolvedId)
-    if (!existsSync(filepath)) return false
-    unlinkSync(filepath)
-    return true
+      const filepath = this.getDataPath(resolvedId)
+      if (!existsSync(filepath)) return false
+      unlinkSync(filepath)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /**

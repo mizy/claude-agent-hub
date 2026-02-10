@@ -6,6 +6,7 @@
 import { markNodeRunning, markNodeFailed, handleNodeResult } from './index.js'
 import { getWorkflow, getInstance } from '../store/WorkflowStore.js'
 import { createLogger, logError as logErrorHelper } from '../shared/logger.js'
+import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { logNodeStarted, logNodeCompleted, logNodeFailed } from './logNodeExecution.js'
 import { executeNodeByType } from './nodeTypeHandlers.js'
 import type { NodeJobData, NodeJobResult } from './types.js'
@@ -106,7 +107,7 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
       }
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorMessage = formatErrorMessage(error)
     // 使用增强的错误日志记录，包含完整上下文
     logErrorHelper(logger, `Node ${nodeId} failed`, error instanceof Error ? error : errorMessage, {
       workflowId,

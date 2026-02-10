@@ -104,17 +104,17 @@ function buildArgs(prompt: string, model?: string, stream?: boolean): string[] {
 function parseOutput(raw: string, stream: boolean): string {
   if (!stream) {
     // JSON 模式：尝试提取最终结果
-    try {
-      const events = raw.split('\n').filter(l => l.trim())
-      // 找最后一个有 text 内容的事件
-      for (const line of events.reverse()) {
+    const events = raw.split('\n').filter(l => l.trim())
+    // 找最后一个有 text 内容的事件
+    for (const line of events.reverse()) {
+      try {
         const event = JSON.parse(line)
         if (event.text || event.content || event.result) {
           return event.text || event.content || event.result
         }
+      } catch {
+        // skip non-JSON lines
       }
-    } catch {
-      // JSON 解析失败，返回原文
     }
   }
   return raw.trim()

@@ -28,7 +28,7 @@ export interface JsonWorkflowInput {
  * 解析 JSON 内容为 Workflow
  */
 export function parseJson(input: JsonWorkflowInput | string, sourceFile?: string): Workflow {
-  const data: JsonWorkflowInput = typeof input === 'string' ? JSON.parse(input) : input
+  const data: JsonWorkflowInput = typeof input === 'string' ? tryParseJson(input) : input
 
   // 验证必填字段
   if (!data.name) {
@@ -194,13 +194,13 @@ export function extractJson(response: string): JsonWorkflowInput {
   // 尝试提取 ```json ... ``` 代码块
   const codeBlockMatch = response.match(/```(?:json)?\s*\n([\s\S]*?)\n```/)
   if (codeBlockMatch?.[1]) {
-    return JSON.parse(codeBlockMatch[1].trim())
+    return tryParseJson(codeBlockMatch[1].trim())
   }
 
   // 尝试直接解析为 JSON
   const trimmed = response.trim()
   if (trimmed.startsWith('{')) {
-    return JSON.parse(trimmed)
+    return tryParseJson(trimmed)
   }
 
   // 尝试找到第一个 { 开始的 JSON
@@ -217,8 +217,17 @@ export function extractJson(response: string): JsonWorkflowInput {
         break
       }
     }
-    return JSON.parse(response.slice(jsonStart, jsonEnd))
+    return tryParseJson(response.slice(jsonStart, jsonEnd))
   }
 
   throw new Error('No valid JSON found in response')
+}
+
+function tryParseJson(text: string): JsonWorkflowInput {
+  try {
+    return JSON.parse(text) as JsonWorkflowInput
+  } catch (e) {
+    const preview = text.length > 100 ? text.slice(0, 100) + '...' : text
+    throw new Error(`Invalid JSON in AI response: ${e instanceof Error ? e.message : e}\n${preview}`)
+  }
 }

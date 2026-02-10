@@ -232,7 +232,9 @@ export async function executeTask(
     const nodesCompleted = executionStats?.summary.completedNodes ?? 0
     const nodesFailed = executionStats?.summary.failedNodes ?? 0
 
-    if (finalInstance.status === 'completed') {
+    // 发射完成/失败事件 + 记录时间线和结构化日志
+    const success = finalInstance.status === 'completed'
+    if (success) {
       workflowEvents.emitWorkflowCompleted({
         workflowId: workflow.id,
         instanceId: finalInstance.id,
@@ -241,25 +243,6 @@ export async function executeTask(
         nodesCompleted,
         nodesFailed,
         totalCostUsd,
-      })
-      appendTimelineEvent(task.id, {
-        timestamp: completedAt,
-        event: 'workflow:completed',
-        instanceId: finalInstance.id,
-      })
-
-      // 写入结构化事件日志
-      appendJsonlLog(task.id, {
-        event: 'task_completed',
-        message: `Task completed: ${task.title}`,
-        durationMs: totalDurationMs,
-        data: {
-          workflowId: workflow.id,
-          instanceId: finalInstance.id,
-          nodesCompleted,
-          nodesFailed,
-          totalCostUsd,
-        },
       })
     } else {
       workflowEvents.emitWorkflowFailed({
@@ -270,26 +253,27 @@ export async function executeTask(
         totalDurationMs,
         nodesCompleted,
       })
-      appendTimelineEvent(task.id, {
-        timestamp: completedAt,
-        event: 'workflow:failed',
-        instanceId: finalInstance.id,
-        details: finalInstance.error,
-      })
-
-      // 写入结构化事件日志
-      appendJsonlLog(task.id, {
-        event: 'task_failed',
-        message: `Task failed: ${task.title}`,
-        durationMs: totalDurationMs,
-        error: finalInstance.error || 'Unknown error',
-        data: {
-          workflowId: workflow.id,
-          instanceId: finalInstance.id,
-          nodesCompleted,
-        },
-      })
     }
+
+    appendTimelineEvent(task.id, {
+      timestamp: completedAt,
+      event: success ? 'workflow:completed' : 'workflow:failed',
+      instanceId: finalInstance.id,
+      ...(success ? {} : { details: finalInstance.error }),
+    })
+
+    appendJsonlLog(task.id, {
+      event: success ? 'task_completed' : 'task_failed',
+      message: `Task ${success ? 'completed' : 'failed'}: ${task.title}`,
+      durationMs: totalDurationMs,
+      ...(success ? {} : { error: finalInstance.error || 'Unknown error' }),
+      data: {
+        workflowId: workflow.id,
+        instanceId: finalInstance.id,
+        nodesCompleted,
+        ...(success ? { nodesFailed, totalCostUsd } : {}),
+      },
+    })
 
     // 保存执行统计到任务文件夹
     if (executionStats) {
@@ -300,8 +284,6 @@ export async function executeTask(
     }
 
     // 更新任务状态
-    const success = finalInstance.status === 'completed'
-
     updateTask(task.id, {
       status: success ? 'completed' : 'failed',
       output: {

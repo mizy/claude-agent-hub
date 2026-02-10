@@ -5,6 +5,7 @@
 
 import { readFile } from 'fs/promises'
 import { createLogger } from '../shared/logger.js'
+import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { formatDuration } from '../shared/formatTime.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { getResultFilePath } from '../store/paths.js'
@@ -158,7 +159,7 @@ export async function sendTaskCompletionNotify(
       }
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     logger.warn(`Telegram 通知发送失败: ${msg}`)
   }
 
@@ -183,7 +184,7 @@ export async function sendTaskCompletionNotify(
       await sendLarkCardViaApi(larkChatId, card)
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     logger.warn(`Lark 通知发送失败: ${msg}`)
   }
 }

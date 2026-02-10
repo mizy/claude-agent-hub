@@ -4,8 +4,10 @@
  */
 
 import { readFileSync, existsSync } from 'fs'
+import { resolve, isAbsolute } from 'path'
 import { invokeBackend } from '../../backend/index.js'
 import { createLogger } from '../../shared/logger.js'
+import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import { buildClientPrompt } from '../../prompts/chatPrompts.js'
 import { logConversation } from './conversationLog.js'
 import type { MessengerAdapter, ChatSession, ClientContext } from './types.js'
@@ -64,8 +66,6 @@ function splitMessage(text: string, maxLength: number = DEFAULT_MAX_LENGTH): str
   return parts
 }
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'])
-
 /** Extract local image file paths from text */
 function extractImagePaths(text: string): string[] {
   const paths: string[] = []
@@ -98,20 +98,17 @@ function extractImagePaths(text: string): string[] {
 }
 
 /** Resolve relative path to absolute, trying cwd and common temp dirs */
-function resolveImagePath(path: string): string | null {
-  const { resolve, isAbsolute } = require('path')
-  const { existsSync } = require('fs')
-
-  if (isAbsolute(path)) return path
+function resolveImagePath(filePath: string): string | null {
+  if (isAbsolute(filePath)) return filePath
 
   // Try cwd
-  const cwdPath = resolve(process.cwd(), path)
+  const cwdPath = resolve(process.cwd(), filePath)
   if (existsSync(cwdPath)) return cwdPath
 
   // Try common temp directories
   const tempDirs = ['/tmp', '/var/tmp', process.env.TMPDIR || ''].filter(Boolean)
   for (const dir of tempDirs) {
-    const fullPath = resolve(dir, path)
+    const fullPath = resolve(dir, filePath)
     if (existsSync(fullPath)) return fullPath
   }
 
@@ -280,7 +277,7 @@ async function handleChatInternal(
       }
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     logger.error(`chat error [${chatId.slice(0, 8)}]: ${msg}`)
     const errorMsg = `❌ 处理失败: ${msg}`
     if (placeholderId) {

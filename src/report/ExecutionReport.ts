@@ -11,7 +11,7 @@ import {
   getExecutionTimeline,
 } from '../task/index.js'
 import { createLogger } from '../shared/logger.js'
-import type { ExecutionTimeline as TimelineEvent } from '../store/ExecutionStatsStore.js'
+import type { ExecutionTimeline as TimelineEvent } from '../task/index.js'
 import type { NodeExecutionStats } from '../workflow/engine/WorkflowEventEmitter.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 

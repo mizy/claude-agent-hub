@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../shared/logger.js'
+import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { sendTelegramApprovalResult } from './sendTelegramNotify.js'
 import { routeMessage } from './handlers/messageRouter.js'
@@ -48,7 +49,7 @@ async function callApi<T>(method: string, params?: Record<string, unknown>): Pro
     }
     return result.result
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatErrorMessage(error)
     logger.error(`→ API ${method}: ${msg}`)
     return null
   }
@@ -150,7 +151,7 @@ async function pollLoop(): Promise<void> {
         await handleUpdate(update)
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
+      const msg = formatErrorMessage(error)
       logger.error(`poll error: ${msg}`)
       if (running) {
         await new Promise(r => setTimeout(r, 5000))
@@ -183,7 +184,7 @@ export async function startTelegramClient(): Promise<void> {
   botName = me?.first_name ?? me?.username ?? null
 
   pollLoop().catch(err => {
-    logger.error(`poll loop crashed: ${err instanceof Error ? err.message : err}`)
+    logger.error(`poll loop crashed: ${formatErrorMessage(err)}`)
     running = false
   })
 

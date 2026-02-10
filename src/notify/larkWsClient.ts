@@ -9,6 +9,7 @@ import * as Lark from '@larksuiteoapi/node-sdk'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '../shared/logger.js'
+import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { DATA_DIR } from '../store/paths.js'
 import { sendApprovalResultNotification, uploadLarkImage, sendLarkImage } from './sendLarkNotify.js'
@@ -17,9 +18,11 @@ import { buildMarkdownCard } from './larkCardWrapper.js'
 import { routeMessage } from './handlers/messageRouter.js'
 import { handleApproval } from './handlers/approvalHandler.js'
 import { handleList } from './handlers/commandHandler.js'
-import { loadTaskFolder } from '../store/TaskWorkflowStore.js'
-import { getLogPath } from '../store/TaskLogStore.js'
-import { resumeTask } from '../task/resumeTask.js'
+import {
+  loadTaskFolder,
+  getLogPath,
+  resumeOrphanedTask as resumeTask,
+} from '../task/index.js'
 import type { LarkCard } from './buildLarkCard.js'
 import type { MessengerAdapter, ParsedApproval, ClientContext } from './handlers/types.js'
 
@@ -116,7 +119,7 @@ function createAdapter(): MessengerAdapter {
           },
         })
       } catch (error) {
-        logger.error(`→ reply failed: ${error instanceof Error ? error.message : error}`)
+        logger.error(`→ reply failed: ${formatErrorMessage(error)}`)
       }
     },
     async sendAndGetId(chatId, text) {
@@ -132,7 +135,7 @@ function createAdapter(): MessengerAdapter {
         })
         return (res as LarkSdkResponse)?.data?.message_id ?? null
       } catch (error) {
-        logger.error(`→ send failed: ${error instanceof Error ? error.message : error}`)
+        logger.error(`→ send failed: ${formatErrorMessage(error)}`)
         return null
       }
     },
@@ -146,7 +149,7 @@ function createAdapter(): MessengerAdapter {
           },
         })
       } catch (error) {
-        logger.error(`→ edit failed: ${error instanceof Error ? error.message : error}`)
+        logger.error(`→ edit failed: ${formatErrorMessage(error)}`)
       }
     },
     async replyCard(chatId: string, card: LarkCard) {
@@ -161,7 +164,7 @@ function createAdapter(): MessengerAdapter {
           },
         })
       } catch (error) {
-        logger.error(`→ card send failed: ${error instanceof Error ? error.message : error}`)
+        logger.error(`→ card send failed: ${formatErrorMessage(error)}`)
       }
     },
     async editCard(_chatId: string, messageId: string, card: LarkCard) {
@@ -176,7 +179,7 @@ function createAdapter(): MessengerAdapter {
         })
         logger.debug(`→ editCard response: ${JSON.stringify(res).slice(0, 200)}`)
       } catch (error) {
-        logger.error(`→ editCard failed: ${error instanceof Error ? error.message : error}`)
+        logger.error(`→ editCard failed: ${formatErrorMessage(error)}`)
       }
     },
     async replyImage(chatId: string, imageData: Buffer) {
@@ -393,7 +396,7 @@ export async function startLarkWsClient(): Promise<void> {
     const botInfo = res as { data?: { bot?: { app_name?: string } } }
     larkBotName = botInfo?.data?.bot?.app_name ?? null
   } catch (error) {
-    logger.debug(`Failed to fetch bot name: ${error instanceof Error ? error.message : error}`)
+    logger.debug(`Failed to fetch bot name: ${formatErrorMessage(error)}`)
   }
 
   wsClient = new Lark.WSClient({

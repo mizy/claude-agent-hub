@@ -3,7 +3,7 @@
  */
 
 import type { TaskCategory } from '../../analysis/index.js'
-import type { ExecutionSummary, ExecutionTimeline } from '../../store/ExecutionStatsStore.js'
+import type { ExecutionSummary, ExecutionTimeline } from '../../task/index.js'
 import type { NodeExecutionStats } from '../../workflow/engine/WorkflowEventEmitter.js'
 
 export interface TrendPeriod {

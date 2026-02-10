@@ -7,6 +7,7 @@
 
 import { Parser } from 'expr-eval'
 import { createLogger } from '../../shared/logger.js'
+import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import type { EvalContext } from '../types.js'
 
 const logger = createLogger('expr-eval')
@@ -142,7 +143,7 @@ export function validateExpression(expression: string): {
   } catch (error) {
     return {
       valid: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: formatErrorMessage(error),
     }
   }
 }

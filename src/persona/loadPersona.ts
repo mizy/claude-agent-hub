@@ -8,7 +8,10 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import YAML from 'yaml'
 import { BUILTIN_PERSONAS, getAvailablePersonas as getBuiltinNames } from './builtinPersonas.js'
+import { createLogger } from '../shared/logger.js'
 import type { PersonaConfig } from '../types/persona.js'
+
+const logger = createLogger('persona')
 
 export async function loadPersona(name: string): Promise<PersonaConfig> {
   // 优先查找内置人格
@@ -24,7 +27,7 @@ export async function loadPersona(name: string): Promise<PersonaConfig> {
   }
 
   // 默认返回 Pragmatist
-  console.warn(`人格 "${name}" 未找到，使用默认 Pragmatist`)
+  logger.warn(`Persona "${name}" not found, falling back to Pragmatist`)
   return BUILTIN_PERSONAS.Pragmatist!
 }
 

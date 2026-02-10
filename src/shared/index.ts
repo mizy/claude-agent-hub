@@ -71,6 +71,9 @@ export {
   matchesShortId,
 } from './generateId.js'
 
+// 错误消息格式化
+export { formatErrorMessage } from './formatErrorMessage.js'
+
 // 时间处理
 export {
   now,
