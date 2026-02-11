@@ -111,6 +111,8 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
 {{learningInsights}}
 
+{{memoryContext}}
+
 ## 当前时间
 {{currentTime}}
 
@@ -306,7 +308,8 @@ export function buildJsonWorkflowPrompt(
   availablePersonas: PersonaConfig[] = [],
   projectContext: string = '',
   learningInsights: string = '',
-  useAgentTeams: boolean = false
+  useAgentTeams: boolean = false,
+  memoryContext: string = ''
 ): string {
   const personaDescriptions = formatPersonaDescriptions(availablePersonas)
   const agentTeamsInstruction = useAgentTeams ? AGENT_TEAMS_INSTRUCTION : ''
@@ -320,6 +323,7 @@ export function buildJsonWorkflowPrompt(
     .replace('{{agentDescriptions}}', personaDescriptions)
     .replace('{{projectContext}}', projectContext)
     .replace('{{learningInsights}}', learningInsights)
+    .replace('{{memoryContext}}', memoryContext)
     .replace('{{agentTeamsInstruction}}', agentTeamsInstruction)
 }
 

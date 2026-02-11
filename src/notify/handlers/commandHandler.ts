@@ -10,6 +10,7 @@ import { readFileSync } from 'fs'
 import { spawn } from 'child_process'
 import { createLogger } from '../../shared/logger.js'
 import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { truncateText } from '../../shared/truncateText.js'
 import {
   getAllTasks,
   getLogPath,
@@ -19,6 +20,11 @@ import {
   stopTask,
   resumeOrphanedTask as resumeTask,
 } from '../../task/index.js'
+import {
+  listMemories,
+  addMemory,
+  searchMemories,
+} from '../../memory/index.js'
 import { formatDuration } from '../../shared/formatTime.js'
 import { getWaitingHumanJobs } from '../../workflow/index.js'
 import { parseTaskStatus } from '../../types/task.js'
@@ -62,7 +68,7 @@ function resolveTaskId(
  * 统一入口：根据 command + args 分发到具体处理函数
  */
 export async function handleCommand(command: string, args: string): Promise<CommandResult> {
-  const argsPreview = args.length > 40 ? args.slice(0, 37) + '...' : args
+  const argsPreview = truncateText(args, 40)
   logger.info(`⚡ ${command}${argsPreview ? ' ' + argsPreview : ''}`)
 
   switch (command) {
@@ -84,6 +90,8 @@ export async function handleCommand(command: string, args: string): Promise<Comm
       return handleStatus()
     case '/reload':
       return handleReload()
+    case '/memory':
+      return handleMemory(args)
     default:
       return { text: `未知指令: ${command}\n输入 /help 查看可用指令` }
   }
@@ -133,7 +141,7 @@ function buildTaskListItems(tasks: Task[]): TaskListItem[] {
   return tasks.map(t => ({
     id: t.id,
     shortId: t.id.replace(/^task-/, '').slice(0, 4),
-    title: t.title.length > 40 ? t.title.slice(0, 37) + '...' : t.title,
+    title: truncateText(t.title, 40),
     status: t.status,
     priority: t.priority,
     relativeTime: formatRelativeTime(t.updatedAt || t.createdAt),
@@ -229,7 +237,8 @@ export async function handleLogs(taskIdPrefix: string): Promise<CommandResult> {
     let content: string
     try {
       content = readFileSync(logPath, 'utf-8')
-    } catch {
+    } catch (e) {
+      logger.debug(`Failed to read logs for ${task.id.slice(0, 20)}: ${e instanceof Error ? e.message : String(e)}`)
       return { text: `暂无日志: ${task.id.slice(0, 20)}` }
     }
 
@@ -373,6 +382,11 @@ export function handleHelp(): CommandResult {
       '/chat - 查看对话状态',
       '/help - 显示此帮助',
       '',
+      '🧠 记忆:',
+      '/memory list - 查看记忆列表',
+      '/memory add <内容> - 添加记忆',
+      '/memory search <关键词> - 搜索记忆',
+      '',
       '🔧 系统:',
       '/reload - 重启守护进程（加载新代码）',
       '',
@@ -401,12 +415,72 @@ export function handleStatus(): CommandResult {
   }
 }
 
+export function handleMemory(args: string): CommandResult {
+  const parts = args.trim().split(/\s+/)
+  const subcommand = parts[0] || 'list'
+  const rest = parts.slice(1).join(' ')
+
+  switch (subcommand) {
+    case 'list': {
+      const memories = listMemories()
+      if (memories.length === 0) {
+        return { text: '暂无记忆' }
+      }
+
+      const categoryLabel: Record<string, string> = {
+        pattern: '模式', lesson: '经验', preference: '偏好', pitfall: '陷阱', tool: '工具',
+      }
+
+      const recent = memories.slice(0, 10)
+      const lines = [`🧠 记忆列表 (${memories.length})`, '']
+      for (const m of recent) {
+        const cat = categoryLabel[m.category] || m.category
+        const content = m.content.length > 60 ? m.content.slice(0, 57) + '...' : m.content
+        lines.push(`[${cat}] ${content}`)
+      }
+      if (memories.length > 10) {
+        lines.push('', `还有 ${memories.length - 10} 条记忆未显示`)
+      }
+      return { text: lines.join('\n') }
+    }
+    case 'add': {
+      if (!rest.trim()) {
+        return { text: '用法: /memory add <记忆内容>' }
+      }
+      const entry = addMemory(rest.trim(), 'lesson', { type: 'chat' })
+      return { text: `✅ 记忆已添加\nID: ${entry.id}` }
+    }
+    case 'search': {
+      if (!rest.trim()) {
+        return { text: '用法: /memory search <关键词>' }
+      }
+      const results = searchMemories(rest.trim())
+      if (results.length === 0) {
+        return { text: `未找到匹配 "${rest.trim()}" 的记忆` }
+      }
+
+      const lines = [`🔍 搜索结果 (${results.length})`, '']
+      for (const m of results.slice(0, 10)) {
+        const content = m.content.length > 60 ? m.content.slice(0, 57) + '...' : m.content
+        lines.push(`• ${content}`)
+      }
+      return { text: lines.join('\n') }
+    }
+    default:
+      return { text: '用法: /memory list | /memory add <内容> | /memory search <关键词>' }
+  }
+}
+
 export function handleReload(): CommandResult {
   // 通过 spawn 子进程执行 cah restart，避免阻塞当前消息回复
-  const child = spawn(process.execPath, [...process.execArgv, ...process.argv.slice(1, 2), 'restart'], {
-    detached: true,
-    stdio: 'ignore',
-  })
+  const child = spawn(
+    process.execPath,
+    [...process.execArgv, ...process.argv.slice(1, 2), 'restart'],
+    {
+      detached: true,
+      stdio: 'ignore',
+    }
+  )
   child.unref()
 
   logger.info('→ reload initiated via child process')

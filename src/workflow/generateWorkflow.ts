@@ -19,6 +19,7 @@ import {
   learnFromHistory,
   formatInsightsForPrompt,
 } from '../analysis/index.js'
+import { retrieveRelevantMemories, formatMemoriesForPrompt } from '../memory/index.js'
 import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from './types.js'
@@ -62,19 +63,22 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   // 获取可用 persona 列表
   const availablePersonas = Object.values(BUILTIN_PERSONAS)
 
-  // 智能化增强：并行获取项目上下文和历史学习
+  // 智能化增强：并行获取项目上下文、历史学习和记忆
   logger.info('分析项目上下文和历史记录...')
-  const [projectContext, learningInsights] = await Promise.all([
+  const [projectContext, learningInsights, memories] = await Promise.all([
     analyzeProjectContext(),
     learnFromHistory(task.description || task.title),
+    retrieveRelevantMemories(task.description || task.title, { projectPath: process.cwd() }),
   ])
 
   // 格式化上下文
   const projectContextPrompt = formatProjectContextForPrompt(projectContext)
   const learningPrompt = formatInsightsForPrompt(learningInsights)
+  const memoryPrompt = formatMemoriesForPrompt(memories)
 
   logger.debug(`项目类型: ${projectContext.projectType}, 语言: ${projectContext.mainLanguage}`)
   logger.debug(`相关历史任务: ${learningInsights.relatedTasks.length} 个`)
+  logger.debug(`相关记忆: ${memories.length} 条`)
 
   // 检查是否启用 Agent Teams
   const config = await loadConfig()
@@ -93,7 +97,8 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
     availablePersonas,
     projectContextPrompt,
     learningPrompt,
-    useAgentTeams
+    useAgentTeams,
+    memoryPrompt
   )
   logger.debug(`Prompt 长度: ${prompt.length} 字符`)
 

@@ -23,6 +23,7 @@ import { registerReportCommands } from './commands/report.js'
 
 import { registerInitCommand } from './commands/init.js'
 import { registerAgentCommands } from './commands/agent.js'
+import { registerMemoryCommands } from './commands/memory.js'
 import { registerDashboardCommand } from './commands/server.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
@@ -37,6 +38,7 @@ import { detectOrphanedTasks, resumeAllOrphanedTasks } from '../task/resumeTask.
 import { success, error, info, warn } from './output.js'
 import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
 import { findClosestMatch } from '../shared/levenshtein.js'
+import { truncateText } from '../shared/truncateText.js'
 
 // 已知的 CLI 命令列表
 const KNOWN_COMMANDS = [
@@ -51,6 +53,7 @@ const KNOWN_COMMANDS = [
   'run',
   'logs',
   'dashboard',
+  'memory',
 ]
 
 const program = new Command()
@@ -118,8 +121,7 @@ async function handleTaskDescription(
       assignee: options.agent,
     })
 
-    // 截断长标题用于显示
-    const displayTitle = task.title.length > 50 ? task.title.slice(0, 47) + '...' : task.title
+    const displayTitle = truncateText(task.title, 50)
 
     success(`Created task: ${displayTitle}`)
     console.log(`  ID: ${task.id}`)
@@ -202,6 +204,7 @@ registerTaskCommands(program)
 registerAgentCommands(program)
 registerDaemonCommands(program)
 registerReportCommands(program)
+registerMemoryCommands(program)
 registerDashboardCommand(program)
 
 // cah logs <id> - 查看任务日志的快捷命令
@@ -258,7 +261,7 @@ function checkAndResumeOrphanedTasks(): void {
     console.log()
 
     for (const { task, pid } of orphaned) {
-      const title = task.title.length > 40 ? task.title.slice(0, 37) + '...' : task.title
+      const title = truncateText(task.title, 40)
       console.log(chalk.gray(`  [${task.status}] ${title} (was PID: ${pid})`))
     }
 
@@ -270,7 +273,7 @@ function checkAndResumeOrphanedTasks(): void {
     if (resumed.length > 0) {
       success(`Resumed ${resumed.length} task(s)`)
       for (const { taskId, pid } of resumed) {
-        const shortId = taskId.length > 30 ? taskId.slice(0, 27) + '...' : taskId
+        const shortId = truncateText(taskId, 30)
         console.log(chalk.gray(`  ${shortId} → PID ${pid}`))
       }
       console.log()

@@ -121,6 +121,15 @@ export {
   updateInstanceVariables,
 } from './WorkflowStore.js'
 
+// MemoryStore - 记忆存储
+export {
+  getAllMemories,
+  getMemory,
+  saveMemory,
+  deleteMemory as deleteMemoryEntry,
+  updateMemory,
+} from './MemoryStore.js'
+
 // ExecutionStatsStore - 执行统计和时间线
 export {
   // Stats

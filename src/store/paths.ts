@@ -48,6 +48,9 @@ export const DATA_DIR = getDataDir()
 /** 任务目录 */
 export const TASKS_DIR = join(DATA_DIR, 'tasks')
 
+/** 记忆目录 */
+export const MEMORY_DIR = join(DATA_DIR, 'memory')
+
 // ============ 全局文件常量（直接导出） ============
 
 /** 队列文件 */
