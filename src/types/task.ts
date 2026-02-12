@@ -5,6 +5,7 @@ export type TaskStatus =
   | 'pending'
   | 'planning'
   | 'developing'
+  | 'paused'
   | 'reviewing'
   | 'completed'
   | 'failed'
@@ -15,6 +16,7 @@ const VALID_STATUSES: readonly string[] = [
   'pending',
   'planning',
   'developing',
+  'paused',
   'reviewing',
   'completed',
   'failed',
@@ -42,6 +44,8 @@ export interface Task {
   assignee?: string
   branch?: string
   workflowId?: string
+  /** Working directory where the task was created (for conflict detection) */
+  cwd?: string
   retryCount: number
   lastRejectReason?: string
   createdAt: string

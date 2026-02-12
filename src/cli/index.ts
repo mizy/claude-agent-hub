@@ -24,10 +24,11 @@ import { registerReportCommands } from './commands/report.js'
 import { registerInitCommand } from './commands/init.js'
 import { registerAgentCommands } from './commands/agent.js'
 import { registerMemoryCommands } from './commands/memory.js'
+import { registerPromptCommands } from './commands/prompt.js'
 import { registerDashboardCommand } from './commands/server.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
-import { pollPendingTask, getAllTasks } from '../task/queryTask.js'
+import { pollPendingTask, getAllTasks, listTasks } from '../task/queryTask.js'
 import { getTaskFolder, getLogPath } from '../task/index.js'
 import { withProcessTracking } from '../task/processTracking.js'
 import { existsSync } from 'fs'
@@ -82,9 +83,11 @@ const KNOWN_COMMANDS = [
   'agent',
   'init',
   'run',
+  'list',
   'logs',
   'dashboard',
   'memory',
+  'prompt',
 ]
 
 const program = new Command()
@@ -172,7 +175,20 @@ async function handleTaskDescription(
       return
     }
 
-    // 2. 执行任务
+    // 2. 检测同项目冲突
+    const cwd = process.cwd()
+    const allTasksNow = getAllTasks()
+    const sameProjectRunning = allTasksNow.filter(
+      t => isRunningStatus(t.status) && t.cwd === cwd
+    )
+    if (sameProjectRunning.length > 0) {
+      warn(`同项目有 ${sameProjectRunning.length} 个任务正在运行，将排队等待:`)
+      for (const t of sameProjectRunning) {
+        console.log(chalk.gray(`  [${t.status}] ${truncateText(t.title, 40)} (${t.id})`))
+      }
+    }
+
+    // 3. 执行任务
     if (options.foreground) {
       // -F 前台运行 - 直接执行，可以看到完整日志
       info('Running in foreground mode (Ctrl+C to cancel)...')
@@ -245,7 +261,25 @@ registerAgentCommands(program)
 registerDaemonCommands(program)
 registerReportCommands(program)
 registerMemoryCommands(program)
+registerPromptCommands(program)
 registerDashboardCommand(program)
+
+// cah list - 查看任务列表的快捷命令
+program
+  .command('list')
+  .alias('ls')
+  .description('列出任务队列 (cah task list 的快捷方式)')
+  .option('-s, --status <status>', '按状态筛选')
+  .option('-a, --agent <agent>', '按 Agent 筛选')
+  .option('--no-progress', '隐藏进度显示')
+  .option('-w, --watch', '持续更新模式')
+  .option('-i, --interval <ms>', '更新间隔 (毫秒)', '2000')
+  .action(async options => {
+    await listTasks({
+      ...options,
+      interval: parseInt(options.interval, 10),
+    })
+  })
 
 // cah logs <id> - 查看任务日志的快捷命令
 program

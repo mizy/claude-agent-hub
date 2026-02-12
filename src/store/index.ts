@@ -130,6 +130,26 @@ export {
   updateMemory,
 } from './MemoryStore.js'
 
+// PromptVersionStore - Prompt 版本存储
+export {
+  generateVersionId,
+  savePromptVersion,
+  getPromptVersion,
+  getAllVersions,
+  getActiveVersion,
+  getLatestVersion,
+  updatePromptVersionStats,
+  rollbackToVersion,
+} from './PromptVersionStore.js'
+
+// TaskMessageStore - 任务消息队列
+export {
+  addTaskMessage,
+  getUnconsumedMessages,
+  markMessagesConsumed,
+  getAllTaskMessages,
+} from './TaskMessageStore.js'
+
 // ExecutionStatsStore - 执行统计和时间线
 export {
   // Stats

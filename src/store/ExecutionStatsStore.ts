@@ -45,6 +45,7 @@ export interface ExecutionTimeline {
     | 'node:failed'
     | 'workflow:completed'
     | 'workflow:failed'
+    | 'prompt:improvement_generated'
   instanceId: string // 关联到具体的执行实例，用于过滤不同执行的事件（必填）
   nodeId?: string
   nodeName?: string

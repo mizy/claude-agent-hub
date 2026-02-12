@@ -51,6 +51,9 @@ export const TASKS_DIR = join(DATA_DIR, 'tasks')
 /** 记忆目录 */
 export const MEMORY_DIR = join(DATA_DIR, 'memory')
 
+/** Prompt 版本目录 */
+export const PROMPT_VERSIONS_DIR = join(DATA_DIR, 'prompt-versions')
+
 // ============ 全局文件常量（直接导出） ============
 
 /** 队列文件 */
@@ -77,6 +80,7 @@ export const FILE_NAMES = {
   RESULT: 'result.md',
   META: 'meta.json',
   TASKS_INDEX: 'index.json',
+  MESSAGES: 'messages.json',
 } as const
 
 /** 子目录名常量 */
@@ -117,6 +121,8 @@ export const TASK_PATHS = {
     join(TASKS_DIR, taskId, DIR_NAMES.LOGS, FILE_NAMES.CONVERSATION_JSONL),
   /** 获取结果文件路径 */
   getResultPath: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.OUTPUTS, FILE_NAMES.RESULT),
+  /** 获取消息队列文件路径 */
+  getMessagesPath: (taskId: string) => join(TASKS_DIR, taskId, FILE_NAMES.MESSAGES),
 }
 
 // ============ 兼容性别名（保留旧 API） ============
@@ -149,3 +155,4 @@ export const getConversationLogFilePath = TASK_PATHS.getConversationLogPath
 export const getJsonlLogPath = TASK_PATHS.getJsonlLogPath
 export const getConversationJsonlPath = TASK_PATHS.getConversationJsonlPath
 export const getResultFilePath = TASK_PATHS.getResultPath
+export const getMessagesFilePath = TASK_PATHS.getMessagesPath

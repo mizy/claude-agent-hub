@@ -26,6 +26,9 @@ export {
   handleGet,
   handleHelp,
   handleStatus,
+  handleMsg,
+  handlePause,
+  handleSnapshot,
 } from './handlers/commandHandler.js'
 export { handleApproval, parseApprovalCommand } from './handlers/approvalHandler.js'
 export { handleChat, clearChatSession, getChatSessionInfo } from './handlers/chatHandler.js'
@@ -60,6 +63,7 @@ export {
   buildTaskCompletedCard,
   buildTaskFailedCard,
   buildApprovalCard,
+  buildAutoWaitCard,
   buildWelcomeCard,
   buildTaskListCard,
   buildTaskDetailCard,

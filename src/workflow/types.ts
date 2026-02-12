@@ -89,6 +89,8 @@ export interface WorkflowNode {
     backoffMs?: number
     backoffMultiplier?: number
   }
+  /** 执行前自动暂停，等待用户确认后继续 */
+  autoWait?: boolean
 }
 
 export interface TaskConfig {
@@ -227,6 +229,11 @@ export interface WorkflowInstance {
   startedAt?: string
   completedAt?: string
   error?: string
+
+  /** 暂停时间 */
+  pausedAt?: string
+  /** 暂停原因 */
+  pauseReason?: string
 }
 
 export interface NodeState {

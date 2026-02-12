@@ -53,6 +53,8 @@ export { getWorkflow } from '../store/WorkflowStore.js'
 // 状态管理（常用）
 export {
   recoverWorkflowInstance,
+  pauseWorkflowInstance,
+  resumeWorkflowInstance,
   markNodeRunning,
   markNodeDone,
   markNodeFailed,
@@ -68,6 +70,7 @@ export {
   closeQueue,
   getWaitingHumanJobs,
   resumeWaitingJob,
+  resumeWaitingJobsForInstance,
   markJobFailed,
 } from './queue/WorkflowQueue.js'
 
@@ -76,6 +79,8 @@ export {
   createNodeWorker,
   startWorker,
   closeWorker,
+  pauseWorker,
+  resumeWorker,
   isWorkerRunning,
   type NodeProcessor,
   type WorkerOptions,

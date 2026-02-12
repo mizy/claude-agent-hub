@@ -8,6 +8,9 @@ import {
   stopTask,
   completeTask,
   rejectTask,
+  pauseTask,
+  resumePausedTask,
+  injectNode,
 } from '../../task/manageTaskLifecycle.js'
 import {
   detectOrphanedTasks,
@@ -38,6 +41,9 @@ import { AppError } from '../../shared/error.js'
 import { formatDuration } from '../../shared/formatTime.js'
 import { parseTaskStatus } from '../../types/task.js'
 import { truncateText } from '../../shared/truncateText.js'
+import { addTaskMessage, getUnconsumedMessages } from '../../store/TaskMessageStore.js'
+import { getTaskInstance, getTaskWorkflow } from '../../store/TaskWorkflowStore.js'
+import { getWorkflowProgress } from '../../workflow/engine/StateManager.js'
 
 export function registerTaskCommands(program: Command) {
   const task = program.command('task').description('任务管理命令')
@@ -191,7 +197,15 @@ export function registerTaskCommands(program: Command) {
           return
         }
 
-        if (task.status === 'failed') {
+        if (task.status === 'paused') {
+          // 恢复暂停的任务（进程仍在运行，只需修改状态）
+          const result = resumePausedTask(id)
+          if (result.success) {
+            success(`Task resumed from pause: ${result.task?.title}`)
+          } else {
+            error(result.error || 'Failed to resume paused task')
+          }
+        } else if (task.status === 'failed') {
           // 恢复失败的任务 (从失败点继续或重新执行)
           const result = await resumeFailedTask(id)
           if (result.success) {
@@ -423,6 +437,167 @@ export function registerTaskCommands(program: Command) {
         tail.on('error', err => {
           error(`Failed to tail logs: ${err.message}`)
         })
+      }
+    })
+
+  task
+    .command('pause')
+    .description('暂停运行中的任务（当前节点完成后暂停）')
+    .argument('<id>', '任务 ID')
+    .option('-r, --reason <reason>', '暂停原因')
+    .action((id, options) => {
+      const result = pauseTask(id, options.reason)
+      if (result.success) {
+        success(`Task paused: ${result.task?.title}`)
+        console.log(chalk.gray(`  Status: paused`))
+        if (options.reason) {
+          console.log(chalk.gray(`  Reason: ${options.reason}`))
+        }
+        console.log(chalk.gray(`  Use 'cah task resume ${id}' to continue`))
+      } else {
+        error(result.error || 'Failed to pause task')
+      }
+    })
+
+  task
+    .command('snapshot')
+    .description('查看任务当前执行快照')
+    .argument('<id>', '任务 ID')
+    .option('--json', '以 JSON 格式输出')
+    .action((id, options) => {
+      const task = getTask(id)
+      if (!task) {
+        error(`Task not found: ${id}`)
+        return
+      }
+
+      const instance = getTaskInstance(id)
+      const workflow = getTaskWorkflow(id)
+
+      if (!instance || !workflow) {
+        warn('No workflow execution data available')
+        return
+      }
+
+      // Build snapshot
+      const progress = getWorkflowProgress(instance, workflow)
+      const messages = getUnconsumedMessages(id)
+
+      const snapshot = {
+        taskId: task.id,
+        title: task.title,
+        status: task.status,
+        workflowStatus: instance.status,
+        paused: task.status === 'paused' || instance.status === 'paused',
+        pausedAt: instance.pausedAt,
+        pauseReason: instance.pauseReason,
+        progress: {
+          ...progress,
+          bar: `${progress.completed}/${progress.total} (${progress.percentage}%)`,
+        },
+        nodes: workflow.nodes
+          .filter(n => n.type !== 'start' && n.type !== 'end')
+          .map(n => {
+            const state = instance.nodeStates[n.id]
+            return {
+              id: n.id,
+              name: n.name,
+              type: n.type,
+              status: state?.status || 'pending',
+              attempts: state?.attempts || 0,
+              durationMs: state?.durationMs,
+              error: state?.error ? truncateText(state.error, 80) : undefined,
+              autoWait: n.autoWait || false,
+            }
+          }),
+        pendingMessages: messages.length,
+      }
+
+      if (options.json) {
+        console.log(JSON.stringify(snapshot, null, 2))
+        return
+      }
+
+      // Pretty print
+      console.log(chalk.cyan(`\nTask Snapshot: ${task.title}\n`))
+      console.log(chalk.gray(`  Task ID:    ${task.id}`))
+      console.log(chalk.gray(`  Status:     ${task.status}`))
+      console.log(chalk.gray(`  Workflow:   ${instance.status}`))
+      if (snapshot.paused) {
+        console.log(chalk.yellow(`  PAUSED${snapshot.pauseReason ? ` (${snapshot.pauseReason})` : ''}`))
+        if (snapshot.pausedAt) {
+          console.log(chalk.gray(`  Paused at:  ${snapshot.pausedAt}`))
+        }
+      }
+      console.log(chalk.gray(`  Progress:   ${snapshot.progress.bar}`))
+      if (messages.length > 0) {
+        console.log(chalk.yellow(`  Messages:   ${messages.length} unconsumed`))
+      }
+
+      console.log(chalk.cyan(`\n  Nodes:\n`))
+      for (const node of snapshot.nodes) {
+        const statusIcon =
+          node.status === 'done'
+            ? chalk.green('✓')
+            : node.status === 'running'
+              ? chalk.yellow('▶')
+              : node.status === 'failed'
+                ? chalk.red('✗')
+                : node.status === 'skipped'
+                  ? chalk.gray('○')
+                  : node.status === 'waiting'
+                    ? chalk.magenta('⏳')
+                    : chalk.gray('·')
+
+        const duration = node.durationMs ? chalk.gray(` (${formatDuration(node.durationMs)})`) : ''
+        const autoWaitTag = node.autoWait ? chalk.yellow(' [autoWait]') : ''
+
+        console.log(`    ${statusIcon} ${node.name}${duration}${autoWaitTag}`)
+        if (node.error) {
+          console.log(chalk.red(`        ${node.error}`))
+        }
+      }
+      console.log()
+    })
+
+  task
+    .command('msg')
+    .description('向运行中的任务发送消息')
+    .argument('<id>', '任务 ID')
+    .argument('<message>', '消息内容')
+    .action((id, message) => {
+      const task = getTask(id)
+      if (!task) {
+        error(`Task not found: ${id}`)
+        return
+      }
+
+      const terminalStatuses = ['completed', 'failed', 'cancelled']
+      if (terminalStatuses.includes(task.status)) {
+        warn(`Task is already ${task.status}: ${task.title}`)
+        return
+      }
+
+      const msg = addTaskMessage(id, message, 'cli')
+      success(`消息已发送`)
+      console.log(chalk.gray(`  Task: ${task.title}`))
+      console.log(chalk.gray(`  Message ID: ${msg.id.slice(0, 8)}`))
+    })
+
+  task
+    .command('inject-node')
+    .description('在当前执行节点后动态注入新节点')
+    .argument('<id>', '任务 ID')
+    .argument('<prompt>', '节点执行内容')
+    .option('--persona <name>', '指定 persona', 'Pragmatist')
+    .action((id, prompt, options) => {
+      const result = injectNode(id, prompt, options.persona)
+      if (result.success) {
+        success(`节点已注入`)
+        console.log(chalk.gray(`  Node ID: ${result.nodeId}`))
+        info('新节点将在当前节点完成后执行')
+      } else {
+        error(result.error || 'Failed to inject node')
       }
     })
 }

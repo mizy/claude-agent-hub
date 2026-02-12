@@ -6,8 +6,9 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
-import { handleGet, handleLogs, handleStop, handleResume, handleList } from './commandHandler.js'
+import { handleGet, handleLogs, handleStop, handleResume, handleList, handlePause } from './commandHandler.js'
 import { handleApproval } from './approvalHandler.js'
+import { resumePausedTask } from '../../task/index.js'
 import type { MessengerAdapter, ParsedApproval, CardActionPayload } from './types.js'
 import { parseCardActionPayload } from './types.js'
 
@@ -61,6 +62,16 @@ export async function dispatchCardAction(params: CardActionParams): Promise<unkn
 
     case 'task_retry':
       return handleTaskRetryAction(chatId, payload.taskId, messenger)
+
+    case 'task_pause':
+      return handleTaskPauseAction(chatId, payload.taskId, messenger)
+
+    case 'task_resume':
+    case 'auto_wait_confirm':
+      return handleTaskResumeAction(chatId, payload.taskId, messenger)
+
+    case 'task_msg':
+      return handleTaskMsgPrompt(chatId, payload.taskId, messenger)
   }
 }
 
@@ -145,4 +156,42 @@ async function handleTaskRetryAction(
 ): Promise<void> {
   const result = await handleResume(taskId)
   await messenger.reply(chatId, result.text)
+}
+
+async function handleTaskPauseAction(
+  chatId: string,
+  taskId: string,
+  messenger: MessengerAdapter
+): Promise<void> {
+  const result = await handlePause(taskId)
+  if (result.larkCard) {
+    await messenger.replyCard?.(chatId, result.larkCard)
+  } else {
+    await messenger.reply(chatId, result.text)
+  }
+}
+
+async function handleTaskResumeAction(
+  chatId: string,
+  taskId: string,
+  messenger: MessengerAdapter
+): Promise<void> {
+  const resumeResult = resumePausedTask(taskId)
+  if (resumeResult.success) {
+    logger.info(`→ task resumed via card: ${taskId.slice(0, 20)}`)
+    await messenger.reply(chatId, `▶️ 已恢复任务: \`${taskId.slice(0, 20)}\``)
+  } else {
+    // Fallback to generic resume (may be an orphan, not paused)
+    const result = await handleResume(taskId)
+    await messenger.reply(chatId, result.text)
+  }
+}
+
+async function handleTaskMsgPrompt(
+  chatId: string,
+  taskId: string,
+  messenger: MessengerAdapter
+): Promise<void> {
+  // Lark cards don't support inline text input, so prompt the user to send a /msg command
+  await messenger.reply(chatId, `💬 请使用以下命令向任务发送消息:\n\n/msg ${taskId.slice(0, 12)} <你的消息>`)
 }

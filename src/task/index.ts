@@ -13,17 +13,22 @@
 // Core task creation
 export { createTask } from './createTask.js'
 
-// Task lifecycle (delete, clear, stop, complete, reject)
+// Task lifecycle (delete, clear, stop, complete, reject, pause, resume, inject)
 export {
   deleteTask,
   clearTasks,
   stopTask,
   completeTask,
   rejectTask,
+  pauseTask,
+  resumePausedTask,
+  injectNode,
   type DeleteTaskResult,
   type ClearTasksResult,
   type StopTaskResult,
   type CompleteTaskResult,
+  type PauseTaskResult,
+  type InjectNodeResult,
 } from './manageTaskLifecycle.js'
 
 // Task query (list, detail, poll)

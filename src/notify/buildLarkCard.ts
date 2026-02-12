@@ -63,6 +63,10 @@ import type {
   TaskLogsPayload,
   TaskStopPayload,
   TaskRetryPayload,
+  TaskPausePayload,
+  TaskResumePayload,
+  TaskMsgPayload,
+  AutoWaitConfirmPayload,
   ListPagePayload,
   ApprovePayload,
   RejectPayload,
@@ -94,6 +98,22 @@ export function approveAction(nodeId: string, workflowId?: string, instanceId?: 
 
 export function rejectAction(nodeId: string, workflowId?: string, instanceId?: string): RejectPayload {
   return { action: 'reject', nodeId, workflowId, instanceId }
+}
+
+export function taskPauseAction(taskId: string): TaskPausePayload {
+  return { action: 'task_pause', taskId }
+}
+
+export function taskResumeAction(taskId: string): TaskResumePayload {
+  return { action: 'task_resume', taskId }
+}
+
+export function taskMsgAction(taskId: string): TaskMsgPayload {
+  return { action: 'task_msg', taskId }
+}
+
+export function autoWaitConfirmAction(taskId: string): AutoWaitConfirmPayload {
+  return { action: 'auto_wait_confirm', taskId }
 }
 
 export interface TaskNodeInfo {
@@ -234,6 +254,35 @@ export function buildApprovalCard(options: {
   ])
 }
 
+export function buildAutoWaitCard(options: {
+  taskId: string
+  taskTitle: string
+  nodeName: string
+  nodeDescription?: string
+}): LarkCard {
+  const { taskId, taskTitle, nodeName, nodeDescription } = options
+  const lines = [
+    `**任务**: ${taskTitle}`,
+    `**节点**: ${nodeName}`,
+  ]
+  if (nodeDescription) {
+    const desc = nodeDescription.length > 200 ? nodeDescription.slice(0, 197) + '...' : nodeDescription
+    lines.push(`**描述**: ${desc}`)
+  }
+  lines.push('', '⚠️ 此节点包含高风险操作，已自动暂停等待确认')
+
+  return buildCard('⏸️ 节点自动暂停', 'orange', [
+    mdElement(lines.join('\n')),
+    hrElement(),
+    actionElement([
+      button('✅ 确认继续', 'primary', autoWaitConfirmAction(taskId)),
+      button('📋 查看详情', 'default', taskDetailAction(taskId)),
+      button('🛑 停止任务', 'danger', taskStopAction(taskId)),
+    ]),
+    noteElement(`${taskId.slice(0, 20)} · 使用 /resume 恢复`),
+  ])
+}
+
 export function buildWelcomeCard(): LarkCard {
   return buildCard('🤖 Claude Agent Hub', 'blue', [
     mdElement(
@@ -277,13 +326,17 @@ export function buildTaskListCard(
     elements.push(mdElement(`**🔄 进行中 (${counts.activeCount})**`))
     for (const t of groups.active) {
       elements.push(mdElement(formatTaskLineLark(t)))
-      elements.push(
-        actionElement([
-          button('📋 详情', 'primary', taskDetailAction(t.id)),
-          button('📜 日志', 'default', taskLogsAction(t.id)),
-          button('🛑 停止', 'danger', taskStopAction(t.id)),
-        ])
-      )
+      const buttons = [
+        button('📋 详情', 'primary', taskDetailAction(t.id)),
+        button('📜 日志', 'default', taskLogsAction(t.id)),
+      ]
+      if (t.status === 'paused') {
+        buttons.push(button('▶️ 继续', 'primary', taskResumeAction(t.id)))
+      } else if (t.status === 'developing') {
+        buttons.push(button('⏸️ 暂停', 'default', taskPauseAction(t.id)))
+      }
+      buttons.push(button('🛑 停止', 'danger', taskStopAction(t.id)))
+      elements.push(actionElement(buttons))
     }
   }
 
@@ -440,6 +493,13 @@ export function buildTaskDetailCard(
   if (task.status === 'failed') {
     buttons.push(button('🔄 重试', 'primary', taskRetryAction(task.id)))
   }
+  if (task.status === 'paused') {
+    buttons.push(button('▶️ 继续', 'primary', taskResumeAction(task.id)))
+  }
+  if (task.status === 'developing') {
+    buttons.push(button('⏸️ 暂停', 'default', taskPauseAction(task.id)))
+    buttons.push(button('💬 发消息', 'default', taskMsgAction(task.id)))
+  }
   elements.push(hrElement())
   elements.push(actionElement(buttons))
 
@@ -478,6 +538,9 @@ export function buildHelpCard(): LarkCard {
         '`/logs <id>` - 查看任务日志',
         '`/stop <id>` - 停止任务',
         '`/resume <id>` - 恢复任务',
+        '`/pause <id>` - 暂停任务',
+        '`/msg <id> <消息>` - 向任务发消息',
+        '`/snapshot <id>` - 查看任务快照',
         '',
         '**✅ 审批**',
         '`/approve [nodeId]` - 批准节点',

@@ -7,6 +7,8 @@ import { getWorkflowProgress } from '../workflow/index.js'
 import { getInstance, updateInstanceStatus } from '../store/WorkflowStore.js'
 import { getTask } from '../store/TaskStore.js'
 import { estimateRemainingTime, formatTimeEstimate } from '../analysis/index.js'
+import { pauseWorker, resumeWorker } from '../workflow/queue/NodeWorker.js'
+import { pauseWorkflowInstance, resumeWorkflowInstance } from '../workflow/engine/StateManager.js'
 import { createLogger } from '../shared/logger.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 
@@ -43,6 +45,7 @@ export async function waitForWorkflowCompletion(
   const startTime = Date.now()
   let lastLogTime = 0
   const MIN_LOG_INTERVAL = 3000 // 至少间隔 3 秒才更新进度
+  let workerPaused = false // 跟踪当前 Worker 是否已暂停
 
   while (true) {
     await sleep(POLL_INTERVAL)
@@ -61,20 +64,50 @@ export async function waitForWorkflowCompletion(
       return instance
     }
 
-    // 检查 task 状态是否被外部修改（如手动停止、超时等）
+    // 检查 task 状态是否被外部修改（如手动停止、暂停等）
     if (taskId) {
       const task = getTask(taskId)
       if (task && (task.status === 'failed' || task.status === 'cancelled')) {
         logger.info(`Task status changed to ${task.status}, syncing instance status...`)
-        // 同步 instance 状态
         updateInstanceStatus(instanceId, task.status === 'cancelled' ? 'cancelled' : 'failed')
-        // 重新获取更新后的 instance
         const updatedInstance = getInstance(instanceId)
         if (updatedInstance) {
           return updatedInstance
         }
         return instance
       }
+
+      // 检测外部暂停：task 被设为 paused 或 instance 被设为 paused
+      if (task && task.status === 'paused' && !workerPaused) {
+        logger.info('Task paused by external command, pausing worker...')
+        await pauseWorker()
+        // 同步 instance 状态
+        if (instance.status === 'running') {
+          await pauseWorkflowInstance(instanceId)
+        }
+        workerPaused = true
+      }
+
+      // 检测外部恢复：task 被设回 developing
+      if (task && task.status === 'developing' && workerPaused) {
+        logger.info('Task resumed by external command, resuming worker...')
+        // 同步 instance 状态
+        if (instance.status === 'paused') {
+          await resumeWorkflowInstance(instanceId)
+        }
+        await resumeWorker()
+        workerPaused = false
+      }
+    }
+
+    // instance 层面的暂停检测（autoWait 触发）
+    if (instance.status === 'paused' && !workerPaused) {
+      await pauseWorker()
+      workerPaused = true
+    }
+    if (instance.status === 'running' && workerPaused) {
+      await resumeWorker()
+      workerPaused = false
     }
 
     // 获取当前运行中的节点

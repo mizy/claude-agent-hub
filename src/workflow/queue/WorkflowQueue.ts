@@ -342,6 +342,29 @@ export function resumeWaitingJob(jobId: string): void {
   })
 }
 
+/**
+ * Re-activate all human_waiting jobs for a given instance.
+ * Used when resuming from autoWait pause — sets jobs back to 'waiting'
+ * so the NodeWorker picks them up again.
+ */
+export function resumeWaitingJobsForInstance(instanceId: string): number {
+  let count = 0
+  withLock(() => {
+    const queueData = getQueueData()
+    for (const job of queueData.jobs) {
+      if (job.status === 'human_waiting' && job.data.instanceId === instanceId) {
+        job.status = 'waiting'
+        count++
+      }
+    }
+    if (count > 0) {
+      saveQueueData(queueData)
+      logger.info(`Resumed ${count} waiting job(s) for instance ${instanceId}`)
+    }
+  })
+  return count
+}
+
 // 获取队列统计
 export async function getQueueStats(): Promise<{
   waiting: number

@@ -6,6 +6,7 @@
 import { invokeBackend } from '../backend/index.js'
 import { buildExecuteNodePrompt } from '../prompts/index.js'
 import { appendConversation, appendExecutionLog } from '../store/TaskLogStore.js'
+import { getUnconsumedMessages, markMessagesConsumed } from '../store/TaskMessageStore.js'
 import { personaNeedsMcp } from '../persona/personaMcpConfig.js'
 import { updateInstanceVariables } from '../store/WorkflowStore.js'
 import { createLogger } from '../shared/logger.js'
@@ -250,7 +251,24 @@ async function executeTaskNode(
   const persona = resolvePersona(personaName)
 
   // 构建上下文
-  const context = buildNodeContext(instance)
+  let context = buildNodeContext(instance)
+
+  // 注入未消费的用户消息
+  const taskId = instance.variables?.taskId as string | undefined
+  if (taskId) {
+    const pendingMessages = getUnconsumedMessages(taskId)
+    if (pendingMessages.length > 0) {
+      const msgText = pendingMessages
+        .map(m => `[${m.source} ${m.timestamp}] ${m.content}`)
+        .join('\n')
+      context += `\n\n## 用户在任务执行中发来了以下消息\n请在执行当前节点时参考这些消息：\n${msgText}`
+      markMessagesConsumed(
+        taskId,
+        pendingMessages.map(m => m.id)
+      )
+      logger.info(`Injected ${pendingMessages.length} user message(s) into node ${node.name}`)
+    }
+  }
 
   // 构建 prompt
   const prompt = buildExecuteNodePrompt(persona, workflow, node.name, taskPrompt, context)
@@ -259,8 +277,8 @@ async function executeTaskNode(
   // 不需要外部集成的角色禁用 MCP，加速启动
   const disableMcp = !personaNeedsMcp(persona.name)
 
-  // 获取 taskId 用于日志写入
-  const logTaskId = instance.variables?.taskId as string | undefined
+  // taskId 用于日志写入（复用上面已声明的 taskId）
+  const logTaskId = taskId
 
   // 会话复用已禁用 — 每个节点使用独立会话以保证稳定性
   const existingSessionId = undefined
@@ -302,7 +320,6 @@ async function executeTaskNode(
   }
 
   // 记录 AI 对话到任务日志
-  const taskId = instance.variables?.taskId as string
   if (taskId) {
     appendConversation(taskId, {
       timestamp: new Date().toISOString(),

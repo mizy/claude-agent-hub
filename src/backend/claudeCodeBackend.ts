@@ -49,6 +49,10 @@ interface StreamJsonEvent {
     stdout?: string
     stderr?: string
   }
+  event?: {
+    type: string
+    delta?: { type: string; text?: string }
+  }
 }
 
 // ============ Backend Adapter ============
@@ -158,6 +162,7 @@ function buildArgs(
   if (stream) {
     args.push('--output-format', 'stream-json')
     args.push('--verbose')
+    args.push('--include-partial-messages')
   } else {
     args.push('--output-format', 'json')
   }
@@ -290,18 +295,28 @@ async function streamOutput(
         try {
           const event = JSON.parse(line) as StreamJsonEvent
 
-          // Only forward assistant text as AI response (for Lark/streaming)
-          if (event.type === 'assistant' && event.message?.content) {
-            let assistantText = ''
-            for (const block of event.message.content) {
-              if (block.type === 'text' && block.text) {
-                assistantText += block.text
-              }
+          // Incremental text deltas (--include-partial-messages)
+          if (
+            event.type === 'stream_event' &&
+            event.event?.type === 'content_block_delta' &&
+            event.event.delta?.type === 'text_delta' &&
+            event.event.delta.text
+          ) {
+            if (onChunk) {
+              onChunk(event.event.delta.text)
+            } else {
+              process.stdout.write(chalk.dim(event.event.delta.text))
             }
-            if (assistantText) {
-              if (onChunk) {
-                onChunk(assistantText + '\n')
-              } else {
+          } else if (event.type === 'assistant' && event.message?.content) {
+            // Complete assistant turn — only show in CLI when no streaming callback
+            if (!onChunk) {
+              let assistantText = ''
+              for (const block of event.message.content) {
+                if (block.type === 'text' && block.text) {
+                  assistantText += block.text
+                }
+              }
+              if (assistantText) {
                 process.stdout.write(chalk.dim(assistantText + '\n'))
               }
             }

@@ -14,6 +14,7 @@ const ACTIVE_STATUSES: readonly TaskStatus[] = [
   'pending',
   'planning',
   'developing',
+  'paused',
   'reviewing',
 ] as const
 
@@ -25,8 +26,12 @@ const STOPPABLE_STATUSES: readonly TaskStatus[] = [
   'pending',
   'planning',
   'developing',
+  'paused',
   'reviewing',
 ] as const
+
+/** 可暂停的状态（只有 developing 可以暂停） */
+const PAUSABLE_STATUSES: readonly TaskStatus[] = ['developing'] as const
 
 /**
  * 判断任务是否正在执行中
@@ -89,4 +94,18 @@ export function isReviewingStatus(status: TaskStatus): boolean {
  */
 export function isStoppableStatus(status: TaskStatus): boolean {
   return (STOPPABLE_STATUSES as readonly string[]).includes(status)
+}
+
+/**
+ * 判断任务是否已暂停
+ */
+export function isPausedStatus(status: TaskStatus): boolean {
+  return status === 'paused'
+}
+
+/**
+ * 判断任务是否可以被暂停
+ */
+export function isPausableStatus(status: TaskStatus): boolean {
+  return (PAUSABLE_STATUSES as readonly string[]).includes(status)
 }

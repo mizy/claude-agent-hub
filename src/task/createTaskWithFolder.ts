@@ -42,6 +42,7 @@ export function createTaskWithFolder(options: CreateTaskOptions): Task {
     priority,
     status: 'pending',
     assignee: options.assignee,
+    cwd: process.cwd(),
     createdAt: new Date().toISOString(),
     retryCount: 0,
   }

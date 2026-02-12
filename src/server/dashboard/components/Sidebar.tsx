@@ -10,13 +10,13 @@ function ActionButtons({ task }: { task: Task }) {
 
   return (
     <div className="task-actions">
-      {['developing', 'planning', 'running'].includes(s) && (
+      {['developing', 'planning', 'reviewing'].includes(s) && (
         <button className="action-btn warning" onClick={(e) => { e.stopPropagation(); stopTask(task.id) }}>Stop</button>
       )}
-      {['failed', 'stopped'].includes(s) && (
+      {['failed', 'cancelled'].includes(s) && (
         <button className="action-btn primary" onClick={(e) => { e.stopPropagation(); resumeTask(task.id) }}>Resume</button>
       )}
-      {['stopped', 'failed'].includes(s) && (
+      {['cancelled', 'failed'].includes(s) && (
         <button className="action-btn success" onClick={(e) => { e.stopPropagation(); completeTask(task.id) }}>Complete</button>
       )}
       <button className="action-btn danger" onClick={(e) => { e.stopPropagation(); setPendingDeleteTask({ id: task.id, title: task.title }) }}>Delete</button>

@@ -7,10 +7,11 @@
 ## 核心命令
 
 ```bash
-# 任务
+# 任务（必须在目标项目目录下运行，cwd 用于同项目冲突检测和自动串行）
 cah "任务描述"           # 创建并执行任务
 cah "任务描述" -F        # 前台运行（可看日志）
 cah "任务描述" --no-run  # 仅创建不执行
+cah list                 # 查看任务列表（快捷方式）
 cah task list            # 查看任务列表
 cah task logs <id> -f    # 实时查看任务日志
 cah task resume <id>     # 恢复中断的任务
@@ -122,3 +123,4 @@ pnpm run format:check # 格式检查
 - **Orphan detection 误判**: `checkAndResumeOrphanedTasks()` 在每次 CLI 调用时执行，依赖 `process.json` 存在。缺少 process.json 的 running 任务不会被检测到
 - **测试删除生产数据**: 测试必须使用隔离数据目录（`vitest.config.ts` 设置 `CAH_DATA_DIR` 为 tmpdir），`tests/setup.ts` 有安全检查拒绝清理非 tmp 目录
 - **caffeinate 不生效**: macOS 需要 `-i` flag 防止 idle sleep
+- **同项目任务冲突**: `cah` 记录 `cwd` 到 task.json，同 cwd 的任务自动串行。必须在目标项目目录下运行 `cah`，否则冲突检测失效

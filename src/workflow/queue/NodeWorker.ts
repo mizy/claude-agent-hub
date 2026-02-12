@@ -225,6 +225,14 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
         return
       }
 
+      // Special handling for autoWait pause
+      if (result.error === 'AUTO_WAIT_PAUSED') {
+        logger.info(`Node ${nodeId} triggered autoWait pause, job stays waiting`)
+        markJobWaiting(jobId)
+        // Don't mark node as failed or retry — it will be re-queued on resume
+        return
+      }
+
       // Use smart retry strategy
       await handleNodeFailure(
         jobId,

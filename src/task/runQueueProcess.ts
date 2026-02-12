@@ -17,6 +17,7 @@ import {
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { releaseRunnerLock } from './spawnTask.js'
+import { isRunningStatus } from '../types/taskStatus.js'
 
 const logger = createLogger('queue-runner')
 
@@ -50,12 +51,29 @@ async function main(): Promise<void> {
   try {
     // 循环执行所有 pending 任务
     while (true) {
-      // 获取所有任务，找到 pending 状态的
+      // 获取所有任务
       const allTasks = getAllTasks()
-      const pendingTask = allTasks.find(t => t.status === 'pending')
+
+      // 收集正在运行的任务的 cwd 集合（用于冲突检测）
+      const runningCwds = new Set(
+        allTasks
+          .filter(t => isRunningStatus(t.status) && t.cwd)
+          .map(t => t.cwd!)
+      )
+
+      // 找第一个不与运行中任务冲突的 pending 任务
+      const pendingTask = allTasks.find(
+        t => t.status === 'pending' && (!t.cwd || !runningCwds.has(t.cwd))
+      )
 
       if (!pendingTask) {
-        logger.info('No pending tasks, exiting')
+        // 可能还有 pending 但全部与运行中任务冲突
+        const blockedCount = allTasks.filter(t => t.status === 'pending').length
+        if (blockedCount > 0) {
+          logger.info(`${blockedCount} pending task(s) blocked by same-project running tasks, exiting`)
+        } else {
+          logger.info('No pending tasks, exiting')
+        }
         break
       }
 

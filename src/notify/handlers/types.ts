@@ -136,6 +136,26 @@ export interface RejectPayload {
   instanceId?: string
 }
 
+export interface TaskPausePayload {
+  action: 'task_pause'
+  taskId: string
+}
+
+export interface TaskResumePayload {
+  action: 'task_resume'
+  taskId: string
+}
+
+export interface TaskMsgPayload {
+  action: 'task_msg'
+  taskId: string
+}
+
+export interface AutoWaitConfirmPayload {
+  action: 'auto_wait_confirm'
+  taskId: string
+}
+
 export type CardActionPayload =
   | TaskDetailPayload
   | TaskLogsPayload
@@ -144,6 +164,10 @@ export type CardActionPayload =
   | ListPagePayload
   | ApprovePayload
   | RejectPayload
+  | TaskPausePayload
+  | TaskResumePayload
+  | TaskMsgPayload
+  | AutoWaitConfirmPayload
 
 /** Runtime validation: parse unknown card action value into a typed payload */
 export function parseCardActionPayload(raw: unknown): CardActionPayload | null {
@@ -157,6 +181,10 @@ export function parseCardActionPayload(raw: unknown): CardActionPayload | null {
     case 'task_logs':
     case 'task_stop':
     case 'task_retry':
+    case 'task_pause':
+    case 'task_resume':
+    case 'task_msg':
+    case 'auto_wait_confirm':
       if (typeof value.taskId !== 'string') return null
       return { action, taskId: value.taskId }
 
