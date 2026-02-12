@@ -1,5 +1,5 @@
 /**
- * Task completion notifications — Telegram + Lark
+ * Task notifications — creation, completion/failure
  * Failures only log, never throw.
  */
 
@@ -7,22 +7,71 @@ import { readFile } from 'fs/promises'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { formatDuration } from '../shared/formatTime.js'
-import { loadConfig } from '../config/loadConfig.js'
+import { getNotifyConfig } from '../config/index.js'
 import { getResultFilePath } from '../store/paths.js'
 import {
   sendTelegramTextMessage,
+} from '../notify/sendTelegramNotify.js'
+import {
   getDefaultChatId as getDefaultTelegramChatId,
+} from '../notify/telegramClient.js'
+import {
   sendLarkCardViaApi,
+  sendLarkMessageViaApi,
+} from '../notify/sendLarkNotify.js'
+import {
   getDefaultLarkChatId,
+} from '../notify/larkWsClient.js'
+import {
   buildTaskCompletedCard,
   buildTaskFailedCard,
-} from '../notify/index.js'
+} from '../notify/buildLarkCard.js'
 import type { Task } from '../types/task.js'
 
 const logger = createLogger('task-notify')
 
 const SUMMARY_MAX_CHARS = 800
 
+/**
+ * Send task creation notification immediately after task is created.
+ * Non-blocking, failures are logged but don't interrupt task execution.
+ */
+export async function sendTaskCreatedNotification(task: Task): Promise<void> {
+  try {
+    const notifyConfig = await getNotifyConfig()
+
+    // ── Telegram ──
+    const tg = notifyConfig?.telegram
+    if (tg?.botToken) {
+      const tgChatId = tg.chatId || getDefaultTelegramChatId()
+      if (tgChatId) {
+        const message = [
+          `✅ 任务已创建`,
+          ``,
+          `ID: ${task.id}`,
+          `标题: ${task.title}`,
+          `状态: 🔵 ${task.status}`,
+        ].join('\n')
+        await sendTelegramTextMessage(message, tgChatId).catch(() => {
+          // Ignore errors
+        })
+      }
+    }
+
+    // ── Lark ── Send via API client (text message type)
+    const larkChatId = notifyConfig?.lark?.chatId || getDefaultLarkChatId()
+    if (larkChatId) {
+      const text = `✅ 任务已创建\nID: ${task.id}\n标题: ${task.title}\n状态: 🔵 ${task.status}`
+      const sent = await sendLarkMessageViaApi(larkChatId, text)
+      if (sent) {
+        logger.info(`Sent task creation notification for ${task.id}`)
+      }
+    }
+  } catch (error) {
+    const msg = formatErrorMessage(error)
+    logger.warn(`Failed to send task creation notification: ${msg}`)
+  }
+}
 /**
  * Parse result.md structurally instead of naive truncation.
  * Extracts Summary section fields + Node execution statuses + errors.
@@ -113,17 +162,17 @@ export async function sendTaskCompletionNotify(
   success: boolean,
   info: TaskNotifyInfo
 ): Promise<void> {
-  const config = await loadConfig()
+  const notifyConfig = await getNotifyConfig()
   const duration = formatDuration(info.durationMs)
   const status = success ? 'completed' : 'failed'
-  logger.info(`Task ${task.id} ${status}, sending notifications...`)
+  logger.info(`Task ${task.id} ${status}, sending notifications... (title: "${task.title}")`)
 
   // Read output summary (best-effort, non-blocking)
   const outputSummary = success ? await readOutputSummary(task.id) : null
 
   // ── Telegram ──
   try {
-    const tg = config.notify?.telegram
+    const tg = notifyConfig?.telegram
     if (tg?.botToken) {
       const statusText = success ? '✅ 完成' : '❌ 失败'
       const lines = [
@@ -163,7 +212,7 @@ export async function sendTaskCompletionNotify(
 
   // ── Lark ──
   try {
-    const larkChatId = config.notify?.lark?.chatId || getDefaultLarkChatId()
+    const larkChatId = notifyConfig?.lark?.chatId || getDefaultLarkChatId()
     if (larkChatId) {
       const cardInfo = {
         id: task.id,

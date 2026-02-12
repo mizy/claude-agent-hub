@@ -2,7 +2,7 @@
  * 对话相关的 Prompt 模板
  */
 
-import type { ClientContext } from '../notify/index.js'
+import type { ClientContext } from '../notify/handlers/types.js'
 
 /**
  * 构建客户端环境上下文 prompt

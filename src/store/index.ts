@@ -103,15 +103,11 @@ export {
   // Workflow CRUD
   saveWorkflow,
   getWorkflow,
-  getAllWorkflows,
-  deleteWorkflow,
   // Instance CRUD
   createInstance,
   saveInstance,
   getInstance,
-  getInstancesByWorkflow,
   getInstancesByStatus,
-  getAllInstances,
   // Instance 状态更新
   updateInstanceStatus,
   updateNodeState,
@@ -126,7 +122,6 @@ export {
   getAllMemories,
   getMemory,
   saveMemory,
-  deleteMemory as deleteMemoryEntry,
   updateMemory,
 } from './MemoryStore.js'
 
@@ -147,7 +142,6 @@ export {
   addTaskMessage,
   getUnconsumedMessages,
   markMessagesConsumed,
-  getAllTaskMessages,
 } from './TaskMessageStore.js'
 
 // ExecutionStatsStore - 执行统计和时间线
@@ -166,3 +160,26 @@ export {
   type ExecutionTimeline,
   type ExecutionSummary,
 } from './ExecutionStatsStore.js'
+
+// TraceStore - Span 追踪存储 (JSONL)
+export {
+  appendSpan,
+  getTrace,
+  listTraces,
+  querySlowSpans,
+  getErrorChain,
+} from './TraceStore.js'
+
+// Span 创建工具
+export {
+  spanId,
+  createRootSpan,
+  createChildSpan,
+  endSpan,
+} from './createSpan.js'
+
+// OTLP 导出
+export {
+  traceToOTLP,
+  exportTraceToOTLP,
+} from './exportOTLP.js'
