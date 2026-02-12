@@ -16,6 +16,25 @@ import {
 } from '../src/notify/handlers/constants.js'
 import type { MessengerAdapter, ClientContext } from '../src/notify/handlers/types.js'
 
+// Mock backend to prevent real AI calls in routeMessage → handleChat path
+vi.mock('../src/backend/index.js', () => ({
+  invokeBackend: vi.fn(async () => ({
+    ok: true,
+    value: { response: 'mock reply', sessionId: 'test-session' },
+  })),
+}))
+
+// Mock conversation log
+vi.mock('../src/notify/handlers/conversationLog.js', () => ({
+  logConversation: vi.fn(),
+  getRecentConversations: vi.fn(() => []),
+}))
+
+// Mock chat prompts
+vi.mock('../src/prompts/chatPrompts.js', () => ({
+  buildClientPrompt: vi.fn(() => ''),
+}))
+
 // ── Helper: create mock adapter ──
 
 function createMockAdapter(): MessengerAdapter & {

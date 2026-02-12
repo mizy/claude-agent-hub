@@ -56,9 +56,7 @@ describe('sendTaskCompletionNotify', () => {
 
   it('should not throw on success with no configured channels', async () => {
     // No telegram or lark configured
-    await expect(
-      sendTaskCompletionNotify(makeTask(), true, makeInfo())
-    ).resolves.not.toThrow()
+    await expect(sendTaskCompletionNotify(makeTask(), true, makeInfo())).resolves.not.toThrow()
   })
 
   it('should not throw on failure with no configured channels', async () => {
@@ -163,11 +161,7 @@ describe('sendTaskCompletionNotify', () => {
 
     const { sendTelegramTextMessage } = await import('../../notify/index.js')
 
-    await sendTaskCompletionNotify(
-      makeTask(),
-      true,
-      makeInfo({ totalCostUsd: 0.1234 })
-    )
+    await sendTaskCompletionNotify(makeTask(), true, makeInfo({ totalCostUsd: 0.1234 }))
 
     const message = vi.mocked(sendTelegramTextMessage).mock.calls[0]?.[0]
     expect(message).toContain('$0.1234')
@@ -185,9 +179,7 @@ describe('sendTaskCompletionNotify', () => {
     vi.mocked(sendTelegramTextMessage).mockRejectedValue(new Error('network error'))
 
     // Should not throw despite send failure
-    await expect(
-      sendTaskCompletionNotify(makeTask(), true, makeInfo())
-    ).resolves.not.toThrow()
+    await expect(sendTaskCompletionNotify(makeTask(), true, makeInfo())).resolves.not.toThrow()
   })
 
   it('should gracefully handle Lark send failure', async () => {
@@ -202,8 +194,6 @@ describe('sendTaskCompletionNotify', () => {
     vi.mocked(getDefaultLarkChatId).mockReturnValue(null)
     vi.mocked(sendLarkCardViaApi).mockRejectedValue(new Error('lark error'))
 
-    await expect(
-      sendTaskCompletionNotify(makeTask(), true, makeInfo())
-    ).resolves.not.toThrow()
+    await expect(sendTaskCompletionNotify(makeTask(), true, makeInfo())).resolves.not.toThrow()
   })
 })

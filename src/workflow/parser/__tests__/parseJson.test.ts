@@ -5,13 +5,23 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { parseJson, validateJsonWorkflow, extractJson, type JsonWorkflowInput } from '../parseJson.js'
+import {
+  parseJson,
+  validateJsonWorkflow,
+  extractJson,
+  type JsonWorkflowInput,
+} from '../parseJson.js'
 
 function makeMinimalInput(overrides: Partial<JsonWorkflowInput> = {}): JsonWorkflowInput {
   return {
     name: 'test-workflow',
     nodes: [
-      { id: 'n1', type: 'task', name: 'Task 1', task: { persona: 'coder', prompt: 'do something' } },
+      {
+        id: 'n1',
+        type: 'task',
+        name: 'Task 1',
+        task: { persona: 'coder', prompt: 'do something' },
+      },
     ],
     edges: [],
     ...overrides,
@@ -311,7 +321,8 @@ That's the workflow.`
   })
 
   it('should handle nested braces in embedded JSON', () => {
-    const response = 'prefix {"name": "nested", "nodes": [{"id": "n1", "type": "task", "name": "T"}], "edges": []} suffix'
+    const response =
+      'prefix {"name": "nested", "nodes": [{"id": "n1", "type": "task", "name": "T"}], "edges": []} suffix'
     const result = extractJson(response)
     expect(result.name).toBe('nested')
   })

@@ -8,25 +8,8 @@ import { TASKS_DIR } from '../../store/paths.js'
 import { readJson } from '../../store/readWriteJson.js'
 import type { ExecutionSummary, ExecutionTimeline } from '../../task/index.js'
 import type { NodeExecutionStats } from '../../workflow/engine/WorkflowEventEmitter.js'
-import type { TaskCategory } from '../../analysis/index.js'
+import { categorizeTask } from '../../analysis/index.js'
 import type { TaskStats } from './types.js'
-
-/**
- * 任务类型分类（简化版，与 executionHistory 保持一致）
- */
-export function categorizeTask(title: string, description?: string): TaskCategory {
-  const text = `${title} ${description || ''}`.toLowerCase()
-
-  if (/commit|push|pull|merge|提交|推送|合并/.test(text)) return 'git'
-  if (/迭代|进化|iteration|evolution|cycle|周期/.test(text)) return 'iteration'
-  if (/refactor|重构|优化|整理|reorganize/.test(text)) return 'refactor'
-  if (/fix|bug|修复|修正|repair/.test(text)) return 'fix'
-  if (/test|测试|spec|unittest/.test(text)) return 'test'
-  if (/doc|文档|readme|changelog/.test(text)) return 'docs'
-  if (/add|feature|implement|新增|添加|实现|功能/.test(text)) return 'feature'
-
-  return 'other'
-}
 
 /**
  * 读取所有任务统计数据

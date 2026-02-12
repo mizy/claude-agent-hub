@@ -11,6 +11,7 @@ import chalk from 'chalk'
 import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
+import { toInvokeError } from '../shared/toInvokeError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 
 const logger = createLogger('codebuddy')
@@ -106,7 +107,7 @@ export function createCodebuddyBackend(): BackendAdapter {
           costUsd: parsed.costUsd,
         })
       } catch (error: unknown) {
-        return err(toInvokeError(error))
+        return err(toInvokeError(error, 'CodeBuddy'))
       }
     },
 
@@ -118,7 +119,8 @@ export function createCodebuddyBackend(): BackendAdapter {
         try {
           await execa('cbc', ['--version'])
           return true
-        } catch {
+        } catch (e) {
+          logger.debug(`codebuddy/cbc not available: ${e instanceof Error ? e.message : String(e)}`)
           return false
         }
       }
@@ -133,7 +135,8 @@ async function resolveBinary(): Promise<string> {
   try {
     await execa('codebuddy', ['--version'])
     return 'codebuddy'
-  } catch {
+  } catch (e) {
+    logger.debug(`codebuddy binary not found, falling back to cbc: ${e instanceof Error ? e.message : String(e)}`)
     return 'cbc'
   }
 }
@@ -229,28 +232,33 @@ async function streamOutput(
         if (!line.trim()) continue
         try {
           const event = JSON.parse(line) as StreamJsonEvent
-          let output = ''
+
+          // Only forward assistant text as AI response (for Lark/streaming)
           if (event.type === 'assistant' && event.message?.content) {
+            let assistantText = ''
             for (const block of event.message.content) {
               if (block.type === 'text' && block.text) {
-                output += block.text
+                assistantText += block.text
+              }
+            }
+            if (assistantText) {
+              if (onChunk) {
+                onChunk(assistantText + '\n')
+              } else {
+                process.stdout.write(chalk.dim(assistantText + '\n'))
               }
             }
           } else if (event.type === 'user' && event.tool_use_result) {
-            if (event.tool_use_result.stdout) output += event.tool_use_result.stdout
-            if (event.tool_use_result.stderr) output += event.tool_use_result.stderr
-          }
-          if (output) {
-            if (onChunk) {
-              onChunk(output + '\n')
-            } else {
-              process.stdout.write(chalk.dim(output + '\n'))
+            // Tool output — only show in CLI, never send to Lark
+            const toolOutput =
+              (event.tool_use_result.stdout ?? '') + (event.tool_use_result.stderr ?? '')
+            if (toolOutput && !onChunk) {
+              process.stdout.write(chalk.dim(toolOutput + '\n'))
             }
           }
         } catch {
-          if (onChunk) {
-            onChunk(line + '\n')
-          } else {
+          // Non-JSON lines — only show in CLI terminal
+          if (!onChunk) {
             process.stdout.write(chalk.dim(line + '\n'))
           }
         }
@@ -262,16 +270,3 @@ async function streamOutput(
   return chunks.join('')
 }
 
-function toInvokeError(error: unknown): InvokeError {
-  if (error && typeof error === 'object') {
-    const e = error as Record<string, unknown>
-    if (e.timedOut) return { type: 'timeout', message: 'CodeBuddy 执行超时' }
-    if (e.isCanceled) return { type: 'cancelled', message: '执行被取消' }
-    return {
-      type: 'process',
-      message: String(e.message ?? e.shortMessage ?? '未知错误'),
-      exitCode: typeof e.exitCode === 'number' ? e.exitCode : undefined,
-    }
-  }
-  return { type: 'process', message: String(error) }
-}

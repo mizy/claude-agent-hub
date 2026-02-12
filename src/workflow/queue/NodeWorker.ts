@@ -316,14 +316,19 @@ async function handleNodeFailure(
           logger.debug(`Worker stopped, skipping retry for node ${nodeId}`)
           return
         }
-        // 重新入队以触发重试
-        await enqueueNode({
-          workflowId,
-          instanceId,
-          nodeId,
-          attempt: retryDecision.nextAttempt,
-        })
-        logger.debug(`Retry job enqueued for node ${nodeId}`)
+        try {
+          await enqueueNode({
+            workflowId,
+            instanceId,
+            nodeId,
+            attempt: retryDecision.nextAttempt,
+          })
+          logger.debug(`Retry job enqueued for node ${nodeId}`)
+        } catch (retryError) {
+          logger.error(
+            `Failed to enqueue retry for node ${nodeId}: ${retryError instanceof Error ? retryError.message : String(retryError)}`
+          )
+        }
       }, retryDecision.delayMs)
       state.retryTimers.add(timer)
     } else {

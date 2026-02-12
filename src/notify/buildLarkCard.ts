@@ -1,11 +1,4 @@
-/**
- * Lark interactive card builder — pure functions for constructing card JSON
- *
- * Cards follow Lark Open Platform message card v1 schema:
- * header (title + color template) + elements (markdown, hr, action buttons, note)
- */
-
-// ── Types ──
+/** Lark interactive card builder — pure functions for constructing card JSON */
 
 export interface LarkCard {
   config?: { wide_screen_mode: boolean }
@@ -26,10 +19,8 @@ export interface LarkCardButton {
   tag: 'button'
   text: { tag: 'plain_text'; content: string }
   type?: 'primary' | 'danger' | 'default'
-  value?: Record<string, string>
+  value?: CardActionPayload | Record<string, string>
 }
-
-// ── Primitive builders ──
 
 export function buildCard(title: string, template: string, elements: LarkCardElement[]): LarkCard {
   return {
@@ -58,7 +49,7 @@ export function actionElement(buttons: LarkCardButton[]): LarkCardElement {
 export function button(
   label: string,
   type: 'primary' | 'danger' | 'default',
-  value: Record<string, string>
+  value: CardActionPayload | Record<string, string>
 ): LarkCardButton {
   return { tag: 'button', text: { tag: 'plain_text', content: label }, type, value }
 }
@@ -66,10 +57,45 @@ export function button(
 import { statusEmoji } from './handlers/constants.js'
 import { formatDuration } from '../shared/formatTime.js'
 import type { WorkflowInstance, Workflow, WorkflowNode } from '../workflow/types.js'
+import type {
+  CardActionPayload,
+  TaskDetailPayload,
+  TaskLogsPayload,
+  TaskStopPayload,
+  TaskRetryPayload,
+  ListPagePayload,
+  ApprovePayload,
+  RejectPayload,
+} from './handlers/types.js'
 
-// ── Pre-built card templates ──
+export function taskDetailAction(taskId: string): TaskDetailPayload {
+  return { action: 'task_detail', taskId }
+}
 
-/** Node info passed from sendTaskNotify */
+export function taskLogsAction(taskId: string): TaskLogsPayload {
+  return { action: 'task_logs', taskId }
+}
+
+export function taskStopAction(taskId: string): TaskStopPayload {
+  return { action: 'task_stop', taskId }
+}
+
+export function taskRetryAction(taskId: string): TaskRetryPayload {
+  return { action: 'task_retry', taskId }
+}
+
+export function listPageAction(page: number, filter?: string): ListPagePayload {
+  return { action: 'list_page', page: String(page), ...(filter ? { filter } : {}) }
+}
+
+export function approveAction(nodeId: string, workflowId?: string, instanceId?: string): ApprovePayload {
+  return { action: 'approve', nodeId, workflowId, instanceId }
+}
+
+export function rejectAction(nodeId: string, workflowId?: string, instanceId?: string): RejectPayload {
+  return { action: 'reject', nodeId, workflowId, instanceId }
+}
+
 export interface TaskNodeInfo {
   name: string
   status: string
@@ -130,8 +156,8 @@ export function buildTaskCompletedCard(task: TaskCardInfo, duration: string): La
   elements.push(hrElement())
   elements.push(
     actionElement([
-      button('📋 查看详情', 'primary', { action: 'task_detail', taskId: task.id }),
-      button('📝 查看日志', 'default', { action: 'task_logs', taskId: task.id }),
+      button('📋 查看详情', 'primary', taskDetailAction(task.id)),
+      button('📝 查看日志', 'default', taskLogsAction(task.id)),
     ])
   )
 
@@ -166,9 +192,9 @@ export function buildTaskFailedCard(task: TaskCardInfo, duration: string, error:
   elements.push(hrElement())
   elements.push(
     actionElement([
-      button('📋 查看详情', 'default', { action: 'task_detail', taskId: task.id }),
-      button('📝 查看日志', 'default', { action: 'task_logs', taskId: task.id }),
-      button('🔄 重试', 'primary', { action: 'task_retry', taskId: task.id }),
+      button('📋 查看详情', 'default', taskDetailAction(task.id)),
+      button('📝 查看日志', 'default', taskLogsAction(task.id)),
+      button('🔄 重试', 'primary', taskRetryAction(task.id)),
     ])
   )
 
@@ -201,18 +227,8 @@ export function buildApprovalCard(options: {
     ),
     hrElement(),
     actionElement([
-      button('✅ 通过', 'primary', {
-        action: 'approve',
-        workflowId,
-        instanceId,
-        nodeId,
-      }),
-      button('❌ 拒绝', 'danger', {
-        action: 'reject',
-        workflowId,
-        instanceId,
-        nodeId,
-      }),
+      button('✅ 通过', 'primary', approveAction(nodeId, workflowId, instanceId)),
+      button('❌ 拒绝', 'danger', rejectAction(nodeId, workflowId, instanceId)),
     ]),
     noteElement('也可回复: 通过 / 拒绝 [原因]'),
   ])
@@ -244,7 +260,7 @@ export interface TaskListItem {
 }
 
 function formatTaskLineLark(item: TaskListItem): string {
-  return `${statusEmoji(item.status)} ${item.title}  ${item.priority}  ${item.relativeTime}`
+  return `${statusEmoji(item.status)} **${item.shortId}** ${item.title}  ${item.relativeTime}`
 }
 
 export function buildTaskListCard(
@@ -256,11 +272,19 @@ export function buildTaskListCard(
 ): LarkCard {
   const elements: LarkCardElement[] = []
 
-  // Active group
+  // Active group — each task is a markdown line + inline action buttons
   if (groups.active.length > 0) {
-    const lines = [`**🔄 进行中 (${counts.activeCount})**`, '']
-    lines.push(...groups.active.map(formatTaskLineLark))
-    elements.push(mdElement(lines.join('\n')))
+    elements.push(mdElement(`**🔄 进行中 (${counts.activeCount})**`))
+    for (const t of groups.active) {
+      elements.push(mdElement(formatTaskLineLark(t)))
+      elements.push(
+        actionElement([
+          button('📋 详情', 'primary', taskDetailAction(t.id)),
+          button('📜 日志', 'default', taskLogsAction(t.id)),
+          button('🛑 停止', 'danger', taskStopAction(t.id)),
+        ])
+      )
+    }
   }
 
   // Separator between groups
@@ -268,14 +292,20 @@ export function buildTaskListCard(
     elements.push(hrElement())
   }
 
-  // Completed group
+  // Completed group — compact, one button per task
   if (groups.completed.length > 0) {
-    const lines = [`**✅ 已完成 (${counts.completedCount})**`, '']
-    lines.push(...groups.completed.map(formatTaskLineLark))
-    elements.push(mdElement(lines.join('\n')))
+    elements.push(mdElement(`**✅ 已完成 (${counts.completedCount})**`))
+    for (const t of groups.completed) {
+      elements.push(mdElement(formatTaskLineLark(t)))
+      elements.push(
+        actionElement([
+          button('📋 详情', 'default', taskDetailAction(t.id)),
+        ])
+      )
+    }
   }
 
-  // Empty state (shouldn't happen but safe)
+  // Empty state
   if (groups.active.length === 0 && groups.completed.length === 0) {
     elements.push(mdElement('暂无任务'))
   }
@@ -286,32 +316,23 @@ export function buildTaskListCard(
     const buttons: LarkCardButton[] = []
     if (page > 1) {
       buttons.push(
-        button('⬅️ 上一页', 'default', {
-          action: 'list_page',
-          page: String(page - 1),
-          ...(statusFilter ? { filter: statusFilter } : {}),
-        })
+        button('⬅️ 上一页', 'default', listPageAction(page - 1, statusFilter))
       )
     }
     if (page < totalPages) {
       buttons.push(
-        button('➡️ 下一页', 'default', {
-          action: 'list_page',
-          page: String(page + 1),
-          ...(statusFilter ? { filter: statusFilter } : {}),
-        })
+        button('➡️ 下一页', 'default', listPageAction(page + 1, statusFilter))
       )
     }
     elements.push(actionElement(buttons))
     elements.push(noteElement(`第 ${page}/${totalPages} 页 · 共 ${counts.total} 个任务`))
   }
 
-  elements.push(noteElement('💡 发送 /get <ID> 查看任务详情'))
+  elements.push(noteElement('💡 发送 /get <ID> 查看详情 | ID 支持前缀匹配'))
 
   return buildCard(`📋 任务列表 (${counts.total})`, 'blue', elements)
 }
 
-// Node status emoji for workflow timeline
 const NODE_STATUS_EMOJI: Record<string, string> = {
   pending: '⏳',
   ready: '🔵',
@@ -403,8 +424,7 @@ export function buildTaskDetailCard(
       }
 
       if (state.error) {
-        const errPreview =
-          state.error.length > 100 ? state.error.slice(0, 97) + '...' : state.error
+        const errPreview = state.error.length > 100 ? state.error.slice(0, 97) + '...' : state.error
         timelineLines.push(`> ❌ ${errPreview}`)
       }
     }
@@ -415,10 +435,10 @@ export function buildTaskDetailCard(
 
   // Action buttons
   const buttons: LarkCardButton[] = [
-    button('📜 日志', 'default', { action: 'task_logs', taskId: task.id }),
+    button('📜 日志', 'default', taskLogsAction(task.id)),
   ]
   if (task.status === 'failed') {
-    buttons.push(button('🔄 重试', 'primary', { action: 'task_retry', taskId: task.id }))
+    buttons.push(button('🔄 重试', 'primary', taskRetryAction(task.id)))
   }
   elements.push(hrElement())
   elements.push(actionElement(buttons))
@@ -468,6 +488,9 @@ export function buildHelpCard(): LarkCard {
         '`/new` - 开始新对话',
         '`/chat` - 查看对话状态',
         '`/help` - 显示此帮助',
+        '',
+        '**💰 统计**',
+        '`/cost` - 查看对话费用统计',
         '',
         '**🔧 系统**',
         '`/reload` - 重启守护进程（加载新代码）',

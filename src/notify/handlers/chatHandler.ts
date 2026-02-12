@@ -1,130 +1,103 @@
 /**
- * 平台无关的对话处理器
- * 将文本消息转发给 AI 后端，支持会话复用和流式响应
+ * Chat handler — thin coordination layer
+ * Routes text messages to AI backend with session management, streaming, and image detection
  */
 
-import { readFileSync, existsSync } from 'fs'
-import { resolve, isAbsolute } from 'path'
 import { invokeBackend } from '../../backend/index.js'
+import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import { buildClientPrompt } from '../../prompts/chatPrompts.js'
-import { logConversation } from './conversationLog.js'
-import type { MessengerAdapter, ChatSession, ClientContext } from './types.js'
+import { logConversation, getRecentConversations } from './conversationLog.js'
+import { getSession, setSession, clearSession, enqueueChat, destroySessions } from './sessionManager.js'
+import { createStreamHandler, sendFinalResponse } from './streamingHandler.js'
+import { sendDetectedImages } from './imageExtractor.js'
+import type { MessengerAdapter, ClientContext } from './types.js'
 
 const logger = createLogger('chat-handler')
 
 const DEFAULT_MAX_LENGTH = 4096
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
-const STREAM_THROTTLE_MS = 1500
-const STREAM_MIN_DELTA = 100 // chars
 
-const sessions = new Map<string, ChatSession>()
+// ── Model Selection ──
 
-// 每个 chatId 的消息队列，保证同一会话串行处理
-const chatQueues = new Map<string, Promise<void>>()
+/** Keywords that signal deep reasoning requiring opus */
+const OPUS_KEYWORDS = /(?:重构|refactor|架构|architect|迁移|migrate|设计|design|审查|review|分析|analyze|debug|调试)/i
 
-// 定期清理过期会话
-let cleanupTimer: ReturnType<typeof setInterval> | null = null
+/** Keywords for simple queries that haiku can handle */
+const HAIKU_PATTERNS = /^(?:(?:你好|hi|hello|ping|status|状态|帮助|help|谢谢|thanks|ok|好的|收到|嗯)[!！？?。.]*|\/\w+.*)$/i
 
-function ensureCleanupTimer(): void {
-  if (cleanupTimer) return
-  cleanupTimer = setInterval(() => {
-    const now = Date.now()
-    for (const [chatId, session] of sessions) {
-      if (now - session.lastActiveAt > SESSION_TIMEOUT_MS) {
-        sessions.delete(chatId)
-        logger.info(`Session expired for chat ${chatId}`)
-      }
-    }
-    if (sessions.size === 0 && cleanupTimer) {
-      clearInterval(cleanupTimer)
-      cleanupTimer = null
-    }
-  }, 60_000)
+/** Pick model: haiku (trivial) → sonnet (default) → opus (complex) */
+function selectModel(text: string, ctx: { hasImages?: boolean }): string {
+  if (ctx.hasImages) return 'opus'
+  if (HAIKU_PATTERNS.test(text.trim())) return 'haiku'
+  if (text.length > 150 || OPUS_KEYWORDS.test(text)) return 'opus'
+  return 'sonnet'
 }
 
-/** 分段发送长消息 */
-function splitMessage(text: string, maxLength: number = DEFAULT_MAX_LENGTH): string[] {
-  if (text.length <= maxLength) return [text]
-  const parts: string[] = []
-  let remaining = text
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLength) {
-      parts.push(remaining)
-      break
-    }
-    // 尝试在换行处断开
-    let cutAt = remaining.lastIndexOf('\n', maxLength)
-    if (cutAt < maxLength * 0.3) {
-      // 换行太靠前，直接截断
-      cutAt = maxLength
-    }
-    parts.push(remaining.slice(0, cutAt))
-    remaining = remaining.slice(cutAt)
-  }
-  return parts
+// ── Benchmark ──
+
+interface BenchmarkTiming {
+  start: number
+  promptReady: number
+  parallelStart: number
+  firstChunk: number
+  backendDone: number
+  responseSent: number
 }
 
-/** Extract local image file paths from text */
-function extractImagePaths(text: string): string[] {
-  const paths: string[] = []
-
-  // Pattern 1: Absolute paths (/path/to/image.png)
-  const absoluteRegex = /(?:^|\s|["'`])(\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
-  let match: RegExpExecArray | null
-  while ((match = absoluteRegex.exec(text)) !== null) {
-    const filePath = match[1]!
-    if (existsSync(filePath)) paths.push(filePath)
-  }
-
-  // Pattern 2: Markdown image syntax ![alt](path)
-  const markdownRegex = /!\[.*?\]\(([\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))\)/gi
-  while ((match = markdownRegex.exec(text)) !== null) {
-    const filePath = match[1]!
-    const resolved = resolveImagePath(filePath)
-    if (resolved && existsSync(resolved)) paths.push(resolved)
-  }
-
-  // Pattern 3: Relative paths mentioned in text (./image.png or image.png)
-  const relativeRegex = /(?:^|\s|["'`])(\.?\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp)|[\w-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
-  while ((match = relativeRegex.exec(text)) !== null) {
-    const filePath = match[1]!
-    const resolved = resolveImagePath(filePath)
-    if (resolved && existsSync(resolved)) paths.push(resolved)
-  }
-
-  return [...new Set(paths)] // dedupe
+function createBenchmark(): BenchmarkTiming {
+  const now = Date.now()
+  return { start: now, promptReady: 0, parallelStart: 0, firstChunk: 0, backendDone: 0, responseSent: 0 }
 }
 
-/** Resolve relative path to absolute, trying cwd and common temp dirs */
-function resolveImagePath(filePath: string): string | null {
-  if (isAbsolute(filePath)) return filePath
+function formatBenchmark(t: BenchmarkTiming, extra?: { slotWaitMs?: number; apiMs?: number; costUsd?: number; model?: string }): string {
+  const total = t.responseSent - t.start
+  const prep = t.promptReady - t.start
+  const parallel = t.parallelStart - t.promptReady
+  const ttfc = t.firstChunk ? t.firstChunk - t.parallelStart : 0
+  const inference = t.backendDone - t.parallelStart
+  const send = t.responseSent - t.backendDone
 
-  // Try cwd
-  const cwdPath = resolve(process.cwd(), filePath)
-  if (existsSync(cwdPath)) return cwdPath
-
-  // Try common temp directories
-  const tempDirs = ['/tmp', '/var/tmp', process.env.TMPDIR || ''].filter(Boolean)
-  for (const dir of tempDirs) {
-    const fullPath = resolve(dir, filePath)
-    if (existsSync(fullPath)) return fullPath
+  const lines = [
+    `**Benchmark** (${(total / 1000).toFixed(1)}s total)` + (extra?.model ? ` [${extra.model}]` : ''),
+    `- 准备阶段: ${prep}ms`,
+    `- 并行启动: ${parallel}ms` + (extra?.slotWaitMs ? ` (含排队 ${extra.slotWaitMs}ms)` : ''),
+    `- 首 chunk: ${ttfc}ms` + (ttfc > 0 ? '' : ' (无流式)'),
+    `- 后端推理: ${(inference / 1000).toFixed(1)}s` + (extra?.apiMs ? ` (API: ${(extra.apiMs / 1000).toFixed(1)}s)` : ''),
+    `- 发送回复: ${send}ms`,
+  ]
+  if (extra?.costUsd !== undefined) {
+    lines.push(`- 费用: $${extra.costUsd.toFixed(4)}`)
   }
-
-  return null
+  return lines.join('\n')
 }
+
+let benchmarkEnabled = false
+
+/** Toggle benchmark mode on/off */
+export function toggleBenchmark(): boolean {
+  benchmarkEnabled = !benchmarkEnabled
+  return benchmarkEnabled
+}
+
+/** Check if benchmark is enabled */
+export function isBenchmarkEnabled(): boolean {
+  return benchmarkEnabled
+}
+
+// ── Public API ──
 
 export interface ChatOptions {
-  /** 单条消息最大长度，默认 4096（Telegram 限制） */
+  /** Max message length, default 4096 (Telegram limit) */
   maxMessageLength?: number
-  /** 客户端环境上下文，注入给 AI 让它知道回复格式约束 */
+  /** Client context injected to AI for format constraints */
   client?: ClientContext
+  /** Optional image file paths from the user message */
+  images?: string[]
 }
 
 /**
- * 处理普通文本消息，调用 AI 后端获取回复
- * 同一 chatId 的消息会串行处理，避免并发访问同一会话
+ * Handle a text message: enqueue per-chatId for serial processing, call AI backend.
  */
 export async function handleChat(
   chatId: string,
@@ -132,19 +105,39 @@ export async function handleChat(
   messenger: MessengerAdapter,
   options?: ChatOptions
 ): Promise<void> {
-  const prev = chatQueues.get(chatId) ?? Promise.resolve()
-  const task = prev.then(() => handleChatInternal(chatId, text, messenger, options))
-  // swallow errors so next queued message isn't blocked
-  const tail = task.catch(e => {
-    logger.debug(`chat queue error [${chatId.slice(0, 8)}]: ${e instanceof Error ? e.message : e}`)
-  })
-  chatQueues.set(chatId, tail)
-  // 队列跑完后清理
-  tail.then(() => {
-    if (chatQueues.get(chatId) === tail) chatQueues.delete(chatId)
-  })
-  return task
+  return enqueueChat(chatId, () =>
+    handleChatInternal(chatId, text, messenger, options).catch(e => {
+      const msg = e instanceof Error ? e.message : String(e)
+      logger.warn(`chat queue error [${chatId.slice(0, 8)}]: ${msg}`)
+      messenger.reply(chatId, `❌ 处理失败: ${msg}`).catch(re => {
+        logger.debug(`Failed to send error reply: ${re instanceof Error ? re.message : String(re)}`)
+      })
+    })
+  )
 }
+
+/**
+ * Clear the session for a chatId.
+ */
+export function clearChatSession(chatId: string): boolean {
+  return clearSession(chatId)
+}
+
+/**
+ * Get session info for a chatId.
+ */
+export function getChatSessionInfo(chatId: string) {
+  return getSession(chatId)
+}
+
+/**
+ * Cleanup all sessions and stop timers. Call on daemon shutdown.
+ */
+export function destroyChatHandler(): void {
+  destroySessions()
+}
+
+// ── Internal ──
 
 async function handleChatInternal(
   chatId: string,
@@ -154,62 +147,87 @@ async function handleChatInternal(
 ): Promise<void> {
   const maxLen = options?.maxMessageLength ?? DEFAULT_MAX_LENGTH
   const platform = options?.client?.platform ?? 'unknown'
-  const startTime = Date.now()
+  const bench = createBenchmark()
 
-  // 获取或创建会话
-  const session = sessions.get(chatId)
+  const session = getSession(chatId)
   const sessionId = session?.sessionId
   logger.info(`💬 chat ${sessionId ? 'continue' : 'new'} [${chatId.slice(0, 8)}]`)
 
-  // 记录用户消息
+  // Log user message
   logConversation({
     ts: new Date().toISOString(),
     dir: 'in',
     platform,
     chatId,
     sessionId,
-    text,
+    text: text || (options?.images?.length ? '[图片消息]' : ''),
+    images: options?.images,
   })
 
-  // 发送占位消息
-  const placeholderId = await messenger.sendAndGetId(chatId, '🤔 思考中...')
-
-  let lastEditAt = 0
-  let lastEditLength = 0
-  let accumulated = ''
-
-  const onChunk = placeholderId
-    ? (chunk: string) => {
-        accumulated += chunk
-        const now = Date.now()
-        const deltaLen = accumulated.length - lastEditLength
-        // 节流：1.5s 间隔 + 100 字符增量
-        if (now - lastEditAt > STREAM_THROTTLE_MS && deltaLen > STREAM_MIN_DELTA) {
-          lastEditAt = now
-          lastEditLength = accumulated.length
-          const preview =
-            accumulated.length > maxLen
-              ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
-              : accumulated
-          messenger.editMessage(chatId, placeholderId, preview).catch(e => {
-            logger.debug(`stream edit failed: ${e instanceof Error ? e.message : e}`)
-          })
-        }
-      }
-    : undefined
-
-  // 每条消息都注入客户端环境上下文（botName + 平台格式约束）
-  // AI session 不会自动记住身份和格式限制，必须持续注入
+  // Build prompt with client context and optional images
+  const hasImages = !!options?.images?.length
   const clientPrefix = options?.client ? buildClientPrompt(options.client) + '\n\n' : ''
+  const images = options?.images
 
+  // Inject minimal recent history for new sessions (session resume handles continuity)
+  let historyContext = ''
+  if (!sessionId) {
+    const recent = getRecentConversations(chatId, 5)
+    if (recent.length > 0) {
+      const summaryLines = recent.map(e => {
+        const role = e.dir === 'in' ? '用户' : 'AI'
+        const content = e.text.length > 100 ? e.text.slice(0, 97) + '...' : e.text
+        return `[${role}] ${content}`
+      })
+      historyContext = '[近期对话]\n' + summaryLines.join('\n') + '\n\n'
+    }
+  }
+
+  let prompt = clientPrefix + historyContext + text
+  if (images?.length) {
+    const imagePart = images
+      .map(p => `[用户发送了图片: ${p}，请使用 Read 工具查看这张图片并回复]`)
+      .join('\n')
+    prompt = prompt ? `${prompt}\n\n${imagePart}` : imagePart
+  }
+
+  // Auto model selection: short simple messages → sonnet (fast), complex → opus (smart)
+  const model = selectModel(text, { hasImages })
+  bench.promptReady = Date.now()
+
+  // Setup streaming with shared ref for placeholderId
+  let placeholderId: string | null = null
+  const streamHandlerState = { placeholderId: null as string | null }
+  const { onChunk } = createStreamHandler(chatId, streamHandlerState, maxLen, messenger, bench)
+
+  // Parallel: send placeholder + start backend call
+  // Placeholder ID is injected as soon as it resolves (before backend finishes)
+  const placeholder = hasImages ? '🖼️ 已收到图片，分析中...' : '🤔 思考中...'
+  const placeholderPromise = messenger.sendAndGetId(chatId, placeholder).then(pId => {
+    placeholderId = pId
+    streamHandlerState.placeholderId = pId
+    return pId
+  })
+
+  bench.parallelStart = Date.now()
   try {
-    const result = await invokeBackend({
-      prompt: clientPrefix + text,
-      stream: true,
-      skipPermissions: true,
-      sessionId,
-      onChunk,
-    })
+    const [, result] = await Promise.all([
+      placeholderPromise,
+      loadConfig().then(config => {
+        const chatMcp = config.backend?.chat?.mcpServers ?? []
+        return invokeBackend({
+          prompt,
+          stream: true,
+          skipPermissions: true,
+          sessionId,
+          onChunk,
+          disableMcp: true,
+          mcpServers: chatMcp.length > 0 ? chatMcp : undefined,
+          model,
+        })
+      }),
+    ])
+    bench.backendDone = Date.now()
 
     if (!result.ok) {
       const errorMsg = `❌ AI 调用失败: ${result.error.message}`
@@ -223,10 +241,10 @@ async function handleChatInternal(
 
     const response = result.value.response
     const newSessionId = result.value.sessionId
-    const durationMs = Date.now() - startTime
+    const durationMs = Date.now() - bench.start
     logger.info(`→ reply ${response.length} chars (${(durationMs / 1000).toFixed(1)}s)`)
 
-    // 记录 AI 回复
+    // Log AI reply (with cost and model for aggregation)
     logConversation({
       ts: new Date().toISOString(),
       dir: 'out',
@@ -235,47 +253,42 @@ async function handleChatInternal(
       sessionId: newSessionId ?? sessionId,
       text: response,
       durationMs,
+      costUsd: result.value.costUsd,
+      model,
     })
 
-    // 更新会话
+    // Update session
     if (newSessionId) {
-      sessions.set(chatId, { sessionId: newSessionId, lastActiveAt: Date.now() })
-      ensureCleanupTimer()
+      setSession(chatId, newSessionId)
     }
 
-    // 发送最终回复
-    const parts = splitMessage(response, maxLen)
-    if (placeholderId && parts.length > 0) {
-      // 用完整回复替换占位消息
-      await messenger.editMessage(chatId, placeholderId, parts[0]!)
-      // 剩余部分单独发送
-      for (const part of parts.slice(1)) {
-        await messenger.reply(chatId, part)
-      }
-    } else {
-      for (const part of parts) {
-        await messenger.reply(chatId, part)
-      }
+    // Append completion marker so user knows the response is final
+    const elapsedSec = ((Date.now() - bench.start) / 1000).toFixed(1)
+    const completionMarker = `\n\n---\n✅ ${elapsedSec}s`
+    const finalText = response + completionMarker
+
+    // Send final response
+    await sendFinalResponse(chatId, finalText, maxLen, placeholderId, messenger)
+    bench.responseSent = Date.now()
+
+    // Log benchmark
+    const benchStr = formatBenchmark(bench, {
+      slotWaitMs: result.value.slotWaitMs,
+      apiMs: result.value.durationApiMs,
+      costUsd: result.value.costUsd,
+      model,
+    })
+    logger.info(`\n${benchStr}`)
+
+    // Send benchmark to user if enabled
+    if (benchmarkEnabled) {
+      await messenger.reply(chatId, benchStr).catch(e => {
+        logger.debug(`benchmark reply failed: ${e instanceof Error ? e.message : e}`)
+      })
     }
 
-    // Detect and send local image files mentioned in the response
-    if (messenger.replyImage) {
-      const imagePaths = extractImagePaths(response)
-      if (imagePaths.length > 0) {
-        logger.info(`Detected ${imagePaths.length} image(s) in response`)
-      }
-      for (const imgPath of imagePaths) {
-        try {
-          logger.info(`Reading image: ${imgPath}`)
-          const imageData = readFileSync(imgPath)
-          logger.info(`Sending image (${imageData.length} bytes) to ${chatId.slice(0, 8)}`)
-          await messenger.replyImage(chatId, imageData, imgPath)
-          logger.info(`✓ Image sent: ${imgPath}`)
-        } catch (e) {
-          logger.error(`✗ Failed to send image ${imgPath}: ${e instanceof Error ? e.message : e}`)
-        }
-      }
-    }
+    // Detect and send images from response
+    await sendDetectedImages(chatId, response, messenger)
   } catch (error) {
     const msg = formatErrorMessage(error)
     logger.error(`chat error [${chatId.slice(0, 8)}]: ${msg}`)
@@ -288,18 +301,4 @@ async function handleChatInternal(
       await messenger.reply(chatId, errorMsg)
     }
   }
-}
-
-/**
- * 清除指定聊天的会话
- */
-export function clearChatSession(chatId: string): boolean {
-  return sessions.delete(chatId)
-}
-
-/**
- * 获取指定聊天的会话信息
- */
-export function getChatSessionInfo(chatId: string): ChatSession | undefined {
-  return sessions.get(chatId)
 }

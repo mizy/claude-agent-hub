@@ -19,6 +19,8 @@ import {
   startTelegramClient,
   stopTelegramClient,
 } from '../notify/index.js'
+import { destroyChatHandler } from '../notify/handlers/chatHandler.js'
+import { loadSessions } from '../notify/handlers/sessionManager.js'
 import { acquirePidLock, releasePidLock, isServiceRunning } from './pidLock.js'
 
 interface DaemonOptions {
@@ -171,6 +173,9 @@ async function runDaemon(): Promise<void> {
   })
   scheduledJobs.push(job)
 
+  // Restore chat sessions from disk before starting notification platforms
+  loadSessions()
+
   // 根据配置自动启动通知平台
   const larkConfig = config.notify?.lark
   const telegramConfig = config.notify?.telegram
@@ -203,6 +208,7 @@ async function runDaemon(): Promise<void> {
     console.log(chalk.yellow('\n停止守护进程...'))
     stopSleepPrevention()
     stopAllJobs()
+    destroyChatHandler()
     await stopLarkWsClient()
     stopTelegramClient()
 

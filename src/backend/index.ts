@@ -64,10 +64,19 @@ export async function invokeBackend(
   )
   logger.debug(`Prompt: ${truncate(fullPrompt, 100)}`)
 
+  const slotStart = Date.now()
   await acquireSlot()
+  const slotWaitMs = Date.now() - slotStart
+  if (slotWaitMs > 50) {
+    logger.info(`Slot wait: ${slotWaitMs}ms`)
+  }
   try {
     const result = await backend.invoke({ ...options, prompt: fullPrompt })
     releaseSlot()
+    // Attach slot wait time to result
+    if (result.ok) {
+      result.value.slotWaitMs = slotWaitMs
+    }
     return result
   } catch (error) {
     releaseSlot()

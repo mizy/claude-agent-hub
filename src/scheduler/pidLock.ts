@@ -27,11 +27,19 @@ export interface PidLockInfo {
 /**
  * 检查进程是否在运行
  */
-function isProcessRunning(pid: number): boolean {
+export function isProcessRunning(pid: number): boolean {
   try {
     process.kill(pid, 0)
     return true
-  } catch {
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'EPERM') {
+      // Process exists but we don't have permission to signal it
+      return true
+    }
+    if (code !== 'ESRCH') {
+      logger.warn(`Unexpected error checking PID ${pid}: ${code}`)
+    }
     return false
   }
 }

@@ -315,98 +315,13 @@ export interface ExecuteNodeResult {
   error?: string
 }
 
-// ============ 工作流创建工具 (聚合导出) ============
-
-function createWorkflowFn(
-  name: string,
-  description: string,
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[]
-): Omit<Workflow, 'id' | 'createdAt'> {
-  return {
-    name,
-    description,
-    nodes,
-    edges,
-    variables: {},
-  }
-}
-
-function createTaskNodeFn(id: string, name: string, config: TaskConfig): WorkflowNode {
-  return {
-    id,
-    type: 'task',
-    name,
-    task: config,
-  }
-}
-
-function createHumanNodeFn(id: string, name: string, config?: HumanConfig): WorkflowNode {
-  return {
-    id,
-    type: 'human',
-    name,
-    human: config,
-  }
-}
-
-function createEdgeFn(
-  from: string,
-  to: string,
-  options?: { condition?: string; maxLoops?: number; label?: string }
-): Omit<WorkflowEdge, 'id'> {
-  return {
-    from,
-    to,
-    ...options,
-  }
-}
-
-function createInitialNodeStateFn(): NodeState {
-  return {
-    status: 'pending',
-    attempts: 0,
-  }
-}
-
-function createInitialInstanceFn(
-  workflowId: string,
-  workflow: Workflow
-): Omit<WorkflowInstance, 'id'> {
-  const nodeStates: Record<string, NodeState> = {}
-  for (const node of workflow.nodes) {
-    nodeStates[node.id] = createInitialNodeStateFn()
-  }
-
-  return {
-    workflowId,
-    status: 'pending',
-    nodeStates,
-    variables: { ...workflow.variables },
-    outputs: {},
-    loopCounts: {},
-  }
-}
-
-/**
- * 工作流创建工具集合
- * @example
- * import { WorkflowFactory } from './types.js'
- * const workflow = WorkflowFactory.createWorkflow(...)
- */
-export const WORKFLOW_FACTORY = {
-  createWorkflow: createWorkflowFn,
-  createTaskNode: createTaskNodeFn,
-  createHumanNode: createHumanNodeFn,
-  createEdge: createEdgeFn,
-  createInitialNodeState: createInitialNodeStateFn,
-  createInitialInstance: createInitialInstanceFn,
-}
-
-// 为兼容性保留单独导出
-export const createWorkflow = createWorkflowFn
-export const createTaskNode = createTaskNodeFn
-export const createHumanNode = createHumanNodeFn
-export const createEdge = createEdgeFn
-export const createInitialNodeState = createInitialNodeStateFn
-export const createInitialInstance = createInitialInstanceFn
+// Factory functions extracted to ./factory.ts
+export {
+  WORKFLOW_FACTORY,
+  createWorkflow,
+  createTaskNode,
+  createHumanNode,
+  createEdge,
+  createInitialNodeState,
+  createInitialInstance,
+} from './factory.js'

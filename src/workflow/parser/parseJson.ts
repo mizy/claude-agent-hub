@@ -228,6 +228,8 @@ function tryParseJson(text: string): JsonWorkflowInput {
     return JSON.parse(text) as JsonWorkflowInput
   } catch (e) {
     const preview = text.length > 100 ? text.slice(0, 100) + '...' : text
-    throw new Error(`Invalid JSON in AI response: ${e instanceof Error ? e.message : e}\n${preview}`)
+    throw new Error(
+      `Invalid JSON in AI response: ${e instanceof Error ? e.message : e}\n${preview}`
+    )
   }
 }

@@ -1,34 +1,22 @@
-/**
- * 飞书 WebSocket 长连接客户端
- *
- * 薄适配层：飞书 WSClient 事件接收 + MessengerAdapter 构建
- * 消息路由委托给 handlers/messageRouter，业务逻辑在 handlers/ 下
- */
+/** 飞书 WebSocket 长连接客户端 — 薄适配层 */
 
 import * as Lark from '@larksuiteoapi/node-sdk'
-import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, statSync } from 'fs'
 import { join } from 'path'
+import { tmpdir } from 'os'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { DATA_DIR } from '../store/paths.js'
 import { sendApprovalResultNotification, uploadLarkImage, sendLarkImage } from './sendLarkNotify.js'
-import { buildWelcomeCard, buildTaskDetailCard, buildTaskLogsCard } from './buildLarkCard.js'
+import { buildWelcomeCard } from './buildLarkCard.js'
 import { buildMarkdownCard } from './larkCardWrapper.js'
 import { routeMessage } from './handlers/messageRouter.js'
-import { handleApproval } from './handlers/approvalHandler.js'
-import { handleList } from './handlers/commandHandler.js'
-import {
-  loadTaskFolder,
-  getLogPath,
-  resumeOrphanedTask as resumeTask,
-} from '../task/index.js'
+import { dispatchCardAction } from './handlers/larkCardActions.js'
 import type { LarkCard } from './buildLarkCard.js'
-import type { MessengerAdapter, ParsedApproval, ClientContext } from './handlers/types.js'
+import type { MessengerAdapter, ClientContext } from './handlers/types.js'
 
 const logger = createLogger('lark-ws')
-
-// ── Lark SDK event data types ──
 
 interface LarkMessageEvent {
   message?: {
@@ -37,6 +25,7 @@ interface LarkMessageEvent {
     content?: string
     chat_id?: string
     chat_type?: string
+    create_time?: string
     mentions?: Array<{ key: string; id: { open_id?: string }; name: string }>
   }
 }
@@ -45,7 +34,7 @@ interface LarkCardActionEvent {
   open_chat_id?: string
   open_message_id?: string
   action?: {
-    value?: Record<string, string>
+    value?: Record<string, unknown>
   }
   context?: {
     open_chat_id?: string
@@ -81,7 +70,8 @@ function persistChatId(chatId: string): void {
 function loadPersistedChatId(): string | null {
   try {
     return readFileSync(LARK_CHAT_ID_FILE, 'utf-8').trim() || null
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to load persisted chatId: ${formatErrorMessage(error)}`)
     return null
   }
 }
@@ -89,6 +79,14 @@ function loadPersistedChatId(): string | null {
 // Message dedup: prevent SDK from delivering the same message twice
 const DEDUP_TTL_MS = 60_000
 const recentMessageIds = new Map<string, number>()
+
+// Startup timestamp: ignore messages created before daemon started (prevents re-delivery after restart)
+let daemonStartedAt = Date.now()
+
+/** Reset startup timestamp. Call when daemon starts/restarts. */
+export function markDaemonStarted(): void {
+  daemonStartedAt = Date.now()
+}
 
 function isDuplicateMessage(messageId: string): boolean {
   if (!messageId) return false
@@ -101,6 +99,15 @@ function isDuplicateMessage(messageId: string): boolean {
     }
   }
   return false
+}
+
+/** Check if message was created before daemon started (stale re-delivery after restart) */
+function isStaleMessage(createTime?: string): boolean {
+  if (!createTime) return false
+  const msgTs = Number(createTime) // Lark create_time is unix ms string
+  if (Number.isNaN(msgTs)) return false
+  // Allow 3s grace for clock skew and message transit
+  return msgTs < daemonStartedAt - 3000
 }
 
 // ── MessengerAdapter ──
@@ -139,7 +146,7 @@ function createAdapter(): MessengerAdapter {
         return null
       }
     },
-    async editMessage(_chatId, messageId, text) {
+    async editMessage(chatId, messageId, text) {
       if (!larkClient || !messageId) return
       try {
         await larkClient.im.v1.message.patch({
@@ -149,7 +156,14 @@ function createAdapter(): MessengerAdapter {
           },
         })
       } catch (error) {
-        logger.error(`→ edit failed: ${formatErrorMessage(error)}`)
+        const msg = formatErrorMessage(error)
+        // Fallback: if original message is not a card, send a new reply instead
+        if (msg.includes('NOT a card') || msg.includes('not a card')) {
+          logger.warn(`→ edit failed (not a card), falling back to reply: ${messageId}`)
+          await this.reply(chatId, text)
+        } else {
+          logger.error(`→ edit failed: ${msg}`)
+        }
       }
     },
     async replyCard(chatId: string, card: LarkCard) {
@@ -167,7 +181,7 @@ function createAdapter(): MessengerAdapter {
         logger.error(`→ card send failed: ${formatErrorMessage(error)}`)
       }
     },
-    async editCard(_chatId: string, messageId: string, card: LarkCard) {
+    async editCard(chatId: string, messageId: string, card: LarkCard) {
       if (!larkClient || !messageId) return
       try {
         logger.debug(`→ editCard called for msgId=${messageId}`)
@@ -179,7 +193,14 @@ function createAdapter(): MessengerAdapter {
         })
         logger.debug(`→ editCard response: ${JSON.stringify(res).slice(0, 200)}`)
       } catch (error) {
-        logger.error(`→ editCard failed: ${formatErrorMessage(error)}`)
+        const msg = formatErrorMessage(error)
+        // Fallback: if original message is not a card, send as new card
+        if (msg.includes('NOT a card') || msg.includes('not a card')) {
+          logger.warn(`→ editCard failed (not a card), falling back to replyCard: ${messageId}`)
+          await this.replyCard!(chatId, card)
+        } else {
+          logger.error(`→ editCard failed: ${msg}`)
+        }
       }
     },
     async replyImage(chatId: string, imageData: Buffer) {
@@ -219,13 +240,68 @@ async function createApprovalCallback() {
   }
 }
 
-// ── Message handling (delegates to router) ──
+// Image message buffer: Lark sends image and text as separate events.
+const IMAGE_BUFFER_DELAY_MS = 10_000
+
+interface PendingImage {
+  chatId: string
+  images: string[]
+  isGroup: boolean
+  hasMention: boolean
+  timer: ReturnType<typeof setTimeout>
+}
+
+/** Per-chat pending image buffer */
+const pendingImageBuffer = new Map<string, PendingImage>()
+
+function flushPendingImages(chatId: string, text = ''): void {
+  const pending = pendingImageBuffer.get(chatId)
+  if (!pending) return
+  clearTimeout(pending.timer)
+  pendingImageBuffer.delete(chatId)
+  // Fire and forget — handleLarkMessage is async
+  handleLarkMessage(chatId, text, pending.isGroup, pending.hasMention, pending.images)
+}
+
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024 // 20MB
+
+async function downloadLarkImage(messageId: string, imageKey: string): Promise<string | null> {
+  if (!larkClient) return null
+  try {
+    const res = await larkClient.im.v1.messageResource.get({
+      path: { message_id: messageId, file_key: imageKey },
+      params: { type: 'image' },
+    })
+    // SDK returns a response with file stream
+    const fileData = res as unknown as { writeFile(path: string): Promise<void> }
+    if (typeof fileData?.writeFile !== 'function') {
+      logger.error(`Unexpected messageResource response: ${JSON.stringify(res).slice(0, 200)}`)
+      return null
+    }
+    const filePath = join(tmpdir(), `lark-img-${Date.now()}-${imageKey.slice(-8)}.png`)
+    await fileData.writeFile(filePath)
+
+    // Validate file size
+    const fileSize = statSync(filePath).size
+    if (fileSize > MAX_IMAGE_BYTES) {
+      logger.warn(`Image too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB > ${MAX_IMAGE_BYTES / 1024 / 1024}MB`)
+      return null
+    }
+
+    logger.info(`Downloaded image: ${imageKey} → ${filePath} (${(fileSize / 1024).toFixed(0)}KB)`)
+    return filePath
+  } catch (error) {
+    logger.error(`Failed to download image ${imageKey}: ${formatErrorMessage(error)}`)
+    return null
+  }
+}
 
 async function handleLarkMessage(
   chatId: string,
   text: string,
   isGroup: boolean,
-  hasMention: boolean
+  hasMention: boolean,
+  images?: string[]
 ): Promise<void> {
   // Ignore group messages without @mention
   if (isGroup && !hasMention) return
@@ -238,19 +314,19 @@ async function handleLarkMessage(
   }
 
   const preview = text.length > 60 ? text.slice(0, 57) + '...' : text
-  logger.info(`← [${isGroup ? 'group' : 'dm'}] ${preview}`)
+  const imgSuffix = images?.length ? ` +${images.length} image(s)` : ''
+  logger.info(`← [${isGroup ? 'group' : 'dm'}] ${preview}${imgSuffix}`)
 
   await routeMessage({
     chatId,
     text,
+    images,
     messenger: createAdapter(),
     clientContext: larkClientContext(isGroup),
     onApprovalResult: await createApprovalCallback(),
     checkBareApproval: true,
   })
 }
-
-// ── Card action + new chat handlers ──
 
 async function handleCardAction(data: LarkCardActionEvent): Promise<unknown> {
   // SDK v2 flattens event fields: open_chat_id/open_message_id live under context
@@ -259,96 +335,13 @@ async function handleCardAction(data: LarkCardActionEvent): Promise<unknown> {
   const value = data?.action?.value
   if (!chatId || !value) return undefined
 
-  const actionType = value.action
-  logger.info(`← [card] action=${actionType} chatId=${chatId} msgId=${messageId ?? '?'}`)
-
-  if (actionType === 'approve' || actionType === 'reject') {
-    const approval: ParsedApproval = {
-      action: actionType,
-      nodeId: value.nodeId,
-    }
-    const messenger = createAdapter()
-    const result = await handleApproval(approval, await createApprovalCallback())
-    logger.info(`→ approval: ${approval.action} ${approval.nodeId ?? '(auto)'}`)
-    await messenger.reply(chatId, result)
-  } else if (actionType === 'list_page') {
-    const page = parseInt(value.page ?? '1', 10) || 1
-    const filter = value.filter
-    const result = await handleList(filter, page)
-    if (result.larkCard && messageId) {
-      // Directly update via API - this is more reliable than relying on callback return
-      const messenger = createAdapter()
-      logger.info(`→ [card] list_page updating via API to page ${page}`)
-
-      // Use a small delay to prevent race conditions
-      setTimeout(async () => {
-        await messenger.editCard?.(chatId, messageId, result.larkCard!)
-        logger.debug(`→ [card] update completed for page ${page}`)
-      }, 100)
-
-      // Return empty response to prevent SDK auto-handling
-      return {}
-    }
-    const messenger = createAdapter()
-    await messenger.reply(chatId, result.text)
-  } else if (actionType === 'task_detail') {
-    const taskId = value.taskId
-    if (!taskId) {
-      logger.warn('task_detail action missing taskId')
-      return
-    }
-    const messenger = createAdapter()
-    const folder = loadTaskFolder(taskId)
-    if (!folder) {
-      await messenger.reply(chatId, `未找到任务: ${taskId}`)
-      return
-    }
-    const card = buildTaskDetailCard(folder.task, folder.instance, folder.workflow)
-    await messenger.replyCard?.(chatId, card)
-  } else if (actionType === 'task_logs') {
-    const taskId = value.taskId
-    if (!taskId) {
-      logger.warn('task_logs action missing taskId')
-      return
-    }
-    const messenger = createAdapter()
-    const logPath = getLogPath(taskId)
-    let content: string
-    try {
-      content = readFileSync(logPath, 'utf-8')
-    } catch {
-      await messenger.reply(chatId, `暂无日志: ${taskId.slice(0, 20)}`)
-      return
-    }
-    const lines = content.trim().split('\n')
-    const tail = lines.slice(-50).join('\n')
-    const card = buildTaskLogsCard(taskId, tail)
-    await messenger.replyCard?.(chatId, card)
-  } else if (actionType === 'task_retry') {
-    const taskId = value.taskId
-    if (!taskId) {
-      logger.warn('task_retry action missing taskId')
-      return
-    }
-    const messenger = createAdapter()
-    try {
-      const pid = resumeTask(taskId)
-      if (pid) {
-        logger.info(`→ task retried: ${taskId.slice(0, 20)} pid=${pid}`)
-        await messenger.reply(chatId, `▶️ 已恢复任务: \`${taskId.slice(0, 20)}\`\nPID: ${pid}`)
-      } else {
-        await messenger.reply(chatId, `⚠️ 无法恢复任务（可能仍在运行或已完成）`)
-      }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      logger.error(`task_retry failed: ${msg}`)
-      await messenger.reply(chatId, `❌ 恢复任务失败: ${msg}`)
-    }
-  } else {
-    logger.warn(`Unknown card action: ${actionType}`)
-  }
-
-  return undefined
+  return dispatchCardAction({
+    chatId,
+    messageId,
+    value,
+    messenger: createAdapter(),
+    onApprovalResult: await createApprovalCallback(),
+  })
 }
 
 async function handleP2pChatCreate(data: LarkP2pChatCreateEvent): Promise<void> {
@@ -368,8 +361,6 @@ async function handleP2pChatCreate(data: LarkP2pChatCreateEvent): Promise<void> 
     await messenger.reply(chatId, '欢迎使用 Claude Agent Hub! 发送 /help 查看指令')
   }
 }
-
-// ── Public API ──
 
 export async function startLarkWsClient(): Promise<void> {
   if (wsClient) {
@@ -393,10 +384,11 @@ export async function startLarkWsClient(): Promise<void> {
       method: 'GET',
       url: '/open-apis/bot/v3/info/',
     })
-    const botInfo = res as { data?: { bot?: { app_name?: string } } }
-    larkBotName = botInfo?.data?.bot?.app_name ?? null
+    // API returns { bot: { app_name: "xxx" } } at top level (not under .data)
+    const botInfo = res as { bot?: { app_name?: string }; data?: { bot?: { app_name?: string } } }
+    larkBotName = botInfo?.bot?.app_name ?? botInfo?.data?.bot?.app_name ?? null
   } catch (error) {
-    logger.debug(`Failed to fetch bot name: ${formatErrorMessage(error)}`)
+    logger.warn(`Failed to fetch bot name: ${formatErrorMessage(error)}`)
   }
 
   wsClient = new Lark.WSClient({
@@ -408,7 +400,9 @@ export async function startLarkWsClient(): Promise<void> {
     'im.message.receive_v1': async (data: LarkMessageEvent) => {
       const message = data.message
       if (!message) return
-      if (message.message_type !== 'text') return
+
+      const msgType = message.message_type
+      if (msgType !== 'text' && msgType !== 'image') return
 
       const messageId = message.message_id
       if (messageId && isDuplicateMessage(messageId)) {
@@ -416,7 +410,13 @@ export async function startLarkWsClient(): Promise<void> {
         return
       }
 
-      let content: { text?: string }
+      // Ignore stale messages re-delivered after daemon restart
+      if (isStaleMessage(message.create_time)) {
+        logger.info(`Stale message ignored (created before daemon start): ${messageId}`)
+        return
+      }
+
+      let content: { text?: string; image_key?: string }
       try {
         content = JSON.parse(message.content || '{}')
       } catch {
@@ -424,12 +424,48 @@ export async function startLarkWsClient(): Promise<void> {
         return
       }
 
-      const text = content.text || ''
       const chatId = message.chat_id || ''
       const hasMention = !!(message.mentions && message.mentions.length > 0)
       const isGroup = message.chat_type === 'group'
 
-      await handleLarkMessage(chatId, text, isGroup, hasMention)
+      if (msgType === 'image') {
+        // Skip image-only messages in groups without @mention
+        if (isGroup && !hasMention) return
+
+        const imageKey = content.image_key
+        if (!imageKey || !messageId) {
+          logger.debug('Image message missing image_key or message_id')
+          return
+        }
+        const imagePath = await downloadLarkImage(messageId, imageKey)
+        if (!imagePath) {
+          const messenger = createAdapter()
+          await messenger.reply(chatId, '⚠️ 图片处理失败（可能文件过大或格式不支持），请重试')
+          return
+        }
+
+        // Buffer image — wait for possible follow-up text from same chat
+        const existing = pendingImageBuffer.get(chatId)
+        if (existing) {
+          // Additional image in same chat — append and reset timer
+          clearTimeout(existing.timer)
+          existing.images.push(imagePath)
+          existing.timer = setTimeout(() => flushPendingImages(chatId), IMAGE_BUFFER_DELAY_MS)
+        } else {
+          const timer = setTimeout(() => flushPendingImages(chatId), IMAGE_BUFFER_DELAY_MS)
+          pendingImageBuffer.set(chatId, { chatId, images: [imagePath], isGroup, hasMention, timer })
+        }
+        logger.debug(`Image buffered for chat ${chatId}, waiting ${IMAGE_BUFFER_DELAY_MS}ms for text`)
+        return
+      }
+
+      // Text message — flush any pending images for this chat (merge image + text)
+      const text = content.text || ''
+      if (pendingImageBuffer.has(chatId)) {
+        flushPendingImages(chatId, text)
+      } else {
+        await handleLarkMessage(chatId, text, isGroup, hasMention)
+      }
     },
   })
 
@@ -460,7 +496,7 @@ export async function startLarkWsClient(): Promise<void> {
       'im.message.recalled_v1': logEvent('message.recalled'),
       'im.chat.member.user.added_v1': logEvent('chat.member.added'),
       'im.message.bot_muted_v1': logEvent('bot.muted'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Lark SDK lacks type defs for these events
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Lark SDK lacks type defs for these events
     } as any)
   } catch {
     logger.debug('Some log-only event registrations not supported, skipping')

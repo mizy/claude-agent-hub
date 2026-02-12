@@ -14,6 +14,7 @@ const CONFIG_FILENAME = '.claude-agent-hub.yaml'
 let cachedConfig: Config | null = null
 let configWatcher: FSWatcher | null = null
 let watchedPath: string | null = null
+let reloadTimer: NodeJS.Timeout | null = null
 
 /**
  * 查找配置文件路径
@@ -83,12 +84,18 @@ async function loadConfigFromFile(configPath: string): Promise<Config> {
   const config = result.data
 
   // 向后兼容：若只有 claude 没有 backend，自动映射
-  if (config.claude && !config.backend) {
-    config.backend = {
-      type: 'claude-code' as const,
-      model: config.claude.model,
-      max_tokens: config.claude.max_tokens,
-      enableAgentTeams: false,
+  if (config.claude) {
+    logger.warn(
+      '⚠️  配置中的 "claude" 字段已废弃，请迁移为 "backend" 字段。' +
+        ' 示例: backend: { type: claude-code, model: opus }'
+    )
+    if (!config.backend) {
+      config.backend = {
+        type: 'claude-code' as const,
+        model: config.claude.model,
+        max_tokens: config.claude.max_tokens,
+        enableAgentTeams: false,
+      }
     }
   }
 
@@ -109,10 +116,7 @@ function startWatching(configPath: string): void {
   logger.info(`Watching config file: ${configPath}`)
   watchedPath = configPath
 
-  // 使用防抖避免多次触发
-  let reloadTimer: NodeJS.Timeout | null = null
-
-  configWatcher = watch(configPath, async (eventType) => {
+  configWatcher = watch(configPath, async eventType => {
     if (eventType !== 'change') return
 
     // 防抖 500ms
@@ -139,6 +143,10 @@ function startWatching(configPath: string): void {
  * 停止监听配置文件
  */
 function stopWatching(): void {
+  if (reloadTimer) {
+    clearTimeout(reloadTimer)
+    reloadTimer = null
+  }
   if (configWatcher) {
     configWatcher.close()
     configWatcher = null

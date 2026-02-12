@@ -117,4 +117,48 @@ claude:
     expect(config.backend?.model).toBe('sonnet')
     expect(config.backend?.max_tokens).toBe(4000)
   })
+
+  it('should prefer backend over claude when both present', async () => {
+    writeFileSync(
+      join(TEST_DIR, '.claude-agent-hub.yaml'),
+      `
+claude:
+  model: sonnet
+  max_tokens: 4000
+backend:
+  type: opencode
+  model: gpt-4
+`
+    )
+
+    const config = await loadConfig({ cwd: TEST_DIR })
+    // backend should take precedence
+    expect(config.backend?.type).toBe('opencode')
+    expect(config.backend?.model).toBe('gpt-4')
+  })
+
+  it('should not throw when stopConfigWatch called multiple times', () => {
+    stopConfigWatch()
+    stopConfigWatch()
+    // No error means success
+  })
+
+  it('should start and stop watching without error', async () => {
+    writeFileSync(
+      join(TEST_DIR, '.claude-agent-hub.yaml'),
+      `
+tasks:
+  default_priority: medium
+`
+    )
+
+    // Load with watch enabled
+    await loadConfig({ cwd: TEST_DIR, watch: true })
+    // Stop should clean up watcher and any pending reload timer
+    stopConfigWatch()
+    // Should be able to load again without issues
+    clearConfigCache()
+    const config = await loadConfig({ cwd: TEST_DIR })
+    expect(config.tasks.default_priority).toBe('medium')
+  })
 })

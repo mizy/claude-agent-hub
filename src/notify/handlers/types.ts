@@ -93,3 +93,91 @@ export interface IncomingMessage {
   /** 消息来源类型 */
   chatType?: 'private' | 'group'
 }
+
+// ── Card action payloads (discriminated union on `action` field) ──
+
+export interface TaskDetailPayload {
+  action: 'task_detail'
+  taskId: string
+}
+
+export interface TaskLogsPayload {
+  action: 'task_logs'
+  taskId: string
+}
+
+export interface TaskStopPayload {
+  action: 'task_stop'
+  taskId: string
+}
+
+export interface TaskRetryPayload {
+  action: 'task_retry'
+  taskId: string
+}
+
+export interface ListPagePayload {
+  action: 'list_page'
+  page: string
+  filter?: string
+}
+
+export interface ApprovePayload {
+  action: 'approve'
+  nodeId: string
+  workflowId?: string
+  instanceId?: string
+}
+
+export interface RejectPayload {
+  action: 'reject'
+  nodeId: string
+  workflowId?: string
+  instanceId?: string
+}
+
+export type CardActionPayload =
+  | TaskDetailPayload
+  | TaskLogsPayload
+  | TaskStopPayload
+  | TaskRetryPayload
+  | ListPagePayload
+  | ApprovePayload
+  | RejectPayload
+
+/** Runtime validation: parse unknown card action value into a typed payload */
+export function parseCardActionPayload(raw: unknown): CardActionPayload | null {
+  if (!raw || typeof raw !== 'object') return null
+  const value = raw as Record<string, unknown>
+  const action = value.action
+  if (typeof action !== 'string') return null
+
+  switch (action) {
+    case 'task_detail':
+    case 'task_logs':
+    case 'task_stop':
+    case 'task_retry':
+      if (typeof value.taskId !== 'string') return null
+      return { action, taskId: value.taskId }
+
+    case 'list_page':
+      return {
+        action,
+        page: String(value.page ?? '1'),
+        filter: typeof value.filter === 'string' ? value.filter : undefined,
+      }
+
+    case 'approve':
+    case 'reject':
+      if (typeof value.nodeId !== 'string') return null
+      return {
+        action,
+        nodeId: value.nodeId,
+        workflowId: typeof value.workflowId === 'string' ? value.workflowId : undefined,
+        instanceId: typeof value.instanceId === 'string' ? value.instanceId : undefined,
+      }
+
+    default:
+      return null
+  }
+}

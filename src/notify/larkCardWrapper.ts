@@ -52,24 +52,57 @@ export function convertMarkdownTables(text: string): string {
 }
 
 /**
- * Normalize markdown for Lark card rendering
- * - Lark only supports # and ## headings; ### and deeper are converted to bold text
- * - Convert markdown tables to Lark table tags
+ * Normalize markdown for Lark card rendering.
+ *
+ * Lark card markdown (tag: 'markdown') supports (official docs):
+ *   **bold**, *italic*, ~~strikethrough~~, [link](url), emoji, <at>,
+ *   <font color>, <text_tag>, ![image](key), \n ---\n (hr),
+ *   ordered/unordered lists (7.6+), ```code blocks``` (7.6+)
+ *
+ * NOT supported (must be converted):
+ *   # headings, `inline code`, > blockquote
  */
 export function normalizeLarkMarkdown(text: string): string {
   let result = convertMarkdownTables(text)
-  // Lark cards only support # and ##, convert ### and deeper to bold
-  result = result.replace(/^(#{3,})\s+(.+)$/gm, (_match, _hashes: string, title: string) => {
+  // # headings → bold (not supported in card markdown)
+  result = result.replace(/^(#{1,})\s+(.+)$/gm, (_match, _hashes: string, title: string) => {
     return `**${title}**`
   })
+  // `inline code` → <text_tag> label (not supported natively in card markdown)
+  // Must skip triple backticks (code blocks ARE supported since 7.6)
+  result = result.replace(/(?<!`)(`)((?!`)[^`]+)\1(?!`)/g, '<text_tag color=\'neutral\'>$2</text_tag>')
+  // > blockquote → grey colored text (not supported natively in card markdown)
+  result = result.replace(/^>\s?(.*)$/gm, '<font color=\'grey\'>$1</font>')
   return result
 }
 
-/** Wrap text into a Lark markdown interactive card JSON string */
+/**
+ * Split text by horizontal rules (---) and build card elements.
+ * Each section becomes a markdown element, separated by hr elements.
+ */
 export function buildMarkdownCard(text: string): string {
-  const content = normalizeLarkMarkdown(text)
+  // Split by horizontal rules (---, ***, ___) on their own line
+  const sections = text.split(/^(?:---+|\*\*\*+|___+)\s*$/m)
+  const elements: Record<string, unknown>[] = []
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i]!.trim()
+    if (section) {
+      elements.push({ tag: 'markdown', content: normalizeLarkMarkdown(section) })
+    }
+    // Add hr between sections (not after the last one)
+    if (i < sections.length - 1) {
+      elements.push({ tag: 'hr' })
+    }
+  }
+
+  // Fallback: if no content at all, add empty markdown
+  if (elements.length === 0) {
+    elements.push({ tag: 'markdown', content: text })
+  }
+
   return JSON.stringify({
     config: { wide_screen_mode: true },
-    elements: [{ tag: 'markdown', content }],
+    elements,
   })
 }

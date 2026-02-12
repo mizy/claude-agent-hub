@@ -263,13 +263,12 @@ export function spawnTaskRunner(): void {
 
   child.unref()
 
-  // 写入锁文件
-  if (child.pid) {
-    createRunnerLock(child.pid)
-    // 启动 caffeinate 防止 Mac 休眠
-    spawnCaffeinate(child.pid)
-    logger.debug(`Queue runner spawned: PID ${child.pid}`)
-  } else {
-    logger.warn('Queue runner spawned but no PID assigned')
+  if (!child.pid) {
+    logger.error('Failed to spawn queue runner: no PID assigned')
+    return
   }
+
+  createRunnerLock(child.pid)
+  spawnCaffeinate(child.pid)
+  logger.debug(`Queue runner spawned: PID ${child.pid}`)
 }

@@ -112,8 +112,8 @@ const MAX_CONTEXT_OUTPUT_LENGTH = 3000
 /**
  * 提取节点输出的可读文本，优先使用 _raw 字段
  */
-function summarizeNodeOutput(output: unknown): string {
-  if (!output) return 'completed'
+export function extractRawOutput(output: unknown, fallback = ''): string {
+  if (!output) return fallback
   if (typeof output === 'string') return output
   if (typeof output === 'object' && output !== null && '_raw' in output) {
     const raw = (output as Record<string, unknown>)._raw
@@ -129,7 +129,7 @@ export function buildNodeContext(instance: WorkflowInstance): string {
   const completedNodes = Object.entries(instance.nodeStates)
     .filter(([, state]) => state.status === 'done')
     .map(([nodeId]) => {
-      let text = summarizeNodeOutput(instance.outputs[nodeId])
+      let text = extractRawOutput(instance.outputs[nodeId], 'completed')
       if (text.length > MAX_CONTEXT_OUTPUT_LENGTH) {
         text = text.slice(0, MAX_CONTEXT_OUTPUT_LENGTH) + '... (truncated)'
       }

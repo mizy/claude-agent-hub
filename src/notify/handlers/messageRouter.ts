@@ -7,7 +7,7 @@
 
 import { parseApprovalCommand, handleApproval } from './approvalHandler.js'
 import { handleCommand } from './commandHandler.js'
-import { handleChat, clearChatSession, getChatSessionInfo } from './chatHandler.js'
+import { handleChat, clearChatSession, getChatSessionInfo, toggleBenchmark } from './chatHandler.js'
 import { APPROVAL_COMMANDS, TASK_COMMANDS } from './constants.js'
 import type { MessengerAdapter, ParsedApproval, ClientContext } from './types.js'
 
@@ -30,6 +30,8 @@ export function parseCommandText(text: string): { cmd: string; args: string } | 
 export interface RouteMessageOptions {
   chatId: string
   text: string
+  /** Optional image file paths (e.g. downloaded from Lark) */
+  images?: string[]
   messenger: MessengerAdapter
   clientContext: ClientContext
   /**
@@ -62,7 +64,7 @@ export interface RouteMessageOptions {
  * 5. Non-command: free chat → chatHandler
  */
 export async function routeMessage(options: RouteMessageOptions): Promise<void> {
-  const { chatId, text, messenger, clientContext, onApprovalResult, checkBareApproval } = options
+  const { chatId, text, images, messenger, clientContext, onApprovalResult, checkBareApproval } = options
 
   // Clean text (remove @mentions for matching)
   const cleanText = text.replace(/@[\w\u4e00-\u9fa5]+/g, '').trim()
@@ -72,6 +74,11 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
 
   if (parsed) {
     // Session commands
+    if (parsed.cmd === '/benchmark') {
+      const enabled = toggleBenchmark()
+      await messenger.reply(chatId, enabled ? '📊 Benchmark 已开启，每次对话后会显示耗时分解' : '📊 Benchmark 已关闭')
+      return
+    }
     if (parsed.cmd === '/new') {
       const cleared = clearChatSession(chatId)
       await messenger.reply(chatId, cleared ? '✅ 已开始新对话' : '当前没有活跃会话')
@@ -122,7 +129,7 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
   }
 
   // Free chat
-  await handleChat(chatId, cleanText, messenger, { client: clientContext })
+  await handleChat(chatId, cleanText, messenger, { client: clientContext, images })
 }
 
 // ── Helpers ──

@@ -5,12 +5,13 @@
  * 使用隔离的临时数据目录
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   getPidLock,
   acquirePidLock,
   releasePidLock,
   isServiceRunning,
+  isProcessRunning,
 } from '../pidLock.js'
 
 // DATA_DIR is set to temp dir by vitest.config.ts env CAH_DATA_DIR
@@ -90,6 +91,39 @@ describe('pidLock', () => {
       // Should not throw
       releasePidLock('daemon')
       releasePidLock('dashboard')
+    })
+  })
+
+  describe('isProcessRunning', () => {
+    it('should return true for the current process', () => {
+      expect(isProcessRunning(process.pid)).toBe(true)
+    })
+
+    it('should return false for a non-existent PID', () => {
+      // Use a very high PID unlikely to exist
+      expect(isProcessRunning(999999)).toBe(false)
+    })
+
+    it('should return true when EPERM error occurs', () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+        const err = new Error('EPERM') as NodeJS.ErrnoException
+        err.code = 'EPERM'
+        throw err
+      })
+
+      expect(isProcessRunning(1)).toBe(true)
+      killSpy.mockRestore()
+    })
+
+    it('should return false when ESRCH error occurs', () => {
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+        const err = new Error('ESRCH') as NodeJS.ErrnoException
+        err.code = 'ESRCH'
+        throw err
+      })
+
+      expect(isProcessRunning(99999)).toBe(false)
+      killSpy.mockRestore()
     })
   })
 

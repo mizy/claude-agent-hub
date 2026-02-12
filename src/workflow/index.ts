@@ -81,6 +81,10 @@ export {
   type WorkerOptions,
 } from './queue/NodeWorker.js'
 
+// ============ 结果处理 ============
+
+export { extractRawOutput } from './nodeResultProcessor.js'
+
 // ============ 解析器 ============
 
 export { parseJson, validateJsonWorkflow, extractJson } from './parser/parseJson.js'

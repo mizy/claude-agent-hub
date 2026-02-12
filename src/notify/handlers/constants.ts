@@ -41,4 +41,7 @@ export const TASK_COMMANDS = new Set([
   '/get',
   '/help',
   '/status',
+  '/reload',
+  '/memory',
+  '/cost',
 ])

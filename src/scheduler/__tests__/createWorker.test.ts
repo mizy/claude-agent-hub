@@ -78,14 +78,11 @@ describe('createWorker', () => {
 
   it('should retry on failure when maxRetries > 0', async () => {
     let attempts = 0
-    const worker = createWorker(
-      makeConfig({ maxRetries: 2, retryDelay: 10 }),
-      async () => {
-        attempts++
-        if (attempts < 3) throw new Error('not yet')
-        return 'success'
-      }
-    )
+    const worker = createWorker(makeConfig({ maxRetries: 2, retryDelay: 10 }), async () => {
+      attempts++
+      if (attempts < 3) throw new Error('not yet')
+      return 'success'
+    })
     worker.start()
 
     const result = await worker.execute('data')
@@ -97,12 +94,9 @@ describe('createWorker', () => {
   })
 
   it('should fail after exhausting retries', async () => {
-    const worker = createWorker(
-      makeConfig({ maxRetries: 1, retryDelay: 10 }),
-      async () => {
-        throw new Error('always fails')
-      }
-    )
+    const worker = createWorker(makeConfig({ maxRetries: 1, retryDelay: 10 }), async () => {
+      throw new Error('always fails')
+    })
     worker.start()
 
     const result = await worker.execute('data')
@@ -111,14 +105,11 @@ describe('createWorker', () => {
 
   it('should pass correct attempt number to handler', async () => {
     const attempts: number[] = []
-    const worker = createWorker(
-      makeConfig({ maxRetries: 2, retryDelay: 10 }),
-      async (ctx) => {
-        attempts.push(ctx.attempt)
-        if (ctx.attempt < 3) throw new Error('retry')
-        return 'done'
-      }
-    )
+    const worker = createWorker(makeConfig({ maxRetries: 2, retryDelay: 10 }), async ctx => {
+      attempts.push(ctx.attempt)
+      if (ctx.attempt < 3) throw new Error('retry')
+      return 'done'
+    })
     worker.start()
 
     await worker.execute('data')
@@ -127,7 +118,7 @@ describe('createWorker', () => {
 
   it('should provide AbortSignal in context', async () => {
     let signal: AbortSignal | null = null
-    const worker = createWorker(makeConfig(), async (ctx) => {
+    const worker = createWorker(makeConfig(), async ctx => {
       signal = ctx.signal
       return 'ok'
     })
@@ -165,7 +156,7 @@ describe('createWorker', () => {
 
   it('stop() should abort running tasks', async () => {
     let aborted = false
-    const worker = createWorker(makeConfig({ timeout: 10000 }), async (ctx) => {
+    const worker = createWorker(makeConfig({ timeout: 10000 }), async ctx => {
       // Long-running task
       await new Promise((resolve, reject) => {
         ctx.signal.addEventListener('abort', () => {
@@ -196,15 +187,14 @@ describe('createWorker', () => {
 
   it('should track running count', async () => {
     let resolve1: () => void
-    const promise1 = new Promise<void>(r => { resolve1 = r })
+    const promise1 = new Promise<void>(r => {
+      resolve1 = r
+    })
 
-    const worker = createWorker(
-      makeConfig({ concurrency: 2 }),
-      async () => {
-        await promise1
-        return 'done'
-      }
-    )
+    const worker = createWorker(makeConfig({ concurrency: 2 }), async () => {
+      await promise1
+      return 'done'
+    })
     worker.start()
 
     const task1 = worker.execute('t1')

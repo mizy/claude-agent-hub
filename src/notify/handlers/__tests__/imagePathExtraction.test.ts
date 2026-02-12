@@ -5,11 +5,11 @@ import { tmpdir } from 'os'
 
 // Copy the extraction logic for testing
 function extractImagePaths(text: string): string[] {
-
   const paths: string[] = []
 
   // Pattern 1: Absolute paths (/path/to/image.png)
-  const absoluteRegex = /(?:^|\s|["'`])(\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
+  const absoluteRegex =
+    /(?:^|\s|["'`])(\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
   let match: RegExpExecArray | null
   while ((match = absoluteRegex.exec(text)) !== null) {
     const filePath = match[1]!
@@ -25,7 +25,8 @@ function extractImagePaths(text: string): string[] {
   }
 
   // Pattern 3: Relative paths mentioned in text (./image.png or image.png)
-  const relativeRegex = /(?:^|\s|["'`])(\.?\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp)|[\w-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
+  const relativeRegex =
+    /(?:^|\s|["'`])(\.?\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp)|[\w-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
   while ((match = relativeRegex.exec(text)) !== null) {
     const filePath = match[1]!
     const resolved = resolveImagePath(filePath)

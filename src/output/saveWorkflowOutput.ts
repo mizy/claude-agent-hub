@@ -9,6 +9,7 @@ import { dirname } from 'path'
 import { createLogger } from '../shared/logger.js'
 import { formatDuration } from '../shared/formatTime.js'
 import { getResultFilePath } from '../store/paths.js'
+import { extractRawOutput } from '../workflow/index.js'
 import type { Task } from '../types/task.js'
 import type { Workflow, WorkflowInstance, NodeState } from '../workflow/types.js'
 
@@ -75,16 +76,10 @@ export function formatNodeState(
   }
 
   if (output !== undefined) {
-    // 优先使用 _raw 字段（节点输出的原始文本），避免输出整个 JSON 结构
-    const resultStr =
-      typeof output === 'string'
-        ? output
-        : output &&
-            typeof output === 'object' &&
-            '_raw' in output &&
-            typeof (output as Record<string, unknown>)._raw === 'string'
-          ? ((output as Record<string, unknown>)._raw as string)
-          : JSON.stringify(output, null, 2)
+    // For markdown display, prefer _raw text; use pretty JSON for plain objects
+    const rawText = extractRawOutput(output)
+    const isPlainObject = typeof output === 'object' && output !== null && !('_raw' in output)
+    const resultStr = isPlainObject ? JSON.stringify(output, null, 2) : rawText
 
     // Truncate long results
     const truncated =

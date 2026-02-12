@@ -185,7 +185,17 @@ export async function startTelegramClient(): Promise<void> {
 
   pollLoop().catch(err => {
     logger.error(`poll loop crashed: ${formatErrorMessage(err)}`)
-    running = false
+    if (running) {
+      logger.info('Restarting poll loop in 10s...')
+      setTimeout(() => {
+        if (running) {
+          pollLoop().catch(e => {
+            logger.error(`poll loop restart failed: ${formatErrorMessage(e)}`)
+            running = false
+          })
+        }
+      }, 10_000)
+    }
   })
 
   logger.info(`Telegram client started${botName ? ` as "${botName}"` : ''}`)

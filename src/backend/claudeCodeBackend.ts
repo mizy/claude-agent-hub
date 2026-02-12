@@ -4,11 +4,15 @@
  * 将 Claude Code CLI 封装为 BackendAdapter 实现
  */
 
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { homedir } from 'os'
 import { execa, type ResultPromise } from 'execa'
 import chalk from 'chalk'
 import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
+import { toInvokeError } from '../shared/toInvokeError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 
 const logger = createLogger('claude-code')
@@ -72,11 +76,12 @@ export function createClaudeCodeBackend(): BackendAdapter {
         timeoutMs = 30 * 60 * 1000,
         onChunk,
         disableMcp = false,
+        mcpServers,
         sessionId,
         model = 'opus',
       } = options
 
-      const args = buildArgs(prompt, skipPermissions, disableMcp, sessionId, stream, model)
+      const args = buildArgs(prompt, skipPermissions, disableMcp, mcpServers, sessionId, stream, model)
       const startTime = Date.now()
 
       try {
@@ -111,7 +116,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
           costUsd: parsed.costUsd,
         })
       } catch (error: unknown) {
-        return err(toInvokeError(error))
+        return err(toInvokeError(error, 'Claude Code'))
       }
     },
 
@@ -119,7 +124,8 @@ export function createClaudeCodeBackend(): BackendAdapter {
       try {
         await execa('claude', ['--version'])
         return true
-      } catch {
+      } catch (e) {
+        logger.debug(`claude not available: ${e instanceof Error ? e.message : String(e)}`)
         return false
       }
     },
@@ -132,6 +138,7 @@ function buildArgs(
   prompt: string,
   skipPermissions: boolean,
   disableMcp: boolean,
+  mcpServers?: string[],
   sessionId?: string,
   stream?: boolean,
   model?: string
@@ -158,12 +165,44 @@ function buildArgs(
   if (skipPermissions) {
     args.push('--dangerously-skip-permissions')
   }
+
+  // MCP control: selective enable via --strict-mcp-config + --mcp-config
   if (disableMcp) {
     args.push('--strict-mcp-config')
+    // If specific servers requested, pass them via --mcp-config JSON
+    if (mcpServers?.length) {
+      const mcpConfig = buildMcpConfigJson(mcpServers)
+      if (mcpConfig) args.push('--mcp-config', mcpConfig)
+    }
   }
 
   args.push(prompt)
   return args
+}
+
+/** Build a JSON string for --mcp-config from Claude Code's global config (~/.claude.json) */
+function buildMcpConfigJson(serverNames: string[]): string {
+  try {
+    const configPath = join(homedir(), '.claude.json')
+    const raw = readFileSync(configPath, 'utf-8')
+    const config = JSON.parse(raw)
+    const allServers = config.mcpServers ?? {}
+
+    const selected: Record<string, unknown> = {}
+    for (const name of serverNames) {
+      if (allServers[name]) {
+        selected[name] = allServers[name]
+      } else {
+        logger.warn(`MCP server "${name}" not found in ~/.claude.json, skipping`)
+      }
+    }
+
+    if (Object.keys(selected).length === 0) return ''
+    return JSON.stringify({ mcpServers: selected })
+  } catch (e) {
+    logger.warn(`Failed to read MCP config: ${e instanceof Error ? e.message : e}`)
+    return ''
+  }
 }
 
 function parseClaudeOutput(raw: string): {
@@ -250,34 +289,33 @@ async function streamOutput(
 
         try {
           const event = JSON.parse(line) as StreamJsonEvent
-          let output = ''
 
+          // Only forward assistant text as AI response (for Lark/streaming)
           if (event.type === 'assistant' && event.message?.content) {
+            let assistantText = ''
             for (const block of event.message.content) {
               if (block.type === 'text' && block.text) {
-                output += block.text
+                assistantText += block.text
+              }
+            }
+            if (assistantText) {
+              if (onChunk) {
+                onChunk(assistantText + '\n')
+              } else {
+                process.stdout.write(chalk.dim(assistantText + '\n'))
               }
             }
           } else if (event.type === 'user' && event.tool_use_result) {
-            if (event.tool_use_result.stdout) {
-              output += event.tool_use_result.stdout
-            }
-            if (event.tool_use_result.stderr) {
-              output += event.tool_use_result.stderr
-            }
-          }
-
-          if (output) {
-            if (onChunk) {
-              onChunk(output + '\n')
-            } else {
-              process.stdout.write(chalk.dim(output + '\n'))
+            // Tool output (build logs, test output etc.) — only show in CLI, never send to Lark
+            const toolOutput =
+              (event.tool_use_result.stdout ?? '') + (event.tool_use_result.stderr ?? '')
+            if (toolOutput && !onChunk) {
+              process.stdout.write(chalk.dim(toolOutput + '\n'))
             }
           }
         } catch {
-          if (onChunk) {
-            onChunk(line + '\n')
-          } else {
+          // Non-JSON lines — only show in CLI terminal
+          if (!onChunk) {
             process.stdout.write(chalk.dim(line + '\n'))
           }
         }
@@ -297,24 +335,3 @@ async function streamOutput(
   return output
 }
 
-function toInvokeError(error: unknown): InvokeError {
-  if (error && typeof error === 'object') {
-    const e = error as Record<string, unknown>
-
-    if (e.timedOut) {
-      return { type: 'timeout', message: 'Claude Code 执行超时' }
-    }
-
-    if (e.isCanceled) {
-      return { type: 'cancelled', message: '执行被取消' }
-    }
-
-    return {
-      type: 'process',
-      message: String(e.message ?? e.shortMessage ?? '未知错误'),
-      exitCode: typeof e.exitCode === 'number' ? e.exitCode : undefined,
-    }
-  }
-
-  return { type: 'process', message: String(error) }
-}

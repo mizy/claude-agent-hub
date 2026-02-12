@@ -379,14 +379,17 @@ class WorkflowEventEmitter extends EventEmitter {
       }
     }
 
+    // Actual executed nodes may exceed initial definition (retries with new IDs, dynamic nodes)
+    const actualTotal = Math.max(stats.summary.totalNodes, stats.nodes.length)
+
     stats.summary = {
-      totalNodes: stats.summary.totalNodes,
+      totalNodes: actualTotal,
       completedNodes,
       failedNodes,
       skippedNodes,
       runningNodes,
       pendingNodes:
-        stats.summary.totalNodes - completedNodes - failedNodes - skippedNodes - runningNodes,
+        actualTotal - completedNodes - failedNodes - skippedNodes - runningNodes,
       totalCostUsd,
       avgNodeDurationMs: completedCount > 0 ? Math.round(totalDurationMs / completedCount) : 0,
     }

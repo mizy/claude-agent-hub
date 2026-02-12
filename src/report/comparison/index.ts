@@ -8,7 +8,8 @@ export type { TaskExecutionSnapshot, ComparisonResult } from './types.js'
 export type { RegressionReport } from './DegradationDetector.js'
 
 // 数据收集
-export { collectTaskSnapshots, categorizeTask } from './dataCollector.js'
+export { collectTaskSnapshots } from './dataCollector.js'
+export { categorizeTask } from '../../analysis/index.js'
 
 // 指标计算
 export { calculateSimilarity, compareTasks } from './MetricCalculator.js'

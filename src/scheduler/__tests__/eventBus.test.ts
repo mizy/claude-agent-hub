@@ -10,9 +10,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 describe('EventBus', () => {
   // Create fresh bus for each test by importing the module-level helpers
   // and clearing between tests
-  let eventBus: typeof import('../eventBus.js')['eventBus']
-  let emitEvent: typeof import('../eventBus.js')['emitEvent']
-  let onEvent: typeof import('../eventBus.js')['onEvent']
+  let eventBus: (typeof import('../eventBus.js'))['eventBus']
+  let emitEvent: (typeof import('../eventBus.js'))['emitEvent']
+  let onEvent: (typeof import('../eventBus.js'))['onEvent']
 
   beforeEach(async () => {
     const mod = await import('../eventBus.js')

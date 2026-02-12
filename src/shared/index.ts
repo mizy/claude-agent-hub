@@ -74,6 +74,12 @@ export {
 // 错误消息格式化
 export { formatErrorMessage } from './formatErrorMessage.js'
 
+// Backend 错误转换
+export { toInvokeError } from './toInvokeError.js'
+
+// 文本截断
+export { truncateText } from './truncateText.js'
+
 // 时间处理
 export {
   now,

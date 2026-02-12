@@ -4,6 +4,7 @@
  * Execution logic for delay, schedule, loop, switch, assign, script, foreach nodes.
  */
 
+import { CronExpressionParser } from 'cron-parser'
 import { createLogger } from '../../shared/logger.js'
 import { evaluateExpression } from './ExpressionEvaluator.js'
 import { evaluateCondition } from './ConditionEvaluator.js'
@@ -88,23 +89,16 @@ export function executeScheduleNode(
 
 /**
  * 计算下一次 cron 执行时间
- * 简化实现，只支持基本的 cron 表达式
+ * 使用 cron-parser 解析标准 cron 表达式（5/6 字段），支持 timezone
  */
-function calculateNextCronTime(cron: string, _timezone?: string): Date | null {
-  // 基本实现：解析简单的 cron 表达式
-  // 格式: 分 时 日 月 周
-  const parts = cron.split(' ')
-  if (parts.length !== 5) {
+export function calculateNextCronTime(cron: string, timezone?: string): Date | null {
+  try {
+    const options = timezone ? { tz: timezone } : {}
+    const expr = CronExpressionParser.parse(cron, options)
+    return expr.next().toDate()
+  } catch {
     return null
   }
-
-  // 简化实现：返回下一个整点
-  const now = new Date()
-  const next = new Date(now)
-  next.setMinutes(0, 0, 0)
-  next.setHours(next.getHours() + 1)
-
-  return next
 }
 
 // ============ Switch Node ============

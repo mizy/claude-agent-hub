@@ -9,6 +9,7 @@ import { executeTask } from './executeTask.js'
 import { withProcessTracking } from './processTracking.js'
 import { pollPendingTask } from './queryTask.js'
 import { parseTaskPriority } from '../types/task.js'
+import { truncateText } from '../shared/truncateText.js'
 import type { Task, TaskPriority } from '../types/task.js'
 
 const logger = createLogger('task')
@@ -40,9 +41,7 @@ export async function createAndRunTask(options: CreateAndRunOptions): Promise<Ta
   // 创建任务
   const priority = parseTaskPriority(options.priority)
 
-  // 标题：如果描述超过47字，截断并加...
-  const title =
-    options.description.length > 47 ? options.description.slice(0, 47) + '...' : options.description
+  const title = truncateText(options.description, 50)
 
   const task: Task = {
     id: crypto.randomUUID(),

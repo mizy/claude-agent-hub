@@ -7,7 +7,8 @@
 export * from './types.js'
 
 // 数据收集
-export { collectAllTaskStats, groupByPeriod, categorizeTask } from './dataCollector.js'
+export { collectAllTaskStats, groupByPeriod } from './dataCollector.js'
+export { categorizeTask } from '../../analysis/index.js'
 
 // 类型趋势分析
 export {

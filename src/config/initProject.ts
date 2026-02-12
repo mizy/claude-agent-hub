@@ -9,6 +9,11 @@ interface InitOptions {
 
 const DEFAULT_CONFIG = `# Claude Agent Hub 配置文件
 
+# 后端配置
+backend:
+  type: claude-code          # claude-code | opencode | iflow | codebuddy
+  model: opus
+
 # Agent 配置
 agents:
   - name: dev
@@ -33,10 +38,14 @@ git:
   branch_prefix: "agent/"
   auto_push: false          # 需要人工确认才推送
 
-# Claude Code 配置
-claude:
-  model: sonnet             # haiku | sonnet | opus
-  max_tokens: 8000
+# 通知配置（取消注释启用）
+# notify:
+#   lark:
+#     appId: your_app_id
+#     appSecret: your_app_secret
+#   telegram:
+#     botToken: your_bot_token
+#     chatId: your_chat_id
 `
 
 /**

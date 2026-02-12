@@ -9,6 +9,7 @@ import { execa, type ResultPromise } from 'execa'
 import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
+import { toInvokeError } from '../shared/toInvokeError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 
 const logger = createLogger('iflow')
@@ -69,7 +70,7 @@ export function createIflowBackend(): BackendAdapter {
           sessionId: parsed.sessionId,
         })
       } catch (error: unknown) {
-        return err(toInvokeError(error))
+        return err(toInvokeError(error, 'iflow-cli'))
       }
     },
 
@@ -77,7 +78,8 @@ export function createIflowBackend(): BackendAdapter {
       try {
         await execa('iflow', ['--version'])
         return true
-      } catch {
+      } catch (e) {
+        logger.debug(`iflow not available: ${e instanceof Error ? e.message : String(e)}`)
         return false
       }
     },
@@ -156,16 +158,3 @@ async function streamOutput(
   return chunks.join('')
 }
 
-function toInvokeError(error: unknown): InvokeError {
-  if (error && typeof error === 'object') {
-    const e = error as Record<string, unknown>
-    if (e.timedOut) return { type: 'timeout', message: 'iflow-cli 执行超时' }
-    if (e.isCanceled) return { type: 'cancelled', message: '执行被取消' }
-    return {
-      type: 'process',
-      message: String(e.message ?? e.shortMessage ?? '未知错误'),
-      exitCode: typeof e.exitCode === 'number' ? e.exitCode : undefined,
-    }
-  }
-  return { type: 'process', message: String(error) }
-}

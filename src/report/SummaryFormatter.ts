@@ -5,6 +5,7 @@
 
 import chalk from 'chalk'
 import { formatDuration } from '../shared/formatTime.js'
+import { truncateText } from '../shared/truncateText.js'
 import type { LiveSummaryReport } from './LiveSummary.js'
 
 /**
@@ -25,7 +26,7 @@ export function formatLiveSummaryForTerminal(report: LiveSummaryReport): string 
     for (const task of report.runningTasks) {
       const progressBar = createProgressBar(task.progress.percentage, 20)
       const elapsed = formatDuration(task.elapsedMs)
-      const title = task.title.length > 30 ? task.title.slice(0, 27) + '...' : task.title
+      const title = truncateText(task.title, 30)
 
       // 预估剩余时间
       let etaStr = ''
@@ -60,7 +61,7 @@ export function formatLiveSummaryForTerminal(report: LiveSummaryReport): string 
     lines.push(chalk.blue.bold('  📋 待执行队列'))
     lines.push('')
     for (const task of report.queuedTasks.slice(0, 5)) {
-      const title = task.title.length > 40 ? task.title.slice(0, 37) + '...' : task.title
+      const title = truncateText(task.title, 40)
       const waiting = formatDuration(Date.now() - task.createdAt.getTime())
       lines.push(`    • ${title}  ${chalk.dim(`等待 ${waiting}`)}`)
     }
@@ -109,7 +110,7 @@ export function formatLiveSummaryForTerminal(report: LiveSummaryReport): string 
     lines.push('')
     for (const task of report.recentCompleted) {
       const icon = task.status === 'completed' ? chalk.green('✓') : chalk.red('✗')
-      const title = task.title.length > 35 ? task.title.slice(0, 32) + '...' : task.title
+      const title = truncateText(task.title, 35)
       const time = new Date(task.completedAt).toLocaleTimeString('zh-CN', {
         hour: '2-digit',
         minute: '2-digit',

@@ -46,9 +46,7 @@ async function readOutputSummary(taskId: string): Promise<string | null> {
     }
 
     // Extract Node Execution results (lines like "✅ Node Name" or "❌ Node Name")
-    const nodeSection = content.match(
-      /#+\s*Node\s+Execut\w*\s*\n([\s\S]*?)(?=\n#+\s|\n---|$)/i
-    )
+    const nodeSection = content.match(/#+\s*Node\s+Execut\w*\s*\n([\s\S]*?)(?=\n#+\s|\n---|$)/i)
     if (nodeSection) {
       const nodeLines = nodeSection[1]!
         .split('\n')

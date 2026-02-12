@@ -24,6 +24,8 @@ export interface InvokeOptions {
   onChunk?: (chunk: string) => void
   /** 禁用 MCP 服务器，加速启动，默认 false */
   disableMcp?: boolean
+  /** 选择性启用的 MCP 服务器列表（与 disableMcp 配合：disableMcp=true 时只加载这些） */
+  mcpServers?: string[]
   /** 复用已有会话 ID，加速连续任务 */
   sessionId?: string
   /** 模型选择，含义因后端而异 */
@@ -40,6 +42,8 @@ export interface InvokeResult {
   durationApiMs?: number
   /** 总花费 USD，不支持的后端为 undefined */
   costUsd?: number
+  /** 等待并发槽位的毫秒数 */
+  slotWaitMs?: number
 }
 
 export type InvokeError =

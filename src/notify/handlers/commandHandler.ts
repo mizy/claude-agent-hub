@@ -25,14 +25,25 @@ import {
   addMemory,
   searchMemories,
 } from '../../memory/index.js'
+import {
+  getDailyCost,
+  getWeeklyCost,
+  getMonthlyCost,
+  type CostStats,
+} from './conversationLog.js'
 import { formatDuration } from '../../shared/formatTime.js'
 import { getWaitingHumanJobs } from '../../workflow/index.js'
 import { parseTaskStatus } from '../../types/task.js'
 import {
   buildTaskListCard,
   buildTaskDetailCard,
+  buildTaskLogsCard,
   buildStatusCard,
   buildHelpCard,
+  buildCard,
+  mdElement,
+  hrElement,
+  noteElement,
 } from '../buildLarkCard.js'
 import type { TaskListItem } from '../buildLarkCard.js'
 import { statusEmoji } from './constants.js'
@@ -92,6 +103,8 @@ export async function handleCommand(command: string, args: string): Promise<Comm
       return handleReload()
     case '/memory':
       return handleMemory(args)
+    case '/cost':
+      return handleCost()
     default:
       return { text: `未知指令: ${command}\n输入 /help 查看可用指令` }
   }
@@ -247,7 +260,12 @@ export async function handleLogs(taskIdPrefix: string): Promise<CommandResult> {
     // 消息长度限制（兼容 Telegram 4096 / 飞书等平台）
     const truncated = tail.length > 3500 ? '...\n' + tail.slice(-3500) : tail
 
-    return { text: `📜 日志 \`${task.id.slice(0, 20)}\`:\n\n\`\`\`\n${truncated}\n\`\`\`` }
+    // Card shows more lines (50) for richer display
+    const cardTail = lines.slice(-50).join('\n')
+    return {
+      text: `📜 日志 \`${task.id.slice(0, 20)}\`:\n\n\`\`\`\n${truncated}\n\`\`\``,
+      larkCard: buildTaskLogsCard(task.id, cardTail),
+    }
   } catch (error) {
     const msg = formatErrorMessage(error)
     return { text: `❌ 获取日志失败: ${msg}` }
@@ -387,6 +405,9 @@ export function handleHelp(): CommandResult {
       '/memory add <内容> - 添加记忆',
       '/memory search <关键词> - 搜索记忆',
       '',
+      '💰 统计:',
+      '/cost - 查看对话费用统计',
+      '',
       '🔧 系统:',
       '/reload - 重启守护进程（加载新代码）',
       '',
@@ -471,7 +492,82 @@ export function handleMemory(args: string): CommandResult {
   }
 }
 
+function formatCostLine(label: string, stats: CostStats): string {
+  if (stats.messageCount === 0) return `${label}: $0.00 (0 条)`
+  return `${label}: $${stats.totalUsd.toFixed(2)} (${stats.messageCount} 条)`
+}
+
+function formatModelBreakdown(stats: CostStats): string {
+  const entries = Object.entries(stats.byModel).sort((a, b) => b[1].costUsd - a[1].costUsd)
+  if (entries.length === 0) return '暂无数据'
+  return entries
+    .map(([model, { count, costUsd }]) => `  ${model}: $${costUsd.toFixed(2)} (${count} 条)`)
+    .join('\n')
+}
+
+export function handleCost(): CommandResult {
+  const daily = getDailyCost()
+  const weekly = getWeeklyCost()
+  const monthly = getMonthlyCost()
+
+  const lines = [
+    '💰 对话费用统计',
+    '',
+    formatCostLine('今日', daily),
+    formatCostLine('本周', weekly),
+    formatCostLine('本月', monthly),
+  ]
+
+  // Model breakdown for monthly (most useful view)
+  if (monthly.messageCount > 0) {
+    lines.push('', '本月模型分布:')
+    lines.push(formatModelBreakdown(monthly))
+  }
+
+  // Build Lark card
+  const cardElements = [
+    mdElement([
+      `**今日**: $${daily.totalUsd.toFixed(2)} (${daily.messageCount} 条)`,
+      `**本周**: $${weekly.totalUsd.toFixed(2)} (${weekly.messageCount} 条)`,
+      `**本月**: $${monthly.totalUsd.toFixed(2)} (${monthly.messageCount} 条)`,
+    ].join('\n')),
+  ]
+
+  if (monthly.messageCount > 0) {
+    const modelLines = Object.entries(monthly.byModel)
+      .sort((a, b) => b[1].costUsd - a[1].costUsd)
+      .map(([model, { count, costUsd }]) => {
+        const pct = monthly.totalUsd > 0 ? ((costUsd / monthly.totalUsd) * 100).toFixed(0) : '0'
+        return `**${model}**: $${costUsd.toFixed(2)} (${count} 条, ${pct}%)`
+      })
+    cardElements.push(hrElement())
+    cardElements.push(mdElement('**本月模型分布**\n' + modelLines.join('\n')))
+  }
+
+  cardElements.push(noteElement('数据来源: conversation.jsonl'))
+
+  return {
+    text: lines.join('\n'),
+    larkCard: buildCard('💰 对话费用', 'blue', cardElements),
+  }
+}
+
+// Debounce: reject /reload if one was initiated within this window
+const RELOAD_DEBOUNCE_MS = 10_000
+let lastReloadAt = 0
+
 export function handleReload(): CommandResult {
+  const now = Date.now()
+  const elapsed = now - lastReloadAt
+  if (elapsed < RELOAD_DEBOUNCE_MS) {
+    const remaining = Math.ceil((RELOAD_DEBOUNCE_MS - elapsed) / 1000)
+    logger.info(`→ reload debounced (${remaining}s remaining)`)
+    return {
+      text: `⏳ 重启已在进行中，请等待 ${remaining} 秒后再试`,
+    }
+  }
+  lastReloadAt = now
+
   // 通过 spawn 子进程执行 cah restart，避免阻塞当前消息回复
   const child = spawn(
     process.execPath,

@@ -8,6 +8,7 @@
  */
 
 import { createLogger } from '../shared/logger.js'
+import { truncateText } from '../shared/truncateText.js'
 import {
   getTask,
   getTasksByStatus,
@@ -328,7 +329,7 @@ export function getOrphanedTasksSummary(): string[] {
   const orphaned = detectOrphanedTasks()
 
   return orphaned.map(({ task, pid, reason }) => {
-    const title = task.title.length > 40 ? task.title.slice(0, 37) + '...' : task.title
+    const title = truncateText(task.title, 40)
     const status = task.status
     const reasonText = reason === 'process_not_found' ? 'process dead' : 'heartbeat timeout'
     return `[${status}] ${title} (PID: ${pid}, ${reasonText})`

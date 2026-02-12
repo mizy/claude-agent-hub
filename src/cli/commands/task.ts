@@ -37,6 +37,7 @@ import { success, error, info, warn, list } from '../output.js'
 import { AppError } from '../../shared/error.js'
 import { formatDuration } from '../../shared/formatTime.js'
 import { parseTaskStatus } from '../../types/task.js'
+import { truncateText } from '../../shared/truncateText.js'
 
 export function registerTaskCommands(program: Command) {
   const task = program.command('task').description('任务管理命令')
@@ -229,7 +230,7 @@ export function registerTaskCommands(program: Command) {
         if (orphaned.length > 0) {
           console.log(chalk.yellow(`\nOrphaned tasks (${orphaned.length}):\n`))
           for (const { task, pid } of orphaned) {
-            const title = task.title.length > 40 ? task.title.slice(0, 37) + '...' : task.title
+            const title = truncateText(task.title, 40)
             console.log(chalk.gray(`  [${task.status}] ${title}`))
             console.log(chalk.gray(`    ID: ${task.id}`))
             console.log(chalk.gray(`    PID: ${pid} (dead)`))
@@ -240,7 +241,7 @@ export function registerTaskCommands(program: Command) {
         if (failed.length > 0) {
           console.log(chalk.red(`\nFailed tasks (${failed.length}):\n`))
           for (const task of failed) {
-            const title = task.title.length > 40 ? task.title.slice(0, 37) + '...' : task.title
+            const title = truncateText(task.title, 40)
             console.log(chalk.gray(`  [failed] ${title}`))
             console.log(chalk.gray(`    ID: ${task.id}`))
             console.log()

@@ -37,7 +37,7 @@ export async function executeNodeByType(
   node: WorkflowNode,
   workflow: Workflow,
   instance: WorkflowInstance
-): Promise<{ success: boolean; output?: unknown; error?: string }> {
+): Promise<{ success: boolean; output?: unknown; error?: string; costUsd?: number }> {
   switch (node.type) {
     case 'start':
     case 'end':
@@ -262,9 +262,7 @@ async function executeTaskNode(
   // 获取 taskId 用于日志写入
   const logTaskId = instance.variables?.taskId as string | undefined
 
-  // 复用已有 Claude 会话（加速连续任务）
-  // 暂时禁用会话复用以排查问题
-  // const existingSessionId = instance.variables?.claudeSessionId as string | undefined
+  // 会话复用已禁用 — 每个节点使用独立会话以保证稳定性
   const existingSessionId = undefined
 
   // 从配置读取模型

@@ -24,6 +24,11 @@ export const gitConfigSchema = z.object({
   auto_push: z.boolean().default(false),
 })
 
+export const chatConfigSchema = z.object({
+  /** MCP servers to enable in chat mode (empty = all disabled for speed) */
+  mcpServers: z.array(z.string()).default([]),
+})
+
 export const backendConfigSchema = z.object({
   /** 后端类型: claude-code | opencode | iflow | codebuddy */
   type: z.enum(['claude-code', 'opencode', 'iflow', 'codebuddy']).default('claude-code'),
@@ -33,6 +38,8 @@ export const backendConfigSchema = z.object({
   max_tokens: z.number().optional(),
   /** 启用 Agent Teams（实验性功能，仅 claude-code 支持）用于 workflow 生成 */
   enableAgentTeams: z.boolean().optional().default(false),
+  /** 对话模式配置 */
+  chat: chatConfigSchema.default({}),
 })
 
 /** @deprecated 使用 backendConfigSchema */
@@ -78,6 +85,7 @@ export type AgentConfig = z.infer<typeof agentConfigSchema>
 export type TaskConfig = z.infer<typeof taskConfigSchema>
 export type GitConfig = z.infer<typeof gitConfigSchema>
 export type BackendConfig = z.infer<typeof backendConfigSchema>
+export type ChatConfig = z.infer<typeof chatConfigSchema>
 export type LarkConfig = z.infer<typeof larkConfigSchema>
 export type TelegramConfig = z.infer<typeof telegramConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>

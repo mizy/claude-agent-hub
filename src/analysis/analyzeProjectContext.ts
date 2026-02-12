@@ -6,6 +6,7 @@
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '../shared/logger.js'
+import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 
 const logger = createLogger('project-context')
 
@@ -65,7 +66,7 @@ export async function analyzeProjectContext(cwd: string = process.cwd()): Promis
       const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf-8'))
       context.scripts = pkg.scripts || {}
     } catch (e) {
-      logger.debug(`Failed to parse package.json: ${e instanceof Error ? e.message : String(e)}`)
+      logger.debug(`Failed to parse package.json: ${formatErrorMessage(e)}`)
     }
   }
 
@@ -81,7 +82,7 @@ export async function analyzeProjectContext(cwd: string = process.cwd()): Promis
     try {
       context.claudeMdContent = readFileSync(claudeMdPath, 'utf-8')
     } catch (e) {
-      logger.debug(`Failed to read CLAUDE.md: ${e instanceof Error ? e.message : String(e)}`)
+      logger.debug(`Failed to read CLAUDE.md: ${formatErrorMessage(e)}`)
     }
   }
 
@@ -187,7 +188,7 @@ function detectNodeFrameworks(cwd: string, context: ProjectContext): void {
     if (deps['esbuild']) context.frameworks.push('esbuild')
     if (deps['tsup']) context.frameworks.push('tsup')
   } catch (e) {
-    logger.debug(`Failed to detect frameworks: ${e instanceof Error ? e.message : String(e)}`)
+    logger.debug(`Failed to detect frameworks: ${formatErrorMessage(e)}`)
   }
 }
 
@@ -216,7 +217,8 @@ function generateDirectoryStructure(cwd: string, maxDepth: number = 2): string {
     let entries: string[]
     try {
       entries = readdirSync(dir, { encoding: 'utf-8' })
-    } catch {
+    } catch (error) {
+      logger.debug(`Failed to read directory ${dir}: ${formatErrorMessage(error)}`)
       return
     }
 
@@ -228,8 +230,8 @@ function generateDirectoryStructure(cwd: string, maxDepth: number = 2): string {
           const aIsDir = statSync(join(dir, a)).isDirectory()
           const bIsDir = statSync(join(dir, b)).isDirectory()
           if (aIsDir !== bIsDir) return aIsDir ? -1 : 1
-        } catch {
-          // ignore stat errors
+        } catch (e) {
+          logger.debug(`stat failed during sort: ${formatErrorMessage(e)}`)
         }
         return a.localeCompare(b)
       })
@@ -250,8 +252,8 @@ function generateDirectoryStructure(cwd: string, maxDepth: number = 2): string {
         } else {
           lines.push(`${prefix}${connector}${entry}`)
         }
-      } catch {
-        // ignore
+      } catch (e) {
+        logger.debug(`stat failed for ${fullPath}: ${formatErrorMessage(e)}`)
       }
     }
   }
@@ -308,7 +310,8 @@ function extractReadmeSummary(path: string): string {
     const truncated = content.slice(0, README_SUMMARY_MAX_LENGTH)
     const lastNewline = truncated.lastIndexOf('\n')
     return lastNewline > 0 ? truncated.slice(0, lastNewline) : truncated
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to read README ${path}: ${formatErrorMessage(error)}`)
     return ''
   }
 }

@@ -7,6 +7,7 @@
 import { createLogger } from '../shared/logger.js'
 import { generateTaskId, createTaskFolder, saveTask } from '../store/TaskStore.js'
 import { parseTaskPriority } from '../types/task.js'
+import { truncateText } from '../shared/truncateText.js'
 import type { Task, TaskPriority } from '../types/task.js'
 
 const logger = createLogger('task')
@@ -25,9 +26,7 @@ export function createTaskWithFolder(options: CreateTaskOptions): Task {
   // Validate priority
   const priority = parseTaskPriority(options.priority)
 
-  // Generate title from description (truncate at 47 chars)
-  const title =
-    options.description.length > 47 ? options.description.slice(0, 47) + '...' : options.description
+  const title = truncateText(options.description, 50)
 
   // Generate timestamp-based ID
   const taskId = generateTaskId(title)

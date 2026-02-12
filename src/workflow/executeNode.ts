@@ -61,7 +61,7 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     const result = await executeNodeByType(node, workflow, instance)
 
     const durationMs = Date.now() - nodeStartTime
-    const costUsd = (result as { costUsd?: number }).costUsd
+    const costUsd = result.costUsd
 
     if (result.success) {
       // 记录节点完成
