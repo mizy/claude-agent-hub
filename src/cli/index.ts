@@ -40,6 +40,37 @@ import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
 import { findClosestMatch } from '../shared/levenshtein.js'
 import { truncateText } from '../shared/truncateText.js'
 
+/** Options that consume the next argv as value (for positional counting) */
+const OPTIONS_WITH_VALUE = new Set([
+  '-p', '--priority',
+  '-a', '--agent',
+  '-d', '--data-dir',
+  '-t', '--task',
+])
+
+/**
+ * Return positional args from argv (args that are not options or option values).
+ * Used to enforce: task description must be a single quoted argument.
+ */
+function getPositionalArgs(argv: string[]): string[] {
+  const positionals: string[] = []
+  const args = argv.slice(2) // skip node, script
+  let i = 0
+  while (i < args.length) {
+    const a = args[i]!
+    if (a.startsWith('-')) {
+      i++
+      if (OPTIONS_WITH_VALUE.has(a) && i < args.length) {
+        i++ // skip option value
+      }
+      continue
+    }
+    positionals.push(a)
+    i++
+  }
+  return positionals
+}
+
 // 已知的 CLI 命令列表
 const KNOWN_COMMANDS = [
   'task',
@@ -79,6 +110,15 @@ program
       process.exit(1)
     }
     if (input) {
+      // 多个未引号的词被 shell 拆成多个 positional args → 提示用户加引号
+      const positionals = getPositionalArgs(process.argv)
+      if (positionals.length > 1) {
+        error('请使用双引号或单引号将任务描述括起来')
+        console.log(chalk.gray('  例如: cah "任务描述"  或  cah \'任务描述\''))
+        console.log(chalk.gray('  或使用 cah --help 查看帮助'))
+        process.exit(1)
+      }
+
       // 检测是否可能是拼错的命令
       const firstWord = input.split(/\s+/)[0].toLowerCase()
       const match = findClosestMatch(firstWord, KNOWN_COMMANDS)

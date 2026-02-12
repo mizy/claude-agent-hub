@@ -95,6 +95,7 @@ async function loadConfigFromFile(configPath: string): Promise<Config> {
         model: config.claude.model,
         max_tokens: config.claude.max_tokens,
         enableAgentTeams: false,
+        chat: { mcpServers: [] },
       }
     }
   }
@@ -175,6 +176,7 @@ export function getDefaultConfig(): Config {
       type: 'claude-code',
       model: 'opus',
       enableAgentTeams: false,
+      chat: { mcpServers: [] },
     },
   }
 }
