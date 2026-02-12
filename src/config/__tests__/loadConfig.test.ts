@@ -3,13 +3,22 @@
  * Tests config loading, caching, and fallback behavior
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { loadConfig, getDefaultConfig, clearConfigCache, stopConfigWatch } from '../loadConfig.js'
 
 const TEST_DIR = join(tmpdir(), `cah-config-test-${Date.now()}`)
+
+// Mock homedir to prevent loading user's real ~/.claude-agent-hub.yaml
+vi.mock('os', async importOriginal => {
+  const os = await importOriginal<typeof import('os')>()
+  return { ...os, homedir: () => TEST_DIR }
+})
+
+const { loadConfig, getDefaultConfig, clearConfigCache, stopConfigWatch } = await import(
+  '../loadConfig.js'
+)
 
 beforeEach(() => {
   clearConfigCache()
