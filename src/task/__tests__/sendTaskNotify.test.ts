@@ -17,11 +17,24 @@ vi.mock('../../config/loadConfig.js', () => ({
   loadConfig: vi.fn().mockResolvedValue({ notify: {} }),
 }))
 
-vi.mock('../../notify/index.js', () => ({
+vi.mock('../../notify/sendTelegramNotify.js', () => ({
   sendTelegramTextMessage: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../notify/telegramClient.js', () => ({
   getDefaultChatId: vi.fn().mockReturnValue(null),
+}))
+
+vi.mock('../../notify/sendLarkNotify.js', () => ({
   sendLarkCardViaApi: vi.fn().mockResolvedValue(undefined),
+  sendLarkMessageViaApi: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../notify/larkWsClient.js', () => ({
   getDefaultLarkChatId: vi.fn().mockReturnValue(null),
+}))
+
+vi.mock('../../notify/buildLarkCard.js', () => ({
   buildTaskCompletedCard: vi.fn().mockReturnValue({}),
   buildTaskFailedCard: vi.fn().mockReturnValue({}),
 }))
@@ -77,7 +90,7 @@ describe('sendTaskCompletionNotify', () => {
       },
     } as any)
 
-    const { sendTelegramTextMessage } = await import('../../notify/index.js')
+    const { sendTelegramTextMessage } = await import('../../notify/sendTelegramNotify.js')
 
     await sendTaskCompletionNotify(makeTask(), true, makeInfo())
 
@@ -95,7 +108,8 @@ describe('sendTaskCompletionNotify', () => {
       },
     } as any)
 
-    const { sendLarkCardViaApi, getDefaultLarkChatId } = await import('../../notify/index.js')
+    const { sendLarkCardViaApi } = await import('../../notify/sendLarkNotify.js')
+    const { getDefaultLarkChatId } = await import('../../notify/larkWsClient.js')
     vi.mocked(getDefaultLarkChatId).mockReturnValue(null)
 
     await sendTaskCompletionNotify(makeTask(), true, makeInfo())
@@ -111,7 +125,7 @@ describe('sendTaskCompletionNotify', () => {
       },
     } as any)
 
-    const { sendTelegramTextMessage } = await import('../../notify/index.js')
+    const { sendTelegramTextMessage } = await import('../../notify/sendTelegramNotify.js')
 
     await sendTaskCompletionNotify(
       makeTask(),
@@ -138,7 +152,7 @@ describe('sendTaskCompletionNotify', () => {
       },
     } as any)
 
-    const { sendTelegramTextMessage } = await import('../../notify/index.js')
+    const { sendTelegramTextMessage } = await import('../../notify/sendTelegramNotify.js')
 
     await sendTaskCompletionNotify(
       makeTask({ status: 'failed' }),
@@ -159,7 +173,7 @@ describe('sendTaskCompletionNotify', () => {
       },
     } as any)
 
-    const { sendTelegramTextMessage } = await import('../../notify/index.js')
+    const { sendTelegramTextMessage } = await import('../../notify/sendTelegramNotify.js')
 
     await sendTaskCompletionNotify(makeTask(), true, makeInfo({ totalCostUsd: 0.1234 }))
 
@@ -175,7 +189,7 @@ describe('sendTaskCompletionNotify', () => {
       },
     } as any)
 
-    const { sendTelegramTextMessage } = await import('../../notify/index.js')
+    const { sendTelegramTextMessage } = await import('../../notify/sendTelegramNotify.js')
     vi.mocked(sendTelegramTextMessage).mockRejectedValue(new Error('network error'))
 
     // Should not throw despite send failure
@@ -190,7 +204,8 @@ describe('sendTaskCompletionNotify', () => {
       },
     } as any)
 
-    const { sendLarkCardViaApi, getDefaultLarkChatId } = await import('../../notify/index.js')
+    const { sendLarkCardViaApi } = await import('../../notify/sendLarkNotify.js')
+    const { getDefaultLarkChatId } = await import('../../notify/larkWsClient.js')
     vi.mocked(getDefaultLarkChatId).mockReturnValue(null)
     vi.mocked(sendLarkCardViaApi).mockRejectedValue(new Error('lark error'))
 
