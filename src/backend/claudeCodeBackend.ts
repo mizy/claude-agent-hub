@@ -83,6 +83,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
         mcpServers,
         sessionId,
         model = 'opus',
+        signal,
       } = options
 
       const args = buildArgs(prompt, skipPermissions, disableMcp, mcpServers, sessionId, stream, model)
@@ -95,6 +96,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
           timeout: timeoutMs,
           stdin: 'ignore',
           buffer: !stream,
+          ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
         perf.spawn = Date.now() - startTime
 
@@ -125,6 +127,9 @@ export function createClaudeCodeBackend(): BackendAdapter {
           costUsd: parsed.costUsd,
         })
       } catch (error: unknown) {
+        if (signal?.aborted) {
+          return err({ type: 'cancelled', message: 'Chat interrupted by new message' })
+        }
         return err(toInvokeError(error, 'Claude Code'))
       }
     },

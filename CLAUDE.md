@@ -58,7 +58,7 @@ Task (task/)  ──────────────────────
   ├── Analysis (analysis/)               项目分析、历史学习
   └── Output (output/)                   结果保存、标题生成
         │
-Backend (backend/)  ─────────────────── 集成层：CLI 后端抽象
+Backend (backend/)  ─────────────────── 集成层：后端抽象（CLI + OpenAI API）
 Persona (persona/)                       AI 人格定义
 Prompts (prompts/)                       提示词模板
 Memory (memory/)                         任务记忆：学习、检索、注入
@@ -75,7 +75,7 @@ Types (types/)                           类型定义
 | 模块 | 入口 | 核心能力 |
 |------|------|----------|
 | CLI | `cli/index.ts` | 命令行主入口、子命令（task/start/stop/restart/status/report/dashboard/memory/prompt） |
-| Backend | `backend/index.ts` | CLI 后端抽象层（claude-code/opencode/iflow/codebuddy） |
+| Backend | `backend/index.ts` | CLI 后端抽象层（claude-code/opencode/iflow/codebuddy/openai-compatible） |
 | Task | `task/index.ts` | 创建、执行（进度条/ETA/统计）、查询、恢复、暂停/恢复、消息、节点注入 |
 | Workflow | `workflow/index.ts` | AI 生成工作流、节点执行（Persona）、状态管理、重试 |
 | Store | `store/index.ts` | GenericFileStore 通用文件存储、TaskStore/WorkflowStore/TraceStore/PromptVersionStore |

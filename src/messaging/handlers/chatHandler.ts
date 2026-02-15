@@ -19,6 +19,9 @@ const logger = createLogger('chat-handler')
 
 const DEFAULT_MAX_LENGTH = 4096
 
+// Per-chatId AbortController for interrupting active AI calls
+const activeControllers = new Map<string, AbortController>()
+
 // ── Model Selection ──
 
 /** Keywords that signal deep reasoning requiring opus */
@@ -102,6 +105,7 @@ export interface ChatOptions {
 
 /**
  * Handle a text message: enqueue per-chatId for serial processing, call AI backend.
+ * If a previous AI call is in progress for this chatId, abort it (last-write-wins).
  */
 export async function handleChat(
   chatId: string,
@@ -109,6 +113,13 @@ export async function handleChat(
   messenger: MessengerAdapter,
   options?: ChatOptions
 ): Promise<void> {
+  // Abort previous in-flight AI call for this chat (last-write-wins)
+  const prev = activeControllers.get(chatId)
+  if (prev) {
+    logger.info(`⚡ interrupting previous AI call [${chatId.slice(0, 8)}]`)
+    prev.abort()
+  }
+
   return enqueueChat(chatId, () =>
     handleChatInternal(chatId, text, messenger, options).catch(e => {
       const msg = e instanceof Error ? e.message : String(e)
@@ -138,15 +149,26 @@ export function getChatSessionInfo(chatId: string) {
  * Cleanup all sessions and stop timers. Call on daemon shutdown.
  */
 export function destroyChatHandler(): void {
+  // Abort all active AI calls
+  for (const controller of activeControllers.values()) {
+    controller.abort()
+  }
+  activeControllers.clear()
   destroySessions()
 }
 
 // ── Internal ──
 
 /** Parse backend override from message text (e.g. "@iflow question" or "/use opencode\nquestion") */
-export function parseBackendOverride(text: string): { backend?: string; actualText: string } {
-  const backends = getRegisteredBackends()
-  const pattern = new RegExp(`^[@/](?:backend:|use\\s+)?(${backends.join('|')})(?:\\s|\\n)`, 's')
+export async function parseBackendOverride(text: string): Promise<{ backend?: string; actualText: string }> {
+  const registeredBackends = getRegisteredBackends()
+
+  // Also include named backends from config (e.g. "local" -> type:"openai")
+  const config = await loadConfig()
+  const namedBackends = Object.keys(config.backends || {})
+
+  const allBackends = [...new Set([...registeredBackends, ...namedBackends])]
+  const pattern = new RegExp(`^[@/](?:backend:|use\\s+)?(${allBackends.join('|')})(?:\\s|\\n)`, 's')
   const match = text.match(pattern)
   if (!match) return { actualText: text }
 
@@ -165,10 +187,15 @@ async function handleChatInternal(
   const platform = options?.client?.platform ?? 'unknown'
   const bench = createBenchmark()
 
+  // Create AbortController for this chat turn
+  const abortController = new AbortController()
+  activeControllers.set(chatId, abortController)
+  const { signal } = abortController
+
   // Strip Lark mention placeholders (@_user_1 etc.) before parsing backend override
   const mentionCleaned = text.replace(/@_\w+/g, '').trim()
   // Parse backend override from message (inline directive like @iflow or /use opencode)
-  const { backend: inlineBackend, actualText } = parseBackendOverride(mentionCleaned)
+  const { backend: inlineBackend, actualText } = await parseBackendOverride(mentionCleaned)
   const effectiveText = actualText || mentionCleaned
 
   // Auto-reset session if turn/token limits exceeded
@@ -224,14 +251,19 @@ async function handleChatInternal(
   }
 
   // Model selection: user override > auto (haiku→sonnet→opus)
+  // Only apply auto model selection for Claude backends; non-Claude backends ignore Claude model names
   const modelOverride = getModelOverride(chatId)
-  const model = selectModel(effectiveText, { hasImages, modelOverride })
+  const isClaudeBackend = !backendOverride || backendOverride === 'claude-code' || backendOverride === 'codebuddy'
+  const model = isClaudeBackend || modelOverride ? selectModel(effectiveText, { hasImages, modelOverride }) : undefined
   bench.promptReady = Date.now()
 
   // Setup streaming with shared ref for placeholderId
   let placeholderId: string | null = null
   const streamHandlerState = { placeholderId: null as string | null }
   const { onChunk, stop: stopStreaming } = createStreamHandler(chatId, streamHandlerState, maxLen, messenger, bench)
+
+  // Auto-stop streaming when aborted
+  signal.addEventListener('abort', () => stopStreaming(), { once: true })
 
   // Parallel: send placeholder + start backend call
   // Placeholder ID is injected as soon as it resolves (before backend finishes)
@@ -248,23 +280,47 @@ async function handleChatInternal(
 
   bench.parallelStart = Date.now()
   try {
+    // Don't reuse session across different backends (session IDs are backend-specific)
+    const sessionCreatedBy = session?.sessionBackendType
+    const currentBackend = backendOverride ?? undefined
+    const backendChanged = sessionId && sessionCreatedBy !== currentBackend
+    const effectiveSessionId = (inlineBackend || backendChanged) ? undefined : sessionId
+    if (backendChanged) {
+      logger.info(`🔄 session backend changed (${sessionCreatedBy ?? 'default'} → ${currentBackend ?? 'default'}), starting new session`)
+    }
     const [, result] = await Promise.all([
       placeholderPromise,
       invokeBackend({
         prompt,
         stream: true,
         skipPermissions: true,
-        sessionId,
+        sessionId: effectiveSessionId,
         onChunk,
         disableMcp: chatMcp.length === 0,
         mcpServers: chatMcp.length > 0 ? chatMcp : undefined,
         model,
-        backendType: backendOverride, // Dynamic backend override
+        backendType: backendOverride,
+        signal,
       }),
     ])
     bench.backendDone = Date.now()
 
+    // Clean up controller reference (this turn is done)
+    if (activeControllers.get(chatId) === abortController) {
+      activeControllers.delete(chatId)
+    }
+
     if (!result.ok) {
+      // If cancelled by a new message, silently stop — new handler will take over
+      if (result.error.type === 'cancelled') {
+        logger.info(`🛑 AI call cancelled [${chatId.slice(0, 8)}], new message takes over`)
+        stopStreaming()
+        // Edit placeholder to indicate interruption (if it was sent)
+        if (placeholderId) {
+          await messenger.editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...').catch(() => {})
+        }
+        return
+      }
       const errorMsg = `❌ AI 调用失败: ${result.error.message}`
       if (placeholderId) {
         await messenger.editMessage(chatId, placeholderId, errorMsg)
@@ -292,9 +348,9 @@ async function handleChatInternal(
       model,
     })
 
-    // Update session
+    // Update session (track which backend created it for cross-backend detection)
     if (newSessionId) {
-      setSession(chatId, newSessionId)
+      setSession(chatId, newSessionId, backendOverride)
     }
 
     // Track turn count and estimated tokens for auto-reset
@@ -329,6 +385,21 @@ async function handleChatInternal(
     // Detect and send images from response
     await sendDetectedImages(chatId, response, messenger)
   } catch (error) {
+    // Clean up controller reference on error
+    if (activeControllers.get(chatId) === abortController) {
+      activeControllers.delete(chatId)
+    }
+
+    // If aborted, just stop silently
+    if (signal.aborted) {
+      logger.info(`🛑 AI call aborted [${chatId.slice(0, 8)}]`)
+      stopStreaming()
+      if (placeholderId) {
+        await messenger.editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...').catch(() => {})
+      }
+      return
+    }
+
     const msg = formatErrorMessage(error)
     logger.error(`chat error [${chatId.slice(0, 8)}]: ${msg}`)
     const errorMsg = `❌ 处理失败: ${msg}`

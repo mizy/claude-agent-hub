@@ -97,6 +97,14 @@ export interface TraceData {
   llmCallCount: number
 }
 
+export interface TaskMessage {
+  id: string
+  taskId: string
+  content: string
+  source: string
+  createdAt: string
+}
+
 interface DashboardStore {
   tasks: Task[]
   selectedTaskId: string | null
@@ -106,6 +114,8 @@ interface DashboardStore {
   activeTab: 'details' | 'timeline' | 'logs' | 'output' | 'trace'
   toasts: ToastItem[]
   showNewTaskModal: boolean
+  showMessageModal: string | null  // taskId or null
+  showInjectNodeModal: string | null  // taskId or null
   pendingDeleteTask: { id: string; title: string } | null
   sidebarOpen: boolean
   rightPanelOpen: boolean
@@ -122,9 +132,14 @@ interface DashboardStore {
   createTask: (description: string) => Promise<boolean>
   stopTask: (id: string) => Promise<void>
   resumeTask: (id: string) => Promise<void>
+  pauseTask: (id: string) => Promise<void>
   completeTask: (id: string) => Promise<void>
   deleteTask: (id: string) => Promise<void>
+  sendMessage: (id: string, content: string) => Promise<void>
+  injectNode: (id: string, prompt: string) => Promise<void>
   setShowNewTaskModal: (v: boolean) => void
+  setShowMessageModal: (v: string | null) => void
+  setShowInjectNodeModal: (v: string | null) => void
   setPendingDeleteTask: (v: { id: string; title: string } | null) => void
   setSidebarOpen: (v: boolean) => void
   setRightPanelOpen: (v: boolean) => void
@@ -143,6 +158,8 @@ export const useStore = create<DashboardStore>((set, get) => ({
   activeTab: 'details',
   toasts: [],
   showNewTaskModal: false,
+  showMessageModal: null,
+  showInjectNodeModal: null,
   pendingDeleteTask: null,
   sidebarOpen: false,
   rightPanelOpen: false,
@@ -218,6 +235,15 @@ export const useStore = create<DashboardStore>((set, get) => ({
     } else get().addToast('Failed to resume task', 'error')
   },
 
+  pauseTask: async id => {
+    const res = await postApi<{ success: boolean }>(`/api/tasks/${id}/pause`)
+    if (res) {
+      get().addToast('Task paused', 'success')
+      await get().refreshTasks()
+      if (get().selectedTaskId === id) await get().refreshTaskData()
+    } else get().addToast('Failed to pause task', 'error')
+  },
+
   completeTask: async id => {
     const res = await postApi<{ success: boolean }>(`/api/tasks/${id}/complete`)
     if (res) {
@@ -236,7 +262,24 @@ export const useStore = create<DashboardStore>((set, get) => ({
     } else get().addToast('Failed to delete task', 'error')
   },
 
+  sendMessage: async (id, content) => {
+    const res = await postApi<{ success: boolean }>(`/api/tasks/${id}/message`, { content })
+    if (res) {
+      get().addToast('Message sent', 'success')
+    } else get().addToast('Failed to send message', 'error')
+  },
+
+  injectNode: async (id, prompt) => {
+    const res = await postApi<{ success: boolean }>(`/api/tasks/${id}/inject-node`, { prompt })
+    if (res) {
+      get().addToast('Node injected', 'success')
+      if (get().selectedTaskId === id) await get().refreshTaskData()
+    } else get().addToast('Failed to inject node', 'error')
+  },
+
   setShowNewTaskModal: v => set({ showNewTaskModal: v }),
+  setShowMessageModal: v => set({ showMessageModal: v }),
+  setShowInjectNodeModal: v => set({ showInjectNodeModal: v }),
   setPendingDeleteTask: v => set({ pendingDeleteTask: v }),
   setSidebarOpen: v => set({ sidebarOpen: v }),
   setRightPanelOpen: v => set({ rightPanelOpen: v }),

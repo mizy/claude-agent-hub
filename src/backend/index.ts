@@ -11,6 +11,7 @@
  * - claude-code: Claude Code CLI (默认)
  * - opencode: OpenCode CLI (75+ 模型，含免费 Zen 模型)
  * - iflow: iflow-cli (Qwen3-Coder, DeepSeek 等免费模型)
+ * - openai: OpenAI 兼容 API (LM Studio, Ollama, vLLM 等)
  */
 
 export type {
@@ -31,6 +32,7 @@ export {
 } from './resolveBackend.js'
 
 export { buildPrompt } from './promptBuilder.js'
+export { createOpenAICompatibleBackend } from './openaiCompatibleBackend.js'
 
 import { resolveBackend } from './resolveBackend.js'
 import { acquireSlot, releaseSlot, getSlotInfo } from './concurrency.js'
@@ -75,9 +77,20 @@ export async function invokeBackend(
   )
   logger.debug(`Prompt: ${truncate(fullPrompt, 100)}`)
 
+  // Check if already aborted before waiting for a slot
+  if (options.signal?.aborted) {
+    return { ok: false, error: { type: 'cancelled', message: 'Aborted before slot acquisition' } } as Result<InvokeResult, InvokeError>
+  }
+
   const slotStart = Date.now()
   await acquireSlot()
   const slotWaitMs = Date.now() - slotStart
+
+  // Check if aborted while waiting for slot
+  if (options.signal?.aborted) {
+    releaseSlot()
+    return { ok: false, error: { type: 'cancelled', message: 'Aborted during slot wait' } } as Result<InvokeResult, InvokeError>
+  }
   if (slotWaitMs > 50) {
     logger.info(`Slot wait: ${slotWaitMs}ms`)
   }

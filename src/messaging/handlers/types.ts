@@ -63,6 +63,8 @@ export interface ChatSession {
   modelOverride?: string
   /** User-set backend override via /backend command. Cleared on session expiry. */
   backendOverride?: string
+  /** Backend type that created the sessionId. Used to prevent cross-backend session reuse. */
+  sessionBackendType?: string
 }
 
 // ── 命令处理结果 ──

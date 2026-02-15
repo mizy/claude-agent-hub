@@ -63,69 +63,88 @@ describe('parseBackendOverride', () => {
     parseBackendOverride = mod.parseBackendOverride
   })
 
-  it('@iflow 帮我分析这段代码 → iflow', () => {
-    const result = parseBackendOverride('@iflow 帮我分析这段代码')
+  it('@iflow 帮我分析这段代码 → iflow', async () => {
+    const result = await parseBackendOverride('@iflow 帮我分析这段代码')
     expect(result).toEqual({ backend: 'iflow', actualText: '帮我分析这段代码' })
   })
 
-  it('@opencode question → opencode', () => {
-    const result = parseBackendOverride('@opencode list current files')
+  it('@opencode question → opencode', async () => {
+    const result = await parseBackendOverride('@opencode list current files')
     expect(result).toEqual({ backend: 'opencode', actualText: 'list current files' })
   })
 
-  it('@claude-code 写个函数 → claude-code', () => {
-    const result = parseBackendOverride('@claude-code 写个函数')
+  it('@claude-code 写个函数 → claude-code', async () => {
+    const result = await parseBackendOverride('@claude-code 写个函数')
     expect(result).toEqual({ backend: 'claude-code', actualText: '写个函数' })
   })
 
-  it('@codebuddy 帮我看看 → codebuddy', () => {
-    const result = parseBackendOverride('@codebuddy 帮我看看')
+  it('@codebuddy 帮我看看 → codebuddy', async () => {
+    const result = await parseBackendOverride('@codebuddy 帮我看看')
     expect(result).toEqual({ backend: 'codebuddy', actualText: '帮我看看' })
   })
 
-  it('/backend:iflow 帮我分析 → iflow', () => {
-    const result = parseBackendOverride('/backend:iflow 帮我分析')
+  it('/backend:iflow 帮我分析 → iflow', async () => {
+    const result = await parseBackendOverride('/backend:iflow 帮我分析')
     expect(result).toEqual({ backend: 'iflow', actualText: '帮我分析' })
   })
 
-  it('/use opencode\\n列出当前目录文件 → opencode (newline separator)', () => {
-    const result = parseBackendOverride('/use opencode\n列出当前目录文件')
+  it('/use opencode\\n列出当前目录文件 → opencode (newline separator)', async () => {
+    const result = await parseBackendOverride('/use opencode\n列出当前目录文件')
     expect(result).toEqual({ backend: 'opencode', actualText: '列出当前目录文件' })
   })
 
-  it('/use claude-code 写个函数 → claude-code (space separator)', () => {
-    const result = parseBackendOverride('/use claude-code 写个函数')
+  it('/use claude-code 写个函数 → claude-code (space separator)', async () => {
+    const result = await parseBackendOverride('/use claude-code 写个函数')
     expect(result).toEqual({ backend: 'claude-code', actualText: '写个函数' })
   })
 
-  it('普通消息 → no backend override', () => {
-    const result = parseBackendOverride('普通问题')
+  it('普通消息 → no backend override', async () => {
+    const result = await parseBackendOverride('普通问题')
     expect(result).toEqual({ backend: undefined, actualText: '普通问题' })
   })
 
-  it('@unknown 测试 → no match for unsupported backend', () => {
-    const result = parseBackendOverride('@unknown 测试')
+  it('@unknown 测试 → no match for unsupported backend', async () => {
+    const result = await parseBackendOverride('@unknown 测试')
     expect(result).toEqual({ backend: undefined, actualText: '@unknown 测试' })
   })
 
-  it('empty string → no backend override', () => {
-    const result = parseBackendOverride('')
+  it('empty string → no backend override', async () => {
+    const result = await parseBackendOverride('')
     expect(result).toEqual({ backend: undefined, actualText: '' })
   })
 
-  it('@iflow with no content → backend with empty actualText', () => {
+  it('@iflow with no content → backend with empty actualText', async () => {
     // The regex requires whitespace/newline after backend name, so no match without trailing space
-    const result = parseBackendOverride('@iflow')
+    const result = await parseBackendOverride('@iflow')
     expect(result).toEqual({ backend: undefined, actualText: '@iflow' })
   })
 
-  it('@iflow with trailing space → backend with empty actualText', () => {
-    const result = parseBackendOverride('@iflow ')
+  it('@iflow with trailing space → backend with empty actualText', async () => {
+    const result = await parseBackendOverride('@iflow ')
     expect(result).toEqual({ backend: 'iflow', actualText: '' })
   })
 })
 
 // ── chatHandler integration tests for backend override ──
+
+// Mock sessionManager to inspect session state
+const mockSetSession = vi.fn()
+const mockGetSession = vi.fn()
+const mockClearSession = vi.fn()
+vi.mock('../sessionManager.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../sessionManager.js')>()
+  return {
+    ...actual,
+    setSession: (...args: unknown[]) => mockSetSession(...args),
+    getSession: (...args: unknown[]) => mockGetSession(...args),
+    clearSession: (...args: unknown[]) => mockClearSession(...args),
+    enqueueChat: (_chatId: string, fn: () => Promise<void>) => fn(),
+    shouldResetSession: () => false,
+    incrementTurn: vi.fn(),
+    getModelOverride: () => undefined,
+    getBackendOverride: () => undefined,
+  }
+})
 
 describe('chatHandler — backend override', () => {
   let handleChat: typeof import('../chatHandler.js').handleChat
@@ -134,6 +153,7 @@ describe('chatHandler — backend override', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     messenger = createMockMessenger()
+    mockGetSession.mockReturnValue(undefined)
 
     mockInvokeBackend.mockResolvedValue({
       ok: true,
@@ -211,6 +231,67 @@ describe('chatHandler — backend override', () => {
     expect(mockInvokeBackend).toHaveBeenCalledWith(
       expect.objectContaining({
         backendType: 'opencode',
+      })
+    )
+  })
+
+  it('should save backend type when updating session', async () => {
+    await handleChat('chat-be-6', '@iflow 测试', messenger, {
+      client: createClientContext(),
+    })
+
+    // setSession should be called with backendOverride as 3rd arg
+    expect(mockSetSession).toHaveBeenCalledWith('chat-be-6', 'session-001', 'iflow')
+  })
+
+  it('should save undefined backend type for default backend', async () => {
+    await handleChat('chat-be-7', '普通消息', messenger, {
+      client: createClientContext(),
+    })
+
+    expect(mockSetSession).toHaveBeenCalledWith('chat-be-7', 'session-001', undefined)
+  })
+
+  it('should NOT reuse session when backend changes from inline to default', async () => {
+    // Simulate: previous call was @local, session was saved with sessionBackendType='local'
+    mockGetSession.mockReturnValue({
+      sessionId: 'session-openai-123',
+      lastActiveAt: Date.now(),
+      turnCount: 1,
+      estimatedTokens: 100,
+      sessionBackendType: 'local',
+    })
+
+    await handleChat('chat-be-8', '普通消息', messenger, {
+      client: createClientContext(),
+    })
+
+    // Should NOT pass the old session ID (backend mismatch: local → default)
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: undefined,
+      })
+    )
+  })
+
+  it('should reuse session when backend stays the same', async () => {
+    // Simulate: previous call was default backend, current is also default
+    mockGetSession.mockReturnValue({
+      sessionId: 'session-claude-456',
+      lastActiveAt: Date.now(),
+      turnCount: 1,
+      estimatedTokens: 100,
+      sessionBackendType: undefined, // default backend
+    })
+
+    await handleChat('chat-be-9', '继续聊', messenger, {
+      client: createClientContext(),
+    })
+
+    // Should reuse session (both are default backend)
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-claude-456',
       })
     )
   })

@@ -82,9 +82,9 @@ export function getSession(chatId: string): ChatSession | undefined {
 }
 
 /** Update or create session, starts cleanup timer, persists to disk */
-export function setSession(chatId: string, sessionId: string): void {
+export function setSession(chatId: string, sessionId: string, backendType?: string): void {
   const existing = sessions.get(chatId)
-  sessions.set(chatId, { sessionId, lastActiveAt: Date.now(), turnCount: 0, estimatedTokens: 0, modelOverride: existing?.modelOverride, backendOverride: existing?.backendOverride })
+  sessions.set(chatId, { sessionId, lastActiveAt: Date.now(), turnCount: 0, estimatedTokens: 0, modelOverride: existing?.modelOverride, backendOverride: existing?.backendOverride, sessionBackendType: backendType })
   ensureCleanupTimer()
   persistSessions()
 }

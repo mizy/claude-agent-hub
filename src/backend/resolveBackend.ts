@@ -12,6 +12,7 @@ import { createClaudeCodeBackend } from './claudeCodeBackend.js'
 import { createOpencodeBackend } from './opencodeBackend.js'
 import { createIflowBackend } from './iflowBackend.js'
 import { createCodebuddyBackend } from './codebuddyBackend.js'
+import { createOpenAICompatibleBackend } from './openaiCompatibleBackend.js'
 
 /** 后端工厂注册表 */
 const BACKEND_REGISTRY: Record<string, () => BackendAdapter> = {
@@ -19,9 +20,10 @@ const BACKEND_REGISTRY: Record<string, () => BackendAdapter> = {
   opencode: createOpencodeBackend,
   iflow: createIflowBackend,
   codebuddy: createCodebuddyBackend,
+  openai: createOpenAICompatibleBackend,
 }
 
-/** 按 backend type 缓存实例 */
+/** 按 backend name 缓存实例 (name = backendType or 'default') */
 const backendCache = new Map<string, BackendAdapter>()
 
 /**
@@ -35,28 +37,52 @@ export async function resolveBackend(backendType?: string): Promise<BackendAdapt
   // Determine which backend type to use
   const namedBackends = config.backends ?? {}
   let resolvedType: string
+  let backendName: string | undefined
+
   if (backendType) {
     // Check named backends first, then treat as registry key
-    resolvedType = namedBackends[backendType]?.type ?? backendType
+    if (namedBackends[backendType]) {
+      resolvedType = namedBackends[backendType]!.type
+      backendName = backendType
+    } else {
+      resolvedType = backendType
+    }
   } else if (config.defaultBackend && namedBackends[config.defaultBackend]) {
     resolvedType = namedBackends[config.defaultBackend]!.type
+    backendName = config.defaultBackend
   } else {
     resolvedType = config.backend.type
   }
 
+  // Cache key: use backendName if named backend, else resolvedType
+  const cacheKey = backendName ?? resolvedType
+
   // Return cached instance if available
-  if (backendCache.has(resolvedType)) {
-    return backendCache.get(resolvedType)!
+  if (backendCache.has(cacheKey)) {
+    return backendCache.get(cacheKey)!
   }
 
-  const factory = BACKEND_REGISTRY[resolvedType]
+  // Auto-route to openai-compatible backend when openaiCompatible is configured
+  // This allows any backend type (e.g. opencode) to switch to API mode
+  const backendConfig = backendName
+    ? (config.backends ?? {})[backendName]
+    : config.backend
+  const useOpenAI = resolvedType !== 'openai' && backendConfig?.openaiCompatible != null
+
+  const effectiveType = useOpenAI ? 'openai' : resolvedType
+
+  const factory = BACKEND_REGISTRY[effectiveType]
   if (!factory) {
     const available = Object.keys(BACKEND_REGISTRY).join(', ')
     throw new Error(`未知后端: ${resolvedType}，可用: ${available}`)
   }
 
-  const backend = factory()
-  backendCache.set(resolvedType, backend)
+  // For openai backend (explicit or auto-routed), pass backendName so it can resolve correct config
+  const backend = effectiveType === 'openai'
+    ? (factory as (name?: string) => BackendAdapter)(backendName)
+    : factory()
+
+  backendCache.set(cacheKey, backend)
   return backend
 }
 

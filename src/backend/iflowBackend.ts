@@ -37,6 +37,7 @@ export function createIflowBackend(): BackendAdapter {
         onChunk,
         model,
         sessionId,
+        signal,
       } = options
 
       const args = buildArgs(prompt, model, sessionId)
@@ -48,18 +49,32 @@ export function createIflowBackend(): BackendAdapter {
           timeout: timeoutMs,
           stdin: 'ignore',
           buffer: !stream,
+          ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
 
         let rawOutput: string
+        let stderrOutput = ''
         if (stream && subprocess.stdout) {
+          // Capture stderr in parallel for error detection
+          collectStderr(subprocess, s => { stderrOutput = s })
           rawOutput = await streamOutput(subprocess, onChunk)
         } else {
           const result = await subprocess
           rawOutput = result.stdout
+          stderrOutput = result.stderr ?? ''
         }
 
         const durationMs = Date.now() - startTime
         const parsed = parseOutput(rawOutput)
+
+        // iflow may exit 0 but output errors to stderr with empty stdout
+        if (!parsed.response && stderrOutput) {
+          const stderrParsed = parseOutput(stderrOutput)
+          if (stderrParsed.response) {
+            logger.warn(`iflow returned error via stderr: ${stderrParsed.response.slice(0, 200)}`)
+            return err({ type: 'process', message: stderrParsed.response })
+          }
+        }
 
         logger.info(`完成 (${(durationMs / 1000).toFixed(1)}s)`)
 
@@ -70,6 +85,9 @@ export function createIflowBackend(): BackendAdapter {
           sessionId: parsed.sessionId,
         })
       } catch (error: unknown) {
+        if (signal?.aborted) {
+          return err({ type: 'cancelled', message: 'Chat interrupted by new message' })
+        }
         return err(toInvokeError(error, 'iflow-cli'))
       }
     },
@@ -134,6 +152,14 @@ function parseOutput(raw: string): { response: string; sessionId: string } {
   const response = execInfoMatch ? raw.slice(0, execInfoMatch.index).trim() : raw.trim()
 
   return { response, sessionId }
+}
+
+/** Collect stderr output from subprocess (non-blocking, for error detection) */
+function collectStderr(subprocess: ResultPromise, onDone: (text: string) => void): void {
+  if (!subprocess.stderr) return
+  const chunks: string[] = []
+  subprocess.stderr.on('data', (chunk: Buffer) => { chunks.push(chunk.toString()) })
+  subprocess.stderr.on('end', () => { onDone(chunks.join('')) })
 }
 
 async function streamOutput(

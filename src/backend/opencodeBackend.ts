@@ -35,6 +35,7 @@ export function createOpencodeBackend(): BackendAdapter {
         timeoutMs = 30 * 60 * 1000,
         onChunk,
         model,
+        signal,
       } = options
 
       const args = buildArgs(prompt, model, stream)
@@ -46,6 +47,7 @@ export function createOpencodeBackend(): BackendAdapter {
           timeout: timeoutMs,
           stdin: 'ignore',
           buffer: !stream,
+          ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
 
         let rawOutput: string
@@ -68,6 +70,9 @@ export function createOpencodeBackend(): BackendAdapter {
           sessionId: '',
         })
       } catch (error: unknown) {
+        if (signal?.aborted) {
+          return err({ type: 'cancelled', message: 'Chat interrupted by new message' })
+        }
         return err(toInvokeError(error, 'OpenCode'))
       }
     },

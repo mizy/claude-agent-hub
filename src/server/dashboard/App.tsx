@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Sidebar, NewTaskModal, DeleteConfirmModal } from './components/Sidebar'
+import { Sidebar, NewTaskModal, DeleteConfirmModal, MessageModal, InjectNodeModal } from './components/Sidebar'
 import { WorkflowCanvas } from './components/WorkflowCanvas'
 import { RightPanel } from './components/RightPanel'
 import { Toast } from './components/Toast'
@@ -18,6 +18,8 @@ export function App() {
   const closeMobilePanels = useStore((s) => s.closeMobilePanels)
   const setShowNewTaskModal = useStore((s) => s.setShowNewTaskModal)
   const setPendingDeleteTask = useStore((s) => s.setPendingDeleteTask)
+  const setShowMessageModal = useStore((s) => s.setShowMessageModal)
+  const setShowInjectNodeModal = useStore((s) => s.setShowInjectNodeModal)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -25,11 +27,13 @@ export function App() {
       if (e.key === 'Escape') {
         setShowNewTaskModal(false)
         setPendingDeleteTask(null)
+        setShowMessageModal(null)
+        setShowInjectNodeModal(null)
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [setShowNewTaskModal, setPendingDeleteTask])
+  }, [setShowNewTaskModal, setPendingDeleteTask, setShowMessageModal, setShowInjectNodeModal])
 
   // Close mobile panels on resize to desktop
   useEffect(() => {
@@ -80,6 +84,8 @@ export function App() {
 
       <NewTaskModal />
       <DeleteConfirmModal />
+      <MessageModal />
+      <InjectNodeModal />
       <Toast />
     </>
   )

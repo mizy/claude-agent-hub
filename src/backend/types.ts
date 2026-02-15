@@ -33,6 +33,8 @@ export interface InvokeOptions {
   model?: string
   /** Trace 上下文，用于创建 LLM child span */
   traceCtx?: TraceContext
+  /** Abort signal for cancelling the invocation */
+  signal?: AbortSignal
 }
 
 export interface InvokeResult {

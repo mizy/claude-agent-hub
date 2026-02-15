@@ -1,4 +1,4 @@
-export type TaskMessageSource = 'cli' | 'lark' | 'telegram'
+export type TaskMessageSource = 'cli' | 'lark' | 'telegram' | 'dashboard'
 
 export interface TaskMessage {
   id: string

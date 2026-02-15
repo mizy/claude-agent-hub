@@ -80,6 +80,17 @@ export { toInvokeError } from './toInvokeError.js'
 // 文本截断
 export { truncateText } from './truncateText.js'
 
+// Claude Code 配置读取
+export {
+  type SkillEntry,
+  type BuildSystemPromptOptions,
+  readGlobalClaudeMd,
+  readProjectClaudeMd,
+  readProjectMemory,
+  readAllSkills,
+  buildClaudeSystemPrompt,
+} from './readClaudeConfig.js'
+
 // 时间处理
 export {
   now,

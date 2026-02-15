@@ -17,6 +17,8 @@ import {
   stopTask,
   deleteTask,
   completeTask,
+  pauseTask,
+  injectNode,
 } from '../task/index.js'
 import {
   getRunningTasks,
@@ -30,6 +32,7 @@ import {
   querySlowSpans,
   getErrorChain,
 } from '../store/TraceStore.js'
+import { addTaskMessage, getAllTaskMessages } from '../store/TaskMessageStore.js'
 import { resumeTask, resumeFailedTask } from '../task/resumeTask.js'
 import { resumePausedTask } from '../task/index.js'
 import { spawnTaskProcess } from '../task/spawnTask.js'
@@ -263,6 +266,93 @@ function registerTaskActionRoutes(app: Express): void {
     } catch (err) {
       logger.error('Failed to delete task', err)
       res.status(500).json({ success: false, error: 'Failed to delete task' })
+    }
+  })
+
+  // POST /api/tasks/:id/pause
+  app.post('/api/tasks/:id/pause', (req: Request<{ id: string }>, res: Response) => {
+    try {
+      const task = getTask(req.params.id)
+      if (!task) {
+        res.status(404).json({ success: false, error: 'Task not found' })
+        return
+      }
+      const { reason } = req.body || {}
+      const result = pauseTask(req.params.id, reason)
+      if (!result.success) {
+        res.status(400).json({ success: false, error: result.error })
+        return
+      }
+      res.json({ success: true, data: { task: result.task } })
+    } catch (err) {
+      logger.error('Failed to pause task', err)
+      res.status(500).json({ success: false, error: 'Failed to pause task' })
+    }
+  })
+
+  // POST /api/tasks/:id/message
+  app.post('/api/tasks/:id/message', (req: Request<{ id: string }>, res: Response) => {
+    try {
+      const task = getTask(req.params.id)
+      if (!task) {
+        res.status(404).json({ success: false, error: 'Task not found' })
+        return
+      }
+
+      const { content } = req.body
+      if (!content || typeof content !== 'string') {
+        res.status(400).json({ success: false, error: 'content is required' })
+        return
+      }
+
+      const message = addTaskMessage(req.params.id, content, 'dashboard')
+      res.json({ success: true, data: { message } })
+    } catch (err) {
+      logger.error('Failed to send message', err)
+      res.status(500).json({ success: false, error: 'Failed to send message' })
+    }
+  })
+
+  // GET /api/tasks/:id/messages
+  app.get('/api/tasks/:id/messages', (req: Request<{ id: string }>, res: Response) => {
+    try {
+      const task = getTask(req.params.id)
+      if (!task) {
+        res.status(404).json({ success: false, error: 'Task not found' })
+        return
+      }
+
+      const messages = getAllTaskMessages(req.params.id)
+      res.json({ success: true, data: { messages } })
+    } catch (err) {
+      logger.error('Failed to get messages', err)
+      res.status(500).json({ success: false, error: 'Failed to get messages' })
+    }
+  })
+
+  // POST /api/tasks/:id/inject-node
+  app.post('/api/tasks/:id/inject-node', (req: Request<{ id: string }>, res: Response) => {
+    try {
+      const task = getTask(req.params.id)
+      if (!task) {
+        res.status(404).json({ success: false, error: 'Task not found' })
+        return
+      }
+      const { prompt, persona } = req.body
+      if (!prompt || typeof prompt !== 'string') {
+        res.status(400).json({ success: false, error: 'prompt is required' })
+        return
+      }
+
+      const result = injectNode(req.params.id, prompt, persona)
+      if (!result.success) {
+        res.status(400).json({ success: false, error: result.error })
+        return
+      }
+      res.json({ success: true, data: { nodeId: result.nodeId } })
+    } catch (err) {
+      logger.error('Failed to inject node', err)
+      res.status(500).json({ success: false, error: 'Failed to inject node' })
     }
   })
 

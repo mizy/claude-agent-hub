@@ -29,9 +29,24 @@ export const chatConfigSchema = z.object({
   mcpServers: z.array(z.string()).default([]),
 })
 
+export const openaiCompatibleConfigSchema = z.object({
+  /** API base URL, e.g. 'http://localhost:1234/v1' */
+  baseURL: z.string(),
+  /** API key (optional, local services usually don't need one) */
+  apiKey: z.string().optional(),
+  /** Default model name */
+  defaultModel: z.string().optional(),
+  /** Max context length (tokens), default 4096 */
+  maxContextLength: z.number().optional().default(4096),
+  /** Inject Claude config (CLAUDE.md, memory) as system prompt, default true */
+  useClaudeConfig: z.boolean().optional().default(true),
+  /** Include skills in system prompt, default true */
+  includeSkills: z.boolean().optional().default(true),
+})
+
 export const backendConfigSchema = z.object({
-  /** 后端类型: claude-code | opencode | iflow | codebuddy */
-  type: z.enum(['claude-code', 'opencode', 'iflow', 'codebuddy']).default('claude-code'),
+  /** 后端类型: claude-code | opencode | iflow | codebuddy | openai */
+  type: z.enum(['claude-code', 'opencode', 'iflow', 'codebuddy', 'openai']).default('claude-code'),
   /** 模型名（含义因后端而异） */
   model: z.string().default('opus'),
   /** 最大 token 数（部分后端支持） */
@@ -40,6 +55,8 @@ export const backendConfigSchema = z.object({
   enableAgentTeams: z.boolean().optional().default(false),
   /** 对话模式配置 */
   chat: chatConfigSchema.default({}),
+  /** OpenAI 兼容后端配置（type 为 'openai' 时必需；其他 type 配置此字段时自动切换为 API 模式） */
+  openaiCompatible: openaiCompatibleConfigSchema.optional(),
 })
 
 export const larkConfigSchema = z.object({
@@ -82,6 +99,7 @@ export type TaskConfig = z.infer<typeof taskConfigSchema>
 export type GitConfig = z.infer<typeof gitConfigSchema>
 export type BackendConfig = z.infer<typeof backendConfigSchema>
 export type ChatConfig = z.infer<typeof chatConfigSchema>
+export type OpenAICompatibleConfig = z.infer<typeof openaiCompatibleConfigSchema>
 export type LarkConfig = z.infer<typeof larkConfigSchema>
 export type TelegramConfig = z.infer<typeof telegramConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>
