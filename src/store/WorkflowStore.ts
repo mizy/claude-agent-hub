@@ -18,7 +18,7 @@ import {
   getTaskInstance,
   saveTaskInstance,
 } from './TaskWorkflowStore.js'
-import type { Workflow, WorkflowInstance, WorkflowStatus, NodeState } from '../workflow/types.js'
+import type { Workflow, WorkflowInstance, WorkflowStatus, NodeState } from '../types/workflow.js'
 
 const logger = createLogger('workflow-store')
 

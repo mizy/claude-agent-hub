@@ -8,10 +8,7 @@ import { createLogger } from '../shared/logger.js'
 import { formatDuration } from '../shared/formatTime.js'
 import { readJson, writeJson } from './readWriteJson.js'
 import { getTaskFolder } from './TaskStore.js'
-import type {
-  WorkflowExecutionStats,
-  NodeExecutionStats,
-} from '../workflow/engine/WorkflowEventEmitter.js'
+import type { WorkflowExecutionStats, NodeExecutionStats } from '../types/workflow.js'
 
 const logger = createLogger('execution-stats-store')
 
@@ -369,4 +366,4 @@ export { formatDuration } from '../shared/formatTime.js'
 export type {
   NodeExecutionStats,
   WorkflowExecutionStats,
-} from '../workflow/engine/WorkflowEventEmitter.js'
+} from '../types/workflow.js'

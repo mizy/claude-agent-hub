@@ -10,7 +10,7 @@
  */
 
 import type { Task, TaskStatus } from '../types/task.js'
-import type { Workflow, WorkflowInstance } from '../workflow/types.js'
+import type { Workflow, WorkflowInstance } from '../types/workflow.js'
 import {
   saveTask as _saveTask,
   getTask as _getTask,

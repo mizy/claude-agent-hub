@@ -87,6 +87,7 @@ export const FILE_NAMES = {
 export const DIR_NAMES = {
   LOGS: 'logs',
   OUTPUTS: 'outputs',
+  TRACES: 'traces',
 } as const
 
 // ============ 路径构建函数（聚合导出） ============
@@ -123,6 +124,11 @@ export const TASK_PATHS = {
   getResultPath: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.OUTPUTS, FILE_NAMES.RESULT),
   /** 获取消息队列文件路径 */
   getMessagesPath: (taskId: string) => join(TASKS_DIR, taskId, FILE_NAMES.MESSAGES),
+  /** 获取 traces 目录 */
+  getTracesDir: (taskId: string) => join(TASKS_DIR, taskId, DIR_NAMES.TRACES),
+  /** 获取单个 trace JSONL 文件路径 */
+  getTraceFilePath: (taskId: string, traceId: string) =>
+    join(TASKS_DIR, taskId, DIR_NAMES.TRACES, `trace-${traceId}.jsonl`),
 }
 
 // ============ 兼容性别名（保留旧 API） ============

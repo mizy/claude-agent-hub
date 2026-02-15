@@ -4,7 +4,7 @@
 
 import { join } from 'path'
 import { createLogger } from '../shared/logger.js'
-import type { Workflow, WorkflowInstance } from '../workflow/types.js'
+import type { Workflow, WorkflowInstance } from '../types/workflow.js'
 import type { Task } from '../types/task.js'
 import { WORKFLOW_FILE, INSTANCE_FILE, getTaskDir } from './paths.js'
 import { readJson, writeJson } from './readWriteJson.js'
