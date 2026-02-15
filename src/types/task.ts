@@ -46,6 +46,10 @@ export interface Task {
   workflowId?: string
   /** Working directory where the task was created (for conflict detection) */
   cwd?: string
+  /** Task-level backend type override (e.g. 'claude-code', 'iflow') */
+  backend?: string
+  /** Task-level model override (e.g. 'opus', 'sonnet') */
+  model?: string
   retryCount: number
   lastRejectReason?: string
   createdAt: string
@@ -68,4 +72,8 @@ export interface CreateTaskOptions {
   description?: string
   priority?: string
   assignee?: string
+  /** Task-level backend type override */
+  backend?: string
+  /** Task-level model override */
+  model?: string
 }

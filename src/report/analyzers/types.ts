@@ -4,7 +4,7 @@
 
 import type { TaskCategory } from '../../analysis/index.js'
 import type { ExecutionSummary, ExecutionTimeline } from '../../task/index.js'
-import type { NodeExecutionStats } from '../../workflow/engine/WorkflowEventEmitter.js'
+import type { NodeExecutionStats } from '../../workflow/index.js'
 
 export interface TrendPeriod {
   label: string

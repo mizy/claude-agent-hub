@@ -6,6 +6,7 @@
 
 import type { Result } from '../shared/result.js'
 import type { PersonaConfig } from '../types/persona.js'
+import type { TraceContext } from '../types/trace.js'
 
 // ============ Invoke Types ============
 
@@ -30,6 +31,8 @@ export interface InvokeOptions {
   sessionId?: string
   /** 模型选择，含义因后端而异 */
   model?: string
+  /** Trace 上下文，用于创建 LLM child span */
+  traceCtx?: TraceContext
 }
 
 export interface InvokeResult {

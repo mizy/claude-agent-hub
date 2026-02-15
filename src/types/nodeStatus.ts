@@ -4,7 +4,7 @@
  * 提供类型安全的节点状态判断，避免字符串字面量散落在代码各处
  */
 
-import type { NodeStatus, WorkflowStatus } from '../workflow/types.js'
+import type { NodeStatus, WorkflowStatus } from './workflow.js'
 
 // ============ NodeStatus 辅助函数 ============
 

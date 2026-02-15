@@ -8,7 +8,7 @@
  * messageId 统一用 string（Telegram number → toString，飞书 message_id 是 string）
  */
 
-import type { LarkCard } from '../buildLarkCard.js'
+import type { LarkCard } from '../larkCards/cardElements.js'
 
 // ── MessengerAdapter：平台消息收发能力 ──
 
@@ -57,6 +57,12 @@ export interface ApprovalResult {
 export interface ChatSession {
   sessionId: string
   lastActiveAt: number
+  turnCount: number
+  estimatedTokens: number
+  /** User-set model override via /model command. Cleared on session expiry. */
+  modelOverride?: string
+  /** User-set backend override via /backend command. Cleared on session expiry. */
+  backendOverride?: string
 }
 
 // ── 命令处理结果 ──

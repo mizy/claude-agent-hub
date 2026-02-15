@@ -18,6 +18,7 @@ export interface MemoryEntry {
   confidence: number // 0-1
   createdAt: string
   updatedAt: string
+  lastAccessedAt?: string // set on retrieval, NOT on content update
   accessCount: number
   projectPath?: string
 }
