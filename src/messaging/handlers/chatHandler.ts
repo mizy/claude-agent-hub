@@ -311,18 +311,16 @@ async function handleChatInternal(
     await sendFinalResponse(chatId, finalText, maxLen, placeholderId, messenger)
     bench.responseSent = Date.now()
 
-    // Log benchmark
-    const benchStr = formatBenchmark(bench, {
-      slotWaitMs: result.value.slotWaitMs,
-      apiMs: result.value.durationApiMs,
-      costUsd: result.value.costUsd,
-      model,
-      backend: backendOverride,
-    })
-    logger.info(`\n${benchStr}`)
-
-    // Send benchmark to user if enabled
+    // Benchmark (log + send to user) only when enabled
     if (benchmarkEnabled) {
+      const benchStr = formatBenchmark(bench, {
+        slotWaitMs: result.value.slotWaitMs,
+        apiMs: result.value.durationApiMs,
+        costUsd: result.value.costUsd,
+        model,
+        backend: backendOverride,
+      })
+      logger.info(`\n${benchStr}`)
       await messenger.reply(chatId, benchStr).catch(e => {
         logger.debug(`benchmark reply failed: ${e instanceof Error ? e.message : e}`)
       })
