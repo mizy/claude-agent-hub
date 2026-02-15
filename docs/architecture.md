@@ -2,7 +2,7 @@
 
 ## 概览
 
-Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引擎自动分析、拆解和执行开发任务，支持多种 CLI 后端（claude-code/opencode/iflow/codebuddy）和复杂的控制流（条件、循环、并行、定时、人工审批等）。
+Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引擎自动分析、拆解和执行开发任务，支持多种 CLI 后端（claude-code/opencode/iflow/codebuddy）和复杂的控制流（条件、循环、并行、定时、人工审批等）。内置 Memory 学习系统、Prompt 优化、分布式 Tracing 和任务交互（暂停/恢复/注入）能力。
 
 ## 系统架构
 
@@ -11,7 +11,8 @@ Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引�
 │                                CLI Layer                                     │
 │                         src/cli/index.ts (@entry)                           │
 │                                                                              │
-│   cah "任务"    cah task list    cah report trend    cah daemon start       │
+│   cah "任务"    cah task list    cah report trend    cah start              │
+│   cah memory    cah prompt       cah trace           cah dashboard          │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
@@ -19,12 +20,13 @@ Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引�
 │                         Task Execution Layer                                 │
 │                                                                              │
 │  ┌──────────────┐  ┌───────────────────┐  ┌─────────────────────────────┐  │
-│  │  createTask  │  │  executeTask      │  │  resumeTask                 │  │
-│  │  任务创建     │  │  任务执行(前台/后台) │  │  恢复中断任务              │  │
+│  │  createTask  │  │  executeTask      │  │  pauseTask / resumeTask     │  │
+│  │  任务创建     │  │  任务执行(前台/后台) │  │  暂停/恢复/注入节点         │  │
 │  └──────────────┘  └───────────────────┘  └─────────────────────────────┘  │
 │                                                                              │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
 │  │  Analysis: 项目上下文分析、历史学习、任务分类、时间预估                │   │
+│  │  Memory: 跨任务经验记忆、检索、学习                                    │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -39,8 +41,9 @@ Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引�
 │                                                                              │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │  generateWorkflow: AI 生成工作流                                        │  │
-│  │  executeNode: 执行节点(使用 Persona)                                    │  │
+│  │  executeNode: 执行节点(使用 Persona) + Tracing Spans                   │  │
 │  │  控制流: delay | schedule | loop | foreach | switch | assign | script  │  │
+│  │  HumanApprovalQueue: 人工审批队列                                       │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -51,24 +54,25 @@ Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引�
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────┐    │
 │  │  Adapters:                                                          │    │
-│  │  - ClaudeCodeAdapter (claude-code CLI)                             │    │
-│  │  - OpenCodeAdapter (opencode CLI)                                  │    │
-│  │  - IflowAdapter (iflow CLI)                                        │    │
-│  │  - CodebuddyAdapter (codebuddy CLI)                                │    │
+│  │  - claudeCodeBackend (claude-code CLI)                              │    │
+│  │  - opencodeBackend (opencode CLI)                                   │    │
+│  │  - iflowBackend (iflow CLI)                                         │    │
+│  │  - codebuddyBackend (codebuddy CLI)                                 │    │
 │  │                                                                     │    │
-│  │  createBackend(type) → IBackend                                    │    │
-│  │  backend.execute({ prompt, persona, cwd, onChunk })                │    │
+│  │  invokeBackend(options) → Result<InvokeResult, InvokeError>         │    │
+│  │  自动 Prompt 组装(persona + mode) + Slot 管理 + Span 创建            │    │
 │  └────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Storage & Report Layer                              │
+│                       Storage & Infrastructure Layer                         │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  Store: TaskStore, WorkflowStore, UnifiedStore                       │   │
+│  │  Store: TaskStore, WorkflowStore, MemoryStore, TraceStore,          │   │
+│  │         PromptVersionStore, TaskMessageStore, ExecutionStatsStore    │   │
 │  │  Report: 趋势分析、实时监控、执行对比、退化检测                         │   │
-│  │  Notify: 飞书 WSClient + Telegram 长轮询(双向对话终端)                │   │
+│  │  Messaging: 飞书(WS+卡片) + Telegram(长轮询) — 双向对话终端          │   │
 │  │                                                                      │   │
 │  │  .cah-data/tasks/task-{id}/                                         │   │
 │  │    ├── task.json          # 任务元数据                               │   │
@@ -77,8 +81,10 @@ Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引�
 │  │    ├── stats.json         # 聚合统计(从 instance 派生)                │   │
 │  │    ├── timeline.json      # 事件时间线                               │   │
 │  │    ├── process.json       # 后台进程信息                             │   │
+│  │    ├── messages.json      # 任务交互消息队列                          │   │
 │  │    ├── logs/              # execution.log + events.jsonl            │   │
-│  │    └── outputs/result.md  # 执行报告                                 │   │
+│  │    ├── outputs/           # result.md                               │   │
+│  │    └── traces/            # trace-{traceId}.jsonl（OTLP 兼容 Span）  │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -89,112 +95,251 @@ Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引�
 src/
 ├── cli/                        # CLI 命令入口
 │   ├── index.ts               # @entry 主入口
-│   ├── output.ts              # 统一输出格式(ui 工具)
-│   ├── spinner.ts             # loading 状态
 │   └── commands/              # 子命令
-│       ├── task.ts
-│       ├── report.ts
-│       └── daemon.ts
+│       ├── task.ts            # 任务主命令（分发到子文件）
+│       ├── taskCreate.ts      # 创建任务
+│       ├── taskLifecycle.ts   # 生命周期（stop/pause/resume/msg/inject）
+│       ├── taskList.ts        # 列表查看
+│       ├── taskLogs.ts        # 日志查看
+│       ├── agent.ts           # Agent 管理
+│       ├── daemon.ts          # 守护进程控制
+│       ├── memory.ts          # Memory 操作
+│       ├── prompt.ts          # Prompt 版本管理
+│       ├── report.ts          # 报告生成
+│       ├── server.ts          # Dashboard 启动
+│       ├── trace.ts           # Tracing 查看
+│       └── init.ts            # 项目初始化
 │
 ├── backend/                    # CLI 后端抽象层
-│   ├── index.ts               # @entry 后端工厂
-│   ├── IBackend.ts            # 后端接口
-│   └── adapters/              # 各 CLI 适配器
-│       ├── ClaudeCodeAdapter.ts
-│       ├── OpenCodeAdapter.ts
-│       ├── IflowAdapter.ts
-│       └── CodebuddyAdapter.ts
+│   ├── index.ts               # @entry: invokeBackend(), resolveBackend()
+│   ├── types.ts               # BackendAdapter, InvokeOptions, InvokeResult
+│   ├── resolveBackend.ts      # 后端解析与注册
+│   ├── promptBuilder.ts       # Prompt 组装（persona + mode）
+│   ├── concurrency.ts         # Slot 并发控制
+│   ├── claudeCodeBackend.ts   # claude-code 适配器
+│   ├── opencodeBackend.ts     # opencode 适配器
+│   ├── iflowBackend.ts        # iflow 适配器
+│   └── codebuddyBackend.ts    # codebuddy 适配器
 │
-├── task/                       # Task 层：生命周期 + 执行
-│   ├── createTask.ts
-│   ├── executeTask.ts         # 任务执行(进度条/ETA/统计)
-│   ├── resumeTask.ts
-│   ├── queryTask.ts           # 查询(list/get/poll)
-│   ├── taskLifecycle.ts       # 生命周期管理
-│   ├── ExecutionProgress.ts
-│   └── ExecutionStats.ts
-│
-├── workflow/                   # Workflow 层：定义、状态、生成
+├── task/                       # Task 层：生命周期 + 执行 + 交互
 │   ├── index.ts               # @entry
-│   ├── types.ts               # 类型定义
+│   ├── createTask.ts          # 创建任务
+│   ├── createTaskWithFolder.ts # 创建任务并初始化目录
+│   ├── createAndRun.ts        # 创建并立即执行
+│   ├── executeTask.ts         # 任务执行编排
+│   ├── prepareExecution.ts    # 执行准备逻辑
+│   ├── runTask.ts             # 运行任务核心
+│   ├── spawnTask.ts           # 后台进程 spawn
+│   ├── completeTask.ts        # 完成任务
+│   ├── stopTask.ts            # 停止任务
+│   ├── deleteTask.ts          # 删除任务
+│   ├── pauseResumeTask.ts     # 暂停/恢复任务
+│   ├── injectNode.ts          # 运行时注入工作流节点
+│   ├── queryTask.ts           # 查询（list/get/poll）
+│   ├── resumeTask.ts          # 恢复孤儿任务
+│   ├── taskRecovery.ts        # 故障恢复
+│   ├── manageTaskLifecycle.ts # 生命周期管理
+│   ├── sendTaskNotify.ts      # 通知发送
+│   ├── taskNotifications.ts   # 通知处理
+│   ├── formatTask.ts          # 任务格式化显示
+│   ├── processTracking.ts     # 进程追踪
+│   ├── ExecutionProgress.ts   # 进度条
+│   └── ExecutionStats.ts      # 执行统计
+│
+├── workflow/                   # Workflow 层：定义、状态、生成、执行
+│   ├── index.ts               # @entry
+│   ├── types.ts               # 类型 re-export（源自 types/workflow.ts）
 │   ├── generateWorkflow.ts    # AI 生成工作流
-│   ├── executeNode.ts         # 执行单个节点(使用 Persona)
-│   ├── engine/
-│   │   ├── StateManager.ts    # 状态管理
-│   │   ├── WorkflowEngine.ts  # 引擎核心
+│   ├── executeNode.ts         # 执行单个节点（使用 Persona）
+│   ├── nodeTypeHandlers.ts    # 节点类型处理器
+│   ├── nodeResultProcessor.ts # 节点结果处理
+│   ├── logNodeExecution.ts    # 执行日志
+│   ├── factory.ts             # Workflow 工厂函数
+│   ├── engine/                # 引擎核心
+│   │   ├── WorkflowEngine.ts
+│   │   ├── WorkflowExecution.ts
+│   │   ├── WorkflowLifecycle.ts
+│   │   ├── WorkflowEventEmitter.ts
+│   │   ├── StateManager.ts
 │   │   ├── ConditionEvaluator.ts
-│   │   └── executeNewNodes.ts # 控制流节点执行器
-│   ├── queue/
-│   │   ├── NodeWorker.ts      # 节点执行器
-│   │   └── WorkflowQueue.ts   # 任务队列
-│   └── parser/
-│       ├── parseJson.ts       # JSON 解析
-│       └── parseMarkdown.ts   # Markdown 解析
+│   │   ├── ExpressionEvaluator.ts
+│   │   ├── RetryStrategy.ts
+│   │   └── executeNewNodes.ts
+│   ├── queue/                 # 队列与 Worker
+│   │   ├── WorkflowQueue.ts
+│   │   ├── NodeWorker.ts
+│   │   ├── HumanApprovalQueue.ts
+│   │   ├── queueLock.ts
+│   │   └── queueMaintenance.ts
+│   └── parser/                # 解析器
+│       ├── parseJson.ts
+│       └── parseMarkdown.ts
+│
+├── memory/                     # Memory 层：跨任务经验学习
+│   ├── index.ts               # @entry
+│   ├── manageMemory.ts        # Memory CRUD（add/list/remove/search）
+│   ├── retrieveMemory.ts      # 相关性检索（关键词+项目+时间衰减评分）
+│   ├── extractMemory.ts       # 从任务结果提取记忆
+│   ├── formatMemory.ts        # 格式化注入 Prompt
+│   └── types.ts               # MemoryEntry, MemoryCategory
+│
+├── prompt-optimization/        # Prompt 优化层：自动改进 Prompt
+│   ├── index.ts               # @entry
+│   ├── analyzeFailure.ts      # LLM 分析失败根因
+│   ├── generateImprovement.ts # Textual gradient 改进 prompt
+│   └── manageVersions.ts      # Prompt 版本管理
 │
 ├── persona/                    # Persona 层：执行角色定义
-│   ├── builtinPersonas.ts     # 内置人格(Architect/Pragmatist 等)
+│   ├── index.ts               # @entry
+│   ├── builtinPersonas.ts     # 内置人格（Architect/Pragmatist 等）
 │   ├── loadPersona.ts         # 加载人格配置
 │   └── personaMcpConfig.ts    # MCP 配置
 │
 ├── analysis/                   # Analysis 层：项目分析、学习、预估
-│   ├── projectContext.ts      # 项目上下文分析
-│   ├── executionHistory.ts    # 历史学习
-│   ├── TaskClassifier.ts      # 任务分类
-│   ├── PatternRecognizer.ts   # 模式识别
-│   └── timeEstimator.ts       # 时间预估
+│   ├── index.ts               # @entry
+│   ├── analyzeProjectContext.ts
+│   ├── learnFromHistory.ts
+│   ├── TaskClassifier.ts
+│   ├── PatternRecognizer.ts
+│   └── estimateTime.ts
 │
 ├── report/                     # 报告分析
-│   ├── trendReport.ts         # 趋势分析
-│   ├── liveReport.ts          # 实时监控
-│   └── compareExecutions.ts   # 执行对比(退化检测)
+│   ├── index.ts               # @entry
+│   ├── ExecutionReport.ts     # 执行报告
+│   ├── LiveSummary.ts         # 实时监控
+│   ├── TrendAnalyzer.ts       # 趋势分析
+│   ├── SummaryDataCollector.ts
+│   ├── SummaryFormatter.ts
+│   ├── analyzers/             # 分析器子模块
+│   │   ├── dataCollector.ts
+│   │   ├── CostAnalyzer.ts
+│   │   ├── HeatmapAnalyzer.ts
+│   │   └── TypeTrendAnalyzer.ts
+│   └── comparison/            # 对比子模块
+│       ├── dataCollector.ts
+│       ├── MetricCalculator.ts
+│       └── DegradationDetector.ts
 │
 ├── store/                      # 数据存储
 │   ├── index.ts               # @entry
 │   ├── GenericFileStore.ts    # 通用文件存储
 │   ├── TaskStore.ts           # 任务存储
 │   ├── WorkflowStore.ts       # Workflow 存储
-│   ├── UnifiedStore.ts        # 统一存储
+│   ├── TaskWorkflowStore.ts   # Task-Workflow 关系存储
+│   ├── ExecutionStatsStore.ts # 执行统计存储
+│   ├── TaskLogStore.ts        # 日志存储（JSONL）
+│   ├── TaskMessageStore.ts    # 任务消息队列（暂停/恢复/注入命令）
+│   ├── MemoryStore.ts         # 记忆存储
+│   ├── TraceStore.ts          # Trace Span 存储（JSONL）
+│   ├── PromptVersionStore.ts  # Prompt 版本存储
+│   ├── UnifiedStore.ts        # 统一存储访问器
+│   ├── createSpan.ts          # 创建 OpenTelemetry Spans
+│   ├── exportOTLP.ts          # 导出 OTLP 格式
 │   ├── paths.ts               # 路径常量
 │   ├── readWriteJson.ts       # JSON 工具
 │   └── types.ts               # 类型定义
 │
-├── notify/                     # 通知系统
+├── messaging/                  # IM 交互层（原 notify/）
 │   ├── index.ts               # @entry
-│   ├── buildLarkCard.ts       # 飞书卡片构建器(纯函数)
-│   ├── larkServer.ts          # 飞书服务器
-│   ├── larkWsClient.ts        # 飞书 WebSocket 客户端(事件+卡片回调)
-│   ├── sendLarkNotify.ts      # 发送飞书通知(卡片+文本)
+│   ├── buildLarkCard.ts       # 飞书卡片构建器
+│   ├── larkCardWrapper.ts     # 卡片渲染工具（Markdown 规范化）
+│   ├── larkEventRouter.ts     # 飞书事件路由
+│   ├── larkWsClient.ts        # 飞书 WebSocket 客户端
+│   ├── sendLarkNotify.ts      # 发送飞书通知
 │   ├── telegramClient.ts      # Telegram 客户端
-│   ├── telegramChatHandler.ts # Telegram 对话处理
-│   ├── telegramCommandHandler.ts # Telegram 命令处理
-│   └── sendTelegramNotify.ts  # 发送 Telegram 通知
+│   ├── sendTelegramNotify.ts  # 发送 Telegram 通知
+│   ├── larkCards/             # 飞书卡片组件
+│   │   ├── cardElements.ts
+│   │   ├── taskCards.ts
+│   │   └── interactionCards.ts
+│   └── handlers/              # 平台无关消息处理器
+│       ├── messageRouter.ts   # 消息路由
+│       ├── chatHandler.ts     # AI 对话
+│       ├── commandHandler.ts  # 命令处理
+│       ├── approvalHandler.ts # 审批处理
+│       ├── streamingHandler.ts # 流式响应
+│       ├── sessionManager.ts  # 会话管理
+│       ├── taskCommands.ts    # 任务命令
+│       ├── queryCommands.ts   # 查询命令
+│       ├── systemCommands.ts  # 系统命令
+│       ├── larkCardActions.ts # 飞书卡片按钮回调
+│       ├── conversationLog.ts # 对话日志
+│       ├── imageExtractor.ts  # 图片提取
+│       ├── resolveTaskId.ts   # 任务 ID 解析
+│       ├── constants.ts
+│       └── types.ts
 │
 ├── scheduler/                  # 调度器
-│   ├── startDaemon.ts         # 守护进程
-│   ├── eventBus.ts            # 事件总线
-│   ├── worker.ts              # Worker 抽象
-│   └── queue.ts               # 优先级队列
+│   ├── index.ts               # @entry
+│   ├── startDaemon.ts         # 启动守护进程
+│   ├── stopDaemon.ts          # 停止
+│   ├── restartDaemon.ts       # 重启
+│   ├── getDaemonStatus.ts     # 状态查询
+│   ├── showDaemonLogs.ts      # 日志显示
+│   ├── createQueue.ts         # 创建任务队列
+│   ├── createWorker.ts        # 创建 Worker
+│   ├── pidLock.ts             # PID 锁
+│   └── eventBus.ts            # 事件总线
 │
-├── server/                     # Web 服务器
-│   └── express.ts             # Express 服务器(workflow 可视化)
+├── server/                     # Web 服务器 + Dashboard
+│   ├── createServer.ts        # HTTP 服务器
+│   ├── routes.ts              # API 路由
+│   └── dashboard/             # React 前端
+│       ├── App.tsx
+│       ├── main.tsx
+│       ├── components/
+│       │   ├── Sidebar.tsx
+│       │   ├── RightPanel.tsx
+│       │   ├── WorkflowCanvas.tsx
+│       │   ├── DetailsTab.tsx
+│       │   ├── LogsTab.tsx
+│       │   ├── OutputTab.tsx
+│       │   ├── TimelineTab.tsx
+│       │   └── TraceTab.tsx   # Tracing 可视化
+│       ├── hooks/
+│       ├── store/
+│       └── styles/
 │
 ├── shared/                     # 公共基础设施
+│   ├── index.ts               # @entry
 │   ├── result.ts              # Result<T, E> 类型
-│   ├── logger.ts              # 日志系统
-│   ├── error.ts               # AppError 错误类型
-│   ├── time.ts                # 时间处理
-│   └── id.ts                  # ID 生成
+│   ├── error.ts               # AppError
+│   ├── logger.ts              # 日志
+│   ├── formatTime.ts          # 时间格式化
+│   ├── formatErrorMessage.ts  # 错误格式化
+│   ├── generateId.ts          # ID 生成
+│   ├── truncateText.ts        # 文本截断工具
+│   ├── toInvokeError.ts       # 统一错误转换
+│   └── levenshtein.ts         # 编辑距离
 │
 ├── config/                     # 配置系统
 │   ├── index.ts               # @entry
 │   ├── schema.ts              # 配置 Schema
-│   └── loadConfig.ts          # 配置加载
+│   ├── loadConfig.ts          # YAML 配置加载
+│   └── initProject.ts         # 项目初始化
 │
 ├── prompts/                    # Prompt 模板
-│   └── workflowPrompts.ts     # Workflow 生成 prompts
+│   ├── index.ts               # @entry
+│   ├── taskPrompts.ts         # 任务执行 prompts
+│   ├── chatPrompts.ts         # 对话 prompts
+│   └── memoryPrompts.ts       # Memory prompts
+│
+├── output/                     # 输出处理
+│   ├── index.ts               # @entry
+│   ├── saveWorkflowOutput.ts  # 保存工作流输出
+│   └── generateTaskTitle.ts   # 自动生成任务标题
 │
 └── types/                      # 全局类型定义
-    └── ...
+    ├── index.ts               # @entry barrel export
+    ├── task.ts                # Task 类型 + helpers
+    ├── taskStatus.ts          # TaskStatus helpers
+    ├── workflow.ts            # Workflow/Node/Instance 全部类型
+    ├── nodeStatus.ts          # NodeStatus/WorkflowStatus helpers
+    ├── persona.ts             # PersonaConfig
+    ├── output.ts              # ExecutionTiming
+    ├── taskMessage.ts         # TaskMessage（暂停/恢复/注入命令）
+    ├── trace.ts               # Span, SpanKind, TraceContext, OTLP 映射
+    └── promptVersion.ts       # PromptVersion, FailureAnalysis
 ```
 
 ## 核心流程
@@ -209,7 +354,7 @@ cah "修复登录 bug"
 │  createTask()                                                    │
 │  1. 生成 taskId: task-YYYYMMDD-HHMMSS-xxx                        │
 │  2. 创建目录: .cah-data/tasks/task-{id}/                         │
-│  3. 写入 task.json                                               │
+│  3. 写入 task.json（含 cwd 用于同项目冲突检测）                     │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
@@ -217,17 +362,18 @@ cah "修复登录 bug"
 │  executeTask(task, options)                                      │
 │  1. 分析项目上下文(Analysis)                                      │
 │  2. 学习历史执行(ExecutionHistory)                                │
-│  3. 更新状态: pending → planning                                  │
-│  4. 调用 generateWorkflow()                                      │
+│  3. 检索相关记忆(Memory)                                          │
+│  4. 更新状态: pending → planning                                  │
+│  5. 调用 generateWorkflow()                                      │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  generateWorkflow(task, context)                                 │
 │                                                                  │
-│  buildWorkflowPrompt() → backend.execute({                       │
+│  buildWorkflowPrompt() → invokeBackend({                         │
 │    prompt: "分析任务并生成 workflow...",                          │
-│    persona: 'architect'                                          │
+│    mode: 'plan', persona: 'architect'                           │
 │  })                                                              │
 │                                                                  │
 │  返回 Workflow {                                                 │
@@ -243,26 +389,27 @@ cah "修复登录 bug"
 │  1. 保存 workflow.json                                           │
 │  2. 更新状态: planning → developing                              │
 │  3. 创建 WorkflowInstance(instance.json)                         │
-│  4. 启动 NodeWorker 循环执行节点                                  │
+│  4. 创建 Root Span (Tracing)                                     │
+│  5. 启动 NodeWorker 循环执行节点                                  │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  executeNode(node, instance)                                     │
 │                                                                  │
-│  switch(node.type) {                                            │
+│  创建 Node Span → switch(node.type) {                           │
 │    case 'task':                                                  │
-│      backend.execute({                                          │
+│      invokeBackend({                                             │
 │        prompt: node.task.prompt,                                │
 │        persona: node.task.persona,                              │
-│        cwd: task.cwd,                                           │
+│        traceCtx: nodeSpan,                                      │
 │        onChunk: (chunk) => updateProgress(chunk)                │
 │      })                                                          │
 │    case 'delay':                                                 │
-│      setTimeout(() => resolve(), delay)                         │
+│      await delay(config.value, config.unit)                     │
 │    case 'human':                                                 │
 │      sendNotification() → 等待审批                               │
-│    case 'loop', 'foreach', 'condition':                         │
+│    case 'loop', 'foreach', 'condition', 'switch':               │
 │      executeControlFlowNode()                                   │
 │    ...                                                           │
 │  }                                                               │
@@ -271,11 +418,13 @@ cah "修复登录 bug"
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  完成任务                                                         │
-│  1. 更新 instance.json(最终状态)                                  │
-│  2. 生成 stats.json(从 instance 派生)                             │
+│  1. 更新 instance.json（最终状态）                                 │
+│  2. 生成 stats.json（从 instance 派生）                            │
 │  3. 生成 outputs/result.md                                       │
 │  4. 更新状态: developing → completed/failed                      │
-│  5. 发送通知(飞书/Telegram)                                       │
+│  5. 提取记忆(extractMemory)                                       │
+│  6. 分析失败并优化 Prompt (如果失败)                               │
+│  7. 发送通知(飞书/Telegram)                                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -289,20 +438,53 @@ interface Task {
   title: string           // 任务标题
   description: string     // 完整描述
   priority: 'high' | 'medium' | 'low'
-  status: TaskStatus      // pending → planning → developing → completed/failed
-  persona?: string        // Persona 名称(如 'architect', 'pragmatist')
-  workflowId?: string     // 关联的 Workflow ID
-  backend?: string        // 使用的后端(claude-code/opencode/iflow/codebuddy)
-  pid?: number            // 执行进程 PID
-  output?: {              // 执行结果
-    workflowId: string
-    instanceId: string
-    finalStatus: string
-    timing: { startedAt, completedAt }
-  }
+  status: TaskStatus      // pending → planning → developing → completed/failed/cancelled/stopped
+  persona?: string        // Persona 名称
+  backend?: string        // 使用的后端
+  cwd?: string            // 工作目录（用于同项目冲突检测）
+  output?: TaskOutput
   createdAt: string
   updatedAt?: string
 }
+```
+
+### Backend 接口
+
+```typescript
+interface BackendAdapter {
+  name: string
+  displayName: string
+  cliBinary: string
+  capabilities: BackendCapabilities
+  invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>>
+  checkAvailable(): Promise<boolean>
+}
+
+interface InvokeOptions {
+  prompt: string
+  mode?: 'plan' | 'execute' | 'review'
+  persona?: PersonaConfig
+  stream?: boolean
+  onChunk?: (chunk: string) => void
+  timeoutMs?: number
+  sessionId?: string
+  model?: string
+  traceCtx?: TraceContext   // 用于创建 LLM child span
+}
+
+interface InvokeResult {
+  response: string
+  durationMs: number
+  sessionId?: string
+  durationApiMs?: number
+  costUsd?: number
+  slotWaitMs?: number
+}
+
+type InvokeError =
+  | { type: 'timeout'; message: string }
+  | { type: 'process'; message: string; exitCode?: number }
+  | { type: 'cancelled'; message: string }
 ```
 
 ### Workflow
@@ -310,8 +492,10 @@ interface Task {
 ```typescript
 interface Workflow {
   id: string
+  taskId: string
   name: string
   description: string
+  version: number
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
   variables: Record<string, unknown>
@@ -320,282 +504,92 @@ interface Workflow {
   settings?: WorkflowSettings
 }
 
-interface WorkflowNode {
-  id: string
-  type: NodeType           // start | end | task | condition | parallel | join |
-                           // human | delay | schedule | loop | foreach | switch |
-                           // assign | script
-  name: string
-  task?: TaskConfig        // type=task 时的配置
-  delay?: DelayConfig      // type=delay 时的配置
-  loop?: LoopConfig        // type=loop 时的配置
-  // ...其他节点配置
-  timeout?: number
-  onError?: 'fail' | 'skip' | 'continue'
-  retry?: RetryConfig
-}
+type NodeType = 'start' | 'end' | 'task' | 'condition' | 'parallel' | 'join'
+  | 'human' | 'delay' | 'schedule' | 'loop' | 'foreach' | 'switch'
+  | 'assign' | 'script'
 
-interface WorkflowEdge {
-  id: string
-  from: string
-  to: string
-  condition?: string       // 条件表达式
-  maxLoops?: number        // 循环边的最大次数
-}
-```
-
-### WorkflowInstance
-
-```typescript
 interface WorkflowInstance {
   id: string
   workflowId: string
-  status: WorkflowStatus   // pending | running | paused | completed | failed | cancelled
+  status: WorkflowStatus
   nodeStates: Record<string, NodeState>
   variables: Record<string, unknown>
   outputs: Record<string, unknown>
   loopCounts: Record<string, number>
+  activeLoops?: Record<string, unknown>
+  pausedAt?: string
+  pauseReason?: string
   startedAt?: string
   completedAt?: string
   error?: string
 }
-
-interface NodeState {
-  status: NodeStatus       // pending | ready | running | waiting | done | failed | skipped
-  startedAt?: string
-  completedAt?: string
-  result?: unknown
-  error?: string
-  attempts: number
-}
 ```
 
-## 节点类型详解
-
-### 控制流节点
-
-| 节点 | 配置 | 说明 |
-|------|------|------|
-| `start` | - | 流程入口，无配置 |
-| `end` | - | 流程出口，无配置 |
-| `condition` | `expression: string` | 条件分支，通过边的 condition 决定走向 |
-| `parallel` | - | 并行网关，后续边同时执行 |
-| `join` | - | 汇合网关，等待所有入边完成 |
-
-### 任务节点
+### Tracing
 
 ```typescript
-interface TaskConfig {
-  agent: string       // Agent 名称或 "auto"
-  prompt: string      // 任务描述
-  timeout?: number    // 超时（毫秒）
-  retries?: number    // 重试次数
+type SpanKind = 'workflow' | 'node' | 'llm' | 'tool' | 'internal'
+
+interface Span {
+  traceId: string
+  spanId: string
+  parentSpanId?: string
+  name: string
+  kind: SpanKind
+  status: SpanStatus
+  startTime: number
+  endTime?: number
+  attributes: SpanAttributes    // task.id, workflow.id, llm.backend 等
+  tokenUsage?: TokenUsage
+  cost?: SpanCost
+  error?: SpanError
 }
+
+// 4 层 Span 层次: workflow → node → llm → (tool, internal)
 ```
 
-### 人工节点
+### Memory
 
 ```typescript
-interface HumanConfig {
-  assignee?: string     // 审批人
-  timeout?: number      // 超时
-  autoApprove?: boolean // 超时后自动通过
+type MemoryCategory = 'pattern' | 'lesson' | 'preference' | 'pitfall' | 'tool'
+
+interface MemoryEntry {
+  id: string
+  content: string
+  category: MemoryCategory
+  keywords: string[]
+  source: { type: 'task' | 'manual' | 'chat'; taskId?: string }
+  confidence: number
+  projectPath?: string
+  createdAt: string
+  accessCount: number
 }
 ```
 
-当执行到 human 节点时，会发送飞书通知，等待人工审批。
+## 通知系统 (Messaging)
 
-### 时间控制节点
+支持飞书和 Telegram 两种通知渠道，提供双向对话终端能力。
 
-```typescript
-// 延迟节点 - 等待固定时间
-interface DelayConfig {
-  value: number
-  unit: 's' | 'm' | 'h' | 'd'
-}
+### 消息处理架构
 
-// 定时节点 - 等待到指定时间
-interface ScheduleConfig {
-  cron?: string        // cron 表达式
-  datetime?: string    // ISO 时间
-  timezone?: string
-}
+平台无关的 handlers 层处理核心逻辑，飞书/Telegram 各自的客户端层负责协议适配：
+
+```
+incoming message → messageRouter → commandHandler / chatHandler / approvalHandler
+                                         │
+                    ┌────────────────────┼────────────────────┐
+                    ▼                    ▼                    ▼
+              taskCommands         queryCommands        systemCommands
+              (run/stop/pause      (list/get/logs       (reload/status
+               resume/inject)      snapshot)             help)
 ```
 
-### 循环节点
+### 飞书集成
 
-```typescript
-interface LoopConfig {
-  type: 'while' | 'for' | 'until'
-  condition?: string     // while/until 条件
-  init?: number          // for 初始值
-  end?: number           // for 结束值
-  step?: number          // for 步长
-  loopVar?: string       // 循环变量名
-  bodyNodes: string[]    // 循环体节点
-  maxIterations?: number // 安全限制
-}
-
-interface ForeachConfig {
-  collection: string     // 集合表达式
-  itemVar?: string       // 项变量名
-  indexVar?: string      // 索引变量名
-  bodyNodes: string[]    // 循环体节点
-  mode?: 'sequential' | 'parallel'
-}
-```
-
-### 数据处理节点
-
-```typescript
-// 赋值节点
-interface AssignConfig {
-  assignments: Array<{
-    variable: string
-    value: unknown
-    isExpression?: boolean
-  }>
-}
-
-// 脚本节点
-interface ScriptConfig {
-  expression: string
-  outputVar?: string
-}
-
-// 分支节点
-interface SwitchConfig {
-  expression: string
-  cases: Array<{
-    value: unknown | 'default'
-    targetNode: string
-  }>
-}
-```
-
-## 表达式求值
-
-使用 `expr-eval` 库，支持以下功能：
-
-### 内置函数
-
-```javascript
-now()                    // Date.now()
-floor(x), ceil(x), round(x)
-min(a, b), max(a, b), abs(x)
-len(arr)                 // 数组长度
-has(obj, key)            // 检查属性
-get(obj, key, default)   // 获取属性
-str(x), num(x), bool(x)  // 类型转换
-```
-
-### 上下文变量
-
-```javascript
-variables.xxx            // Workflow 变量
-outputs.nodeId.result    // 节点输出
-loopCount                // 循环次数
-index, item, total       // foreach 上下文
-inputs.xxx               // 输入参数
-```
-
-### 自动转换
-
-```javascript
-Date.now()      → now()
-Math.floor(x)   → floor(x)
-&&              → and
-||              → or
-!               → not
-```
-
-## Backend 抽象层
-
-支持多种 CLI 后端,通过统一接口调用:
-
-### IBackend 接口
-
-```typescript
-interface IBackend {
-  type: BackendType  // 'claude-code' | 'opencode' | 'iflow' | 'codebuddy'
-
-  execute(options: ExecuteOptions): Promise<Result<ExecuteResult, ExecuteError>>
-
-  isAvailable(): Promise<boolean>  // 检查 CLI 是否安装
-}
-
-interface ExecuteOptions {
-  prompt: string
-  persona?: PersonaConfig         // Persona 配置
-  cwd?: string                    // 工作目录
-  stream?: boolean                // 是否流式输出
-  onChunk?: (chunk: string) => void  // 流式回调
-  timeoutMs?: number              // 超时时间
-}
-
-interface ExecuteResult {
-  response: string                // CLI 输出
-  exitCode: number                // 退出码
-  duration: number                // 执行时长(ms)
-}
-
-type ExecuteError =
-  | { type: 'timeout'; message: string }
-  | { type: 'process'; message: string; exitCode?: number }
-  | { type: 'cancelled'; message: string }
-  | { type: 'not_available'; message: string }
-```
-
-### 使用示例
-
-```typescript
-import { createBackend } from './backend'
-
-const backend = createBackend('claude-code')
-
-const result = await backend.execute({
-  prompt: '分析这个任务并生成 workflow...',
-  persona: { name: 'architect' },
-  stream: true,
-  onChunk: (chunk) => console.log(chunk),
-})
-
-if (!result.ok) {
-  console.error(result.error.message)
-  return
-}
-
-console.log(result.value.response)
-```
-
-### Adapter 实现
-
-每个 Adapter 负责将统一接口转换为对应 CLI 的命令:
-
-- **ClaudeCodeAdapter**: `claude --print --dangerously-skip-permissions "<prompt>"`
-- **OpenCodeAdapter**: `opencode --print "<prompt>"`
-- **IflowAdapter**: `iflow execute --prompt "<prompt>"`
-- **CodebuddyAdapter**: `codebuddy run "<prompt>"`
-
-## 通知系统
-
-支持飞书和 Telegram 两种通知渠道,提供双向对话终端能力。
-
-### 飞书通知
-
-基于 WebSocket 的实时通知和交互:
-
-- **LarkWsClient**: WebSocket 客户端,接收飞书事件(消息、卡片按钮回调、入群等)
-- **buildLarkCard**: 卡片构建器,纯函数生成 Interactive Card JSON
-- **sendLarkNotify**: 发送卡片/文本消息(API 优先,webhook 降级)
-
-功能:
-- 交互式卡片消息(审批按钮、任务列表、任务详情、帮助指令)
-- 卡片按钮回调(`card.action.trigger` — 点击审批按钮直接通过/拒绝)
-- 任务完成/失败卡片通知(绿色/红色 header)
-- 首次对话欢迎卡片(`p2p_chat_create` 事件)
-- 人工审批节点交互(按钮 + 文字双通道)
-- 实时对话终端(通过飞书消息控制任务)
+- **larkWsClient**: WebSocket 客户端，接收消息/卡片按钮回调/入群事件
+- **larkEventRouter**: 事件路由，分发到不同 handler
+- **larkCards/**: 卡片组件（taskCards + interactionCards + cardElements）
+- **sendLarkNotify**: 发送卡片/文本消息（API 优先，webhook 降级）
 
 卡片类型:
 | 卡片 | 触发时机 | Header 颜色 |
@@ -610,37 +604,11 @@ console.log(result.value.response)
 | 帮助指令 | `/help` 指令 | 蓝色 |
 | 欢迎卡片 | 首次与 bot 对话 | 蓝色 |
 
-### Telegram 通知
+### Telegram 集成
 
-基于长轮询的通知和对话:
-
-- **TelegramClient**: 长轮询客户端,接收 Telegram 消息
-- **TelegramChatHandler**: 对话处理器,管理会话状态
-- **TelegramCommandHandler**: 命令处理器,支持 `/list`, `/status`, `/logs` 等
-- **sendTelegramNotify**: 发送 Telegram 消息
-
-功能:
-- 任务状态变更通知
-- 对话式任务管理(通过 Telegram 聊天创建和管理任务)
-- 命令交互(`/list`, `/status <id>`, `/logs <id>`, `/cancel <id>`)
-- 实时日志查看
-
-### 配置
-
-```yaml
-notify:
-  lark:
-    enabled: true
-    appId: "cli_xxx"
-    appSecret: "xxx"
-    chatId: "oc_xxx"       # 可选,默认推送通知目标(运行时也会自动记录)
-    webhookUrl: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-
-  telegram:
-    enabled: true
-    botToken: "123456:ABC-DEF..."
-    chatId: "123456789"  # 可选,默认通知目标
-```
+- **telegramClient**: 长轮询客户端
+- **sendTelegramNotify**: 消息发送
+- 共享 handlers 层（commandHandler, chatHandler 等）
 
 ## 状态流转
 
@@ -648,11 +616,14 @@ notify:
 
 ```
 pending ──────► planning ──────► developing ──────► completed
+    │              │                 │                  │
+    │              │                 ├──► paused ──► developing
     │              │                 │
     │              │                 ▼
     │              └────────────► failed
     │
-    └──────────────────────────► cancelled
+    ├──────────────────────────► cancelled
+    └──────────────────────────► stopped
 ```
 
 ### Workflow Instance 状态机
@@ -681,25 +652,27 @@ pending ──► ready ──► running ──► done
 
 ## 已实现功能
 
-- [x] Workflow 引擎(条件、循环、并行、定时等)
-- [x] 多种节点类型(task/delay/schedule/loop/foreach/condition/parallel/join/human/assign/script/switch)
-- [x] 多 Backend 支持(claude-code/opencode/iflow/codebuddy)
-- [x] Persona 系统(Architect/Pragmatist/Explorer 等)
-- [x] 飞书通知(WebSocket + 双向对话 + 交互式卡片 + 按钮回调)
-- [x] Telegram 通知(长轮询 + 对话终端)
-- [x] 项目上下文分析
-- [x] 历史执行学习
-- [x] 时间预估(ETA)
-- [x] 任务报告(趋势分析/实时监控/执行对比)
-- [x] Web 服务器(workflow 可视化)
-- [x] 后台守护进程
-- [x] 事件总线
+- [x] Workflow 引擎（14 种节点类型，条件、循环、并行、定时等）
+- [x] 多 Backend 支持（claude-code/opencode/iflow/codebuddy）
+- [x] Persona 系统（9 种内置人格）
+- [x] 飞书通知（WebSocket + 双向对话 + 交互式卡片 + 按钮回调）
+- [x] Telegram 通知（长轮询 + 对话终端）
+- [x] 项目上下文分析与历史学习
+- [x] 时间预估（ETA）
+- [x] 任务报告（趋势分析/实时监控/执行对比/退化检测/成本分析）
+- [x] Web Dashboard（workflow 可视化 + Tracing 面板）
+- [x] 后台守护进程 + 事件总线
+- [x] Memory 学习系统（跨任务经验提取、相关性检索、Prompt 注入）
+- [x] Prompt 优化（失败分析 + Textual Gradient 改进 + 版本管理）
+- [x] 分布式 Tracing（4 层 Span 层次，OpenTelemetry 兼容）
+- [x] 任务交互（暂停/恢复/注入节点/消息队列）
+- [x] 同项目冲突检测（cwd 自动串行）
+- [x] 孤儿任务自动恢复
 
 ## 扩展方向
 
+- [ ] Selfcheck 框架（自诊断 + 自愈）
 - [ ] Workflow 模板库
-- [ ] 更多 Backend 适配器
-- [ ] 更多 Persona 定义
 - [ ] 分布式执行
-- [ ] 任务依赖图
-- [ ] 更丰富的报告和可视化
+- [ ] 自适应调度（根据负载调整轮询频率）
+- [ ] 能力边界追踪（按任务类型统计成功率）

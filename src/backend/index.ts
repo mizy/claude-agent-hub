@@ -23,6 +23,8 @@ export type {
 
 export {
   resolveBackend,
+  resolveBackendForTask,
+  resolveBackendConfig,
   registerBackend,
   clearBackendCache,
   getRegisteredBackends,
@@ -34,6 +36,8 @@ import { resolveBackend } from './resolveBackend.js'
 import { acquireSlot, releaseSlot, getSlotInfo } from './concurrency.js'
 import { buildPrompt } from './promptBuilder.js'
 import { createLogger } from '../shared/logger.js'
+import { createChildSpan, endSpan } from '../store/createSpan.js'
+import { appendSpan } from '../store/TraceStore.js'
 import type { InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import type { Result } from '../shared/result.js'
 
@@ -47,11 +51,18 @@ function truncate(text: string, maxLen: number): string {
 /**
  * 调用当前配置的 CLI 后端
  * 自动处理：限流、prompt 组装（persona + mode）、日志
+ *
+ * 支持通过 backendType/backendModel 动态覆盖后端和模型
  */
 export async function invokeBackend(
-  options: InvokeOptions
+  options: InvokeOptions & { backendType?: string; backendModel?: string }
 ): Promise<Result<InvokeResult, InvokeError>> {
-  const backend = await resolveBackend()
+  const backend = await resolveBackend(options.backendType)
+
+  // Apply model override: backendModel param > options.model
+  if (options.backendModel && !options.model) {
+    options.model = options.backendModel
+  }
 
   // 组装完整 prompt（persona system prompt + mode 指令 + 用户 prompt）
   const fullPrompt = buildPrompt(options.prompt, options.persona, options.mode)
@@ -70,6 +81,22 @@ export async function invokeBackend(
   if (slotWaitMs > 50) {
     logger.info(`Slot wait: ${slotWaitMs}ms`)
   }
+
+  // Create LLM span if trace context is provided
+  const traceCtx = options.traceCtx
+  const llmSpan = traceCtx
+    ? createChildSpan(traceCtx.currentSpan, `llm:${options.model ?? 'default'}`, 'llm', {
+        'task.id': traceCtx.taskId,
+        'llm.backend': backend.name,
+        'llm.model': options.model,
+        'llm.prompt_length': fullPrompt.length,
+        'llm.slot_wait_ms': slotWaitMs,
+      })
+    : undefined
+  if (llmSpan && traceCtx) {
+    appendSpan(traceCtx.taskId, llmSpan)
+  }
+
   try {
     const result = await backend.invoke({ ...options, prompt: fullPrompt })
     releaseSlot()
@@ -77,9 +104,35 @@ export async function invokeBackend(
     if (result.ok) {
       result.value.slotWaitMs = slotWaitMs
     }
+
+    // End LLM span with result data
+    if (llmSpan && traceCtx) {
+      const finished = endSpan(llmSpan, result.ok ? undefined : {
+        error: { message: result.error.message },
+      })
+      if (result.ok) {
+        finished.attributes['llm.response_length'] = result.value.response.length
+        finished.attributes['llm.duration_api_ms'] = result.value.durationApiMs
+        finished.attributes['llm.session_id'] = result.value.sessionId
+        if (result.value.costUsd != null) {
+          finished.cost = { amount: result.value.costUsd, currency: 'USD' }
+        }
+      }
+      appendSpan(traceCtx.taskId, finished)
+    }
+
     return result
   } catch (error) {
     releaseSlot()
+
+    // End LLM span with error
+    if (llmSpan && traceCtx) {
+      const finished = endSpan(llmSpan, {
+        error: { message: error instanceof Error ? error.message : String(error) },
+      })
+      appendSpan(traceCtx.taskId, finished)
+    }
+
     throw error
   }
 }

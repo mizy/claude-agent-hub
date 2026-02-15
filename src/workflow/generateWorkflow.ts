@@ -11,7 +11,7 @@ import { invokeBackend, resolveBackend } from '../backend/index.js'
 import { buildJsonWorkflowPrompt } from '../prompts/index.js'
 import { parseJson, validateJsonWorkflow, extractJson } from './index.js'
 import { appendConversation, appendJsonlLog } from '../store/TaskLogStore.js'
-import { loadConfig } from '../config/loadConfig.js'
+import { getBackendConfig } from '../config/index.js'
 import { createLogger } from '../shared/logger.js'
 import {
   analyzeProjectContext,
@@ -81,10 +81,13 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   logger.debug(`相关记忆: ${memories.length} 条`)
 
   // 检查是否启用 Agent Teams
-  const config = await loadConfig()
-  const backend = await resolveBackend()
+  const { resolveBackendConfig } = await import('../backend/index.js')
+  const backendConfig = task.backend
+    ? await resolveBackendConfig(task.backend)
+    : await getBackendConfig()
+  const backend = await resolveBackend(task.backend)
   const useAgentTeams =
-    backend.capabilities.supportsAgentTeams && (config.backend?.enableAgentTeams ?? false)
+    backend.capabilities.supportsAgentTeams && backendConfig.enableAgentTeams
 
   if (useAgentTeams) {
     logger.info('🤝 启用 Agent Teams 协作生成 workflow')
@@ -104,12 +107,13 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
 
   // 调用 Claude (不传 persona，因为模板中已定义"软件架构师"角色)
   logger.info('调用 Claude 生成执行计划...')
-  const model = config.backend?.model ?? config.claude?.model ?? 'opus'
+  const model = task.model ?? backendConfig.model
 
   const result = await invokeBackend({
     prompt,
     stream: true,
     model,
+    backendType: task.backend,
   })
 
   if (!result.ok) {
@@ -168,6 +172,8 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
     ...workflow.variables,
     taskId: task.id,
     taskTitle: task.title,
+    taskBackend: task.backend,
+    taskModel: task.model,
     claudeSessionId, // 复用会话加速后续执行
   }
 

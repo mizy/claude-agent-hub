@@ -3,12 +3,14 @@ import { DetailsTab } from './DetailsTab'
 import { TimelineTab } from './TimelineTab'
 import { LogsTab } from './LogsTab'
 import { OutputTab } from './OutputTab'
+import { TraceTab } from './TraceTab'
 
 const TABS = [
   { key: 'details', label: 'Details' },
   { key: 'timeline', label: 'Timeline' },
   { key: 'logs', label: 'Logs' },
   { key: 'output', label: 'Output' },
+  { key: 'trace', label: 'Trace' },
 ] as const
 
 export function RightPanel() {
@@ -36,6 +38,7 @@ export function RightPanel() {
         {activeTab === 'timeline' && <TimelineTab />}
         {activeTab === 'logs' && <LogsTab />}
         {activeTab === 'output' && <OutputTab />}
+        {activeTab === 'trace' && <TraceTab />}
       </div>
     </aside>
   )

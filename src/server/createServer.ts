@@ -1,36 +1,15 @@
 /**
  * Express HTTP Server
  *
- * 提供 REST API 和静态文件服务来可视化 Workflow 执行状态
+ * Server initialization, middleware, and static file serving.
+ * Route definitions are in routes.ts.
  */
 
-import express, { type Request, type Response } from 'express'
+import express from 'express'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { createLogger } from '../shared/logger.js'
-import {
-  getAllTasks,
-  getTask,
-  getTaskWorkflow,
-  getTaskInstance,
-  getExecutionTimeline,
-  getLogPath,
-  getOutputPath,
-  stopTask,
-  deleteTask,
-  completeTask,
-} from '../task/index.js'
-import {
-  getRunningTasks,
-  getQueuedTasks,
-  getTodaySummary,
-  getRecentCompleted,
-} from '../report/SummaryDataCollector.js'
-import { resumeTask } from '../task/resumeTask.js'
-import { spawnTaskProcess } from '../task/spawnTask.js'
-import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
-
-import { existsSync, readFileSync } from 'fs'
+import { registerRoutes } from './routes.js'
 
 const logger = createLogger('server')
 
@@ -41,7 +20,6 @@ const DEFAULT_PORT = 3000
 // The public folder is at dist/server/public
 const currentFile = fileURLToPath(import.meta.url)
 const currentDir = dirname(currentFile)
-// Go up from dist/cli to dist, then down to server/public
 const publicDir = join(currentDir, '..', 'server', 'public')
 
 export interface ServerOptions {
@@ -51,7 +29,7 @@ export interface ServerOptions {
 }
 
 /**
- * 启动 HTTP Server
+ * Start the HTTP server
  */
 export function startServer(options: ServerOptions = {}): void {
   const port = options.port || DEFAULT_PORT
@@ -74,230 +52,18 @@ export function startServer(options: ServerOptions = {}): void {
     next()
   })
 
-  // ============ API Routes ============
+  // API Routes
+  registerRoutes(app)
 
-  // GET /api/summary - 实时摘要
-  app.get('/api/summary', (_req: Request, res: Response) => {
-    try {
-      const summary = {
-        generatedAt: new Date().toISOString(),
-        runningTasks: getRunningTasks(),
-        queuedTasks: getQueuedTasks(),
-        todaySummary: getTodaySummary(),
-        recentCompleted: getRecentCompleted(5),
-      }
-      res.json(summary)
-    } catch (err) {
-      logger.error('Failed to get summary', err)
-      res.status(500).json({ error: 'Failed to get summary' })
-    }
-  })
-
-  // GET /api/tasks - 任务列表
-  app.get('/api/tasks', (_req: Request, res: Response) => {
-    try {
-      const tasks = getAllTasks()
-      // 按创建时间倒序
-      tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      res.json(tasks)
-    } catch (err) {
-      logger.error('Failed to get tasks', err)
-      res.status(500).json({ error: 'Failed to get tasks' })
-    }
-  })
-
-  // GET /api/tasks/:id - 任务详情（包含 workflow 和 instance）
-  app.get('/api/tasks/:id', (req: Request<{ id: string }>, res: Response) => {
-    try {
-      const { id } = req.params
-      const task = getTask(id)
-
-      if (!task) {
-        res.status(404).json({ error: 'Task not found' })
-        return
-      }
-
-      const workflow = getTaskWorkflow(id)
-      const instance = getTaskInstance(id)
-
-      res.json({
-        task,
-        workflow,
-        instance,
-      })
-    } catch (err) {
-      logger.error('Failed to get task', err)
-      res.status(500).json({ error: 'Failed to get task' })
-    }
-  })
-
-  // GET /api/tasks/:id/timeline - 事件时间线
-  app.get('/api/tasks/:id/timeline', (req: Request<{ id: string }>, res: Response) => {
-    try {
-      const { id } = req.params
-      const timeline = getExecutionTimeline(id)
-      res.json(timeline || [])
-    } catch (err) {
-      logger.error('Failed to get timeline', err)
-      res.status(500).json({ error: 'Failed to get timeline' })
-    }
-  })
-
-  // ============ Task Actions API ============
-
-  // POST /api/tasks - 创建新任务
-  app.post('/api/tasks', (req: Request, res: Response) => {
-    try {
-      const { description, priority } = req.body
-
-      if (!description || typeof description !== 'string') {
-        res.status(400).json({ success: false, error: 'description is required' })
-        return
-      }
-
-      const task = createTaskWithFolder({ description, priority })
-
-      // 启动后台进程执行任务
-      const pid = spawnTaskProcess({ taskId: task.id })
-
-      res.json({ success: true, data: { task, pid } })
-    } catch (err) {
-      logger.error('Failed to create task', err)
-      res.status(500).json({ success: false, error: 'Failed to create task' })
-    }
-  })
-
-  // POST /api/tasks/:id/stop - 停止任务
-  app.post('/api/tasks/:id/stop', (req: Request<{ id: string }>, res: Response) => {
-    try {
-      const result = stopTask(req.params.id)
-      if (!result.success) {
-        res.status(400).json({ success: false, error: result.error })
-        return
-      }
-      res.json({ success: true, data: { task: result.task } })
-    } catch (err) {
-      logger.error('Failed to stop task', err)
-      res.status(500).json({ success: false, error: 'Failed to stop task' })
-    }
-  })
-
-  // POST /api/tasks/:id/resume - 恢复任务
-  app.post('/api/tasks/:id/resume', (req: Request<{ id: string }>, res: Response) => {
-    try {
-      const pid = resumeTask(req.params.id)
-      if (pid === null) {
-        res.status(400).json({
-          success: false,
-          error: 'Task cannot be resumed (not found, still running, or already completed)',
-        })
-        return
-      }
-      const task = getTask(req.params.id)
-      res.json({ success: true, data: { task, pid } })
-    } catch (err) {
-      logger.error('Failed to resume task', err)
-      res.status(500).json({ success: false, error: 'Failed to resume task' })
-    }
-  })
-
-  // DELETE /api/tasks/:id - 删除任务
-  app.delete('/api/tasks/:id', (req: Request<{ id: string }>, res: Response) => {
-    try {
-      const result = deleteTask(req.params.id)
-      if (!result.success) {
-        res.status(400).json({ success: false, error: result.error })
-        return
-      }
-      res.json({ success: true, data: { task: result.task } })
-    } catch (err) {
-      logger.error('Failed to delete task', err)
-      res.status(500).json({ success: false, error: 'Failed to delete task' })
-    }
-  })
-
-  // POST /api/tasks/:id/complete - 完成任务
-  app.post('/api/tasks/:id/complete', (req: Request<{ id: string }>, res: Response) => {
-    try {
-      const result = completeTask(req.params.id)
-      if (!result.success) {
-        res.status(400).json({ success: false, error: result.error })
-        return
-      }
-      res.json({ success: true, data: { task: result.task } })
-    } catch (err) {
-      logger.error('Failed to complete task', err)
-      res.status(500).json({ success: false, error: 'Failed to complete task' })
-    }
-  })
-
-  // GET /api/tasks/:id/logs - 获取任务执行日志
-  app.get('/api/tasks/:id/logs', (req: Request<{ id: string }>, res: Response) => {
-    try {
-      const task = getTask(req.params.id)
-      if (!task) {
-        res.status(404).json({ success: false, error: 'Task not found' })
-        return
-      }
-
-      const logPath = getLogPath(task.id)
-      if (!existsSync(logPath)) {
-        res.json({ success: true, data: { logs: '' } })
-        return
-      }
-
-      const tail = parseInt(req.query.tail as string)
-      const content = readFileSync(logPath, 'utf-8')
-
-      if (tail > 0) {
-        const lines = content.split('\n')
-        const tailLines = lines.slice(-tail).join('\n')
-        res.json({ success: true, data: { logs: tailLines } })
-        return
-      }
-
-      res.json({ success: true, data: { logs: content } })
-    } catch (err) {
-      logger.error('Failed to get logs', err)
-      res.status(500).json({ success: false, error: 'Failed to get logs' })
-    }
-  })
-
-  // GET /api/tasks/:id/result - 获取任务结果 Markdown
-  app.get('/api/tasks/:id/result', (req: Request<{ id: string }>, res: Response) => {
-    try {
-      const task = getTask(req.params.id)
-      if (!task) {
-        res.status(404).json({ success: false, error: 'Task not found' })
-        return
-      }
-
-      const resultPath = getOutputPath(task.id)
-      if (!existsSync(resultPath)) {
-        res.json({ success: true, data: { content: '' } })
-        return
-      }
-
-      const content = readFileSync(resultPath, 'utf-8')
-      res.json({ success: true, data: { content } })
-    } catch (err) {
-      logger.error('Failed to get result', err)
-      res.status(500).json({ success: false, error: 'Failed to get result' })
-    }
-  })
-
-  // ============ Static Files ============
-
-  // Serve static files from public directory
+  // Static files
   app.use(express.static(publicDir))
 
-  // Fallback to index.html for SPA routing (Express 5 syntax)
-  app.use((_req: Request, res: Response) => {
+  // SPA fallback
+  app.use((_req, res) => {
     res.sendFile(join(publicDir, 'index.html'))
   })
 
-  // ============ Start Server ============
-
+  // Start
   app.listen(port, host, () => {
     const displayHost = host === '0.0.0.0' ? 'localhost' : host
     const url = `http://${displayHost}:${port}`

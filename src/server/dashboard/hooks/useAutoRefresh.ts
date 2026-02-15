@@ -10,7 +10,9 @@ const REFRESH_INTERVAL = 3000
 export function useAutoRefresh() {
   const refreshTasks = useStore(s => s.refreshTasks)
   const refreshTaskData = useStore(s => s.refreshTaskData)
+  const refreshTraceData = useStore(s => s.refreshTraceData)
   const selectedTaskId = useStore(s => s.selectedTaskId)
+  const activeTab = useStore(s => s.activeTab)
 
   // Initial load + periodic refresh
   useEffect(() => {
@@ -27,4 +29,13 @@ export function useAutoRefresh() {
     const id = setInterval(refreshTaskData, REFRESH_INTERVAL)
     return () => clearInterval(id)
   }, [selectedTaskId, refreshTaskData])
+
+  // Refresh trace data when trace tab is active
+  useEffect(() => {
+    if (!selectedTaskId || activeTab !== 'trace') return
+
+    refreshTraceData()
+    const id = setInterval(refreshTraceData, REFRESH_INTERVAL)
+    return () => clearInterval(id)
+  }, [selectedTaskId, activeTab, refreshTraceData])
 }

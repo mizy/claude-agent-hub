@@ -1,8 +1,8 @@
 # 架构审计报告
 
 **项目**: Claude Agent Hub
-**审计日期**: 2026-02-07
-**审计范围**: src/ 目录下全部 17 个模块，约 145 个 TypeScript 文件，~25,600 行代码
+**审计日期**: 2026-02-07（Sprint 进度更新于 2026-02-13）
+**审计范围**: src/ 目录下全部 19 个模块（含新增 memory, prompt-optimization），约 170+ 个 TypeScript 文件
 
 ---
 
@@ -13,7 +13,7 @@
 
 ### 1.2 ESLint (`pnpm run lint`)
 - **结果**: ⚠️ 1 warning
-- `src/notify/larkWsClient.ts:52:24` — `@typescript-eslint/no-explicit-any`
+- `src/messaging/larkWsClient.ts:52:24` — `@typescript-eslint/no-explicit-any`
 
 ### 1.3 测试 (`pnpm run test`)
 - **结果**: ❌ 1 test suite failed, 23 passed
@@ -34,7 +34,7 @@
 | **依赖方向** | ⭐⭐⭐⭐ | 无运行时循环依赖，type-only 导入隔离良好 |
 | **文件行数控制** | ⭐⭐⭐⭐ | 仅 1 个文件超过 500 行（executeTask.ts: 568 行） |
 | **代码重复** | ⭐⭐⭐ | 4 处显著重复（categorizeTask 3份、toInvokeError 4份、表达式解析器 2份、标题截断 9+处） |
-| **测试覆盖** | ⭐⭐⭐ | 24 个测试文件/395 tests，但 backend/notify/scheduler 无单元测试 |
+| **测试覆盖** | ⭐⭐⭐ | 24 个测试文件/395 tests，但 backend/messaging/scheduler 无单元测试 |
 
 **综合健康度: 7/10 — 良好，有明确的改进方向**
 
@@ -50,11 +50,10 @@
 - **影响**: 1 个测试套件完全无法运行
 - **修复**: 删除该测试文件，或创建 `src/template/TemplateCore.ts` 模块
 
-#### P0-2. `src/types/` 缺少 `index.ts`
-- **位置**: `src/types/`（5 个文件：`nodeStatus.ts`, `output.ts`, `persona.ts`, `task.ts`, `taskStatus.ts`）
-- **问题**: 无 barrel export，无法 `import { X } from '../types'`
-- **影响**: 违反 barrel exports 规范，降低可发现性
-- **修复**: 创建 `src/types/index.ts` 统一导出所有类型
+#### P0-2. `src/types/` 缺少 `index.ts` ✅ 已修复
+- **位置**: `src/types/`（现有 10 个文件：task.ts, taskStatus.ts, workflow.ts, nodeStatus.ts, persona.ts, output.ts, taskMessage.ts, trace.ts, promptVersion.ts, index.ts）
+- ~~问题: 无 barrel export~~
+- **修复**: 已创建 `src/types/index.ts` 统一导出所有类型
 
 #### P0-3. Cron 解析器未实现
 - **文件**: `src/workflow/engine/executeNewNodes.ts:167-198`
@@ -85,14 +84,9 @@
 - **影响**: 修 bug 需改 3 处，容易遗漏
 - **修复**: report 模块的两个 dataCollector 应从 `analysis/TaskClassifier.js` 导入
 
-#### P1-3. `toInvokeError()` 重复实现 4 次
-- **位置**:
-  - `src/backend/claudeCodeBackend.ts:261`
-  - `src/backend/opencodeBackend.ts:148`
-  - `src/backend/iflowBackend.ts:164`
-  - `src/backend/codebuddyBackend.ts:252`
-- **影响**: 4 个 backend 适配器各自维护相同的错误转换逻辑
-- **修复**: 提取到 `src/backend/toInvokeError.ts` 共用
+#### P1-3. `toInvokeError()` 重复实现 4 次 ✅ 已修复
+- ~~4 个 backend 适配器各自维护相同的错误转换逻辑~~
+- **修复**: 已提取到 `src/shared/toInvokeError.ts` 共用
 
 #### P1-4. 表达式解析器重复
 - **位置**:
@@ -101,26 +95,18 @@
 - **影响**: 修改表达式支持需改两处
 - **修复**: 提取到 `src/workflow/engine/expressionParser.ts`
 
-#### P1-5. 标题截断逻辑散落 9+ 处
-- **位置**: 不同文件使用不同截断阈值（20/25/37/40/47/50 字符），无统一工具函数
-  - `cli/index.ts:105,246` — 50 字符
-  - `cli/commands/task.ts:217,228` — 40 字符
-  - `task/createAndRun.ts:43` — 47 字符
-  - `task/resumeTask.ts:312` — 40 字符
-  - `task/queryTask.ts:160,172` — 20/25 字符
-- **修复**: 提取到 `shared/truncateText.ts`
+#### P1-5. 标题截断逻辑散落 9+ 处 ✅ 已修复
+- ~~不同文件使用不同截断阈值，无统一工具函数~~
+- **修复**: 已提取到 `src/shared/truncateText.ts`
 
-#### P1-6. `task/executeTask.ts` 超过 500 行（568 行）
-- **位置**: `src/task/executeTask.ts`
-- **问题**: 混合了执行编排、恢复准备、通知发送、竞态检测四类职责
-- **包含硬编码测试值**: 行 132-134 `if (task.title === '输出 hello world')` — 生产代码中的硬编码检查
-- **修复**: 拆分为 `executeTask.ts`（编排） + `prepareExecution.ts`（准备逻辑），删除硬编码检查
+#### P1-6. `task/executeTask.ts` 超过 500 行（568 行） ✅ 已修复
+- ~~混合了执行编排、恢复准备、通知发送、竞态检测四类职责~~
+- **修复**: 已拆分为 `executeTask.ts`（编排）+ `prepareExecution.ts`（准备）+ `taskRecovery.ts`（恢复）+ `taskNotifications.ts`（通知）+ `completeTask.ts`（完成）+ `stopTask.ts`（停止）
+- 硬编码测试值已删除
 
-#### P1-7. `workflow/types.ts` 体积过大（420 行）
-- **位置**: `src/workflow/types.ts`
-- **问题**: 混合了类型定义（~310 行）和工厂函数（`createWorkflow`、`createTaskNode` 等 ~110 行）
-- **影响**: 被 13+ 文件跨模块 import，是最大的耦合点
-- **修复**: 工厂函数提取到 `createWorkflow.ts`，纯类型留在 `types.ts`
+#### P1-7. `workflow/types.ts` 体积过大（420 行） ✅ 已修复
+- ~~混合了类型定义和工厂函数~~
+- **修复**: 类型定义移至 `src/types/workflow.ts`，工厂函数提取到 `src/workflow/factory.ts`；`workflow/types.ts` 现在仅 re-export
 
 #### P1-8. `resumeTask` 命名冲突
 - `src/task/runTask.ts` 导出 `resumeTask(task: Task)` — 异步恢复 workflow 执行
@@ -153,8 +139,8 @@
 - **影响**: 长时间运行的守护进程内存逐渐增加
 - **修复**: 添加 cleanup 策略
 
-#### P2-4. Notify 模块未 await 异步处理
-- **文件**: `src/notify/larkWsClient.ts:164`
+#### P2-4. Messaging 模块未 await 异步处理
+- **文件**: `src/messaging/larkWsClient.ts:164`
 - **问题**: `handleChat()` 在 async 函数中未使用 await，异步异常无法被捕获
 - **影响**: 消息处理失败无感知
 - **修复**: 添加 await 或 .catch() 处理
@@ -186,7 +172,7 @@
 - **修复**: 确认后移除导出
 
 #### P3-4. ESLint warning — `any` 类型
-- `src/notify/larkWsClient.ts:52:24` — `(res as any)?.data?.message_id`
+- `src/messaging/larkWsClient.ts:52:24` — `(res as any)?.data?.message_id`
 - **修复**: 定义 Lark SDK 响应类型
 
 ### P4 - 可维护性
@@ -206,7 +192,7 @@
 - **已覆盖**: shared, store, workflow/engine, report, cli — 24 个测试文件/395 tests
 - **未覆盖**:
   - `backend/` — 4 个适配器无 mock 测试
-  - `notify/` — 消息发送/接收无测试
+  - `messaging/` — 消息发送/接收无测试
   - `scheduler/` — 守护进程/队列无测试
   - `analysis/` — 项目分析无测试
   - `task/executeTask.ts` — 核心执行逻辑无单元测试
@@ -235,13 +221,13 @@ Layer 0 (叶子):    config    shared    persona    types
 Layer 1 (存储):       └─────────┤          │         │
                            store ◄─────────┴─────────┘
                               │
-Layer 2 (领域):        workflow    backend    analysis    prompts
-                          │          │           │          │
-Layer 3 (编排):          task ◄──────┴───────────┘          │
-                          │                                 │
-Layer 4 (接口):         cli ◄───────────────────────────────┘
-                          │
-Layer 5 (基设):    scheduler    notify    server    output
+Layer 2 (领域):    workflow  backend  analysis  prompts  memory  prompt-optimization
+                      │        │         │        │        │           │
+Layer 3 (编排):      task ◄────┴─────────┘        │        │           │
+                      │                           │        │           │
+Layer 4 (接口):     cli ◄─────────────────────────┘        │           │
+                      │                                    │           │
+Layer 5 (基设):  scheduler  messaging  server  output  ◄───┴───────────┘
 ```
 
 ---
@@ -266,24 +252,26 @@ Layer 5 (基设):    scheduler    notify    server    output
 
 ## 五、模块详细评分
 
-| 模块 | 文件数 | 行数 | 类型安全 | 错误处理 | 测试覆盖 | 综合 |
-|------|--------|------|----------|----------|----------|------|
-| shared | 6 | ~1,100 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 9/10 |
-| store | 5 | ~1,000 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 8/10 |
-| backend | 9 | ~1,200 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | 7/10 |
-| types | 5 | ~80 | ⭐⭐⭐⭐⭐ | N/A | N/A | 9/10 |
-| config | 4 | ~250 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
-| persona | 4 | ~330 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
-| task | 8+ | ~2,200 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | 7/10 |
-| workflow | 12+ | ~4,200 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | 7/10 |
-| cli | 5 | ~800 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ | 7/10 |
-| analysis | 6 | ~1,200 | ⭐⭐⭐⭐ | ⭐⭐ | ⭐ | 5/10 |
-| report | 8+ | ~1,500 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ | 7/10 |
-| scheduler | 8 | ~1,000 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐ | 5/10 |
-| notify | 8 | ~1,500 | ⭐⭐⭐ | ⭐⭐ | ⭐ | 4/10 |
-| output | 3 | ~300 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
-| server | 1 | ~60 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
-| prompts | 2 | ~350 | ⭐⭐⭐⭐⭐ | N/A | ⭐⭐ | 7/10 |
+| 模块 | 文件数 | 类型安全 | 错误处理 | 测试覆盖 | 综合 |
+|------|--------|----------|----------|----------|------|
+| shared | 10 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 9/10 |
+| store | 18 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 8/10 |
+| backend | 9 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | 7/10 |
+| types | 10 | ⭐⭐⭐⭐⭐ | N/A | N/A | 9/10 |
+| config | 4 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
+| persona | 4 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
+| task | 22+ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | 7/10 |
+| workflow | 20+ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | 7/10 |
+| cli | 13+ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ | 7/10 |
+| analysis | 6 | ⭐⭐⭐⭐ | ⭐⭐ | ⭐ | 5/10 |
+| report | 15+ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ | 7/10 |
+| scheduler | 10 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐ | 5/10 |
+| messaging | 30+ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐ | 5/10 |
+| memory | 6 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
+| prompt-optimization | 4 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
+| output | 3 | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
+| server | 12+ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | 6/10 |
+| prompts | 4 | ⭐⭐⭐⭐⭐ | N/A | ⭐⭐ | 7/10 |
 
 ---
 
@@ -292,27 +280,27 @@ Layer 5 (基设):    scheduler    notify    server    output
 ### Sprint 1: 关键修复与类型安全 ⚡
 **目标**: 让所有测试通过，消除运行时风险
 
-| # | 任务 | 文件 | 预期效果 |
-|---|------|------|----------|
-| 1 | 删除引用不存在模块的测试 | `tests/empty-string-validation.test.ts` | 测试全部通过 |
-| 2 | 创建 `src/types/index.ts` barrel export | `src/types/index.ts` (新建) | 统一类型导入路径 |
-| 3 | 修复 ESLint `any` warning | `src/notify/larkWsClient.ts:52` | lint 零 warning |
-| 4 | 修复 WorkflowQueue busy-wait | `src/workflow/queue/WorkflowQueue.ts:115-118` | 消除 CPU 空转 |
-| 5 | 修复 pidLock 竞态条件 | `src/scheduler/pidLock.ts:27` | 区分 EPERM/ESRCH |
-| 6 | 修复 larkWsClient 未 await 异步 | `src/notify/larkWsClient.ts:164` | 异步错误可追踪 |
-| 7 | 删除 executeTask.ts 硬编码检查 | `src/task/executeTask.ts:132-134` | 移除测试代码 |
+| # | 任务 | 文件 | 状态 |
+|---|------|------|------|
+| 1 | 删除引用不存在模块的测试 | `tests/empty-string-validation.test.ts` | 待确认 |
+| 2 | 创建 `src/types/index.ts` barrel export | `src/types/index.ts` | ✅ 已完成 |
+| 3 | 修复 ESLint `any` warning | `src/messaging/larkWsClient.ts` | 待处理 |
+| 4 | 修复 WorkflowQueue busy-wait | `src/workflow/queue/WorkflowQueue.ts` | 待处理 |
+| 5 | 修复 pidLock 竞态条件 | `src/scheduler/pidLock.ts` | 待处理 |
+| 6 | 修复 larkWsClient 未 await 异步 | `src/messaging/larkWsClient.ts` | 待处理 |
+| 7 | 删除 executeTask.ts 硬编码检查 | `src/task/executeTask.ts` | ✅ 已完成（拆分时一并处理）|
 
 ### Sprint 2: 代码重复消除与模块拆分 🧹
 **目标**: 消除代码重复，控制文件体积
 
-| # | 任务 | 文件 | 预期效果 |
-|---|------|------|----------|
-| 1 | 消除 `categorizeTask()` 重复 | `report/analyzers/dataCollector.ts`, `report/comparison/dataCollector.ts` → 从 `analysis/TaskClassifier.js` 导入 | 3→1 份 |
-| 2 | 提取 `toInvokeError()` | 新建 `backend/toInvokeError.ts`，4 个 backend 改为导入 | 4→1 份 |
-| 3 | 提取表达式解析器 | 新建 `workflow/engine/expressionParser.ts` | 2→1 份 |
-| 4 | 提取标题截断工具函数 | 新建 `shared/truncateText.ts`，替换 9+ 处内联逻辑 | 统一截断行为 |
-| 5 | 拆分 `task/executeTask.ts` | 提取到 `prepareExecution.ts` | 568→~400+~180 行 |
-| 6 | 拆分 `workflow/types.ts` 工厂函数 | 提取到 `createWorkflow.ts` | 420→~310+~110 行 |
+| # | 任务 | 文件 | 状态 |
+|---|------|------|------|
+| 1 | 消除 `categorizeTask()` 重复 | `report/analyzers/dataCollector.ts` 等 | 待处理 |
+| 2 | 提取 `toInvokeError()` | `src/shared/toInvokeError.ts` | ✅ 已完成 |
+| 3 | 提取表达式解析器 | `workflow/engine/ExpressionEvaluator.ts` | ✅ 已完成 |
+| 4 | 提取标题截断工具函数 | `src/shared/truncateText.ts` | ✅ 已完成 |
+| 5 | 拆分 `task/executeTask.ts` | 多个文件 | ✅ 已完成 |
+| 6 | 拆分 `workflow/types.ts` 工厂函数 | `types/workflow.ts` + `workflow/factory.ts` | ✅ 已完成 |
 
 ### Sprint 3: 错误处理统一与命名规范 📐
 **目标**: 建立一致的错误处理策略
@@ -334,7 +322,7 @@ Layer 5 (基设):    scheduler    notify    server    output
 | 1 | backend/ 适配器 mock 测试 | `src/backend/__tests__/` (新建) | 覆盖 4 种后端 |
 | 2 | task/executeTask 单元测试 | `src/task/__tests__/executeTask.test.ts` (新建) | 覆盖核心执行流 |
 | 3 | scheduler/ 守护进程测试 | `src/scheduler/__tests__/` (新建) | 覆盖锁和队列 |
-| 4 | notify/ 发送测试 | `src/notify/__tests__/` (新建) | 覆盖消息发送 |
+| 4 | messaging/ 发送测试 | `src/messaging/__tests__/` (新建) | 覆盖消息发送 |
 | 5 | 更新 CLAUDE.md 模块索引 | `CLAUDE.md` | 文档与代码一致 |
 | 6 | 补齐 `@entry` 标记 | `config/index.ts`, `output/index.ts`, `prompts/index.ts` | 100% 覆盖 |
 
@@ -367,3 +355,33 @@ Layer 5 (基设):    scheduler    notify    server    output
 - `any` 类型：仅 3 处，均因第三方库类型缺失
 
 预计按 5 轮 Sprint 执行后，架构健康度可提升至 **9/10**。
+
+---
+
+## 八、2026-02-13 更新：新增模块与架构变更
+
+### 新增模块
+
+| 模块 | 文件数 | 说明 |
+|------|--------|------|
+| `memory/` | 6 | 跨任务经验学习系统（5 类记忆、关键词+项目+时间衰减评分检索） |
+| `prompt-optimization/` | 4 | Prompt 自动优化（失败分析 + Textual Gradient 改进 + 版本管理） |
+| `types/index.ts` | 10 | 统一类型 barrel export，新增 trace.ts, promptVersion.ts, taskMessage.ts, workflow.ts |
+
+### 新增 Store
+
+| Store | 说明 |
+|-------|------|
+| `TraceStore` | Span JSONL 存储，支持 trace 查询、慢 span 查询、error chain |
+| `PromptVersionStore` | Prompt 版本 CRUD、active 版本追踪、回滚、统计 |
+| `TaskMessageStore` | 任务消息队列（暂停/恢复/注入命令的异步传递） |
+
+### 架构重构
+
+- **notify → messaging**: 完成重命名，handlers 层新增 `systemCommands.ts`、`streamingHandler.ts`，新增 `larkCards/` 子模块和 `larkEventRouter.ts`
+- **task 模块扩展**: 新增 `pauseResumeTask.ts`（暂停/恢复）、`injectNode.ts`（运行时节点注入）、`completeTask.ts`、`stopTask.ts`、`deleteTask.ts`、`formatTask.ts`
+- **workflow 模块扩展**: 新增 `factory.ts`、`nodeTypeHandlers.ts`、`nodeResultProcessor.ts`、`logNodeExecution.ts`；queue 子模块新增 `HumanApprovalQueue.ts`、`queueLock.ts`、`queueMaintenance.ts`
+- **Tracing 系统**: 4 层 Span 层次（workflow → node → llm → tool/internal），集成到 `invokeBackend()` 中自动创建 LLM spans，Dashboard 新增 TraceTab
+- **Backend 接口演进**: `IBackend`/`ExecuteOptions` → `BackendAdapter`/`InvokeOptions`，新增 `mode`、`traceCtx`、`model`、`sessionId` 等字段
+- **CLI 命令扩展**: 新增 `memory`、`prompt`、`trace`、`taskCreate`、`taskLifecycle`、`taskList`、`taskLogs` 子命令
+- **server 扩展**: 新增 `routes.ts` API 路由分离，Dashboard 新增 `TraceTab.tsx`

@@ -3,7 +3,7 @@
  */
 
 import { generateShortId } from '../shared/generateId.js'
-import { extractKeywords } from '../analysis/TaskClassifier.js'
+import { extractKeywords } from '../analysis/index.js'
 import {
   getAllMemories,
   saveMemory,

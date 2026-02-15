@@ -5,11 +5,17 @@
  * Platforms provide a MessengerAdapter + context; the router handles all dispatch.
  */
 
+import { createLogger } from '../../shared/logger.js'
+import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import { parseApprovalCommand, handleApproval } from './approvalHandler.js'
 import { handleCommand } from './commandHandler.js'
 import { handleChat, clearChatSession, getChatSessionInfo, toggleBenchmark } from './chatHandler.js'
+import { setModelOverride, getModelOverride, setBackendOverride, getBackendOverride } from './sessionManager.js'
 import { APPROVAL_COMMANDS, TASK_COMMANDS } from './constants.js'
+import { getRegisteredBackends } from '../../backend/resolveBackend.js'
 import type { MessengerAdapter, ParsedApproval, ClientContext } from './types.js'
+
+const logger = createLogger('message-router')
 
 // ── Command parsing ──
 
@@ -97,6 +103,14 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
       }
       return
     }
+    if (parsed.cmd === '/model') {
+      await handleModelCommand(chatId, parsed.args, messenger)
+      return
+    }
+    if (parsed.cmd === '/backend') {
+      await handleBackendCommand(chatId, parsed.args, messenger)
+      return
+    }
 
     // Approval slash commands
     if (APPROVAL_COMMANDS.has(parsed.cmd)) {
@@ -109,11 +123,20 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
 
     // Task management commands (prefer card when adapter supports it)
     if (TASK_COMMANDS.has(parsed.cmd)) {
-      const cmdResult = await handleCommand(parsed.cmd, parsed.args)
-      if (cmdResult.larkCard && messenger.replyCard) {
-        await messenger.replyCard(chatId, cmdResult.larkCard)
-      } else {
-        await messenger.reply(chatId, cmdResult.text)
+      try {
+        const cmdResult = await handleCommand(parsed.cmd, parsed.args)
+        logger.debug(`handleCommand result for ${parsed.cmd}: ${JSON.stringify(cmdResult).slice(0, 200)}`)
+        if (cmdResult.larkCard && messenger.replyCard) {
+          logger.debug('Sending lark card')
+          await messenger.replyCard(chatId, cmdResult.larkCard)
+        } else {
+          logger.debug(`Sending text reply: ${cmdResult.text?.slice(0, 50)}`)
+          await messenger.reply(chatId, cmdResult.text)
+        }
+      } catch (error) {
+        const msg = formatErrorMessage(error)
+        logger.error(`Command ${parsed.cmd} failed: ${msg}`)
+        await messenger.reply(chatId, `❌ 命令执行失败: ${msg}`)
       }
       return
     }
@@ -128,8 +151,8 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
     }
   }
 
-  // Free chat
-  await handleChat(chatId, cleanText, messenger, { client: clientContext, images })
+  // Free chat (pass original text — chatHandler.parseBackendOverride needs @prefix intact)
+  await handleChat(chatId, text, messenger, { client: clientContext, images })
 }
 
 // ── Helpers ──
@@ -142,4 +165,61 @@ async function handleApprovalAndReply(
 ): Promise<void> {
   const result = await handleApproval(approval, onApprovalResult)
   await messenger.reply(chatId, result)
+}
+
+const VALID_MODELS = new Set(['opus', 'sonnet', 'haiku'])
+
+async function handleModelCommand(chatId: string, args: string, messenger: MessengerAdapter): Promise<void> {
+  const arg = args.trim().toLowerCase()
+
+  // No argument: show current setting
+  if (!arg) {
+    const current = getModelOverride(chatId)
+    await messenger.reply(chatId, current ? `🤖 当前模型: ${current} (手动)` : '🤖 当前模型: auto (自动选择)')
+    return
+  }
+
+  // /model auto — restore automatic selection
+  if (arg === 'auto') {
+    setModelOverride(chatId, undefined)
+    await messenger.reply(chatId, '🤖 已恢复自动模型选择')
+    return
+  }
+
+  // /model <name> — set override
+  if (VALID_MODELS.has(arg)) {
+    setModelOverride(chatId, arg)
+    await messenger.reply(chatId, `🤖 模型已切换为 ${arg}，会话期间生效`)
+    return
+  }
+
+  await messenger.reply(chatId, '用法: /model [opus|sonnet|haiku|auto]')
+}
+
+async function handleBackendCommand(chatId: string, args: string, messenger: MessengerAdapter): Promise<void> {
+  const arg = args.trim().toLowerCase()
+  const backends = getRegisteredBackends()
+
+  // No argument: show current setting
+  if (!arg) {
+    const current = getBackendOverride(chatId)
+    await messenger.reply(chatId, current ? `🔧 当前后端: ${current} (手动)` : '🔧 当前后端: auto (使用配置默认值)')
+    return
+  }
+
+  // /backend auto — restore default
+  if (arg === 'auto') {
+    setBackendOverride(chatId, undefined)
+    await messenger.reply(chatId, '🔧 已恢复默认后端')
+    return
+  }
+
+  // /backend <name> — set override
+  if (backends.includes(arg)) {
+    setBackendOverride(chatId, arg)
+    await messenger.reply(chatId, `🔧 后端已切换为 ${arg}，会话期间生效`)
+    return
+  }
+
+  await messenger.reply(chatId, `用法: /backend [${backends.join('|')}|auto]`)
 }

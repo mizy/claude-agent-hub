@@ -5,7 +5,7 @@
 
 import { invokeBackend } from '../backend/index.js'
 import { buildGenerateTitleFromWorkflowPrompt } from '../prompts/index.js'
-import { loadConfig } from '../config/loadConfig.js'
+import { getBackendConfig } from '../config/index.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from '../workflow/types.js'
@@ -38,8 +38,8 @@ export function isGenericTitle(title: string): boolean {
  */
 export async function generateTaskTitle(task: Task, workflow: Workflow): Promise<string> {
   const prompt = buildGenerateTitleFromWorkflowPrompt(task, workflow)
-  const config = await loadConfig()
-  const model = config.backend?.model ?? config.claude?.model ?? 'opus'
+  const backendConfig = await getBackendConfig()
+  const model = backendConfig.model
 
   const result = await invokeBackend({
     prompt,

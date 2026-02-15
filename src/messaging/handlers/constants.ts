@@ -44,4 +44,7 @@ export const TASK_COMMANDS = new Set([
   '/reload',
   '/memory',
   '/cost',
+  '/msg',
+  '/pause',
+  '/snapshot',
 ])

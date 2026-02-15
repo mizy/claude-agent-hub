@@ -7,46 +7,43 @@
  */
 
 /**
- * Convert standard markdown tables to Lark <table> tags
- * Input: | col1 | col2 |\n|---|---|\n| a | b |
- * Output: <table columns={[...]} data={[...]}/>
+ * Convert standard markdown tables to Lark-compatible list format.
+ *
+ * Lark card markdown does NOT support <table> or | table syntax.
+ * We convert tables to a readable text format using only **bold** and plain text.
+ *
+ * For 2-column tables (key-value): **key**: value
+ * For 3+ columns: **col1**: val1 / **col2**: val2 / ...
  */
 export function convertMarkdownTables(text: string): string {
-  // Match consecutive | lines (at least 3: header + separator + 1 row)
   return text.replace(
     /(?:^|\n)((?:\|[^\n]+\|\n){2,}(?:\|[^\n]+\|))/g,
-    (_match, tableBlock: string) => {
+    (match, tableBlock: string) => {
       const lines = tableBlock.trim().split('\n')
-      if (lines.length < 3) return tableBlock
+      if (lines.length < 3) return match
 
-      const headerCells = lines[0]!
-        .split('|')
-        .filter(c => c.trim())
-        .map(c => c.trim())
-      const isSeparator = (line: string) => /^\|[\s\-:]+\|$/.test(line.trim())
-      if (!isSeparator(lines[1]!)) return tableBlock
+      const parseCells = (line: string) =>
+        line.split('|').filter(c => c.trim()).map(c => c.trim())
+      const isSeparator = (line: string) => /^\|[\s\-:|]+\|$/.test(line.trim())
+
+      const headers = parseCells(lines[0]!)
+      if (!isSeparator(lines[1]!)) return match
 
       const dataRows = lines.slice(2).filter(l => !isSeparator(l))
-      const columns = headerCells.map(h => ({
-        tag: 'plain_text' as const,
-        width: 'auto' as const,
-        text: h,
-      }))
-      const data = dataRows.map(row => {
-        const cells = row
-          .split('|')
-          .filter(c => c.trim())
-          .map(c => c.trim())
-        const obj: Record<string, string> = {}
-        headerCells.forEach((h, i) => {
-          obj[h] = cells[i] ?? ''
-        })
-        return obj
+      if (dataRows.length === 0) return match
+
+      const isKeyValue = headers.length === 2
+      const converted = dataRows.map(row => {
+        const cells = parseCells(row)
+        if (isKeyValue) {
+          return `**${cells[0] ?? ''}**: ${cells[1] ?? ''}`
+        }
+        return headers.map((h, i) => `**${h}**: ${cells[i] ?? ''}`).join(' / ')
       })
 
-      const columnsJson = JSON.stringify(columns)
-      const dataJson = JSON.stringify(data)
-      return `\n<table columns=${columnsJson} data=${dataJson}/>`
+      // Preserve leading newline if the match had one
+      const prefix = match.startsWith('\n') ? '\n' : ''
+      return prefix + converted.join('\n')
     }
   )
 }

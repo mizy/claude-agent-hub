@@ -2,12 +2,12 @@
 
 > 自举式进化路线图 — 从工具到有生命力的自驱智能体
 
-## Current State Assessment
+## Current State Assessment (Updated 2026-02-13)
 
 - **Phase 1 执行力** ✅ 95% — 14 node types, 9 personas, 4 backends
-- **Phase 2 感知力** 🟡 60% — History learning + project analysis, but shallow
+- **Phase 2 感知力** ✅ 80% — Memory 学习系统、历史分析、Prompt 自动优化、分布式 Tracing
 - **Phase 3 自愈力** ❌ 5% — Almost non-existent
-- **Phase 4 成长力** 🟡 15% — Agent Teams is prompt-only, not real collaboration
+- **Phase 4 成长力** 🟡 25% — Prompt optimization + memory system 初步实现，Agent Teams 仍为 prompt-only
 - **Phase 5 自驱力** ❌ 0% — No intrinsic motivation
 
 ---
@@ -25,12 +25,12 @@
 **2. Unify error handling**
 - Problem: 50+ silent catch blocks swallowing exceptions across config, analysis, notification modules
 - Fix: Audit all catch blocks, add proper logging; adopt Result<T,E> pattern consistently
-- Key files: `src/config/loadConfig.ts`, `src/analysis/`, `src/notify/`
+- Key files: `src/config/loadConfig.ts`, `src/analysis/`, `src/messaging/`
 
-**3. Split executeTask.ts (568 lines)**
-- File: `src/task/executeTask.ts`
-- Split into: `orchestrateTask.ts` (main flow), `taskRecovery.ts` (resume/retry), `taskNotifications.ts` (progress/completion notifications)
-- Remove hardcoded test check at line 132-134 (`if (task.title === '输出 hello world')`)
+**3. Split executeTask.ts** ✅ Done
+- ~~File: `src/task/executeTask.ts`~~
+- Split into: `executeTask.ts` (main flow) + `prepareExecution.ts` (preparation) + `taskRecovery.ts` (resume/retry) + `taskNotifications.ts` (progress/completion notifications)
+- Hardcoded test check removed
 
 **4. Fix pidLock race condition**
 - File: `src/scheduler/pidLock.ts`
@@ -39,16 +39,19 @@
 
 ### Sprint 2: Code Deduplication & Tests
 
-**1. Consolidate duplicated logic**
-- `categorizeTask()` — 3 copies → extract to `src/analysis/categorizeTask.ts`
-- `toInvokeError()` — 4 copies → extract to `src/shared/toInvokeError.ts`
-- Expression parser — 2 copies → unify in `src/workflow/engine/expressionEval.ts`
-- Title truncation — 9+ copies → `src/shared/truncateTitle.ts`
+**1. Consolidate duplicated logic** ✅ Partially done
+- `toInvokeError()` — ✅ extracted to `src/shared/toInvokeError.ts`
+- `truncateText()` — ✅ extracted to `src/shared/truncateText.ts`
+- `categorizeTask()` — 3 copies → still needs consolidation
+- Expression parser — 2 copies → still needs unification
 
-**2. Split oversized type files**
-- `src/workflow/types.ts` (420 lines) — separate types from factory functions
+**2. Split oversized type files** ✅ Done
+- `src/workflow/types.ts` — types moved to `src/types/workflow.ts`, factory functions to `src/workflow/factory.ts`; `workflow/types.ts` now re-exports
 
-**3. Add missing unit tests**
+**3. Create types/index.ts** ✅ Done
+- `src/types/index.ts` — barrel export for all type files
+
+**4. Add missing unit tests**
 - Target: 15-20 new tests for uncovered critical paths
 - Focus: cron parsing, error handling, PID locking, expression evaluation
 
@@ -186,6 +189,40 @@
 
 ---
 
+## Already Achieved (Since Initial Plan)
+
+以下能力在 Q1 期间已实现，超出原计划范围：
+
+### Memory 学习系统 ✅
+- `src/memory/` — 5 类记忆（pattern/lesson/preference/pitfall/tool）
+- 关键词+项目+时间衰减评分的相关性检索
+- 从任务执行自动提取记忆
+- 注入 Prompt 供后续任务使用
+
+### Prompt 自动优化 ✅
+- `src/prompt-optimization/` — 失败分析 + Textual Gradient 改进
+- Prompt 版本管理（active/candidate/retired 状态）
+- 按 persona 追踪成功率和执行时长
+
+### 分布式 Tracing ✅
+- `src/store/TraceStore.ts` + `createSpan.ts` + `exportOTLP.ts`
+- 4 层 Span 层次（workflow → node → llm → tool/internal）
+- OpenTelemetry 兼容格式
+- Dashboard TraceTab 可视化
+
+### 任务交互系统 ✅
+- `src/task/pauseResumeTask.ts` + `injectNode.ts`
+- `src/store/TaskMessageStore.ts` — 消息队列
+- CLI: `cah task pause/resume/msg/inject`
+- IM: `/pause`, `/resume`, `/inject` 命令
+
+### notify → messaging 重构 ✅
+- 从 `src/notify/` 重命名为 `src/messaging/`
+- 新增 `larkCards/` 子模块、`larkEventRouter.ts`
+- handlers 层新增 `systemCommands.ts`、`streamingHandler.ts`
+
+---
+
 ## P0 Blockers (Must Fix First)
 
 1. **Cron scheduler** — broken `calculateNextCronTime()` blocks all scheduling autonomy
@@ -194,7 +231,7 @@
 
 ## Success Metrics
 
-- **Q1 end**: 0 known P0 bugs, 90%+ test coverage on critical paths, executeTask.ts < 200 lines
+- **Q1 end**: 0 known P0 bugs, 90%+ test coverage on critical paths, executeTask.ts < 200 lines ✅ (partial)
 - **Q2 end**: `cah selfcheck` passes 12+ assertions, daemon auto-heals 3+ failure types
 - **Q3 end**: Failure catalog has 50+ entries, real multi-agent pipeline executes end-to-end
 - **Q4 end**: CAH creates and completes self-improvement tasks without human initiation

@@ -42,12 +42,6 @@ export const backendConfigSchema = z.object({
   chat: chatConfigSchema.default({}),
 })
 
-/** @deprecated 使用 backendConfigSchema */
-export const claudeConfigSchema = z.object({
-  model: z.enum(['haiku', 'sonnet', 'opus']).default('opus'),
-  max_tokens: z.number().default(8000),
-})
-
 export const larkConfigSchema = z.object({
   webhookUrl: z.string().optional(), // 飞书 webhook URL（向后兼容）
   appId: z.string(), // 飞书应用 ID（WSClient 必需）
@@ -73,10 +67,12 @@ export const configSchema = z.object({
   agents: z.array(agentConfigSchema).default([]),
   tasks: taskConfigSchema.default({}),
   git: gitConfigSchema.default({}),
-  /** 新配置：CLI 后端设置 */
-  backend: backendConfigSchema.optional(),
-  /** @deprecated 使用 backend，旧配置仍可用 */
-  claude: claudeConfigSchema.optional(),
+  /** CLI 后端设置（默认 backend） */
+  backend: backendConfigSchema.default({}),
+  /** 命名 backend 配置映射，允许定义多个 backend 供任务级切换 */
+  backends: z.record(z.string(), backendConfigSchema).optional(),
+  /** 默认使用的命名 backend（覆盖 backend 字段） */
+  defaultBackend: z.string().optional(),
   notify: notifyConfigSchema.optional(),
   daemon: daemonConfigSchema.optional(),
 })

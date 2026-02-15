@@ -64,6 +64,9 @@ export function loadSessions(): void {
   let restored = 0
   for (const [chatId, session] of Object.entries(data)) {
     if (now - session.lastActiveAt > SESSION_TIMEOUT_MS) continue
+    // Backward compat: old sessions lack turnCount/estimatedTokens
+    session.turnCount ??= 0
+    session.estimatedTokens ??= 0
     sessions.set(chatId, session)
     restored++
   }
@@ -80,7 +83,8 @@ export function getSession(chatId: string): ChatSession | undefined {
 
 /** Update or create session, starts cleanup timer, persists to disk */
 export function setSession(chatId: string, sessionId: string): void {
-  sessions.set(chatId, { sessionId, lastActiveAt: Date.now() })
+  const existing = sessions.get(chatId)
+  sessions.set(chatId, { sessionId, lastActiveAt: Date.now(), turnCount: 0, estimatedTokens: 0, modelOverride: existing?.modelOverride, backendOverride: existing?.backendOverride })
   ensureCleanupTimer()
   persistSessions()
 }
@@ -90,6 +94,74 @@ export function clearSession(chatId: string): boolean {
   const result = sessions.delete(chatId)
   if (result) persistSessions()
   return result
+}
+
+/** Set model override for a chatId. Pass undefined to clear (restore auto). */
+export function setModelOverride(chatId: string, model: string | undefined): void {
+  const session = sessions.get(chatId)
+  if (session) {
+    session.modelOverride = model
+    persistSessions()
+  } else {
+    // No session yet — store a placeholder so override takes effect on next chat
+    sessions.set(chatId, { sessionId: '', lastActiveAt: Date.now(), turnCount: 0, estimatedTokens: 0, modelOverride: model })
+    ensureCleanupTimer()
+    persistSessions()
+  }
+}
+
+/** Get model override for a chatId */
+export function getModelOverride(chatId: string): string | undefined {
+  return sessions.get(chatId)?.modelOverride
+}
+
+/** Set backend override for a chatId. Pass undefined to clear (restore default). */
+export function setBackendOverride(chatId: string, backend: string | undefined): void {
+  const session = sessions.get(chatId)
+  if (session) {
+    session.backendOverride = backend
+    persistSessions()
+  } else {
+    sessions.set(chatId, { sessionId: '', lastActiveAt: Date.now(), turnCount: 0, estimatedTokens: 0, backendOverride: backend })
+    ensureCleanupTimer()
+    persistSessions()
+  }
+}
+
+/** Get backend override for a chatId */
+export function getBackendOverride(chatId: string): string | undefined {
+  return sessions.get(chatId)?.backendOverride
+}
+
+const MAX_TURNS = 10
+const MAX_ESTIMATED_TOKENS = 50_000
+
+/** Rough token estimate from char count (~3 chars/token average for mixed CJK/Latin) */
+function estimateTokens(charCount: number): number {
+  return Math.ceil(charCount / 3)
+}
+
+/** Check if a session should be reset (too many turns or tokens) */
+export function shouldResetSession(chatId: string): boolean {
+  const session = sessions.get(chatId)
+  if (!session) return false
+  return session.turnCount > MAX_TURNS || session.estimatedTokens > MAX_ESTIMATED_TOKENS
+}
+
+/** Increment turn count and accumulate estimated tokens after a chat round */
+export function incrementTurn(chatId: string, inputLen: number, outputLen: number): void {
+  const session = sessions.get(chatId)
+  if (!session) return
+  session.turnCount++
+  session.estimatedTokens += estimateTokens(inputLen) + estimateTokens(outputLen)
+  session.lastActiveAt = Date.now()
+  persistSessions()
+
+  if (shouldResetSession(chatId)) {
+    logger.info(`Session reset for chat ${chatId.slice(0, 8)}: turns=${session.turnCount}, tokens≈${session.estimatedTokens}`)
+    sessions.delete(chatId)
+    persistSessions()
+  }
 }
 
 /**

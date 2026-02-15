@@ -5,7 +5,11 @@
 
 import { EventEmitter } from 'events'
 import { createLogger } from '../../shared/logger.js'
-import type { WorkflowEvent, WorkflowStatus } from '../types.js'
+import type {
+  WorkflowEvent,
+  NodeExecutionStats,
+  WorkflowExecutionStats,
+} from '../types.js'
 
 const logger = createLogger('workflow-events')
 
@@ -73,39 +77,8 @@ export interface WorkflowProgressEvent {
   currentNode?: string
 }
 
-// ============ 执行统计 ============
-
-export interface NodeExecutionStats {
-  nodeId: string
-  nodeName: string
-  nodeType: string
-  status: 'completed' | 'failed' | 'skipped' | 'running' | 'pending'
-  attempts: number
-  durationMs?: number
-  costUsd?: number
-  error?: string
-}
-
-export interface WorkflowExecutionStats {
-  workflowId: string
-  instanceId: string
-  workflowName: string
-  status: WorkflowStatus
-  startedAt?: string
-  completedAt?: string
-  totalDurationMs: number
-  nodes: NodeExecutionStats[]
-  summary: {
-    totalNodes: number
-    completedNodes: number
-    failedNodes: number
-    skippedNodes: number
-    runningNodes: number
-    pendingNodes: number
-    totalCostUsd: number
-    avgNodeDurationMs: number
-  }
-}
+// Re-export stats types (canonical definition in types/workflow.ts)
+export type { NodeExecutionStats, WorkflowExecutionStats } from '../types.js'
 
 // ============ 事件发射器单例 ============
 

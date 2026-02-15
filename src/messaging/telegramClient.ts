@@ -7,7 +7,7 @@
 
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
-import { loadConfig } from '../config/loadConfig.js'
+import { getNotifyConfig } from '../config/index.js'
 import { sendTelegramApprovalResult } from './sendTelegramNotify.js'
 import { routeMessage } from './handlers/messageRouter.js'
 import type { MessengerAdapter, ClientContext } from './handlers/types.js'
@@ -99,8 +99,8 @@ function getTelegramClientContext(): ClientContext {
 // ── Telegram approval notification callback ──
 
 async function createApprovalCallback() {
-  const config = await loadConfig()
-  const tgChatId = config.notify?.telegram?.chatId
+  const notifyConfig = await getNotifyConfig()
+  const tgChatId = notifyConfig?.telegram?.chatId
   if (!tgChatId) return undefined
   return async (result: {
     nodeId: string
@@ -168,8 +168,8 @@ export async function startTelegramClient(): Promise<void> {
     return
   }
 
-  const config = await loadConfig()
-  const tgConfig = config.notify?.telegram
+  const notifyConfig = await getNotifyConfig()
+  const tgConfig = notifyConfig?.telegram
 
   if (!tgConfig?.botToken) {
     throw new Error('Missing Telegram botToken in config')

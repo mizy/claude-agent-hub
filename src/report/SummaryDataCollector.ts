@@ -6,7 +6,7 @@
 import { readdirSync, existsSync, readFileSync } from 'fs'
 import { TASKS_DIR } from '../store/paths.js'
 import { readJson } from '../store/readWriteJson.js'
-import { estimateRemainingTime } from '../analysis/estimateTime.js'
+import { estimateRemainingTime } from '../analysis/index.js'
 import type { Task } from '../types/task.js'
 import type { WorkflowInstance } from '../workflow/types.js'
 import type { ExecutionSummary } from '../task/index.js'

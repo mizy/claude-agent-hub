@@ -15,6 +15,12 @@ cah list                 # 查看任务列表（快捷方式）
 cah task list            # 查看任务列表
 cah task logs <id> -f    # 实时查看任务日志
 cah task resume <id>     # 恢复中断的任务
+cah task pause <id>      # 暂停运行中的任务
+cah task stop <id>       # 停止/取消任务
+cah task msg <id> <msg>  # 向运行中任务发送消息
+cah task inject-node <id> <prompt>  # 动态注入节点
+cah task trace <id>      # 查看执行追踪（调用树/耗时/错误链）
+cah task snapshot <id>   # 查看任务执行快照
 
 # 守护进程
 cah start                # 启动守护进程（前台，自动检测飞书/Telegram）
@@ -28,6 +34,13 @@ cah report trend         # 趋势分析报告
 cah report live          # 实时状态监控
 cah dashboard            # 启动 Workflow 可视化面板
 cah agent list           # 查看可用 Agent
+
+# 记忆 & 提示词
+cah memory list          # 查看记忆列表
+cah memory add <content> # 手动添加记忆
+cah memory search <query># 搜索记忆
+cah prompt versions <p>  # 查看人格提示词版本
+cah prompt rollback <p> <vid>  # 回滚提示词版本
 ```
 
 ## 分层架构
@@ -36,9 +49,9 @@ cah agent list           # 查看可用 Agent
 CLI (cli/)  ─────────────────────────── 表现层：命令行、输出格式化
   ├── Server (server/)                   HTTP 可视化面板
   ├── Report (report/)                   报告生成、趋势分析
-  └── Notify (notify/)                   飞书(卡片交互)/Telegram 通知
+  └── Messaging (messaging/)              IM 交互层：飞书/Telegram（命令/对话/通知/卡片）
         │
-Task (task/)  ───────────────────────── 业务层：任务生命周期
+Task (task/)  ───────────────────────── 业务层：任务生命周期（含暂停/恢复/注入/消息）
   ├── Scheduler (scheduler/)             守护进程、队列、Worker
   ├── Workflow (workflow/)               AI 工作流引擎、节点执行
   │     └── engine/ parser/ queue/       子模块
@@ -48,8 +61,10 @@ Task (task/)  ──────────────────────
 Backend (backend/)  ─────────────────── 集成层：CLI 后端抽象
 Persona (persona/)                       AI 人格定义
 Prompts (prompts/)                       提示词模板
+Memory (memory/)                         任务记忆：学习、检索、注入
+PromptOptimization (prompt-optimization/) 提示词自进化：失败分析、版本管理
         │
-Store (store/)  ─────────────────────── 持久层：文件存储
+Store (store/)  ─────────────────────── 持久层：文件存储、Trace（OTLP 兼容）
 Config (config/)                         配置加载
 Shared (shared/)                         基础设施（Result/AppError/logger）
 Types (types/)                           类型定义
@@ -59,22 +74,24 @@ Types (types/)                           类型定义
 
 | 模块 | 入口 | 核心能力 |
 |------|------|----------|
-| CLI | `cli/index.ts` | 命令行主入口、子命令（task/start/stop/restart/status/report/dashboard） |
+| CLI | `cli/index.ts` | 命令行主入口、子命令（task/start/stop/restart/status/report/dashboard/memory/prompt） |
 | Backend | `backend/index.ts` | CLI 后端抽象层（claude-code/opencode/iflow/codebuddy） |
-| Task | `task/index.ts` | 创建、执行（进度条/ETA/统计）、查询、恢复、生命周期 |
+| Task | `task/index.ts` | 创建、执行（进度条/ETA/统计）、查询、恢复、暂停/恢复、消息、节点注入 |
 | Workflow | `workflow/index.ts` | AI 生成工作流、节点执行（Persona）、状态管理、重试 |
-| Store | `store/index.ts` | GenericFileStore 通用文件存储、TaskStore/WorkflowStore |
+| Store | `store/index.ts` | GenericFileStore 通用文件存储、TaskStore/WorkflowStore/TraceStore/PromptVersionStore |
 | Analysis | `analysis/index.ts` | 项目上下文分析、历史学习、任务分类、时间预估 |
 | Report | `report/index.ts` | 趋势分析、实时摘要、执行对比（退化检测） |
 | Persona | `persona/index.ts` | AI 人格定义、加载 |
 | Scheduler | `scheduler/index.ts` | 任务队列、Worker、守护进程、PID 锁 |
-| Notify | `notify/index.ts` | 平台无关 handlers（命令/审批/对话）+ 飞书(卡片交互、按钮回调)/Telegram 适配层 |
+| Messaging | `messaging/index.ts` | 平台无关 handlers（命令/审批/对话）+ 飞书(卡片交互、按钮回调)/Telegram 适配层 |
+| Memory | `memory/index.ts` | 任务记忆提取、检索（相关性评分）、格式化注入 |
+| PromptOptimization | `prompt-optimization/index.ts` | 失败分析、提示词改进生成、版本管理与回滚 |
 | Config | `config/index.ts` | YAML 配置加载、Schema 校验、项目初始化 |
 | Shared | `shared/index.ts` | Result<T,E>、AppError、日志、ID 生成、格式化 |
 | Output | `output/index.ts` | 任务输出保存、标题生成 |
 | Server | `server/index.ts` | HTTP server、Workflow 可视化面板 |
 | Prompts | `prompts/index.ts` | 任务执行/对话提示词模板 |
-| Types | `types/` | 类型定义（task, taskStatus, nodeStatus, persona, output） |
+| Types | `types/index.ts` | 类型定义（task, workflow, persona, output, trace, promptVersion） |
 
 ## 任务执行流程
 
@@ -85,15 +102,22 @@ Types (types/)                           类型定义
 数据目录：`.cah-data/`（可通过 `-d <path>` 或 `CAH_DATA_DIR` 指定）
 
 ```
-.cah-data/tasks/task-{id}/
-├── task.json       # 元数据（id, title, status, priority）
-├── workflow.json   # 工作流定义（节点、边、变量）
-├── instance.json   # 唯一执行状态源（节点状态、输出、变量）
-├── stats.json      # 聚合统计（从 instance 派生）
-├── timeline.json   # 事件时间线（含 instanceId）
-├── process.json    # 后台进程信息
-├── logs/           # execution.log + events.jsonl
-└── outputs/        # result.md
+.cah-data/
+├── tasks/task-{id}/
+│   ├── task.json       # 元数据（id, title, status, priority）
+│   ├── workflow.json   # 工作流定义（节点、边、变量）
+│   ├── instance.json   # 唯一执行状态源（节点状态、输出、变量）
+│   ├── stats.json      # 聚合统计（从 instance 派生）
+│   ├── timeline.json   # 事件时间线（含 instanceId）
+│   ├── process.json    # 后台进程信息
+│   ├── messages.json   # 任务交互消息队列
+│   ├── logs/           # execution.log + events.jsonl
+│   ├── outputs/        # result.md
+│   └── traces/         # trace-{traceId}.jsonl（OTLP 兼容 Span 数据）
+├── memory/             # 记忆条目
+├── prompt-versions/    # 提示词版本历史
+├── queue.json          # 任务队列
+└── runner.lock         # 队列 Runner 锁
 ```
 
 ## 开发

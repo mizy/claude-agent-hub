@@ -2,7 +2,7 @@
  * Memory retrieval — score, rank, and return relevant memories
  */
 
-import { extractKeywords } from '../analysis/TaskClassifier.js'
+import { extractKeywords } from '../analysis/index.js'
 import { getAllMemories, updateMemory } from '../store/MemoryStore.js'
 import type { MemoryEntry } from './types.js'
 
@@ -14,8 +14,8 @@ interface RetrieveOptions {
 /**
  * Retrieve memories most relevant to a query.
  *
- * Scoring: keyword overlap + project path bonus + confidence + time decay.
- * Updates accessCount on returned entries.
+ * Scoring: keyword overlap + project path bonus + confidence + smooth time decay + access frequency.
+ * Updates accessCount and lastAccessedAt (NOT updatedAt) on returned entries.
  */
 export function retrieveRelevantMemories(
   query: string,
@@ -46,12 +46,14 @@ export function retrieveRelevantMemories(
     // Confidence factor
     score += entry.confidence * 0.5
 
-    // Time decay: halve score for entries older than 30 days
+    // Smooth time decay: 1 / (1 + ageDays / 30)
+    // 7d=0.81, 30d=0.5, 90d=0.25 — based on updatedAt (content last modified)
     const ageMs = now - new Date(entry.updatedAt).getTime()
     const ageDays = ageMs / (1000 * 60 * 60 * 24)
-    if (ageDays > 30) {
-      score *= 0.5
-    }
+    score *= 1 / (1 + ageDays / 30)
+
+    // Access frequency boost: frequently accessed memories are more useful
+    score += Math.log(1 + entry.accessCount) * 0.2
 
     return { entry, score }
   })
@@ -63,11 +65,11 @@ export function retrieveRelevantMemories(
     .slice(0, maxResults)
     .map(s => s.entry)
 
-  // Update accessCount for returned entries
+  // Update accessCount and lastAccessedAt (NOT updatedAt) for returned entries
   for (const entry of results) {
     updateMemory(entry.id, {
       accessCount: entry.accessCount + 1,
-      updatedAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
     })
   }
 

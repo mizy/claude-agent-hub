@@ -5,7 +5,7 @@ import { homedir } from 'os'
 import YAML from 'yaml'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
-import { configSchema, type Config } from './schema.js'
+import { configSchema, type Config, type BackendConfig } from './schema.js'
 
 const logger = createLogger('config')
 
@@ -17,19 +17,21 @@ let watchedPath: string | null = null
 let reloadTimer: NodeJS.Timeout | null = null
 
 /**
- * 查找配置文件路径
- * 优先级：项目目录 > 用户主目录 > 默认配置
+ * 查找配置文件路径（全局 + 项目）
+ * 全局配置为基底，项目配置覆盖其上
  */
-function findConfigPath(cwd?: string): string | null {
-  // 1. 项目目录
-  const projectPath = join(cwd || process.cwd(), CONFIG_FILENAME)
-  if (existsSync(projectPath)) return projectPath
-
-  // 2. 用户主目录 ~/.claude-agent-hub.yaml
+function findConfigPaths(cwd?: string): { globalPath: string | null; projectPath: string | null } {
   const homePath = join(homedir(), CONFIG_FILENAME)
-  if (existsSync(homePath)) return homePath
+  const projectDir = cwd || process.cwd()
+  const projectPath = join(projectDir, CONFIG_FILENAME)
 
-  return null
+  // 项目目录与 home 目录相同时，不重复加载
+  const isHomeCwd = projectDir === homedir()
+
+  return {
+    globalPath: existsSync(homePath) ? homePath : null,
+    projectPath: !isHomeCwd && existsSync(projectPath) ? projectPath : null,
+  }
 }
 
 /**
@@ -46,58 +48,126 @@ export async function loadConfig(
   const { cwd, watch: enableWatch = false } =
     typeof options === 'string' ? { cwd: options, watch: false } : options || {}
 
-  if (cachedConfig && !enableWatch) {
+  // Return cache if available (watch mode only affects watcher setup, not cache)
+  if (cachedConfig) {
+    if (enableWatch && !configWatcher) {
+      const { projectPath, globalPath } = findConfigPaths(cwd)
+      const watchPath = projectPath ?? globalPath
+      if (watchPath) startWatching(watchPath)
+    }
     return cachedConfig
   }
 
-  const configPath = findConfigPath(cwd)
+  const { globalPath, projectPath } = findConfigPaths(cwd)
 
-  if (!configPath) {
-    return getDefaultConfig()
+  if (!globalPath && !projectPath) {
+    const config = applyEnvOverrides(getDefaultConfig())
+    cachedConfig = config
+    return config
   }
 
-  const config = await loadConfigFromFile(configPath)
+  // Load global as base, merge project on top
+  const globalRaw = globalPath ? await parseYamlFile(globalPath) : {}
+  const projectRaw = projectPath ? await parseYamlFile(projectPath) : {}
+  const merged = deepMergeConfig(globalRaw, projectRaw)
 
-  // 启动监听（仅在首次加载且 watch=true 时）
+  const result = configSchema.safeParse(merged)
+  if (!result.success) {
+    logger.warn('Config file format error, using defaults', result.error.issues)
+    cachedConfig = applyEnvOverrides(getDefaultConfig())
+    return cachedConfig
+  }
+
+  cachedConfig = applyEnvOverrides(result.data)
+
+  // Watch project config if it exists, otherwise watch global
   if (enableWatch && !configWatcher) {
-    startWatching(configPath)
+    const watchPath = projectPath ?? globalPath
+    if (watchPath) startWatching(watchPath)
   }
 
-  cachedConfig = config
   return cachedConfig
 }
 
 /**
- * 从文件加载并解析配置
+ * Parse YAML file, returning empty object for empty/comment-only files
+ */
+async function parseYamlFile(filePath: string): Promise<Record<string, unknown>> {
+  const content = await readFile(filePath, 'utf-8')
+  return (YAML.parse(content) as Record<string, unknown>) ?? {}
+}
+
+/**
+ * Shallow-merge config objects: project fields override global fields.
+ * Arrays and nested objects are replaced, not deep-merged.
+ */
+function deepMergeConfig(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>
+): Record<string, unknown> {
+  const result = { ...base }
+  for (const key of Object.keys(override)) {
+    const val = override[key]
+    if (val !== undefined && val !== null) {
+      if (typeof val === 'object' && !Array.isArray(val) && typeof result[key] === 'object' && !Array.isArray(result[key])) {
+        result[key] = deepMergeConfig(
+          result[key] as Record<string, unknown>,
+          val as Record<string, unknown>
+        )
+      } else {
+        result[key] = val
+      }
+    }
+  }
+  return result
+}
+
+/**
+ * 从文件加载并解析配置（用于 watch reload）
  */
 async function loadConfigFromFile(configPath: string): Promise<Config> {
-  const content = await readFile(configPath, 'utf-8')
-  const parsed = YAML.parse(content)
-
-  // 验证配置
+  const parsed = await parseYamlFile(configPath)
   const result = configSchema.safeParse(parsed)
   if (!result.success) {
     logger.warn('Config file format error, using defaults', result.error.issues)
-    return getDefaultConfig()
+    return applyEnvOverrides(getDefaultConfig())
+  }
+  return applyEnvOverrides(result.data)
+}
+
+/**
+ * Apply environment variable overrides to config.
+ * Called after schema validation — env vars skip schema checks.
+ */
+export function applyEnvOverrides(config: Config): Config {
+  const env = process.env
+
+  // Notify: Lark
+  if (env.CAH_LARK_APP_ID || env.CAH_LARK_APP_SECRET || env.CAH_LARK_WEBHOOK_URL) {
+    const lark = config.notify?.lark ?? { appId: '', appSecret: '' }
+    if (env.CAH_LARK_APP_ID) lark.appId = env.CAH_LARK_APP_ID
+    if (env.CAH_LARK_APP_SECRET) lark.appSecret = env.CAH_LARK_APP_SECRET
+    if (env.CAH_LARK_WEBHOOK_URL) lark.webhookUrl = env.CAH_LARK_WEBHOOK_URL
+    config = { ...config, notify: { ...config.notify, lark } }
   }
 
-  const config = result.data
+  // Notify: Telegram
+  if (env.CAH_TELEGRAM_BOT_TOKEN) {
+    const telegram = config.notify?.telegram ?? { botToken: '' }
+    telegram.botToken = env.CAH_TELEGRAM_BOT_TOKEN
+    config = { ...config, notify: { ...config.notify, telegram } }
+  }
 
-  // 向后兼容：若只有 claude 没有 backend，自动映射
-  if (config.claude) {
-    logger.warn(
-      '⚠️  配置中的 "claude" 字段已废弃，请迁移为 "backend" 字段。' +
-        ' 示例: backend: { type: claude-code, model: opus }'
-    )
-    if (!config.backend) {
-      config.backend = {
-        type: 'claude-code' as const,
-        model: config.claude.model,
-        max_tokens: config.claude.max_tokens,
-        enableAgentTeams: false,
-        chat: { mcpServers: [] },
-      }
+  // Backend
+  if (env.CAH_BACKEND_TYPE || env.CAH_BACKEND_MODEL) {
+    const backend: BackendConfig = { ...config.backend }
+    if (env.CAH_BACKEND_TYPE) {
+      backend.type = env.CAH_BACKEND_TYPE as BackendConfig['type']
     }
+    if (env.CAH_BACKEND_MODEL) {
+      backend.model = env.CAH_BACKEND_MODEL
+    }
+    config = { ...config, backend }
   }
 
   return config

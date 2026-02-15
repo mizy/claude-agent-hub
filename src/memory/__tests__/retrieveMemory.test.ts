@@ -75,7 +75,7 @@ describe('retrieveRelevantMemories', () => {
     expect(results[0]!.id).toBe(highId)
   })
 
-  it('applies time decay for old entries', () => {
+  it('applies smooth time decay for old entries', () => {
     // Create a "new" entry
     const newEntry = addMemory('new deployment tip', 'lesson', source, {
       keywords: ['deployment'],
@@ -93,7 +93,7 @@ describe('retrieveRelevantMemories', () => {
 
     const results = retrieveRelevantMemories('deployment')
     expect(results.length).toBe(2)
-    // New entry should rank higher due to time decay on old entry
+    // New entry should rank higher due to smooth time decay on old entry
     expect(results[0]!.id).toBe(newEntry.id)
   })
 
@@ -146,5 +146,67 @@ describe('retrieveRelevantMemories', () => {
     const results = retrieveRelevantMemories('typescript')
     // Matching entry should rank first
     expect(results[0]!.id).toBe(matchId)
+  })
+
+  // --- New tests for iteration 3 improvements ---
+
+  it('does NOT update updatedAt on retrieval, sets lastAccessedAt instead', () => {
+    const entry = addMemory('stable update test', 'lesson', source, {
+      keywords: ['stable'],
+    })
+    const originalUpdatedAt = entry.updatedAt
+
+    retrieveRelevantMemories('stable')
+
+    const updated = getMemory(entry.id)
+    expect(updated!.updatedAt).toBe(originalUpdatedAt) // updatedAt unchanged
+    expect(updated!.lastAccessedAt).toBeTruthy() // lastAccessedAt is set
+  })
+
+  it('boosts frequently accessed memories via accessCount', () => {
+    // Create two entries with same keywords and confidence
+    const frequentEntry = addMemory('frequent tip', 'lesson', source, {
+      keywords: ['testing'],
+      confidence: 0.5,
+    })
+    addMemory('rare tip', 'lesson', source, {
+      keywords: ['testing'],
+      confidence: 0.5,
+    })
+    // Simulate high access count on frequent entry
+    updateMemory(frequentEntry.id, { accessCount: 50 })
+
+    const results = retrieveRelevantMemories('testing')
+    expect(results.length).toBe(2)
+    // Frequently accessed entry should rank higher
+    expect(results[0]!.id).toBe(frequentEntry.id)
+  })
+
+  it('time decay is gradual, not a step function', () => {
+    // 15-day-old entry should score BETWEEN a new entry and a 60-day-old entry
+    const newEntry = addMemory('new tip', 'lesson', source, {
+      keywords: ['gradual'],
+      confidence: 0.5,
+    })
+    const midEntry = addMemory('mid tip', 'lesson', source, {
+      keywords: ['gradual'],
+      confidence: 0.5,
+    })
+    const oldEntry = addMemory('old tip', 'lesson', source, {
+      keywords: ['gradual'],
+      confidence: 0.5,
+    })
+
+    const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+    updateMemory(midEntry.id, { updatedAt: fifteenDaysAgo })
+    updateMemory(oldEntry.id, { updatedAt: sixtyDaysAgo })
+
+    const results = retrieveRelevantMemories('gradual')
+    expect(results).toHaveLength(3)
+    // Order: new > mid > old (smooth decay)
+    expect(results[0]!.id).toBe(newEntry.id)
+    expect(results[1]!.id).toBe(midEntry.id)
+    expect(results[2]!.id).toBe(oldEntry.id)
   })
 })

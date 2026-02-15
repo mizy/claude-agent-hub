@@ -9,7 +9,7 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
-import { loadConfig } from '../config/loadConfig.js'
+import { getLarkConfig } from '../config/index.js'
 import { getLarkClient, getDefaultLarkChatId } from './larkWsClient.js'
 import { buildApprovalCard, buildCard, mdElement } from './buildLarkCard.js'
 import type { LarkCard } from './buildLarkCard.js'
@@ -24,8 +24,8 @@ async function getOrCreateLarkClient(): Promise<Lark.Client | null> {
   const shared = getLarkClient()
   if (shared) return shared
 
-  const config = await loadConfig()
-  const { appId, appSecret } = config.notify?.lark || {}
+  const larkConfig = await getLarkConfig()
+  const { appId, appSecret } = larkConfig || {}
   if (!appId || !appSecret) return null
 
   logger.debug('Creating standalone Lark client for notification')
@@ -217,6 +217,10 @@ export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promis
   }
 
   try {
+    // Extract card title for debugging
+    const cardTitle = card.header?.title?.content || 'unknown'
+    logger.info(`Sending Lark card: "${cardTitle}" to chat ${chatId}`)
+
     await client.im.v1.message.create({
       params: { receive_id_type: 'chat_id' },
       data: {
@@ -225,7 +229,7 @@ export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promis
         msg_type: 'interactive',
       },
     })
-    logger.info(`Sent card via Lark API to chat ${chatId}`)
+    logger.info(`✓ Sent card via Lark API to chat ${chatId}`)
     return true
   } catch (error) {
     const errorMessage = formatErrorMessage(error)

@@ -87,6 +87,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
 
       const args = buildArgs(prompt, skipPermissions, disableMcp, mcpServers, sessionId, stream, model)
       const startTime = Date.now()
+      const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
       try {
         const subprocess = execa('claude', args, {
@@ -95,16 +96,20 @@ export function createClaudeCodeBackend(): BackendAdapter {
           stdin: 'ignore',
           buffer: !stream,
         })
+        perf.spawn = Date.now() - startTime
 
         let rawOutput: string
         if (stream) {
-          rawOutput = await streamOutput(subprocess, onChunk)
+          rawOutput = await streamOutput(subprocess, onChunk, startTime, perf)
         } else {
           const result = await subprocess
           rawOutput = result.stdout
         }
 
         const durationMs = Date.now() - startTime
+        logger.info(
+          `[perf] spawn: ${perf.spawn}ms, first-stdout: ${perf.firstStdout}ms, first-delta: ${perf.firstDelta}ms, total: ${durationMs}ms`
+        )
         const parsed = parseClaudeOutput(rawOutput)
 
         logger.info(
@@ -261,7 +266,9 @@ const MAX_OUTPUT_BYTES = 100 * 1024 * 1024
 
 async function streamOutput(
   subprocess: ResultPromise,
-  onChunk?: (chunk: string) => void
+  onChunk?: (chunk: string) => void,
+  startTime?: number,
+  perf?: { spawn: number; firstStdout: number; firstDelta: number }
 ): Promise<string> {
   const chunks: string[] = []
   let buffer = ''
@@ -272,6 +279,11 @@ async function streamOutput(
     for await (const chunk of subprocess.stdout) {
       const text = chunk.toString()
       totalBytes += Buffer.byteLength(text)
+
+      // Record first stdout arrival
+      if (perf && startTime && perf.firstStdout === 0) {
+        perf.firstStdout = Date.now() - startTime
+      }
 
       if (!truncated) {
         if (totalBytes > MAX_OUTPUT_BYTES) {
@@ -302,6 +314,10 @@ async function streamOutput(
             event.event.delta?.type === 'text_delta' &&
             event.event.delta.text
           ) {
+            // Record first delta (first token from API)
+            if (perf && startTime && perf.firstDelta === 0) {
+              perf.firstDelta = Date.now() - startTime
+            }
             if (onChunk) {
               onChunk(event.event.delta.text)
             } else {

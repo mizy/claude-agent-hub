@@ -18,9 +18,8 @@ import {
   stopLarkWsClient,
   startTelegramClient,
   stopTelegramClient,
-} from '../notify/index.js'
-import { destroyChatHandler } from '../notify/handlers/chatHandler.js'
-import { loadSessions } from '../notify/handlers/sessionManager.js'
+} from '../messaging/index.js'
+import { destroyChatHandler, loadSessions } from '../messaging/index.js'
 import { acquirePidLock, releasePidLock, isServiceRunning } from './pidLock.js'
 
 interface DaemonOptions {
@@ -203,37 +202,55 @@ async function runDaemon(): Promise<void> {
   console.log(chalk.green(`✓ 守护进程运行中 (PID: ${process.pid})`))
   console.log(chalk.gray('  Ctrl+C 停止'))
 
-  // 前台阻塞，等待信号优雅退出
-  const cleanup = async () => {
-    console.log(chalk.yellow('\n停止守护进程...'))
+  // Synchronous cleanup — safe to call from crash handlers
+  const cleanupSync = () => {
     stopSleepPrevention()
     stopAllJobs()
     destroyChatHandler()
-    await stopLarkWsClient()
     stopTelegramClient()
-
-    // 停止配置文件监听
-    const { stopConfigWatch } = await import('../config/loadConfig.js')
-    stopConfigWatch()
-
     releasePidLock()
-    process.exit(0)
   }
 
-  process.on('SIGINT', cleanup)
-  process.on('SIGTERM', cleanup)
+  // Full async cleanup for graceful shutdown
+  const cleanup = async (exitCode: number) => {
+    console.log(chalk.yellow('\n停止守护进程...'))
+    cleanupSync()
+    try {
+      await stopLarkWsClient()
+    } catch {
+      // Best-effort
+    }
+    try {
+      const { stopConfigWatch } = await import('../config/loadConfig.js')
+      stopConfigWatch()
+    } catch {
+      // Best-effort
+    }
+    process.exit(exitCode)
+  }
 
-  // 进程异常退出时也要释放锁
+  process.on('SIGINT', () => cleanup(0))
+  process.on('SIGTERM', () => cleanup(0))
+
+  // Crash handlers: do as much cleanup as possible synchronously,
+  // then attempt async cleanup with a timeout to avoid hanging
   process.on('uncaughtException', error => {
     console.error(chalk.red('Uncaught exception:'), error)
-    releasePidLock()
-    process.exit(1)
+    cleanupSync()
+    // Attempt async cleanup with a hard timeout
+    stopLarkWsClient()
+      .catch(() => {})
+      .finally(() => process.exit(1))
+    setTimeout(() => process.exit(1), 3000)
   })
 
   process.on('unhandledRejection', reason => {
     console.error(chalk.red('Unhandled rejection:'), reason)
-    releasePidLock()
-    process.exit(1)
+    cleanupSync()
+    stopLarkWsClient()
+      .catch(() => {})
+      .finally(() => process.exit(1))
+    setTimeout(() => process.exit(1), 3000)
   })
 }
 

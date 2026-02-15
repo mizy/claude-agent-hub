@@ -6,15 +6,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { parseCommandText, routeMessage } from '../src/notify/handlers/messageRouter.js'
-import { parseApprovalCommand } from '../src/notify/handlers/approvalHandler.js'
+import { parseCommandText, routeMessage } from '../src/messaging/handlers/messageRouter.js'
+import { parseApprovalCommand } from '../src/messaging/handlers/approvalHandler.js'
 import {
   STATUS_EMOJI,
   statusEmoji,
   APPROVAL_COMMANDS,
   TASK_COMMANDS,
-} from '../src/notify/handlers/constants.js'
-import type { MessengerAdapter, ClientContext } from '../src/notify/handlers/types.js'
+} from '../src/messaging/handlers/constants.js'
+import type { MessengerAdapter, ClientContext } from '../src/messaging/handlers/types.js'
 
 // Mock backend to prevent real AI calls in routeMessage → handleChat path
 vi.mock('../src/backend/index.js', () => ({
@@ -25,7 +25,7 @@ vi.mock('../src/backend/index.js', () => ({
 }))
 
 // Mock conversation log
-vi.mock('../src/notify/handlers/conversationLog.js', () => ({
+vi.mock('../src/messaging/handlers/conversationLog.js', () => ({
   logConversation: vi.fn(),
   getRecentConversations: vi.fn(() => []),
 }))

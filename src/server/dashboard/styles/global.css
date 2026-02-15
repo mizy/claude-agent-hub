@@ -240,6 +240,125 @@ body {
 .markdown-body a:hover { text-decoration: underline; }
 .markdown-body img { max-width: 100%; }
 
+/* ===== Trace Tab ===== */
+.trace-tab { display: flex; flex-direction: column; gap: 8px; }
+
+.trace-toolbar {
+  display: flex; gap: 8px; align-items: center; justify-content: space-between;
+}
+.trace-select {
+  flex: 1; background: #0f172a; border: 1px solid #334155; border-radius: 4px;
+  color: #e2e8f0; padding: 4px 8px; font-size: 11px;
+}
+.trace-view-toggle { display: flex; gap: 2px; }
+.trace-view-btn {
+  padding: 4px 10px; border: 1px solid #334155; background: transparent;
+  color: #94a3b8; font-size: 11px; cursor: pointer; border-radius: 4px;
+}
+.trace-view-btn.active { background: #334155; color: #e2e8f0; }
+.trace-view-btn:hover { color: #e2e8f0; }
+
+.trace-legend {
+  display: flex; gap: 12px; font-size: 10px; color: #94a3b8; padding: 2px 0;
+}
+.trace-legend-item { display: flex; align-items: center; gap: 4px; }
+.trace-legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+/* Flame Chart */
+.flame-chart-container { position: relative; }
+
+.flame-ruler {
+  position: relative; height: 20px; border-bottom: 1px solid #334155;
+  margin-bottom: 4px; font-size: 9px; color: #64748b;
+}
+.flame-ruler-mark {
+  position: absolute; transform: translateX(-50%);
+  top: 2px; white-space: nowrap;
+}
+
+.flame-rows { overflow-y: auto; max-height: calc(100vh - 320px); }
+
+.flame-row {
+  display: flex; align-items: center; border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+}
+.flame-row:hover { background: rgba(51, 65, 85, 0.2); }
+
+.flame-label {
+  width: 140px; min-width: 140px; display: flex; align-items: center; gap: 4px;
+  font-size: 10px; color: #94a3b8; overflow: hidden; padding-right: 4px;
+}
+.flame-toggle {
+  background: none; border: none; color: #64748b; cursor: pointer;
+  font-size: 10px; padding: 0 2px; line-height: 1;
+}
+.flame-toggle:hover { color: #e2e8f0; }
+
+.flame-kind {
+  font-size: 9px; padding: 1px 4px; border-radius: 3px;
+  background: #334155; color: #94a3b8; white-space: nowrap; flex-shrink: 0;
+}
+.flame-kind[data-kind="workflow"] { background: #1e3a5f; color: #93c5fd; }
+.flame-kind[data-kind="node"] { background: #14532d; color: #86efac; }
+.flame-kind[data-kind="llm"] { background: #78350f; color: #fde68a; }
+.flame-kind[data-kind="tool"] { background: #4c1d95; color: #c4b5fd; }
+
+.flame-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.flame-bar-area { flex: 1; position: relative; height: 100%; min-width: 0; }
+
+.flame-bar {
+  position: absolute; top: 3px; bottom: 3px; border-radius: 2px;
+  cursor: pointer; display: flex; align-items: center; overflow: hidden;
+}
+.flame-bar:hover { filter: brightness(1.3); }
+
+.flame-bar-text {
+  font-size: 9px; color: #e2e8f0; padding: 0 4px; white-space: nowrap;
+}
+
+/* Flame Tooltip */
+.flame-tooltip {
+  position: absolute; z-index: 100; background: #1e293b; border: 1px solid #475569;
+  border-radius: 6px; padding: 8px 12px; font-size: 11px;
+  pointer-events: none; max-width: 320px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.flame-tooltip-title { font-weight: 600; margin-bottom: 4px; color: #f1f5f9; }
+.flame-tooltip-row { margin-bottom: 2px; color: #cbd5e1; }
+.flame-tooltip-label { color: #64748b; }
+
+/* Cost Summary */
+.trace-cost-summary { display: flex; flex-direction: column; gap: 4px; }
+
+.trace-cost-table { font-size: 11px; }
+.trace-cost-header, .trace-cost-row {
+  display: grid; grid-template-columns: 1fr 50px 60px 60px 40px;
+  gap: 4px; padding: 6px 8px; align-items: center;
+}
+.trace-cost-header {
+  color: #64748b; font-weight: 500; border-bottom: 1px solid #334155;
+  font-size: 10px; text-transform: uppercase;
+}
+.trace-cost-row {
+  border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+}
+.trace-cost-row:hover { background: rgba(51, 65, 85, 0.2); }
+.trace-cost-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Slow Spans List */
+.trace-slow-list { display: flex; flex-direction: column; gap: 2px; }
+.trace-slow-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 8px; border-radius: 4px; font-size: 11px;
+}
+.trace-slow-item:hover { background: rgba(51, 65, 85, 0.2); }
+.trace-slow-info { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.trace-slow-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trace-slow-dur { font-weight: 500; white-space: nowrap; margin-left: 8px; }
+
 /* ===== Modal ===== */
 .modal-overlay {
   display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;

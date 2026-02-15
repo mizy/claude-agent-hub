@@ -62,25 +62,62 @@ export interface ToastItem {
   type: 'success' | 'error' | 'info'
 }
 
+// Trace types (matching API responses from TraceStore)
+export interface SpanCost { amount: number; currency: string }
+export interface TokenUsage { inputTokens: number; outputTokens: number; totalTokens: number }
+export interface SpanError { message: string; stack?: string; category?: string }
+
+export interface TraceSpan {
+  traceId: string
+  spanId: string
+  parentSpanId?: string
+  name: string
+  kind: 'workflow' | 'node' | 'llm' | 'tool' | 'internal'
+  startTime: number
+  endTime?: number
+  durationMs?: number
+  status: 'running' | 'ok' | 'error'
+  attributes: Record<string, unknown>
+  tokenUsage?: TokenUsage
+  cost?: SpanCost
+  error?: SpanError
+}
+
+export interface TraceData {
+  traceId: string
+  taskId: string
+  instanceId: string
+  rootSpanId: string
+  spans: TraceSpan[]
+  status: 'running' | 'ok' | 'error'
+  totalDurationMs: number
+  totalTokens: number
+  totalCost: number
+  spanCount: number
+  llmCallCount: number
+}
+
 interface DashboardStore {
   tasks: Task[]
   selectedTaskId: string | null
   taskData: TaskData | null
   timelineLogs: TimelineEvent[]
   selectedNodeId: string | null
-  activeTab: 'details' | 'timeline' | 'logs' | 'output'
+  activeTab: 'details' | 'timeline' | 'logs' | 'output' | 'trace'
   toasts: ToastItem[]
   showNewTaskModal: boolean
   pendingDeleteTask: { id: string; title: string } | null
   sidebarOpen: boolean
   rightPanelOpen: boolean
   rightPanelCollapsed: boolean
+  traceData: TraceData[] | null
 
   selectTask: (id: string) => void
   selectNode: (id: string | null) => void
   setActiveTab: (tab: DashboardStore['activeTab']) => void
   refreshTasks: () => Promise<void>
   refreshTaskData: () => Promise<void>
+  refreshTraceData: () => Promise<void>
   addToast: (message: string, type?: ToastItem['type']) => void
   createTask: (description: string) => Promise<boolean>
   stopTask: (id: string) => Promise<void>
@@ -110,6 +147,7 @@ export const useStore = create<DashboardStore>((set, get) => ({
   sidebarOpen: false,
   rightPanelOpen: false,
   rightPanelCollapsed: false,
+  traceData: null,
 
   selectTask: id => {
     set({ selectedTaskId: id, selectedNodeId: null })
@@ -134,6 +172,13 @@ export const useStore = create<DashboardStore>((set, get) => ({
     ])
     if (taskData) set({ taskData })
     if (timeline) set({ timelineLogs: timeline })
+  },
+
+  refreshTraceData: async () => {
+    const { selectedTaskId } = get()
+    if (!selectedTaskId) return
+    const traces = await fetchApi<TraceData[]>(`/api/tasks/${selectedTaskId}/traces`)
+    if (traces) set({ traceData: traces })
   },
 
   addToast: (message, type = 'info') => {

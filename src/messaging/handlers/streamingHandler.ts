@@ -8,8 +8,8 @@ import type { MessengerAdapter } from './types.js'
 
 const logger = createLogger('streaming-handler')
 
-const STREAM_THROTTLE_MS = 1500
-const STREAM_MIN_DELTA = 100 // chars
+const STREAM_THROTTLE_MS = 800
+const STREAM_MIN_DELTA = 50 // chars
 const DEFAULT_MAX_LENGTH = 4096
 
 /**
@@ -22,15 +22,17 @@ export function createStreamHandler(
   maxLen: number,
   messenger: MessengerAdapter,
   bench: { firstChunk: number }
-): { onChunk: ((chunk: string) => void) | undefined; getAccumulated: () => string } {
+): { onChunk: ((chunk: string) => void) | undefined; getAccumulated: () => string; stop: () => void } {
   let accumulated = ''
   let lastEditAt = 0
   let lastEditLength = 0
   let isFirstChunk = true
+  let stopped = false
 
   const onChunk = (chunk: string) => {
     accumulated += chunk
     if (!bench.firstChunk) bench.firstChunk = Date.now()
+    if (stopped) return
 
     const placeholderId = placeholderIdRef.placeholderId
     if (!placeholderId) return
@@ -49,7 +51,7 @@ export function createStreamHandler(
       return
     }
 
-    // Subsequent chunks: throttle (1.5s interval + 100 char delta)
+    // Subsequent chunks: throttle (800ms interval + 50 char delta)
     if (now - lastEditAt > STREAM_THROTTLE_MS && deltaLen > STREAM_MIN_DELTA) {
       lastEditAt = now
       lastEditLength = accumulated.length
@@ -63,7 +65,11 @@ export function createStreamHandler(
     }
   }
 
-  return { onChunk, getAccumulated: () => accumulated }
+  return {
+    onChunk,
+    getAccumulated: () => accumulated,
+    stop: () => { stopped = true },
+  }
 }
 
 /** Split long message into parts, breaking at newlines when possible */

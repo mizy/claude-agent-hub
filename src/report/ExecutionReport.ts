@@ -12,7 +12,7 @@ import {
 } from '../task/index.js'
 import { createLogger } from '../shared/logger.js'
 import type { ExecutionTimeline as TimelineEvent } from '../task/index.js'
-import type { NodeExecutionStats } from '../workflow/engine/WorkflowEventEmitter.js'
+import type { NodeExecutionStats } from '../workflow/index.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 
 const logger = createLogger('execution-report')

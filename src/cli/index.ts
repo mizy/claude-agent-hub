@@ -4,8 +4,8 @@
  * @entry Claude Agent Hub CLI 主入口
  *
  * 核心命令：
- *   cah "任务描述"           - 创建并执行任务
- *   cah "任务描述" -F        - 前台运行（可看日志）
+ *   cah "任务描述"           - 创建并后台执行任务
+ *   cah "任务描述" -F        - 前台运行（实时查看日志）
  *   cah task list            - 查看任务列表
  *
  * 守护进程：
@@ -26,6 +26,7 @@ import { registerAgentCommands } from './commands/agent.js'
 import { registerMemoryCommands } from './commands/memory.js'
 import { registerPromptCommands } from './commands/prompt.js'
 import { registerDashboardCommand } from './commands/server.js'
+import { registerBackendCommands } from './commands/backend.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask, getAllTasks, listTasks } from '../task/queryTask.js'
@@ -47,6 +48,8 @@ const OPTIONS_WITH_VALUE = new Set([
   '-a', '--agent',
   '-d', '--data-dir',
   '-t', '--task',
+  '-b', '--backend',
+  '-m', '--model',
 ])
 
 /**
@@ -88,6 +91,7 @@ const KNOWN_COMMANDS = [
   'dashboard',
   'memory',
   'prompt',
+  'backend',
 ]
 
 const program = new Command()
@@ -99,7 +103,9 @@ program
   .argument('[input]', '任务描述')
   .option('-p, --priority <priority>', '优先级 (low/medium/high)', 'medium')
   .option('-a, --agent <agent>', '指定执行的 Agent')
-  .option('-F, --foreground', '立即前台执行（默认只创建任务）')
+  .option('-b, --backend <type>', '指定 backend（如 claude-code, opencode, iflow, codebuddy）')
+  .option('-m, --model <model>', '指定模型')
+  .option('-F, --foreground', '前台执行（默认后台运行）')
   .option('--no-run', '仅创建任务，不执行')
   .option('-v, --verbose', '显示详细日志 (debug 级别)')
   .option('-d, --data-dir <path>', '数据存储目录（默认: ./.cah-data）')
@@ -146,6 +152,8 @@ async function handleTaskDescription(
   options: {
     priority?: string
     agent?: string
+    backend?: string
+    model?: string
     run?: boolean
     foreground?: boolean
     verbose?: boolean
@@ -162,6 +170,8 @@ async function handleTaskDescription(
       description,
       priority: options.priority,
       assignee: options.agent,
+      backend: options.backend,
+      model: options.model,
     })
 
     const displayTitle = truncateText(task.title, 50)
@@ -263,6 +273,7 @@ registerReportCommands(program)
 registerMemoryCommands(program)
 registerPromptCommands(program)
 registerDashboardCommand(program)
+registerBackendCommands(program)
 
 // cah list - 查看任务列表的快捷命令
 program

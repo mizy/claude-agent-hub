@@ -6,7 +6,6 @@
 import {
   getNextJob,
   completeJob,
-  failJob,
   markJobFailed,
   markJobWaiting,
   enqueueNode,
@@ -312,8 +311,9 @@ async function handleNodeFailure(
     // 需要重试
     logger.info(`Scheduling retry for node ${nodeId} in ${retryDecision.delayMs}ms`)
 
-    // 标记当前 job 失败（会自动增加 attempt 计数）
-    failJob(jobId, safeErrorMessage)
+    // Mark current job as permanently failed — retry is handled exclusively
+    // via enqueueNode below, avoiding double retry (failJob would also re-queue)
+    markJobFailed(jobId, safeErrorMessage)
 
     // 如果有延迟，使用 setTimeout 延迟入队
     if (retryDecision.delayMs > 0) {

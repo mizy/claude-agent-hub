@@ -9,9 +9,10 @@ import { createLogger } from '../../shared/logger.js'
 import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import { buildClientPrompt } from '../../prompts/chatPrompts.js'
 import { logConversation, getRecentConversations } from './conversationLog.js'
-import { getSession, setSession, clearSession, enqueueChat, destroySessions } from './sessionManager.js'
+import { getSession, setSession, clearSession, enqueueChat, destroySessions, getModelOverride, getBackendOverride, shouldResetSession, incrementTurn } from './sessionManager.js'
 import { createStreamHandler, sendFinalResponse } from './streamingHandler.js'
 import { sendDetectedImages } from './imageExtractor.js'
+import { getRegisteredBackends } from '../../backend/resolveBackend.js'
 import type { MessengerAdapter, ClientContext } from './types.js'
 
 const logger = createLogger('chat-handler')
@@ -21,13 +22,14 @@ const DEFAULT_MAX_LENGTH = 4096
 // ── Model Selection ──
 
 /** Keywords that signal deep reasoning requiring opus */
-const OPUS_KEYWORDS = /(?:重构|refactor|架构|architect|迁移|migrate|设计|design|审查|review|分析|analyze|debug|调试)/i
+const OPUS_KEYWORDS = /(?:重构|refactor|架构|architect|迁移|migrate|设计|design|审查|review|分析|analyze|debug|调试|思考|think|深入|详细|detailed|复杂|complex|解释|explain|优化|optimize|比较|对比|compare|总结|summarize|推理|reason|elaborate)/i
 
 /** Keywords for simple queries that haiku can handle */
 const HAIKU_PATTERNS = /^(?:(?:你好|hi|hello|ping|status|状态|帮助|help|谢谢|thanks|ok|好的|收到|嗯)[!！？?。.]*|\/\w+.*)$/i
 
-/** Pick model: haiku (trivial) → sonnet (default) → opus (complex) */
-function selectModel(text: string, ctx: { hasImages?: boolean }): string {
+/** Pick model: override → haiku (trivial) → sonnet (default) → opus (complex) */
+function selectModel(text: string, ctx: { hasImages?: boolean; modelOverride?: string }): string {
+  if (ctx.modelOverride) return ctx.modelOverride
   if (ctx.hasImages) return 'opus'
   if (HAIKU_PATTERNS.test(text.trim())) return 'haiku'
   if (text.length > 150 || OPUS_KEYWORDS.test(text)) return 'opus'
@@ -50,7 +52,7 @@ function createBenchmark(): BenchmarkTiming {
   return { start: now, promptReady: 0, parallelStart: 0, firstChunk: 0, backendDone: 0, responseSent: 0 }
 }
 
-function formatBenchmark(t: BenchmarkTiming, extra?: { slotWaitMs?: number; apiMs?: number; costUsd?: number; model?: string }): string {
+function formatBenchmark(t: BenchmarkTiming, extra?: { slotWaitMs?: number; apiMs?: number; costUsd?: number; model?: string; backend?: string }): string {
   const total = t.responseSent - t.start
   const prep = t.promptReady - t.start
   const parallel = t.parallelStart - t.promptReady
@@ -58,8 +60,10 @@ function formatBenchmark(t: BenchmarkTiming, extra?: { slotWaitMs?: number; apiM
   const inference = t.backendDone - t.parallelStart
   const send = t.responseSent - t.backendDone
 
+  const modelLabel = extra?.model ? ` [${extra.model}]` : ''
+  const backendLabel = extra?.backend ? ` (${extra.backend})` : ''
   const lines = [
-    `**Benchmark** (${(total / 1000).toFixed(1)}s total)` + (extra?.model ? ` [${extra.model}]` : ''),
+    `**Benchmark** (${(total / 1000).toFixed(1)}s total)${modelLabel}${backendLabel}`,
     `- 准备阶段: ${prep}ms`,
     `- 并行启动: ${parallel}ms` + (extra?.slotWaitMs ? ` (含排队 ${extra.slotWaitMs}ms)` : ''),
     `- 首 chunk: ${ttfc}ms` + (ttfc > 0 ? '' : ' (无流式)'),
@@ -139,6 +143,18 @@ export function destroyChatHandler(): void {
 
 // ── Internal ──
 
+/** Parse backend override from message text (e.g. "@iflow question" or "/use opencode\nquestion") */
+export function parseBackendOverride(text: string): { backend?: string; actualText: string } {
+  const backends = getRegisteredBackends()
+  const pattern = new RegExp(`^[@/](?:backend:|use\\s+)?(${backends.join('|')})(?:\\s|\\n)`, 's')
+  const match = text.match(pattern)
+  if (!match) return { actualText: text }
+
+  const backend = match[1]
+  const actualText = text.slice(match[0].length).trim()
+  return { backend, actualText }
+}
+
 async function handleChatInternal(
   chatId: string,
   text: string,
@@ -149,9 +165,25 @@ async function handleChatInternal(
   const platform = options?.client?.platform ?? 'unknown'
   const bench = createBenchmark()
 
+  // Strip Lark mention placeholders (@_user_1 etc.) before parsing backend override
+  const mentionCleaned = text.replace(/@_\w+/g, '').trim()
+  // Parse backend override from message (inline directive like @iflow or /use opencode)
+  const { backend: inlineBackend, actualText } = parseBackendOverride(mentionCleaned)
+  const effectiveText = actualText || mentionCleaned
+
+  // Auto-reset session if turn/token limits exceeded
+  if (shouldResetSession(chatId)) {
+    clearSession(chatId)
+    logger.info(`♻️ session auto-reset [${chatId.slice(0, 8)}]`)
+  }
+
   const session = getSession(chatId)
   const sessionId = session?.sessionId
-  logger.info(`💬 chat ${sessionId ? 'continue' : 'new'} [${chatId.slice(0, 8)}]`)
+
+  // Backend priority: inline message directive > session /backend override > config default
+  const sessionBackend = getBackendOverride(chatId)
+  const backendOverride = inlineBackend ?? sessionBackend
+  logger.info(`💬 chat ${sessionId ? 'continue' : 'new'} [${chatId.slice(0, 8)}]${backendOverride ? ` [backend: ${backendOverride}]` : ''}`)
 
   // Log user message
   logConversation({
@@ -160,7 +192,7 @@ async function handleChatInternal(
     platform,
     chatId,
     sessionId,
-    text: text || (options?.images?.length ? '[图片消息]' : ''),
+    text: effectiveText || (options?.images?.length ? '[图片消息]' : ''),
     images: options?.images,
   })
 
@@ -183,7 +215,7 @@ async function handleChatInternal(
     }
   }
 
-  let prompt = clientPrefix + historyContext + text
+  let prompt = clientPrefix + historyContext + effectiveText
   if (images?.length) {
     const imagePart = images
       .map(p => `[用户发送了图片: ${p}，请使用 Read 工具查看这张图片并回复]`)
@@ -191,14 +223,15 @@ async function handleChatInternal(
     prompt = prompt ? `${prompt}\n\n${imagePart}` : imagePart
   }
 
-  // Auto model selection: short simple messages → sonnet (fast), complex → opus (smart)
-  const model = selectModel(text, { hasImages })
+  // Model selection: user override > auto (haiku→sonnet→opus)
+  const modelOverride = getModelOverride(chatId)
+  const model = selectModel(effectiveText, { hasImages, modelOverride })
   bench.promptReady = Date.now()
 
   // Setup streaming with shared ref for placeholderId
   let placeholderId: string | null = null
   const streamHandlerState = { placeholderId: null as string | null }
-  const { onChunk } = createStreamHandler(chatId, streamHandlerState, maxLen, messenger, bench)
+  const { onChunk, stop: stopStreaming } = createStreamHandler(chatId, streamHandlerState, maxLen, messenger, bench)
 
   // Parallel: send placeholder + start backend call
   // Placeholder ID is injected as soon as it resolves (before backend finishes)
@@ -209,22 +242,24 @@ async function handleChatInternal(
     return pId
   })
 
+  // Load config before parallel phase (cached — near-instant after daemon preload)
+  const config = await loadConfig()
+  const chatMcp = config.backend.chat?.mcpServers ?? []
+
   bench.parallelStart = Date.now()
   try {
     const [, result] = await Promise.all([
       placeholderPromise,
-      loadConfig().then(config => {
-        const chatMcp = config.backend?.chat?.mcpServers ?? []
-        return invokeBackend({
-          prompt,
-          stream: true,
-          skipPermissions: true,
-          sessionId,
-          onChunk,
-          disableMcp: true,
-          mcpServers: chatMcp.length > 0 ? chatMcp : undefined,
-          model,
-        })
+      invokeBackend({
+        prompt,
+        stream: true,
+        skipPermissions: true,
+        sessionId,
+        onChunk,
+        disableMcp: chatMcp.length === 0,
+        mcpServers: chatMcp.length > 0 ? chatMcp : undefined,
+        model,
+        backendType: backendOverride, // Dynamic backend override
       }),
     ])
     bench.backendDone = Date.now()
@@ -262,12 +297,17 @@ async function handleChatInternal(
       setSession(chatId, newSessionId)
     }
 
+    // Track turn count and estimated tokens for auto-reset
+    incrementTurn(chatId, text.length, response.length)
+
     // Append completion marker so user knows the response is final
     const elapsedSec = ((Date.now() - bench.start) / 1000).toFixed(1)
-    const completionMarker = `\n\n---\n✅ ${elapsedSec}s`
+    const backendLabel = backendOverride ? ` [${backendOverride}]` : ''
+    const completionMarker = `\n\n---\n✅ ${elapsedSec}s${backendLabel}`
     const finalText = response + completionMarker
 
-    // Send final response
+    // Stop streaming edits before sending final response to prevent race condition
+    stopStreaming()
     await sendFinalResponse(chatId, finalText, maxLen, placeholderId, messenger)
     bench.responseSent = Date.now()
 
@@ -277,6 +317,7 @@ async function handleChatInternal(
       apiMs: result.value.durationApiMs,
       costUsd: result.value.costUsd,
       model,
+      backend: backendOverride,
     })
     logger.info(`\n${benchStr}`)
 

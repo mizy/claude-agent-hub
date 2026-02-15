@@ -9,9 +9,12 @@ import { appendConversation, appendExecutionLog } from '../store/TaskLogStore.js
 import { getUnconsumedMessages, markMessagesConsumed } from '../store/TaskMessageStore.js'
 import { personaNeedsMcp } from '../persona/personaMcpConfig.js'
 import { updateInstanceVariables } from '../store/WorkflowStore.js'
+import { createChildSpan, endSpan } from '../store/createSpan.js'
+import { appendSpan } from '../store/TraceStore.js'
 import { createLogger } from '../shared/logger.js'
-import { loadConfig } from '../config/loadConfig.js'
-import { sendReviewNotification } from '../notify/index.js'
+import { getLarkConfig, getBackendConfig } from '../config/index.js'
+// Note: sendReviewNotification is dynamically imported to avoid
+// static dependency on the messaging/ layer (workflow should not depend on messaging)
 import {
   executeDelayNode,
   executeScheduleNode,
@@ -28,6 +31,7 @@ import {
   buildEvalContext,
 } from './nodeResultProcessor.js'
 import type { Workflow, WorkflowNode, WorkflowInstance } from './types.js'
+import type { TraceContext } from '../types/trace.js'
 
 const logger = createLogger('node-handlers')
 
@@ -37,7 +41,8 @@ const logger = createLogger('node-handlers')
 export async function executeNodeByType(
   node: WorkflowNode,
   workflow: Workflow,
-  instance: WorkflowInstance
+  instance: WorkflowInstance,
+  traceCtx?: TraceContext
 ): Promise<{ success: boolean; output?: unknown; error?: string; costUsd?: number }> {
   switch (node.type) {
     case 'start':
@@ -46,7 +51,7 @@ export async function executeNodeByType(
       return { success: true }
 
     case 'task':
-      return executeTaskNode(node, workflow, instance)
+      return executeTaskNode(node, workflow, instance, traceCtx)
 
     case 'parallel':
       // 并行网关直接完成
@@ -197,12 +202,13 @@ async function executeHumanNode(
 ): Promise<{ success: boolean; error?: string }> {
   logger.info(`Human node ${node.id} waiting for approval`)
 
-  // 发送飞书通知
+  // 发送飞书通知 (dynamic import to avoid static dependency on messaging/ layer)
   try {
-    const config = await loadConfig()
-    const webhookUrl = config.notify?.lark?.webhookUrl
+    const larkConfig = await getLarkConfig()
+    const webhookUrl = larkConfig?.webhookUrl
 
     if (webhookUrl) {
+      const { sendReviewNotification } = await import('../messaging/index.js')
       await sendReviewNotification({
         webhookUrl,
         taskTitle: workflow.name,
@@ -233,7 +239,8 @@ async function executeHumanNode(
 async function executeTaskNode(
   node: WorkflowNode,
   workflow: Workflow,
-  instance: WorkflowInstance
+  instance: WorkflowInstance,
+  traceCtx?: TraceContext
 ): Promise<{
   success: boolean
   output?: unknown
@@ -283,9 +290,29 @@ async function executeTaskNode(
   // 会话复用已禁用 — 每个节点使用独立会话以保证稳定性
   const existingSessionId = undefined
 
-  // 从配置读取模型
-  const config = await loadConfig()
-  const model = config.backend?.model ?? config.claude?.model ?? 'opus'
+  // 读取任务级 backend/model 覆盖（存储在 workflow variables 中）
+  const taskBackend = instance.variables?.taskBackend as string | undefined
+  const taskModel = instance.variables?.taskModel as string | undefined
+
+  // 从配置读取模型（任务级覆盖优先）
+  const { resolveBackendConfig } = await import('../backend/index.js')
+  const backendConfig = taskBackend
+    ? await resolveBackendConfig(taskBackend)
+    : await getBackendConfig()
+  const model = taskModel ?? backendConfig.model
+
+  // Create LLM span for tracing
+  const llmSpan = traceCtx
+    ? createChildSpan(traceCtx.currentSpan, `llm:${model}`, 'llm', {
+        'llm.backend': taskBackend ?? 'claude-code',
+        'llm.model': model,
+        'llm.prompt_length': prompt.length,
+        'llm.session_id': existingSessionId,
+      })
+    : undefined
+  if (llmSpan && traceCtx) {
+    appendSpan(traceCtx.taskId, llmSpan)
+  }
 
   const result = await invokeBackend({
     prompt,
@@ -295,6 +322,7 @@ async function executeTaskNode(
     disableMcp,
     sessionId: existingSessionId,
     model,
+    backendType: taskBackend,
     timeoutMs: 30 * 60 * 1000, // 30 分钟超时
     onChunk: chunk => {
       // 流式输出到执行日志（原始模式，只清理 ANSI 颜色码）
@@ -304,6 +332,28 @@ async function executeTaskNode(
       process.stdout.write(chunk)
     },
   })
+
+  // End LLM span with result
+  if (llmSpan && traceCtx) {
+    if (result.ok) {
+      const finished = endSpan(llmSpan)
+      finished.attributes['llm.response_length'] = result.value.response.length
+      finished.attributes['llm.duration_api_ms'] = result.value.durationApiMs
+      finished.attributes['llm.slot_wait_ms'] = result.value.slotWaitMs
+      if (result.value.costUsd != null) {
+        finished.cost = { amount: result.value.costUsd, currency: 'USD' }
+      }
+      appendSpan(traceCtx.taskId, finished)
+    } else {
+      const finished = endSpan(llmSpan, {
+        error: {
+          message: result.error.message,
+          category: result.error.type === 'timeout' ? 'transient' : 'unknown',
+        },
+      })
+      appendSpan(traceCtx.taskId, finished)
+    }
+  }
 
   if (!result.ok) {
     return {

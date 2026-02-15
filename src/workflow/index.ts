@@ -4,6 +4,7 @@
  * 提供工作流定义、执行和状态管理能力
  *
  * 主要 API:
+ * - generateWorkflow(): AI 生成工作流
  * - createWorkflow(): 创建工作流
  * - startWorkflow(): 启动工作流
  * - handleNodeResult(): 处理节点执行结果
@@ -44,8 +45,11 @@ export { createInitialNodeState, createInitialInstance } from './types.js'
 
 // ============ 引擎核心 ============
 
+// Workflow 生成（AI）
+export { generateWorkflow } from './generateWorkflow.js'
+
 // Workflow 创建和启动
-export { createWorkflow, startWorkflow, handleNodeResult } from './engine/WorkflowEngine.js'
+export { createWorkflow, startWorkflow, handleNodeResult, getReadyNodes } from './engine/WorkflowEngine.js'
 
 // Workflow 数据查询 (re-exported from store for upper layers)
 export { getWorkflow } from '../store/WorkflowStore.js'
@@ -59,6 +63,7 @@ export {
   markNodeDone,
   markNodeFailed,
   getWorkflowProgress,
+  getActiveNodes,
 } from './engine/StateManager.js'
 
 // ============ 队列（常用） ============

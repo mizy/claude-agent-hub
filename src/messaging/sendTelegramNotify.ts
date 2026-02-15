@@ -8,7 +8,7 @@
 
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
-import { loadConfig } from '../config/loadConfig.js'
+import { getNotifyConfig } from '../config/index.js'
 import {
   sendTelegramMessage as sendViaBotClient,
   isTelegramClientRunning,
@@ -65,8 +65,8 @@ async function sendDirectMessage(
  * 获取 Telegram 配置
  */
 async function getTelegramConfig(): Promise<{ botToken: string; chatId: string } | null> {
-  const config = await loadConfig()
-  const tg = config.notify?.telegram
+  const notifyConfig = await getNotifyConfig()
+  const tg = notifyConfig?.telegram
   if (!tg?.botToken || !tg?.chatId) {
     logger.warn('Telegram config missing botToken or chatId')
     return null

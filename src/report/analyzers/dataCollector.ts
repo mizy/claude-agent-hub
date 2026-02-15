@@ -7,7 +7,7 @@ import { readdirSync, existsSync, readFileSync } from 'fs'
 import { TASKS_DIR } from '../../store/paths.js'
 import { readJson } from '../../store/readWriteJson.js'
 import type { ExecutionSummary, ExecutionTimeline } from '../../task/index.js'
-import type { NodeExecutionStats } from '../../workflow/engine/WorkflowEventEmitter.js'
+import type { NodeExecutionStats } from '../../workflow/index.js'
 import { categorizeTask } from '../../analysis/index.js'
 import type { TaskStats } from './types.js'
 

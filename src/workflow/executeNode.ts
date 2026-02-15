@@ -10,7 +10,10 @@ import { createLogger, logError as logErrorHelper } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { logNodeStarted, logNodeCompleted, logNodeFailed } from './logNodeExecution.js'
 import { executeNodeByType } from './nodeTypeHandlers.js'
+import { createRootSpan, createChildSpan, endSpan } from '../store/createSpan.js'
+import { appendSpan } from '../store/TraceStore.js'
 import type { NodeJobData, NodeJobResult, WorkflowNode } from './types.js'
+import type { TraceContext } from '../types/trace.js'
 
 const logger = createLogger('execute-node')
 
@@ -55,15 +58,15 @@ async function notifyAutoWaitPause(
   nodeDescription?: string
 ): Promise<void> {
   try {
-    const { loadConfig } = await import('../config/loadConfig.js')
-    const config = await loadConfig()
-    const larkChatId = config.notify?.lark?.chatId
+    const { getLarkConfig } = await import('../config/index.js')
+    const larkConfig = await getLarkConfig()
+    const larkChatId = larkConfig?.chatId
     if (!larkChatId || !taskId) {
       // Fallback to webhook if no chat ID
-      const webhookUrl = config.notify?.lark?.webhookUrl
+      const webhookUrl = larkConfig?.webhookUrl
       if (!webhookUrl) return
 
-      const { sendReviewNotification } = await import('../notify/index.js')
+      const { sendReviewNotification } = await import('../messaging/index.js')
       await sendReviewNotification({
         webhookUrl,
         taskTitle: workflowName,
@@ -77,7 +80,7 @@ async function notifyAutoWaitPause(
       return
     }
 
-    const { sendLarkCardViaApi, buildAutoWaitCard } = await import('../notify/index.js')
+    const { sendLarkCardViaApi, buildAutoWaitCard } = await import('../messaging/index.js')
     const card = buildAutoWaitCard({
       taskId,
       taskTitle: workflowName,
@@ -167,11 +170,57 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     attempt: currentAttempt,
   })
 
+  // Create trace context for this node (traceId = taskId)
+  let traceCtx: TraceContext | undefined
+  if (taskId) {
+    const spanAttrs = {
+      'task.id': taskId,
+      'workflow.id': workflowId,
+      'instance.id': instanceId,
+      'node.id': nodeId,
+      'node.type': node.type,
+      'node.name': node.name,
+      'node.attempt': currentAttempt,
+      'node.persona': node.task?.persona,
+    }
+
+    // Reconstruct workflow span from instance variables to create child span
+    const workflowSpanData = instance.variables?._traceWorkflowSpan as
+      | { traceId: string; spanId: string; name: string; kind: string; startTime: number; status: string; attributes: Record<string, unknown> }
+      | undefined
+
+    let nodeSpan
+    if (workflowSpanData) {
+      // Create as child of workflow span (only traceId + spanId needed for parent linkage)
+      nodeSpan = createChildSpan(
+        { traceId: workflowSpanData.traceId, spanId: workflowSpanData.spanId } as import('../types/trace.js').Span,
+        `node:${node.name}`, 'node', spanAttrs
+      )
+    } else {
+      // Fallback: create as root span (e.g. resumed tasks without trace data)
+      nodeSpan = createRootSpan(taskId, `node:${node.name}`, 'node', spanAttrs)
+    }
+
+    traceCtx = { traceId: taskId, taskId, currentSpan: nodeSpan }
+    appendSpan(taskId, nodeSpan)
+  }
+
   try {
-    const result = await executeNodeByType(node, workflow, instance)
+    const result = await executeNodeByType(node, workflow, instance, traceCtx)
 
     const durationMs = Date.now() - nodeStartTime
     const costUsd = result.costUsd
+
+    // End node span
+    if (traceCtx) {
+      const finished = endSpan(traceCtx.currentSpan, result.success ? undefined : {
+        error: { message: result.error || 'Unknown error' },
+      })
+      if (costUsd != null) {
+        finished.cost = { amount: costUsd, currency: 'USD' }
+      }
+      appendSpan(taskId!, finished)
+    }
 
     if (result.success) {
       // 记录节点完成
@@ -218,6 +267,18 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     }
   } catch (error) {
     const errorMessage = formatErrorMessage(error)
+
+    // End node span with error
+    if (traceCtx) {
+      const finished = endSpan(traceCtx.currentSpan, {
+        error: {
+          message: errorMessage,
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      })
+      appendSpan(taskId!, finished)
+    }
+
     // 使用增强的错误日志记录，包含完整上下文
     logErrorHelper(logger, `Node ${nodeId} failed`, error instanceof Error ? error : errorMessage, {
       workflowId,
