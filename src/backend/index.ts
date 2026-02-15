@@ -146,7 +146,9 @@ export async function invokeBackend(
       appendSpan(traceCtx.taskId, finished)
     }
 
-    throw error
+    const msg = error instanceof Error ? error.message : String(error)
+    logger.error(`Backend ${backend.displayName} threw: ${msg}`)
+    throw new Error(`Backend ${backend.displayName} error: ${msg}`, { cause: error })
   }
 }
 

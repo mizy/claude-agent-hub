@@ -48,10 +48,49 @@ export async function prepareNewExecution(task: Task): Promise<{ workflow: Workf
       status: 'planning',
     })
     logger.info(`任务状态: planning`)
+    appendExecutionLog(task.id, `[STATUS] pending → planning`, { scope: 'lifecycle' })
 
     // 生成 Workflow
     logger.info(`生成执行计划...`)
-    workflow = await generateWorkflow(task)
+    try {
+      workflow = await generateWorkflow(task)
+    } catch (error) {
+      // Planning 失败时，记录详细错误到 execution.log
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      const errorStack = error instanceof Error ? error.stack : undefined
+      const errorCause = error instanceof Error && error.cause
+        ? (error.cause instanceof Error ? error.cause.message : String(error.cause))
+        : undefined
+
+      logger.error(`Workflow 生成失败: ${errorMsg}`)
+      appendExecutionLog(task.id, `[ERROR] Workflow generation failed: ${errorMsg}`, {
+        level: 'error',
+        scope: 'lifecycle',
+      })
+
+      if (errorCause) {
+        appendExecutionLog(task.id, `[ERROR] Caused by: ${errorCause}`, {
+          level: 'error',
+          scope: 'lifecycle',
+        })
+      }
+
+      if (errorStack) {
+        appendExecutionLog(task.id, `[ERROR] Stack trace:\n${errorStack}`, {
+          level: 'error',
+          scope: 'lifecycle',
+        })
+      }
+
+      // 更新任务状态为 failed
+      appendExecutionLog(task.id, `[STATUS] planning → failed`, {
+        level: 'error',
+        scope: 'lifecycle',
+      })
+
+      // 重新抛出错误，让上层处理
+      throw error
+    }
 
     // 设置 taskId 以便保存到正确位置
     workflow.taskId = task.id

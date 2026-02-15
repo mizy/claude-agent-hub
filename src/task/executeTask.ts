@@ -20,6 +20,7 @@ import { updateInstanceStatus, updateInstanceVariables } from '../store/Workflow
 import { updateTask } from '../store/TaskStore.js'
 import { createRootSpan, endSpan } from '../store/createSpan.js'
 import { appendSpan } from '../store/TraceStore.js'
+import { appendExecutionLog } from '../store/TaskLogStore.js'
 import { saveWorkflowOutput } from '../output/saveWorkflowOutput.js'
 import { createLogger, setLogMode, logError as logErrorFn } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
@@ -214,7 +215,18 @@ export async function executeTask(
       throw error
     }
 
-    updateTask(task.id, { status: 'failed' })
+    // Save error details to execution.log and task.json
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+    appendExecutionLog(task.id, `[ERROR] ${errorMsg}`, { level: 'error', scope: 'lifecycle' })
+    if (error instanceof Error && error.cause) {
+      const causeMsg = error.cause instanceof Error ? error.cause.message : String(error.cause)
+      appendExecutionLog(task.id, `[ERROR] Caused by: ${causeMsg}`, { level: 'error', scope: 'lifecycle' })
+    }
+    if (errorStack) {
+      appendExecutionLog(task.id, `[ERROR] Stack trace:\n${errorStack}`, { level: 'error', scope: 'lifecycle' })
+    }
+    updateTask(task.id, { status: 'failed', error: errorMsg })
     throw error
   } finally {
     // Always clean up resources regardless of success or failure

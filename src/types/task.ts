@@ -52,6 +52,8 @@ export interface Task {
   model?: string
   retryCount: number
   lastRejectReason?: string
+  /** Error message when task status is 'failed' */
+  error?: string
   createdAt: string
   updatedAt?: string
 

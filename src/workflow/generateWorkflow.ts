@@ -65,11 +65,18 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
 
   // 智能化增强：并行获取项目上下文、历史学习和记忆
   logger.info('分析项目上下文和历史记录...')
-  const [projectContext, learningInsights, memories] = await Promise.all([
-    analyzeProjectContext(),
-    learnFromHistory(task.description || task.title),
-    retrieveRelevantMemories(task.description || task.title, { projectPath: process.cwd() }),
-  ])
+  let projectContext, learningInsights, memories
+  try {
+    ;[projectContext, learningInsights, memories] = await Promise.all([
+      analyzeProjectContext(),
+      learnFromHistory(task.description || task.title),
+      retrieveRelevantMemories(task.description || task.title, { projectPath: process.cwd() }),
+    ])
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logger.error(`Planning preparation failed: ${msg}`)
+    throw new Error(`Planning preparation failed (analyzeProjectContext/learnFromHistory/retrieveMemories): ${msg}`, { cause: error })
+  }
 
   // 格式化上下文
   const projectContextPrompt = formatProjectContextForPrompt(projectContext)
@@ -117,8 +124,8 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   })
 
   if (!result.ok) {
-    logger.error(`Claude 调用失败: ${result.error.message}`)
-    throw new Error(`Claude invocation failed: ${result.error.message}`)
+    logger.error(`Claude 调用失败 [${result.error.type}]: ${result.error.message}`)
+    throw new Error(`Claude invocation failed [${result.error.type}]: ${result.error.message}`)
   }
 
   const { value: invokeResult } = result
