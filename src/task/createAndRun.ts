@@ -1,13 +1,10 @@
 /**
  * 创建任务并自动执行
- * 如果没有正在运行的任务，立即捡起执行
+ * 如果没有正在运行的任务，启动后台 runner（不阻塞）
  */
 
 import { getStore } from '../store/index.js'
 import { createLogger } from '../shared/logger.js'
-import { executeTask } from './executeTask.js'
-import { withProcessTracking } from './processTracking.js'
-import { pollPendingTask } from './queryTask.js'
 import { parseTaskPriority } from '../types/task.js'
 import { truncateText } from '../shared/truncateText.js'
 import type { Task, TaskPriority } from '../types/task.js'
@@ -18,6 +15,8 @@ interface CreateAndRunOptions {
   description: string
   priority?: TaskPriority | string
   assignee?: string
+  backend?: string
+  model?: string
   autoRun?: boolean
 }
 
@@ -50,6 +49,8 @@ export async function createAndRunTask(options: CreateAndRunOptions): Promise<Ta
     priority,
     status: 'pending',
     assignee: options.assignee,
+    backend: options.backend,
+    model: options.model,
     createdAt: new Date().toISOString(),
     retryCount: 0,
   }
@@ -63,23 +64,16 @@ export async function createAndRunTask(options: CreateAndRunOptions): Promise<Ta
     return task
   }
 
-  // 检查是否有正在运行的任务
+  // 启动后台 runner（不阻塞，立即返回）
+  // Runner 会自动检测 pending 任务并串行执行
+  const { spawnTaskRunner } = await import('./spawnTask.js')
+  spawnTaskRunner()
+
   if (hasRunningTask()) {
-    logger.info('Other tasks are running, queued for later')
-    return task
+    logger.info('Task queued (other tasks running)')
+  } else {
+    logger.info('Task queued, runner started')
   }
 
-  // 没有运行中的任务，立即执行
-  logger.info('No running tasks, starting immediately')
-
-  // 轮询并执行任务
-  const nextTask = await pollPendingTask()
-  if (nextTask) {
-    await withProcessTracking(nextTask.id, () =>
-      executeTask(nextTask, { concurrency: 1, useConsole: false })
-    )
-  }
-
-  // 返回更新后的任务
-  return store.getTask(task.id) || task
+  return task
 }

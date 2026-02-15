@@ -4,8 +4,7 @@
  * Handles enqueuing ready nodes when resuming a previously interrupted task.
  */
 
-import { getReadyNodes } from '../workflow/engine/WorkflowEngine.js'
-import { enqueueNodes } from '../workflow/index.js'
+import { getReadyNodes, enqueueNodes } from '../workflow/index.js'
 import { appendExecutionLog } from '../store/TaskLogStore.js'
 import { createLogger } from '../shared/logger.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'

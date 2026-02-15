@@ -7,8 +7,12 @@ import { getWorkflowProgress } from '../workflow/index.js'
 import { getInstance, updateInstanceStatus } from '../store/WorkflowStore.js'
 import { getTask } from '../store/TaskStore.js'
 import { estimateRemainingTime, formatTimeEstimate } from '../analysis/index.js'
-import { pauseWorker, resumeWorker } from '../workflow/queue/NodeWorker.js'
-import { pauseWorkflowInstance, resumeWorkflowInstance } from '../workflow/engine/StateManager.js'
+import {
+  pauseWorker,
+  resumeWorker,
+  pauseWorkflowInstance,
+  resumeWorkflowInstance,
+} from '../workflow/index.js'
 import { createLogger } from '../shared/logger.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 

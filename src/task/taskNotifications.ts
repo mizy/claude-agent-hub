@@ -5,10 +5,10 @@
  * sending completion notifications, and prompt optimization tracking.
  */
 
-import { workflowEvents } from '../workflow/engine/WorkflowEventEmitter.js'
+import { workflowEvents } from '../workflow/index.js'
 import { appendJsonlLog } from '../store/TaskLogStore.js'
 import { appendTimelineEvent, saveExecutionStats } from '../store/ExecutionStatsStore.js'
-import { sendTaskCompletionNotify } from './sendTaskNotify.js'
+import { sendTaskCompletionNotify } from '../messaging/sendTaskNotify.js'
 import { extractMemoryFromTask } from '../memory/index.js'
 import { analyzeFailure, generateImprovement, recordUsage } from '../prompt-optimization/index.js'
 import { getActiveVersion } from '../store/PromptVersionStore.js'

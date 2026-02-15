@@ -16,6 +16,8 @@ export interface CreateTaskOptions {
   description: string
   priority?: TaskPriority | string
   assignee?: string
+  backend?: string
+  model?: string
 }
 
 /**
@@ -42,6 +44,8 @@ export function createTaskWithFolder(options: CreateTaskOptions): Task {
     priority,
     status: 'pending',
     assignee: options.assignee,
+    backend: options.backend,
+    model: options.model,
     cwd: process.cwd(),
     createdAt: new Date().toISOString(),
     retryCount: 0,

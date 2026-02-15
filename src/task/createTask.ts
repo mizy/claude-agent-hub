@@ -12,6 +12,8 @@ export async function createTask(options: CreateTaskOptions): Promise<Task> {
     priority: parseTaskPriority(options.priority),
     status: 'pending',
     assignee: options.assignee,
+    backend: options.backend,
+    model: options.model,
     createdAt: new Date().toISOString(),
     retryCount: 0,
   }

@@ -14,6 +14,7 @@ const currentDir = dirname(fileURLToPath(import.meta.url))
 import { createLogger } from '../shared/logger.js'
 import {
   createTaskFolder,
+  getTask,
   saveProcessInfo,
   isProcessRunning,
   type ProcessInfo,
@@ -138,16 +139,21 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
     args.push('--resume')
   }
 
+  // Use task's cwd if available (important when spawning from server/daemon)
+  const task = getTask(taskId)
+  const taskCwd = task?.cwd || process.cwd()
+
   logger.debug(`Spawning task process: ${taskId}`)
   logger.debug(`Exec: ${config.execPath} ${args.join(' ')}`)
   logger.debug(`Log: ${logPath}`)
   logger.debug(`Resume mode: ${resume}`)
+  logger.debug(`CWD: ${taskCwd}`)
 
   // Spawn detached process
   const child = spawn(config.execPath, args, {
     detached: true,
     stdio: ['ignore', out, err],
-    cwd: process.cwd(),
+    cwd: taskCwd,
     env: {
       ...process.env,
       CAH_TASK_ID: taskId,

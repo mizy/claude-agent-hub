@@ -4,7 +4,7 @@
 
 import { generateWorkflow } from '../workflow/generateWorkflow.js'
 import { generateTaskTitle, isGenericTitle } from '../output/index.js'
-import { getActiveNodes } from '../workflow/engine/StateManager.js'
+import { getActiveNodes } from '../workflow/index.js'
 import {
   saveWorkflow,
   getInstance,

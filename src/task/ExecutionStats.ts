@@ -8,13 +8,13 @@
 import { saveExecutionStats } from '../store/ExecutionStatsStore.js'
 import { getInstance } from '../store/WorkflowStore.js'
 import { getTaskWorkflow } from '../store/TaskWorkflowStore.js'
-import { workflowEvents } from '../workflow/engine/WorkflowEventEmitter.js'
+import {
+  workflowEvents,
+  type NodeExecutionStats,
+  type WorkflowExecutionStats,
+} from '../workflow/index.js'
 import { createLogger } from '../shared/logger.js'
 import type { WorkflowInstance } from '../workflow/types.js'
-import type {
-  NodeExecutionStats,
-  WorkflowExecutionStats,
-} from '../workflow/engine/WorkflowEventEmitter.js'
 
 const logger = createLogger('execution-stats')
 
