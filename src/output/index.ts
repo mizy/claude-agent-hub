@@ -12,3 +12,4 @@ export {
   formatWorkflowOutput,
   type WorkflowExecutionResult,
 } from './saveWorkflowOutput.js'
+export { readOutputSummary } from './readOutputSummary.js'

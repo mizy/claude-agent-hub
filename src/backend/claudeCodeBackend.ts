@@ -91,11 +91,16 @@ export function createClaudeCodeBackend(): BackendAdapter {
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
       try {
+        // Remove CLAUDECODE env var to allow nested claude CLI calls
+        const env = { ...process.env }
+        delete env.CLAUDECODE
+
         const subprocess = execa('claude', args, {
           cwd,
           timeout: timeoutMs,
           stdin: 'ignore',
           buffer: !stream,
+          env,
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
         perf.spawn = Date.now() - startTime
@@ -136,7 +141,9 @@ export function createClaudeCodeBackend(): BackendAdapter {
 
     async checkAvailable(): Promise<boolean> {
       try {
-        await execa('claude', ['--version'])
+        const env = { ...process.env }
+        delete env.CLAUDECODE
+        await execa('claude', ['--version'], { env })
         return true
       } catch (e) {
         logger.debug(`claude not available: ${e instanceof Error ? e.message : String(e)}`)

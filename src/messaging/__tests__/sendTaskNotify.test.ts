@@ -39,9 +39,13 @@ vi.mock('../buildLarkCard.js', () => ({
   buildTaskFailedCard: vi.fn().mockReturnValue({}),
 }))
 
-vi.mock('../../store/paths.js', () => ({
-  getResultFilePath: vi.fn().mockReturnValue('/tmp/test/result.md'),
-}))
+vi.mock('../../store/paths.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../store/paths.js')>()
+  return {
+    ...actual,
+    getResultFilePath: vi.fn().mockReturnValue('/tmp/test/result.md'),
+  }
+})
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {

@@ -56,7 +56,7 @@ export function createCodebuddyBackend(): BackendAdapter {
 
     capabilities: {
       supportsStreaming: true,
-      supportsSessionReuse: false,
+      supportsSessionReuse: true,
       supportsCostTracking: true,
       supportsMcpConfig: false,
       supportsAgentTeams: false,
@@ -71,10 +71,11 @@ export function createCodebuddyBackend(): BackendAdapter {
         timeoutMs = 30 * 60 * 1000,
         onChunk,
         model,
+        sessionId,
         signal,
       } = options
 
-      const args = buildArgs(prompt, model, skipPermissions, stream)
+      const args = buildArgs(prompt, model, skipPermissions, stream, sessionId)
       const startTime = Date.now()
       const binary = await resolveBinary()
 
@@ -150,9 +151,14 @@ function buildArgs(
   prompt: string,
   model?: string,
   skipPermissions?: boolean,
-  stream?: boolean
+  stream?: boolean,
+  sessionId?: string
 ): string[] {
   const args: string[] = []
+
+  if (sessionId) {
+    args.push('--resume', sessionId)
+  }
 
   if (model) {
     args.push('--model', model)

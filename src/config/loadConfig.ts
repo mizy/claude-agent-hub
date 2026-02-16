@@ -90,11 +90,16 @@ export async function loadConfig(
 }
 
 /**
- * Parse YAML file, returning empty object for empty/comment-only files
+ * Parse YAML file, returning empty object for empty/comment-only/null files.
+ * YAML.parse returns null for empty strings, so we normalize to {}.
  */
 async function parseYamlFile(filePath: string): Promise<Record<string, unknown>> {
   const content = await readFile(filePath, 'utf-8')
-  return (YAML.parse(content) as Record<string, unknown>) ?? {}
+  const parsed = YAML.parse(content)
+  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {}
+  }
+  return parsed as Record<string, unknown>
 }
 
 /**
@@ -124,10 +129,15 @@ function deepMergeConfig(
 
 /**
  * 从文件加载并解析配置（用于 watch reload）
+ * Re-merges global + project configs, same as initial load.
  */
-async function loadConfigFromFile(configPath: string): Promise<Config> {
-  const parsed = await parseYamlFile(configPath)
-  const result = configSchema.safeParse(parsed)
+async function reloadConfig(): Promise<Config> {
+  const { globalPath, projectPath } = findConfigPaths()
+  const globalRaw = globalPath ? await parseYamlFile(globalPath) : {}
+  const projectRaw = projectPath ? await parseYamlFile(projectPath) : {}
+  const merged = deepMergeConfig(globalRaw, projectRaw)
+
+  const result = configSchema.safeParse(merged)
   if (!result.success) {
     logger.warn('Config file format error, using defaults', result.error.issues)
     return applyEnvOverrides(getDefaultConfig())
@@ -195,7 +205,7 @@ function startWatching(configPath: string): void {
     reloadTimer = setTimeout(async () => {
       try {
         logger.info('Config file changed, reloading...')
-        const newConfig = await loadConfigFromFile(configPath)
+        const newConfig = await reloadConfig()
         cachedConfig = newConfig
         logger.info('✓ Config reloaded successfully')
       } catch (error) {
@@ -247,6 +257,34 @@ export function getDefaultConfig(): Config {
       model: 'opus',
       enableAgentTeams: false,
       chat: { mcpServers: [] },
+    },
+    memory: {
+      forgetting: {
+        enabled: true,
+        initialStability: 24,
+        manualStability: 168,
+        maxStability: 8760,
+        archiveThreshold: 10,
+        deleteThreshold: 5,
+        cleanupIntervalHours: 1,
+      },
+      association: {
+        enabled: true,
+        overlapThreshold: 0.3,
+        maxSpreadDepth: 2,
+        maxAssociatedResults: 5,
+      },
+      reinforce: {
+        retrieve: 1.2,
+        taskSuccess: 2.0,
+        taskFailure: 0.8,
+        manualReview: 1.5,
+        associationHit: 1.1,
+      },
+      chatMemory: {
+        enabled: true,
+        maxMemories: 5,
+      },
     },
   }
 }

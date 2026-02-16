@@ -33,6 +33,7 @@ export function createIflowBackend(): BackendAdapter {
         prompt,
         cwd = process.cwd(),
         stream = false,
+        skipPermissions = true,
         timeoutMs = 30 * 60 * 1000,
         onChunk,
         model,
@@ -40,7 +41,7 @@ export function createIflowBackend(): BackendAdapter {
         signal,
       } = options
 
-      const args = buildArgs(prompt, model, sessionId)
+      const args = buildArgs(prompt, model, sessionId, skipPermissions)
       const startTime = Date.now()
 
       try {
@@ -106,7 +107,7 @@ export function createIflowBackend(): BackendAdapter {
 
 // ============ Private Helpers ============
 
-function buildArgs(prompt: string, model?: string, sessionId?: string): string[] {
+function buildArgs(prompt: string, model?: string, sessionId?: string, skipPermissions?: boolean): string[] {
   const args: string[] = []
 
   // 恢复会话
@@ -116,7 +117,11 @@ function buildArgs(prompt: string, model?: string, sessionId?: string): string[]
 
   // 非交互模式
   args.push('-p', prompt)
-  args.push('-y') // 自动确认（YOLO mode）
+
+  // 自动确认（YOLO mode）
+  if (skipPermissions) {
+    args.push('-y')
+  }
 
   if (model) {
     args.push('-m', model)

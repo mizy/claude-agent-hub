@@ -216,15 +216,19 @@ export async function executeTask(
     }
 
     // Save error details to execution.log and task.json
+    // Skip logging if already logged by prepareExecution (avoid duplicate log entries)
+    const alreadyLogged = error instanceof Error && (error as any)._logged === true
     const errorMsg = error instanceof Error ? error.message : String(error)
-    const errorStack = error instanceof Error ? error.stack : undefined
-    appendExecutionLog(task.id, `[ERROR] ${errorMsg}`, { level: 'error', scope: 'lifecycle' })
-    if (error instanceof Error && error.cause) {
-      const causeMsg = error.cause instanceof Error ? error.cause.message : String(error.cause)
-      appendExecutionLog(task.id, `[ERROR] Caused by: ${causeMsg}`, { level: 'error', scope: 'lifecycle' })
-    }
-    if (errorStack) {
-      appendExecutionLog(task.id, `[ERROR] Stack trace:\n${errorStack}`, { level: 'error', scope: 'lifecycle' })
+    if (!alreadyLogged) {
+      const errorStack = error instanceof Error ? error.stack : undefined
+      appendExecutionLog(task.id, `[ERROR] ${errorMsg}`, { level: 'error', scope: 'lifecycle' })
+      if (error instanceof Error && error.cause) {
+        const causeMsg = error.cause instanceof Error ? error.cause.message : String(error.cause)
+        appendExecutionLog(task.id, `[ERROR] Caused by: ${causeMsg}`, { level: 'error', scope: 'lifecycle' })
+      }
+      if (errorStack) {
+        appendExecutionLog(task.id, `[ERROR] Stack trace:\n${errorStack}`, { level: 'error', scope: 'lifecycle' })
+      }
     }
     updateTask(task.id, { status: 'failed', error: errorMsg })
     throw error

@@ -9,6 +9,8 @@ import { createLogger } from '../../shared/logger.js'
 import { handleGet, handleLogs, handleStop, handleResume, handleList, handlePause } from './commandHandler.js'
 import { handleApproval } from './approvalHandler.js'
 import { resumePausedTask } from '../../task/index.js'
+import { readOutputSummary } from '../../output/index.js'
+import { buildCard, mdElement, noteElement } from '../larkCards/cardElements.js'
 import type { MessengerAdapter, ParsedApproval, CardActionPayload } from './types.js'
 import { parseCardActionPayload } from './types.js'
 
@@ -72,6 +74,9 @@ export async function dispatchCardAction(params: CardActionParams): Promise<unkn
 
     case 'task_msg':
       return handleTaskMsgPrompt(chatId, payload.taskId, messenger)
+
+    case 'task_view_result':
+      return handleTaskViewResult(chatId, payload.taskId, messenger)
   }
 }
 
@@ -194,4 +199,26 @@ async function handleTaskMsgPrompt(
 ): Promise<void> {
   // Lark cards don't support inline text input, so prompt the user to send a /msg command
   await messenger.reply(chatId, `💬 请使用以下命令向任务发送消息:\n\n/msg ${taskId.slice(0, 12)} <你的消息>`)
+}
+
+async function handleTaskViewResult(
+  chatId: string,
+  taskId: string,
+  messenger: MessengerAdapter
+): Promise<void> {
+  const summary = await readOutputSummary(taskId)
+
+  if (!summary) {
+    await messenger.reply(chatId, '📄 暂无输出结果')
+    return
+  }
+
+  const shortId = taskId.replace(/^task-/, '').slice(0, 8)
+  const elements = [
+    mdElement(summary),
+    noteElement(`任务 ID: ${taskId}`),
+  ]
+
+  const card = buildCard(`📄 结果摘要 ${shortId}`, 'blue', elements)
+  await messenger.replyCard?.(chatId, card)
 }

@@ -136,13 +136,27 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
 
 // ── Long polling ──
 
+const BACKOFF_INITIAL_MS = 5_000
+const BACKOFF_MAX_MS = 5 * 60_000 // 5 minutes
+const SILENT_AFTER_FAILURES = 10 // stop logging after N consecutive failures
+
 async function pollLoop(): Promise<void> {
+  let consecutiveFailures = 0
+  let backoffMs = BACKOFF_INITIAL_MS
+
   while (running) {
     try {
       const updates = await callApi<TelegramUpdate[]>('getUpdates', {
         offset,
         timeout: POLL_TIMEOUT,
       })
+
+      // Reset backoff on success (including empty updates)
+      if (consecutiveFailures > 0) {
+        logger.info(`poll recovered after ${consecutiveFailures} failures`)
+      }
+      consecutiveFailures = 0
+      backoffMs = BACKOFF_INITIAL_MS
 
       if (!updates || updates.length === 0) continue
 
@@ -151,10 +165,18 @@ async function pollLoop(): Promise<void> {
         await handleUpdate(update)
       }
     } catch (error) {
-      const msg = formatErrorMessage(error)
-      logger.error(`poll error: ${msg}`)
+      consecutiveFailures++
+
+      if (consecutiveFailures <= SILENT_AFTER_FAILURES) {
+        const msg = formatErrorMessage(error)
+        logger.error(`poll error (${consecutiveFailures}): ${msg}`)
+      } else if (consecutiveFailures === SILENT_AFTER_FAILURES + 1) {
+        logger.warn(`poll failing repeatedly, suppressing further logs (retry every ${Math.round(backoffMs / 1000)}s)`)
+      }
+
       if (running) {
-        await new Promise(r => setTimeout(r, 5000))
+        await new Promise(r => setTimeout(r, backoffMs))
+        backoffMs = Math.min(backoffMs * 2, BACKOFF_MAX_MS)
       }
     }
   }

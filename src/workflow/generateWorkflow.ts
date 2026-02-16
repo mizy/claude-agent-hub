@@ -19,7 +19,10 @@ import {
   learnFromHistory,
   formatInsightsForPrompt,
 } from '../analysis/index.js'
-import { retrieveRelevantMemories, formatMemoriesForPrompt } from '../memory/index.js'
+import { retrieveRelevantMemories, formatMemoriesForPrompt, associativeRetrieve } from '../memory/index.js'
+import { getAllMemories } from '../store/MemoryStore.js'
+import { migrateMemoryEntry } from '../memory/migrateMemory.js'
+import { calculateStrength } from '../memory/forgettingEngine.js'
 import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from './types.js'
@@ -67,10 +70,24 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   logger.info('分析项目上下文和历史记录...')
   let projectContext, learningInsights, memories
   try {
+    const query = task.description || task.title
+    const now = new Date()
+    const allMigrated = getAllMemories().map(migrateMemoryEntry)
+    const activeEntries = allMigrated.filter(e => calculateStrength(e, now) >= 10)
+
     ;[projectContext, learningInsights, memories] = await Promise.all([
       analyzeProjectContext(),
-      learnFromHistory(task.description || task.title),
-      retrieveRelevantMemories(task.description || task.title, { projectPath: process.cwd() }),
+      learnFromHistory(query),
+      (async () => {
+        // Keyword-based retrieval + associative expansion (existing)
+        const keywordResults = await retrieveRelevantMemories(query, { projectPath: process.cwd() })
+        // Associative retrieval (hybrid keyword + activation spreading)
+        const assocResults = await associativeRetrieve(query, activeEntries, 5)
+        // Merge: deduplicate by id, keyword results first
+        const seen = new Set(keywordResults.map(e => e.id))
+        const extra = assocResults.filter(e => !seen.has(e.id))
+        return [...keywordResults, ...extra].slice(0, 15)
+      })(),
     ])
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

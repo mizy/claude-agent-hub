@@ -31,6 +31,7 @@ vi.mock('../../../prompts/chatPrompts.js', () => ({
 vi.mock('../../../config/loadConfig.js', () => ({
   loadConfig: vi.fn(async () => ({
     backend: { chat: { mcpServers: [] } },
+    memory: { chatMemory: { enabled: false, maxMemories: 5 } },
   })),
 }))
 

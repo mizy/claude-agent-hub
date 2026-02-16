@@ -1,9 +1,16 @@
 /**
  * Memory retrieval — score, rank, and return relevant memories
+ *
+ * Integrates forgetting engine (strength filtering) and association engine
+ * (associative expansion when direct results are insufficient).
  */
 
 import { extractKeywords } from '../analysis/index.js'
 import { getAllMemories, updateMemory } from '../store/MemoryStore.js'
+import { migrateMemoryEntry } from './migrateMemory.js'
+import { calculateStrength, reinforceMemory } from './forgettingEngine.js'
+import { spreadActivation } from './associationEngine.js'
+import { loadConfig } from '../config/loadConfig.js'
 import type { MemoryEntry } from './types.js'
 
 interface RetrieveOptions {
@@ -14,22 +21,27 @@ interface RetrieveOptions {
 /**
  * Retrieve memories most relevant to a query.
  *
- * Scoring: keyword overlap + project path bonus + confidence + smooth time decay + access frequency.
- * Updates accessCount and lastAccessedAt (NOT updatedAt) on returned entries.
+ * Scoring: keyword overlap + strength factor + project path bonus + confidence.
+ * Filters out memories with very low strength (< 10).
+ * When direct keyword results < maxResults, expands via association spreading.
+ * Auto-reinforces returned entries with 'access' reason.
  */
-export function retrieveRelevantMemories(
+export async function retrieveRelevantMemories(
   query: string,
   options?: RetrieveOptions,
-): MemoryEntry[] {
+): Promise<MemoryEntry[]> {
   const maxResults = options?.maxResults ?? 10
   const projectPath = options?.projectPath
   const queryKeywords = extractKeywords(query)
   if (queryKeywords.length === 0) return []
 
-  const all = getAllMemories()
-  const now = Date.now()
+  const now = new Date()
+  const all = getAllMemories().map(migrateMemoryEntry)
 
-  const scored = all.map(entry => {
+  // Filter out very weak memories (strength < 10 = effectively forgotten)
+  const active = all.filter(entry => calculateStrength(entry, now) >= 10)
+
+  const scored = active.map(entry => {
     let score = 0
 
     // Keyword overlap (0-1 range, weighted heavily)
@@ -44,33 +56,54 @@ export function retrieveRelevantMemories(
     }
 
     // Confidence factor
-    score += entry.confidence * 0.5
+    score += entry.confidence * 0.3
 
-    // Smooth time decay: 1 / (1 + ageDays / 30)
-    // 7d=0.81, 30d=0.5, 90d=0.25 — based on updatedAt (content last modified)
-    const ageMs = now - new Date(entry.updatedAt).getTime()
-    const ageDays = ageMs / (1000 * 60 * 60 * 24)
-    score *= 1 / (1 + ageDays / 30)
+    // Strength factor: replaces old time decay with forgetting curve
+    const strength = calculateStrength(entry, now)
+    score += (strength / 100) * 0.5
 
-    // Access frequency boost: frequently accessed memories are more useful
+    // Access frequency boost
     score += Math.log(1 + entry.accessCount) * 0.2
 
     return { entry, score }
   })
 
   // Filter out zero-score entries, sort descending, take top N
-  const results = scored
+  const directResults = scored
     .filter(s => s.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, maxResults)
     .map(s => s.entry)
 
-  // Update accessCount and lastAccessedAt (NOT updatedAt) for returned entries
+  // Associative expansion: when direct results are insufficient, spread activation
+  let results = directResults
+  const config = await loadConfig()
+  if (config.memory.association.enabled && directResults.length < maxResults && directResults.length > 0) {
+    const resultIds = new Set(directResults.map(e => e.id))
+    const associated: MemoryEntry[] = []
+
+    for (const seed of directResults.slice(0, 3)) {
+      const spread = await spreadActivation(seed.id, active)
+      for (const { entry } of spread) {
+        if (!resultIds.has(entry.id)) {
+          resultIds.add(entry.id)
+          associated.push(entry)
+        }
+      }
+    }
+
+    const remaining = maxResults - directResults.length
+    results = [...directResults, ...associated.slice(0, remaining)]
+  }
+
+  // Update accessCount, lastAccessedAt, and reinforce on access
   for (const entry of results) {
     updateMemory(entry.id, {
       accessCount: entry.accessCount + 1,
-      lastAccessedAt: new Date().toISOString(),
+      lastAccessedAt: now.toISOString(),
     })
+    // Fire-and-forget reinforcement (async but we don't need to wait)
+    reinforceMemory(entry.id, 'access').catch(() => {})
   }
 
   return results

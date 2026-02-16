@@ -19,6 +19,7 @@ import {
   taskPauseAction,
   taskResumeAction,
   taskMsgAction,
+  taskViewResultAction,
   listPageAction,
 } from './cardElements.js'
 import type { LarkCard, LarkCardElement, LarkCardButton } from './cardElements.js'
@@ -312,6 +313,9 @@ export function buildTaskDetailCard(
   const buttons: LarkCardButton[] = [
     button('📜 日志', 'default', taskLogsAction(task.id)),
   ]
+  if (task.status === 'completed' || task.status === 'failed') {
+    buttons.push(button('📄 查看结果', 'primary', taskViewResultAction(task.id)))
+  }
   if (task.status === 'failed') {
     buttons.push(button('🔄 重试', 'primary', taskRetryAction(task.id)))
   }

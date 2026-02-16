@@ -39,7 +39,7 @@ export async function resolveBackend(backendType?: string): Promise<BackendAdapt
   let resolvedType: string
   let backendName: string | undefined
 
-  if (backendType) {
+  if (backendType && backendType !== 'default') {
     // Check named backends first, then treat as registry key
     if (namedBackends[backendType]) {
       resolvedType = namedBackends[backendType]!.type

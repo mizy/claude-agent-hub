@@ -76,6 +76,43 @@ export const notifyConfigSchema = z.object({
   telegram: telegramConfigSchema.optional(),
 })
 
+export const memoryForgettingConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  initialStability: z.number().default(24),
+  manualStability: z.number().default(168),
+  maxStability: z.number().default(8760),
+  archiveThreshold: z.number().default(10),
+  deleteThreshold: z.number().default(5),
+  cleanupIntervalHours: z.number().default(1),
+})
+
+export const memoryAssociationConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  overlapThreshold: z.number().default(0.3),
+  maxSpreadDepth: z.number().default(2),
+  maxAssociatedResults: z.number().default(5),
+})
+
+export const memoryReinforceConfigSchema = z.object({
+  retrieve: z.number().default(1.2),
+  taskSuccess: z.number().default(2.0),
+  taskFailure: z.number().default(0.8),
+  manualReview: z.number().default(1.5),
+  associationHit: z.number().default(1.1),
+})
+
+export const chatMemoryConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxMemories: z.number().default(5),
+})
+
+export const memoryConfigSchema = z.object({
+  forgetting: memoryForgettingConfigSchema.default({}),
+  association: memoryAssociationConfigSchema.default({}),
+  reinforce: memoryReinforceConfigSchema.default({}),
+  chatMemory: chatMemoryConfigSchema.default({}),
+})
+
 export const daemonConfigSchema = z.object({
   poll_interval: z.string().default('5m'),
 })
@@ -92,6 +129,7 @@ export const configSchema = z.object({
   defaultBackend: z.string().optional(),
   notify: notifyConfigSchema.optional(),
   daemon: daemonConfigSchema.optional(),
+  memory: memoryConfigSchema.default({}),
 })
 
 export type AgentConfig = z.infer<typeof agentConfigSchema>
@@ -104,4 +142,9 @@ export type LarkConfig = z.infer<typeof larkConfigSchema>
 export type TelegramConfig = z.infer<typeof telegramConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>
 export type DaemonConfig = z.infer<typeof daemonConfigSchema>
+export type MemoryForgettingConfig = z.infer<typeof memoryForgettingConfigSchema>
+export type MemoryAssociationConfig = z.infer<typeof memoryAssociationConfigSchema>
+export type MemoryReinforceConfig = z.infer<typeof memoryReinforceConfigSchema>
+export type ChatMemoryConfig = z.infer<typeof chatMemoryConfigSchema>
+export type MemoryConfig = z.infer<typeof memoryConfigSchema>
 export type Config = z.infer<typeof configSchema>

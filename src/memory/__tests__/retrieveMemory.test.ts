@@ -15,18 +15,18 @@ function clearAll() {
 describe('retrieveRelevantMemories', () => {
   beforeEach(clearAll)
 
-  it('returns empty array when no memories', () => {
-    const results = retrieveRelevantMemories('anything')
+  it('returns empty array when no memories', async () => {
+    const results = await retrieveRelevantMemories('anything')
     expect(results).toEqual([])
   })
 
-  it('returns empty array when query has no extractable keywords', () => {
+  it('returns empty array when query has no extractable keywords', async () => {
     addMemory('some data', 'lesson', source, { keywords: ['data'] })
-    const results = retrieveRelevantMemories('a') // 'a' is a stopword
+    const results = await retrieveRelevantMemories('a') // 'a' is a stopword
     expect(results).toEqual([])
   })
 
-  it('returns matching entries ranked by keyword overlap', () => {
+  it('returns matching entries ranked by keyword overlap', async () => {
     addMemory('vitest setup guide', 'lesson', source, {
       keywords: ['vitest', 'setup', 'guide'],
     })
@@ -37,13 +37,13 @@ describe('retrieveRelevantMemories', () => {
       keywords: ['react', 'component', 'patterns'],
     })
 
-    const results = retrieveRelevantMemories('vitest setup testing')
+    const results = await retrieveRelevantMemories('vitest setup testing')
     // The first entry matches 2 keywords (vitest, setup), second matches 1 (vitest)
     expect(results.length).toBeGreaterThanOrEqual(2)
     expect(results[0]!.content).toContain('vitest setup')
   })
 
-  it('boosts score for matching projectPath', () => {
+  it('boosts score for matching projectPath', async () => {
     const id1 = addMemory('lesson about deployment', 'lesson', source, {
       keywords: ['deployment', 'docker'],
       confidence: 0.5,
@@ -56,12 +56,12 @@ describe('retrieveRelevantMemories', () => {
     })
 
     // Both match 'deployment', but proj-a gets project path bonus
-    const results = retrieveRelevantMemories('deployment', { projectPath: '/proj-a' })
+    const results = await retrieveRelevantMemories('deployment', { projectPath: '/proj-a' })
     expect(results.length).toBeGreaterThanOrEqual(2)
     expect(results[0]!.id).toBe(id1)
   })
 
-  it('higher confidence scores higher', () => {
+  it('higher confidence scores higher', async () => {
     addMemory('low confidence tip', 'lesson', source, {
       keywords: ['typescript', 'types'],
       confidence: 0.1,
@@ -71,69 +71,75 @@ describe('retrieveRelevantMemories', () => {
       confidence: 1.0,
     }).id
 
-    const results = retrieveRelevantMemories('typescript types')
+    const results = await retrieveRelevantMemories('typescript types')
     expect(results[0]!.id).toBe(highId)
   })
 
-  it('applies smooth time decay for old entries', () => {
+  it('applies smooth time decay for old entries', async () => {
     // Create a "new" entry
     const newEntry = addMemory('new deployment tip', 'lesson', source, {
       keywords: ['deployment'],
       confidence: 0.5,
     })
 
-    // Create an "old" entry by directly manipulating updatedAt
+    // Create an "old" entry with high stability so it survives filtering
     const oldEntry = addMemory('old deployment tip', 'lesson', source, {
       keywords: ['deployment'],
       confidence: 0.5,
     })
-    // Simulate 60-day-old entry
-    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
-    updateMemory(oldEntry.id, { updatedAt: sixtyDaysAgo })
+    // Simulate old entry: set lastReinforcedAt in past with high stability
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+    updateMemory(oldEntry.id, {
+      strength: 50,
+      stability: 168, // 7 days stability
+      lastReinforcedAt: twoDaysAgo,
+      decayRate: 1.0,
+      reinforceCount: 0,
+    })
 
-    const results = retrieveRelevantMemories('deployment')
+    const results = await retrieveRelevantMemories('deployment')
     expect(results.length).toBe(2)
-    // New entry should rank higher due to smooth time decay on old entry
+    // New entry should rank higher due to higher strength
     expect(results[0]!.id).toBe(newEntry.id)
   })
 
-  it('respects maxResults limit', () => {
+  it('respects maxResults limit', async () => {
     for (let i = 0; i < 5; i++) {
       addMemory(`tip ${i} about typescript`, 'lesson', source, {
         keywords: ['typescript'],
       })
     }
 
-    const results = retrieveRelevantMemories('typescript', { maxResults: 3 })
+    const results = await retrieveRelevantMemories('typescript', { maxResults: 3 })
     expect(results).toHaveLength(3)
   })
 
-  it('increments accessCount on retrieved entries', () => {
+  it('increments accessCount on retrieved entries', async () => {
     const entry = addMemory('accessed entry', 'lesson', source, {
       keywords: ['accessed'],
     })
     expect(entry.accessCount).toBe(0)
 
-    retrieveRelevantMemories('accessed')
+    await retrieveRelevantMemories('accessed')
 
     const updated = getMemory(entry.id)
     expect(updated).not.toBeNull()
     expect(updated!.accessCount).toBe(1)
   })
 
-  it('increments accessCount cumulatively', () => {
+  it('increments accessCount cumulatively', async () => {
     const entry = addMemory('multi access', 'lesson', source, {
       keywords: ['multi'],
     })
 
-    retrieveRelevantMemories('multi')
-    retrieveRelevantMemories('multi')
+    await retrieveRelevantMemories('multi')
+    await retrieveRelevantMemories('multi')
 
     const updated = getMemory(entry.id)
     expect(updated!.accessCount).toBe(2)
   })
 
-  it('ranks non-matching entries lower than matching ones', () => {
+  it('ranks non-matching entries lower than matching ones', async () => {
     addMemory('unrelated content', 'lesson', source, {
       keywords: ['unrelated'],
       confidence: 0.5,
@@ -143,27 +149,27 @@ describe('retrieveRelevantMemories', () => {
       confidence: 0.5,
     }).id
 
-    const results = retrieveRelevantMemories('typescript')
+    const results = await retrieveRelevantMemories('typescript')
     // Matching entry should rank first
     expect(results[0]!.id).toBe(matchId)
   })
 
   // --- New tests for iteration 3 improvements ---
 
-  it('does NOT update updatedAt on retrieval, sets lastAccessedAt instead', () => {
+  it('does NOT update updatedAt on retrieval, sets lastAccessedAt instead', async () => {
     const entry = addMemory('stable update test', 'lesson', source, {
       keywords: ['stable'],
     })
     const originalUpdatedAt = entry.updatedAt
 
-    retrieveRelevantMemories('stable')
+    await retrieveRelevantMemories('stable')
 
     const updated = getMemory(entry.id)
     expect(updated!.updatedAt).toBe(originalUpdatedAt) // updatedAt unchanged
     expect(updated!.lastAccessedAt).toBeTruthy() // lastAccessedAt is set
   })
 
-  it('boosts frequently accessed memories via accessCount', () => {
+  it('boosts frequently accessed memories via accessCount', async () => {
     // Create two entries with same keywords and confidence
     const frequentEntry = addMemory('frequent tip', 'lesson', source, {
       keywords: ['testing'],
@@ -176,14 +182,16 @@ describe('retrieveRelevantMemories', () => {
     // Simulate high access count on frequent entry
     updateMemory(frequentEntry.id, { accessCount: 50 })
 
-    const results = retrieveRelevantMemories('testing')
+    const results = await retrieveRelevantMemories('testing')
     expect(results.length).toBe(2)
     // Frequently accessed entry should rank higher
     expect(results[0]!.id).toBe(frequentEntry.id)
   })
 
-  it('time decay is gradual, not a step function', () => {
-    // 15-day-old entry should score BETWEEN a new entry and a 60-day-old entry
+  it('time decay is gradual, not a step function', async () => {
+    // All entries get high stability so none are filtered out
+    const stability = 720 // 30 days in hours
+
     const newEntry = addMemory('new tip', 'lesson', source, {
       keywords: ['gradual'],
       confidence: 0.5,
@@ -199,10 +207,15 @@ describe('retrieveRelevantMemories', () => {
 
     const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
-    updateMemory(midEntry.id, { updatedAt: fifteenDaysAgo })
-    updateMemory(oldEntry.id, { updatedAt: sixtyDaysAgo })
+    // Set proper forgetting engine fields so entries survive strength filtering
+    updateMemory(midEntry.id, {
+      strength: 50, stability, lastReinforcedAt: fifteenDaysAgo, decayRate: 1.0, reinforceCount: 0,
+    })
+    updateMemory(oldEntry.id, {
+      strength: 50, stability, lastReinforcedAt: sixtyDaysAgo, decayRate: 1.0, reinforceCount: 0,
+    })
 
-    const results = retrieveRelevantMemories('gradual')
+    const results = await retrieveRelevantMemories('gradual')
     expect(results).toHaveLength(3)
     // Order: new > mid > old (smooth decay)
     expect(results[0]!.id).toBe(newEntry.id)

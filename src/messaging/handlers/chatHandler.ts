@@ -12,6 +12,8 @@ import { logConversation, getRecentConversations } from './conversationLog.js'
 import { getSession, setSession, clearSession, enqueueChat, destroySessions, getModelOverride, getBackendOverride, shouldResetSession, incrementTurn } from './sessionManager.js'
 import { createStreamHandler, sendFinalResponse } from './streamingHandler.js'
 import { sendDetectedImages } from './imageExtractor.js'
+import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
+import { retrieveRelevantMemories, formatMemoriesForPrompt } from '../../memory/index.js'
 import { getRegisteredBackends } from '../../backend/resolveBackend.js'
 import type { MessengerAdapter, ClientContext } from './types.js'
 
@@ -223,6 +225,9 @@ async function handleChatInternal(
     images: options?.images,
   })
 
+  // Load config early (cached — near-instant after daemon preload)
+  const config = await loadConfig()
+
   // Build prompt with client context and optional images
   const hasImages = !!options?.images?.length
   const clientPrefix = options?.client ? buildClientPrompt(options.client) + '\n\n' : ''
@@ -242,7 +247,24 @@ async function handleChatInternal(
     }
   }
 
-  let prompt = clientPrefix + historyContext + effectiveText
+  // Retrieve relevant memories for context injection
+  let memoryContext = ''
+  const chatMemoryConfig = config.memory.chatMemory
+  if (chatMemoryConfig.enabled && effectiveText) {
+    try {
+      const memories = await retrieveRelevantMemories(effectiveText, {
+        maxResults: chatMemoryConfig.maxMemories,
+      })
+      if (memories.length > 0) {
+        memoryContext = formatMemoriesForPrompt(memories) + '\n\n'
+        logger.debug(`injected ${memories.length} memories for chat [${chatId.slice(0, 8)}]`)
+      }
+    } catch (e) {
+      logger.debug(`memory retrieval failed: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
+  let prompt = clientPrefix + memoryContext + historyContext + effectiveText
   if (images?.length) {
     const imagePart = images
       .map(p => `[用户发送了图片: ${p}，请使用 Read 工具查看这张图片并回复]`)
@@ -274,8 +296,6 @@ async function handleChatInternal(
     return pId
   })
 
-  // Load config before parallel phase (cached — near-instant after daemon preload)
-  const config = await loadConfig()
   const chatMcp = config.backend.chat?.mcpServers ?? []
 
   bench.parallelStart = Date.now()
@@ -384,6 +404,12 @@ async function handleChatInternal(
 
     // Detect and send images from response
     await sendDetectedImages(chatId, response, messenger)
+
+    // Fire-and-forget: extract memories from conversation periodically
+    const keywordTriggered = triggerChatMemoryExtraction(chatId, effectiveText, response, platform)
+    if (keywordTriggered) {
+      await messenger.reply(chatId, '💾 已记录到记忆中').catch(() => {})
+    }
   } catch (error) {
     // Clean up controller reference on error
     if (activeControllers.get(chatId) === abortController) {

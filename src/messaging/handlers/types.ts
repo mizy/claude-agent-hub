@@ -164,6 +164,11 @@ export interface AutoWaitConfirmPayload {
   taskId: string
 }
 
+export interface TaskViewResultPayload {
+  action: 'task_view_result'
+  taskId: string
+}
+
 export type CardActionPayload =
   | TaskDetailPayload
   | TaskLogsPayload
@@ -176,6 +181,7 @@ export type CardActionPayload =
   | TaskResumePayload
   | TaskMsgPayload
   | AutoWaitConfirmPayload
+  | TaskViewResultPayload
 
 /** Runtime validation: parse unknown card action value into a typed payload */
 export function parseCardActionPayload(raw: unknown): CardActionPayload | null {
@@ -193,6 +199,7 @@ export function parseCardActionPayload(raw: unknown): CardActionPayload | null {
     case 'task_resume':
     case 'task_msg':
     case 'auto_wait_confirm':
+    case 'task_view_result':
       if (typeof value.taskId !== 'string') return null
       return { action, taskId: value.taskId }
 

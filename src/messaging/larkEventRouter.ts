@@ -195,6 +195,9 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
         if (msg.includes('NOT a card') || msg.includes('not a card')) {
           logger.warn(`→ edit failed (not a card), falling back to reply: ${messageId}`)
           await this.reply(chatId, text)
+        } else if (msg.includes('400')) {
+          // 400 is common during streaming (message deleted, content unchanged, etc.)
+          logger.debug(`→ edit skipped (400): ${messageId}`)
         } else {
           logger.error(`→ edit failed: ${msg}`)
         }

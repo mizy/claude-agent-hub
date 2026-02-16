@@ -12,6 +12,7 @@ import type {
   TaskResumePayload,
   TaskMsgPayload,
   AutoWaitConfirmPayload,
+  TaskViewResultPayload,
   ListPagePayload,
   ApprovePayload,
   RejectPayload,
@@ -119,4 +120,8 @@ export function taskMsgAction(taskId: string): TaskMsgPayload {
 
 export function autoWaitConfirmAction(taskId: string): AutoWaitConfirmPayload {
   return { action: 'auto_wait_confirm', taskId }
+}
+
+export function taskViewResultAction(taskId: string): TaskViewResultPayload {
+  return { action: 'task_view_result', taskId }
 }

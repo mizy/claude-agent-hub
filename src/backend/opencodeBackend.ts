@@ -32,13 +32,15 @@ export function createOpencodeBackend(): BackendAdapter {
         prompt,
         cwd = process.cwd(),
         stream = false,
+        skipPermissions = true,
         timeoutMs = 30 * 60 * 1000,
         onChunk,
         model,
+        sessionId,
         signal,
       } = options
 
-      const args = buildArgs(prompt, model, stream)
+      const args = buildArgs(prompt, model, stream, skipPermissions, sessionId)
       const startTime = Date.now()
 
       try {
@@ -51,23 +53,34 @@ export function createOpencodeBackend(): BackendAdapter {
         })
 
         let rawOutput: string
+        let stderrOutput = ''
         if (stream && subprocess.stdout) {
+          collectStderr(subprocess, s => { stderrOutput = s })
           rawOutput = await streamOutput(subprocess, onChunk)
         } else {
           const result = await subprocess
           rawOutput = result.stdout
+          stderrOutput = result.stderr ?? ''
         }
 
         const durationMs = Date.now() - startTime
-        const response = parseOutput(rawOutput, stream)
+        const parsed = parseOutput(rawOutput, stream)
+
+        if (!parsed.response && stderrOutput) {
+          const stderrParsed = parseOutput(stderrOutput, stream)
+          if (stderrParsed.response) {
+            logger.warn(`opencode returned error via stderr: ${stderrParsed.response.slice(0, 200)}`)
+            return err({ type: 'process', message: stderrParsed.response })
+          }
+        }
 
         logger.info(`完成 (${(durationMs / 1000).toFixed(1)}s)`)
 
         return ok({
           prompt,
-          response,
+          response: parsed.response,
           durationMs,
-          sessionId: '',
+          sessionId: parsed.sessionId,
         })
       } catch (error: unknown) {
         if (signal?.aborted) {
@@ -91,13 +104,27 @@ export function createOpencodeBackend(): BackendAdapter {
 
 // ============ Private Helpers ============
 
-function buildArgs(prompt: string, model?: string, stream?: boolean): string[] {
+function buildArgs(
+  prompt: string,
+  model?: string,
+  stream?: boolean,
+  skipPermissions?: boolean,
+  sessionId?: string
+): string[] {
   // opencode v1.x: opencode run "prompt" -m provider/model --format json
   const args: string[] = ['run', prompt]
+
+  if (sessionId) {
+    args.push('--session', sessionId)
+  }
 
   if (model) {
     // 支持 "opencode/glm-4.7-free" 或直接 "glm-4.7-free" 格式
     args.push('-m', model.includes('/') ? model : `opencode/${model}`)
+  }
+
+  if (skipPermissions) {
+    args.push('--yes')
   }
 
   if (!stream) {
@@ -108,7 +135,10 @@ function buildArgs(prompt: string, model?: string, stream?: boolean): string[] {
 }
 
 /** 解析 opencode 输出 */
-function parseOutput(raw: string, stream: boolean): string {
+function parseOutput(raw: string, stream: boolean): { response: string; sessionId: string } {
+  let response = raw.trim()
+  let sessionId = ''
+
   if (!stream) {
     // JSON 模式：尝试提取最终结果
     const events = raw.split('\n').filter(l => l.trim())
@@ -117,14 +147,26 @@ function parseOutput(raw: string, stream: boolean): string {
       try {
         const event = JSON.parse(line)
         if (event.text || event.content || event.result) {
-          return event.text || event.content || event.result
+          response = event.text || event.content || event.result
+        }
+        if (event.session_id || event.sessionId) {
+          sessionId = event.session_id || event.sessionId
         }
       } catch {
         // skip non-JSON lines
       }
     }
   }
-  return raw.trim()
+
+  return { response, sessionId }
+}
+
+/** Collect stderr output from subprocess (non-blocking, for error detection) */
+function collectStderr(subprocess: ResultPromise, onDone: (text: string) => void): void {
+  if (!subprocess.stderr) return
+  const chunks: string[] = []
+  subprocess.stderr.on('data', (chunk: Buffer) => { chunks.push(chunk.toString()) })
+  subprocess.stderr.on('end', () => { onDone(chunks.join('')) })
 }
 
 async function streamOutput(

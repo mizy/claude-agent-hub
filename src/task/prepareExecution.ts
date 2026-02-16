@@ -88,7 +88,10 @@ export async function prepareNewExecution(task: Task): Promise<{ workflow: Workf
         scope: 'lifecycle',
       })
 
-      // 重新抛出错误，让上层处理
+      // Mark as already logged to prevent duplicate logging in executeTask catch
+      if (error instanceof Error) {
+        ;(error as any)._logged = true
+      }
       throw error
     }
 

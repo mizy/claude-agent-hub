@@ -119,10 +119,11 @@ export async function startLarkWsClient(): Promise<void> {
     logger.warn('p2p_chat_create registration not supported by SDK, skipping')
   }
 
-  // Log-only events
+  // Log-only events (suppress SDK "no handle" warnings)
   const logEvent = (name: string) => async (data: unknown) => {
     logger.info(`← [event] ${name}: ${JSON.stringify(data).slice(0, 120)}`)
   }
+  const noop = async () => {}
   try {
     dispatcher.register({
       'im.message.reaction.created_v1': logEvent('reaction.created'),
@@ -130,6 +131,7 @@ export async function startLarkWsClient(): Promise<void> {
       'im.message.recalled_v1': logEvent('message.recalled'),
       'im.chat.member.user.added_v1': logEvent('chat.member.added'),
       'im.message.bot_muted_v1': logEvent('bot.muted'),
+      'im.chat.access_event.bot_p2p_chat_entered_v1': noop,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Lark SDK lacks type defs for these events
     } as any)
   } catch {
