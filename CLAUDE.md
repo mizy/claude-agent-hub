@@ -19,6 +19,8 @@ cah task pause <id>      # 暂停运行中的任务
 cah task stop <id>       # 停止/取消任务
 cah task msg <id> <msg>  # 向运行中任务发送消息
 cah task inject-node <id> <prompt>  # 动态注入节点
+cah task complete <id>   # 完成任务（审核通过）
+cah task reject <id>     # 驳回任务
 cah task trace <id>      # 查看执行追踪（调用树/耗时/错误链）
 cah task snapshot <id>   # 查看任务执行快照
 
@@ -35,12 +37,29 @@ cah report live          # 实时状态监控
 cah dashboard            # 启动 Workflow 可视化面板
 cah agent list           # 查看可用 Agent
 
-# 记忆 & 提示词
+# 记忆
 cah memory list          # 查看记忆列表
 cah memory add <content> # 手动添加记忆
 cah memory search <query># 搜索记忆
+cah memory health        # 记忆健康状态
+cah memory fading        # 即将消退的记忆
+cah memory reinforce <id># 强化记忆
+cah memory associations <id>  # 查看关联
+cah memory episodes      # 情景记忆列表
+cah memory recall <query># 回忆对话
+cah memory cleanup       # 遗忘清理
+
+# 提示词
 cah prompt versions <p>  # 查看人格提示词版本
 cah prompt rollback <p> <vid>  # 回滚提示词版本
+cah prompt diff <p> <v1> <v2>  # 对比版本内容
+cah prompt test <p>      # 启动 A/B 测试
+cah prompt evaluate <id> # 评估测试结果
+
+# 后端 & 系统
+cah backend list         # 列出可用后端
+cah backend current      # 当前后端
+cah selfcheck            # 系统自检
 ```
 
 ## 分层架构
@@ -132,6 +151,22 @@ pnpm test             # 测试（vitest）
 pnpm run format       # 格式化（prettier）
 pnpm run format:check # 格式检查
 ```
+
+## 架构模式
+
+### 事件驱动解耦（task → messaging）
+- task 层通过 `shared/events/taskEvents.ts` 的 `taskEventBus` 发射事件（如 `task:completed`），messaging 层订阅处理
+- 注册点：`messaging/registerTaskEventListeners.ts`，在 daemon 启动、子进程启动、CLI 入口三处调用
+- 目的：打断 task ↔ messaging 循环依赖，task 模块不直接 import messaging
+
+### Backend Registry
+- `backend/resolveBackend.ts` 统一注册所有后端（claude-code/opencode/iflow/codebuddy/openai-compatible）
+- `backend/backendConfig.ts` 独立提供 `resolveBackendConfig()`，避免 openaiCompatibleBackend ↔ resolveBackend 循环
+
+### 错误处理标准
+- 使用 `shared/assertError.ts` 的 `isError()` / `getErrorMessage()` / `ensureError()` 替代 `instanceof Error` 模式
+- 所有 `JSON.parse` 调用已在 try-catch 中
+- 空 catch 块必须添加 `logger.debug` 日志（除非有明确设计理由如进程退出场景）
 
 ## 规范
 

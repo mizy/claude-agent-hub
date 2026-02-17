@@ -14,7 +14,7 @@
 - **项目感知** — 自动分析项目结构、框架、规范，生成更精准的任务计划
 - **经验学习** — 从过去任务中学习成功模式，任务分类，节点模式提取
 - **可观测性** — 进度条 + ETA、趋势分析、执行对比、性能退化检测
-- **多后端** — Claude Code / OpenCode / iFlow / CodeBuddy
+- **多后端** — Claude Code / OpenCode / iFlow / CodeBuddy / OpenAI Compatible
 - **自举** — 用 CAH 开发 CAH，dogfooding 到极致
 
 ## 进化路线
@@ -37,7 +37,7 @@ Foundation       Intelligence     Self-Healing     Self-Evolution   Self-Drive
 ├─────────────────────────────────────────────────────────────────────┤
 │  CLI Layer                                                          │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │  cah "task"    task    serve    report    dashboard          │   │
+│  │  cah "task"    task    start    report    dashboard          │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────────────────────┤
 │  Agent Layer                                                        │
@@ -56,7 +56,7 @@ Foundation       Intelligence     Self-Healing     Self-Evolution   Self-Drive
 │  Infrastructure                                                     │
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐        │
 │  │ Multi-Backend  │  │ Task Store     │  │ Report         │        │
-│  │ (4种后端)      │  │ (文件存储)      │  │ (报告分析)     │        │
+│  │ (5种后端)      │  │ (文件存储)      │  │ (报告分析)     │        │
 │  └────────────────┘  └────────────────┘  └────────────────┘        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -74,9 +74,13 @@ claude --version
 ## 安装
 
 ```bash
+# 通过 npm 安装
+npm install -g @mizy/claude-agent-hub
+
+# 或从源码安装
 git clone https://github.com/anthropics/claude-agent-hub.git
 cd claude-agent-hub
-npm install && npm run build && npm link
+pnpm install && pnpm run build && npm link
 ```
 
 ## 快速开始
@@ -89,7 +93,7 @@ cah "修复登录 bug"
 cah "添加用户认证" -F
 
 # 后台模式（守护进程调度）
-cah serve -D
+cah start -D
 ```
 
 ## 命令参考
@@ -101,6 +105,7 @@ cah "任务描述"             # 创建任务并自动执行
 cah "任务描述" -F          # 前台模式，实时输出
 cah "任务描述" --no-run    # 仅创建不执行
 cah "任务描述" -d <path>   # 指定数据目录
+cah "任务描述" -b <backend> -m <model>  # 指定后端和模型
 ```
 
 ### 任务管理 (task)
@@ -118,14 +123,19 @@ cah task stats <id>        # 查看执行统计
 ### 报告分析 (report)
 
 ```bash
-cah report work            # 工作报告（日报/周报）
-  --type daily/weekly
+cah report work            # 工作报告
+  -d, --days <n>           # 分析天数
+  -a, --agent <agent>      # 按 Agent 筛选
+  -o, --output <file>      # 保存到文件
 cah report trend           # 趋势分析
-  --days 30                # 分析天数
-  --period day/week/month  # 统计周期
+  -d, --days 30            # 分析天数
+  -p, --period day/week/month  # 统计周期
   --markdown               # 输出 Markdown
+  --json                   # 输出 JSON
 cah report live            # 实时状态监控
-  --watch                  # 持续监控模式
+  -w, --watch              # 持续监控模式
+  -i, --interval <ms>      # 刷新间隔
+  --json                   # JSON 输出
 ```
 
 **趋势分析** 包含：
@@ -138,12 +148,14 @@ cah report live            # 实时状态监控
 - 待执行任务队列预览
 - 全部任务预估完成时间
 
-### 守护进程 (daemon)
+### 守护进程
 
 ```bash
-cah daemon start           # 启动后台调度
-cah daemon stop            # 停止
-cah daemon status          # 查看状态
+cah start                  # 启动（前台）
+cah start -D               # 后台运行
+cah stop                   # 停止
+cah restart                # 重启
+cah status                 # 查看状态
 ```
 
 ## 工作原理
@@ -237,26 +249,22 @@ CAH_DATA_DIR=/path/to/data cah "任务描述"
 
 ## 配置
 
-在项目根目录创建 `cah.config.json`：
+在项目根目录创建 `.claude-agent-hub.yaml`：
 
-```json
-{
-  "notify": {
-    "lark": {
-      "webhookUrl": "https://open.feishu.cn/..."
-    }
-  }
-}
+```yaml
+notify:
+  lark:
+    webhookUrl: "https://open.feishu.cn/..."
 ```
 
 ## 开发
 
 ```bash
-npm run dev          # 开发模式
-npm run build        # 构建
-npm run typecheck    # 类型检查
-npm run lint         # 代码检查
-npm test             # 测试
+pnpm run dev          # 开发模式
+pnpm run build        # 构建
+pnpm run typecheck    # 类型检查
+pnpm run lint         # 代码检查
+pnpm test             # 测试
 ```
 
 ## 文档

@@ -2,7 +2,7 @@
 
 ## 概览
 
-Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引擎自动分析、拆解和执行开发任务，支持多种 CLI 后端（claude-code/opencode/iflow/codebuddy）和复杂的控制流（条件、循环、并行、定时、人工审批等）。内置 Memory 学习系统、Prompt 优化、分布式 Tracing 和任务交互（暂停/恢复/注入）能力。
+Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引擎自动分析、拆解和执行开发任务，支持多种 CLI 后端（claude-code/opencode/iflow/codebuddy/openai-compatible）和复杂的控制流（条件、循环、并行、定时、人工审批等）。内置 Memory 学习系统（含遗忘引擎、关联引擎、情景记忆）、Prompt 优化（含 A/B 测试）、分布式 Tracing 和任务交互（暂停/恢复/注入）能力。
 
 ## 系统架构
 
@@ -58,6 +58,7 @@ Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引�
 │  │  - opencodeBackend (opencode CLI)                                   │    │
 │  │  - iflowBackend (iflow CLI)                                         │    │
 │  │  - codebuddyBackend (codebuddy CLI)                                 │    │
+│  │  - openaiCompatibleBackend (OpenAI API 兼容)                        │    │
 │  │                                                                     │    │
 │  │  invokeBackend(options) → Result<InvokeResult, InvokeError>         │    │
 │  │  自动 Prompt 组装(persona + mode) + Slot 管理 + Span 创建            │    │
@@ -108,7 +109,9 @@ src/
 │       ├── report.ts          # 报告生成
 │       ├── server.ts          # Dashboard 启动
 │       ├── trace.ts           # Tracing 查看
-│       └── init.ts            # 项目初始化
+│       ├── init.ts            # 项目初始化
+│       ├── backend.ts         # Backend 管理
+│       └── selfcheck.ts       # 系统自检
 │
 ├── backend/                    # CLI 后端抽象层
 │   ├── index.ts               # @entry: invokeBackend(), resolveBackend()
@@ -116,10 +119,12 @@ src/
 │   ├── resolveBackend.ts      # 后端解析与注册
 │   ├── promptBuilder.ts       # Prompt 组装（persona + mode）
 │   ├── concurrency.ts         # Slot 并发控制
+│   ├── backendConfig.ts        # Backend 配置 schema
 │   ├── claudeCodeBackend.ts   # claude-code 适配器
 │   ├── opencodeBackend.ts     # opencode 适配器
 │   ├── iflowBackend.ts        # iflow 适配器
-│   └── codebuddyBackend.ts    # codebuddy 适配器
+│   ├── codebuddyBackend.ts    # codebuddy 适配器
+│   └── openaiCompatibleBackend.ts  # OpenAI API 兼容适配器
 │
 ├── task/                       # Task 层：生命周期 + 执行 + 交互
 │   ├── index.ts               # @entry
@@ -180,7 +185,14 @@ src/
 │   ├── manageMemory.ts        # Memory CRUD（add/list/remove/search）
 │   ├── retrieveMemory.ts      # 相关性检索（关键词+项目+时间衰减评分）
 │   ├── extractMemory.ts       # 从任务结果提取记忆
+│   ├── extractChatMemory.ts   # 从对话提取记忆
 │   ├── formatMemory.ts        # 格式化注入 Prompt
+│   ├── migrateMemory.ts       # 记忆数据迁移（补充新字段）
+│   ├── forgettingEngine.ts    # 遗忘引擎（间隔重复衰减）
+│   ├── associationEngine.ts   # 关联引擎（记忆间双向关联图）
+│   ├── extractEpisode.ts      # 情景记忆提取
+│   ├── retrieveEpisode.ts     # 情景记忆检索
+│   ├── injectEpisode.ts       # 情景记忆注入
 │   └── types.ts               # MemoryEntry, MemoryCategory
 │
 ├── prompt-optimization/        # Prompt 优化层：自动改进 Prompt
@@ -563,6 +575,11 @@ interface MemoryEntry {
   projectPath?: string
   createdAt: string
   accessCount: number
+  // 遗忘曲线相关
+  strength?: number           // 记忆强度 (0-100)
+  stability?: number          // 稳定性
+  reinforceCount?: number     // 强化次数
+  lastReinforcedAt?: string   // 最后强化时间
 }
 ```
 
@@ -653,7 +670,7 @@ pending ──► ready ──► running ──► done
 ## 已实现功能
 
 - [x] Workflow 引擎（14 种节点类型，条件、循环、并行、定时等）
-- [x] 多 Backend 支持（claude-code/opencode/iflow/codebuddy）
+- [x] 多 Backend 支持（claude-code/opencode/iflow/codebuddy/openai-compatible）
 - [x] Persona 系统（9 种内置人格）
 - [x] 飞书通知（WebSocket + 双向对话 + 交互式卡片 + 按钮回调）
 - [x] Telegram 通知（长轮询 + 对话终端）
@@ -662,16 +679,19 @@ pending ──► ready ──► running ──► done
 - [x] 任务报告（趋势分析/实时监控/执行对比/退化检测/成本分析）
 - [x] Web Dashboard（workflow 可视化 + Tracing 面板）
 - [x] 后台守护进程 + 事件总线
-- [x] Memory 学习系统（跨任务经验提取、相关性检索、Prompt 注入）
-- [x] Prompt 优化（失败分析 + Textual Gradient 改进 + 版本管理）
+- [x] Memory 学习系统（跨任务经验提取、相关性检索、Prompt 注入、遗忘引擎、关联引擎、情景记忆）
+- [x] Prompt 优化（失败分析 + Textual Gradient 改进 + 版本管理 + A/B 测试）
 - [x] 分布式 Tracing（4 层 Span 层次，OpenTelemetry 兼容）
 - [x] 任务交互（暂停/恢复/注入节点/消息队列）
 - [x] 同项目冲突检测（cwd 自动串行）
 - [x] 孤儿任务自动恢复
 
+- [x] Selfcheck 框架（自诊断 + 自动修复）
+- [x] 任务审核流程（complete/reject）
+
 ## 扩展方向
 
-- [ ] Selfcheck 框架（自诊断 + 自愈）
+- [ ] Selfcheck 自愈循环（定时自动执行）
 - [ ] Workflow 模板库
 - [ ] 分布式执行
 - [ ] 自适应调度（根据负载调整轮询频率）
