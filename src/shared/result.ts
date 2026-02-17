@@ -3,6 +3,8 @@
  * 避免 try-catch 污染业务代码，使错误处理显式化
  */
 
+import { ensureError } from './assertError.js'
+
 export type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E }
 
 // 构造函数
@@ -58,7 +60,7 @@ export async function fromPromise<T>(promise: Promise<T>): Promise<Result<T, Err
     const value = await promise
     return ok(value)
   } catch (e) {
-    return err(e instanceof Error ? e : new Error(String(e)))
+    return err(ensureError(e))
   }
 }
 
@@ -67,7 +69,7 @@ export function fromThrowable<T>(fn: () => T): Result<T, Error> {
   try {
     return ok(fn())
   } catch (e) {
-    return err(e instanceof Error ? e : new Error(String(e)))
+    return err(ensureError(e))
   }
 }
 

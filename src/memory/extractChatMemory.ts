@@ -13,6 +13,7 @@ import { getAllMemories } from '../store/MemoryStore.js'
 import { migrateMemoryEntry } from './migrateMemory.js'
 import { saveMemory } from '../store/MemoryStore.js'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { MemoryCategory, MemoryEntry } from './types.js'
 
 const logger = createLogger('chat-memory')
@@ -149,7 +150,7 @@ export async function extractChatMemory(
     logger.info(`Extracted ${entries.length} memories from chat [${context.chatId.slice(0, 8)}]`)
     return entries
   } catch (error) {
-    logger.warn(`Chat memory extraction error: ${error instanceof Error ? error.message : String(error)}`)
+    logger.warn(`Chat memory extraction error: ${getErrorMessage(error)}`)
     return []
   }
 }

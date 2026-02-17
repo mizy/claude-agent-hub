@@ -77,6 +77,9 @@ export { formatErrorMessage } from './formatErrorMessage.js'
 // Backend 错误转换
 export { toInvokeError } from './toInvokeError.js'
 
+// 错误类型守卫与消息提取
+export { isError, getErrorMessage, getErrorStack, getErrorCause, ensureError } from './assertError.js'
+
 // 文本截断
 export { truncateText } from './truncateText.js'
 
@@ -90,6 +93,9 @@ export {
   readAllSkills,
   buildClaudeSystemPrompt,
 } from './readClaudeConfig.js'
+
+// 事件总线
+export { taskEventBus, type TaskCompletionPayload, type TaskNodeInfo } from './events/index.js'
 
 // 时间处理
 export {

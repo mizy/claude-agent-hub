@@ -5,6 +5,7 @@
 import { readFileSync } from 'fs'
 import { createLogger } from '../../shared/logger.js'
 import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { truncateText } from '../../shared/truncateText.js'
 import {
   getAllTasks,
@@ -136,7 +137,7 @@ export async function handleLogs(taskIdPrefix: string): Promise<CommandResult> {
     try {
       content = readFileSync(logPath, 'utf-8')
     } catch (e) {
-      logger.debug(`Failed to read logs for ${task.id.slice(0, 20)}: ${e instanceof Error ? e.message : String(e)}`)
+      logger.debug(`Failed to read logs for ${task.id.slice(0, 20)}: ${getErrorMessage(e)}`)
       return { text: `暂无日志: ${task.id.slice(0, 20)}` }
     }
 

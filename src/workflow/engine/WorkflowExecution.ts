@@ -143,18 +143,10 @@ export function canExecuteNode(
     }
   }
 
-  // 特殊处理 join 节点：需要所有入边的源节点都完成
-  if (node.type === 'join') {
-    return inEdges.every(edge => {
-      const sourceState = instance.nodeStates[edge.from]
-      return sourceState && isNodeCompleted(sourceState)
-    })
-  }
-
-  // 普通节点：至少一个入边的源节点完成
-  return inEdges.some(edge => {
+  // 所有入边的源节点必须完成（join 节点和并行汇聚点均需全部完成）
+  return inEdges.every(edge => {
     const sourceState = instance.nodeStates[edge.from]
-    return sourceState && isNodeCompleted(sourceState)
+    return sourceState != null && isNodeCompleted(sourceState)
   })
 }
 

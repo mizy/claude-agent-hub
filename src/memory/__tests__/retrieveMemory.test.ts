@@ -222,4 +222,63 @@ describe('retrieveRelevantMemories', () => {
     expect(results[1]!.id).toBe(midEntry.id)
     expect(results[2]!.id).toBe(oldEntry.id)
   })
+
+  // --- Fuzzy matching and normalization tests ---
+
+  it('matches @iflow query against iflow keyword (@ prefix normalization)', async () => {
+    const entry = addMemory('user chose iflow backend for analysis', 'preference', source, {
+      keywords: ['iflow', 'backend', 'analysis'],
+      confidence: 0.8,
+    })
+
+    const results = await retrieveRelevantMemories('@iflow')
+    expect(results.length).toBeGreaterThanOrEqual(1)
+    expect(results[0]!.id).toBe(entry.id)
+  })
+
+  it('matches iflow query against @iflow keyword (reverse normalization)', async () => {
+    const entry = addMemory('switched to @iflow for architecture review', 'preference', source, {
+      keywords: ['@iflow', 'architecture'],
+      confidence: 0.8,
+    })
+
+    const results = await retrieveRelevantMemories('iflow')
+    expect(results.length).toBeGreaterThanOrEqual(1)
+    expect(results[0]!.id).toBe(entry.id)
+  })
+
+  it('substring matching: partial keyword matches with lower score', async () => {
+    const exactEntry = addMemory('iflow is fast', 'lesson', source, {
+      keywords: ['iflow'],
+      confidence: 0.5,
+    })
+    const substringEntry = addMemory('iflow_backend config', 'lesson', source, {
+      keywords: ['iflow_backend'],
+      confidence: 0.5,
+    })
+
+    const results = await retrieveRelevantMemories('iflow')
+    expect(results.length).toBe(2)
+    // Exact match should rank higher than substring
+    expect(results[0]!.id).toBe(exactEntry.id)
+    expect(results[1]!.id).toBe(substringEntry.id)
+  })
+
+  it('high-value domain keywords (backend names) get boosted', async () => {
+    // Both entries match 'setup' keyword, but 'iflow' entry also matches a high-value keyword
+    const domainEntry = addMemory('iflow backend setup', 'lesson', source, {
+      keywords: ['iflow', 'setup'],
+      confidence: 0.5,
+    })
+    addMemory('random tool setup', 'lesson', source, {
+      keywords: ['random', 'setup'],
+      confidence: 0.5,
+    })
+
+    // Query 'iflow setup' — both match 'setup', but domainEntry also matches 'iflow' (boosted)
+    const results = await retrieveRelevantMemories('iflow setup')
+    expect(results.length).toBe(2)
+    // Domain keyword entry should rank first due to high-value keyword boost
+    expect(results[0]!.id).toBe(domainEntry.id)
+  })
 })

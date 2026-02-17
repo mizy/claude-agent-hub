@@ -9,6 +9,7 @@ import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 
 const logger = createLogger('opencode')
@@ -32,7 +33,6 @@ export function createOpencodeBackend(): BackendAdapter {
         prompt,
         cwd = process.cwd(),
         stream = false,
-        skipPermissions = true,
         timeoutMs = 30 * 60 * 1000,
         onChunk,
         model,
@@ -40,7 +40,7 @@ export function createOpencodeBackend(): BackendAdapter {
         signal,
       } = options
 
-      const args = buildArgs(prompt, model, stream, skipPermissions, sessionId)
+      const args = buildArgs(prompt, model, stream, sessionId)
       const startTime = Date.now()
 
       try {
@@ -48,7 +48,7 @@ export function createOpencodeBackend(): BackendAdapter {
           cwd,
           timeout: timeoutMs,
           stdin: 'ignore',
-          buffer: !stream,
+          buffer: stream ? { stdout: false, stderr: true } : true,
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
 
@@ -95,7 +95,7 @@ export function createOpencodeBackend(): BackendAdapter {
         await execa('opencode', ['--version'])
         return true
       } catch (e) {
-        logger.debug(`opencode not available: ${e instanceof Error ? e.message : String(e)}`)
+        logger.debug(`opencode not available: ${getErrorMessage(e)}`)
         return false
       }
     },
@@ -108,10 +108,10 @@ function buildArgs(
   prompt: string,
   model?: string,
   stream?: boolean,
-  skipPermissions?: boolean,
   sessionId?: string
 ): string[] {
   // opencode v1.x: opencode run "prompt" -m provider/model --format json
+  // Note: opencode has no --yes flag (unlike claude-code)
   const args: string[] = ['run', prompt]
 
   if (sessionId) {
@@ -121,10 +121,6 @@ function buildArgs(
   if (model) {
     // 支持 "opencode/glm-4.7-free" 或直接 "glm-4.7-free" 格式
     args.push('-m', model.includes('/') ? model : `opencode/${model}`)
-  }
-
-  if (skipPermissions) {
-    args.push('--yes')
   }
 
   if (!stream) {

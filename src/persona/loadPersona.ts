@@ -8,7 +8,8 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import YAML from 'yaml'
 import { BUILTIN_PERSONAS, getAvailablePersonas as getBuiltinNames } from './builtinPersonas.js'
-import { getActiveVersion } from '../store/PromptVersionStore.js'
+import { getActiveVersion, getPromptVersion } from '../store/PromptVersionStore.js'
+import { selectVariant } from '../prompt-optimization/abTesting.js'
 import { createLogger } from '../shared/logger.js'
 import type { PersonaConfig } from '../types/persona.js'
 
@@ -33,7 +34,17 @@ export async function loadPersona(name: string): Promise<PersonaConfig> {
     }
   }
 
-  // Check for active optimized prompt version
+  // Check for A/B test variant or active optimized prompt version
+  const variantId = selectVariant(name)
+  if (variantId) {
+    const variant = getPromptVersion(name, variantId)
+    if (variant) {
+      logger.info(`Using A/B test variant v${variant.version} (${variantId}) for ${name}`)
+      config.systemPrompt = variant.systemPrompt
+      return config
+    }
+  }
+
   const activeVersion = getActiveVersion(name)
   if (activeVersion) {
     logger.info(`Using optimized prompt v${activeVersion.version} for ${name}`)

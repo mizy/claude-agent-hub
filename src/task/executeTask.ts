@@ -23,6 +23,7 @@ import { appendSpan } from '../store/TraceStore.js'
 import { appendExecutionLog } from '../store/TaskLogStore.js'
 import { saveWorkflowOutput } from '../output/saveWorkflowOutput.js'
 import { createLogger, setLogMode, logError as logErrorFn } from '../shared/logger.js'
+import { isError, getErrorMessage, getErrorStack, getErrorCause } from '../shared/assertError.js'
 import type { Task } from '../types/task.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 import { waitForWorkflowCompletion } from './ExecutionProgress.js'
@@ -30,6 +31,8 @@ import { setupIncrementalStatsSaving } from './ExecutionStats.js'
 import { prepareNewExecution, prepareResume, ResumeConflictError } from './prepareExecution.js'
 import { enqueueReadyNodesForResume } from './taskRecovery.js'
 import { emitWorkflowStarted, emitWorkflowCompleted } from './taskNotifications.js'
+import { loggedErrors } from './loggedErrors.js'
+import { redirectConsoleToTaskLog } from './redirectConsole.js'
 
 export { ResumeConflictError } from './prepareExecution.js'
 
@@ -75,6 +78,10 @@ export async function executeTask(
   if (useConsole) {
     setLogMode('foreground')
   }
+
+  // Redirect console output to task's execution.log
+  // This ensures task logs are captured even when running inside daemon process
+  const restoreConsole = redirectConsoleToTaskLog(task.id)
 
   logger.info(`${resume ? '恢复任务' : '开始执行任务'}: ${task.title}`)
 
@@ -206,7 +213,7 @@ export async function executeTask(
       throw new Error(errorMsg)
     }
   } catch (error) {
-    logErrorFn(logger, '执行出错', error instanceof Error ? error : String(error), {
+    logErrorFn(logger, '执行出错', isError(error) ? error : String(error), {
       taskId: task.id,
     })
 
@@ -217,13 +224,14 @@ export async function executeTask(
 
     // Save error details to execution.log and task.json
     // Skip logging if already logged by prepareExecution (avoid duplicate log entries)
-    const alreadyLogged = error instanceof Error && (error as any)._logged === true
-    const errorMsg = error instanceof Error ? error.message : String(error)
+    const alreadyLogged = isError(error) && loggedErrors.has(error)
+    const errorMsg = getErrorMessage(error)
     if (!alreadyLogged) {
-      const errorStack = error instanceof Error ? error.stack : undefined
+      const errorStack = getErrorStack(error)
       appendExecutionLog(task.id, `[ERROR] ${errorMsg}`, { level: 'error', scope: 'lifecycle' })
-      if (error instanceof Error && error.cause) {
-        const causeMsg = error.cause instanceof Error ? error.cause.message : String(error.cause)
+      const cause = getErrorCause(error)
+      if (cause) {
+        const causeMsg = getErrorMessage(cause)
         appendExecutionLog(task.id, `[ERROR] Caused by: ${causeMsg}`, { level: 'error', scope: 'lifecycle' })
       }
       if (errorStack) {
@@ -238,7 +246,7 @@ export async function executeTask(
       try {
         await closeWorker()
       } catch (e) {
-        logErrorFn(logger, 'Worker 关闭失败', e instanceof Error ? e : String(e), {
+        logErrorFn(logger, 'Worker 关闭失败', isError(e) ? e : String(e), {
           taskId: task.id,
         })
       }
@@ -263,5 +271,8 @@ export async function executeTask(
         // Span cleanup is best-effort
       }
     }
+
+    // Restore original console methods
+    restoreConsole()
   }
 }

@@ -37,6 +37,8 @@ export interface ConversationEntry {
   costUsd?: number
   /** Model used for this response, only dir=out */
   model?: string
+  /** Backend type used for this response, only dir=out */
+  backendType?: string
 }
 
 let initialized = false

@@ -11,6 +11,7 @@ import { parseApprovalCommand, handleApproval } from './approvalHandler.js'
 import { handleCommand } from './commandHandler.js'
 import { handleChat, clearChatSession, getChatSessionInfo, toggleBenchmark } from './chatHandler.js'
 import { setModelOverride, getModelOverride, setBackendOverride, getBackendOverride } from './sessionManager.js'
+import { triggerEpisodeOnTaskCreation } from './episodeExtractor.js'
 import { APPROVAL_COMMANDS, TASK_COMMANDS } from './constants.js'
 import { getRegisteredBackends } from '../../backend/resolveBackend.js'
 import type { MessengerAdapter, ParsedApproval, ClientContext } from './types.js'
@@ -24,7 +25,7 @@ const logger = createLogger('message-router')
  * Returns null if the text is not a slash command.
  */
 export function parseCommandText(text: string): { cmd: string; args: string } | null {
-  const clean = text.replace(/@[\w\u4e00-\u9fa5]+/g, '').trim()
+  const clean = text.replace(/@\S+/g, '').trim()
   if (!clean.startsWith('/')) return null
   const spaceIdx = clean.indexOf(' ')
   if (spaceIdx === -1) return { cmd: clean.toLowerCase(), args: '' }
@@ -73,7 +74,7 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
   const { chatId, text, images, messenger, clientContext, onApprovalResult, checkBareApproval } = options
 
   // Clean text (remove @mentions for matching)
-  const cleanText = text.replace(/@[\w\u4e00-\u9fa5]+/g, '').trim()
+  const cleanText = text.replace(/@\S+/g, '').trim()
 
   // Parse slash command
   const parsed = parseCommandText(text)
@@ -132,6 +133,10 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
         } else {
           logger.debug(`Sending text reply: ${cmdResult.text?.slice(0, 50)}`)
           await messenger.reply(chatId, cmdResult.text)
+        }
+        // Trigger episode extraction when a task is created from chat
+        if (parsed.cmd === '/run') {
+          triggerEpisodeOnTaskCreation(chatId)
         }
       } catch (error) {
         const msg = formatErrorMessage(error)

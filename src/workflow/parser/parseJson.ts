@@ -4,6 +4,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { generateId } from '../../shared/generateId.js'
 import type { Workflow, WorkflowNode, WorkflowEdge } from '../types.js'
 
@@ -229,7 +230,7 @@ function tryParseJson(text: string): JsonWorkflowInput {
   } catch (e) {
     const preview = text.length > 100 ? text.slice(0, 100) + '...' : text
     throw new Error(
-      `Invalid JSON in AI response: ${e instanceof Error ? e.message : e}\n${preview}`
+      `Invalid JSON in AI response: ${getErrorMessage(e)}\n${preview}`
     )
   }
 }

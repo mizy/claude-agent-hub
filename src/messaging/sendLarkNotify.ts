@@ -9,12 +9,31 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { isError } from '../shared/assertError.js'
 import { getLarkConfig } from '../config/index.js'
 import { getLarkClient, getDefaultLarkChatId } from './larkWsClient.js'
 import { buildApprovalCard, buildCard, mdElement } from './buildLarkCard.js'
 import type { LarkCard } from './buildLarkCard.js'
 
 const logger = createLogger('lark-notify')
+
+/** Simple retry for transient Lark API failures (network, rate limit) */
+async function withRetry<T>(fn: () => Promise<T>, label: string, maxRetries = 2): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      if (attempt < maxRetries) {
+        const delay = 500 * (attempt + 1)
+        logger.debug(`${label} attempt ${attempt + 1} failed, retrying in ${delay}ms...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+  throw lastError
+}
 
 /**
  * Get a usable Lark client: prefer the shared WSClient instance,
@@ -110,14 +129,17 @@ export async function sendLarkMessageViaApi(chatId: string, text: string): Promi
   }
 
   try {
-    await client.im.v1.message.create({
-      params: { receive_id_type: 'chat_id' },
-      data: {
-        receive_id: chatId,
-        content: JSON.stringify({ text }),
-        msg_type: 'text',
-      },
-    })
+    await withRetry(
+      () => client.im.v1.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          content: JSON.stringify({ text }),
+          msg_type: 'text',
+        },
+      }),
+      'sendLarkMessage'
+    )
     logger.info(`Sent message via Lark API to chat ${chatId}`)
     return true
   } catch (error) {
@@ -217,18 +239,20 @@ export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promis
   }
 
   try {
-    // Extract card title for debugging
     const cardTitle = card.header?.title?.content || 'unknown'
     logger.info(`Sending Lark card: "${cardTitle}" to chat ${chatId}`)
 
-    await client.im.v1.message.create({
-      params: { receive_id_type: 'chat_id' },
-      data: {
-        receive_id: chatId,
-        content: JSON.stringify(card),
-        msg_type: 'interactive',
-      },
-    })
+    await withRetry(
+      () => client.im.v1.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          content: JSON.stringify(card),
+          msg_type: 'interactive',
+        },
+      }),
+      'sendLarkCard'
+    )
     logger.info(`✓ Sent card via Lark API to chat ${chatId}`)
     return true
   } catch (error) {
@@ -250,12 +274,15 @@ export async function uploadLarkImage(
 ): Promise<string | null> {
   try {
     logger.info(`Uploading image to Lark (${imageData.length} bytes)`)
-    const res = await client.im.v1.image.create({
-      data: {
-        image_type: 'message',
-        image: imageData,
-      },
-    })
+    const res = await withRetry(
+      () => client.im.v1.image.create({
+        data: {
+          image_type: 'message',
+          image: imageData,
+        },
+      }),
+      'uploadLarkImage'
+    )
     const imageKey = (res as { data?: { image_key?: string } })?.data?.image_key
     if (!imageKey) {
       logger.error('Lark image upload returned no image_key')
@@ -267,7 +294,7 @@ export async function uploadLarkImage(
   } catch (error) {
     const msg = formatErrorMessage(error)
     logger.error(`✗ Failed to upload image to Lark: ${msg}`)
-    if (error instanceof Error && error.stack) {
+    if (isError(error) && error.stack) {
       logger.debug(error.stack)
     }
     return null
@@ -284,20 +311,23 @@ export async function sendLarkImage(
 ): Promise<boolean> {
   try {
     logger.info(`Sending image to Lark chat ${chatId.slice(0, 8)} (key: ${imageKey})`)
-    await client.im.v1.message.create({
-      params: { receive_id_type: 'chat_id' },
-      data: {
-        receive_id: chatId,
-        msg_type: 'image',
-        content: JSON.stringify({ image_key: imageKey }),
-      },
-    })
+    await withRetry(
+      () => client.im.v1.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          msg_type: 'image',
+          content: JSON.stringify({ image_key: imageKey }),
+        },
+      }),
+      'sendLarkImage'
+    )
     logger.info(`✓ Image sent to Lark chat ${chatId.slice(0, 8)}`)
     return true
   } catch (error) {
     const msg = formatErrorMessage(error)
     logger.error(`✗ Failed to send image to Lark: ${msg}`)
-    if (error instanceof Error && error.stack) {
+    if (isError(error) && error.stack) {
       logger.debug(error.stack)
     }
     return false

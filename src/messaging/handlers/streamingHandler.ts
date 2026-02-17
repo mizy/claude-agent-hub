@@ -4,6 +4,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import type { MessengerAdapter } from './types.js'
 
 const logger = createLogger('streaming-handler')
@@ -28,6 +29,16 @@ export function createStreamHandler(
   let lastEditLength = 0
   let isFirstChunk = true
   let stopped = false
+  // Sequence number prevents out-of-order edits: each edit waits for the previous one
+  let editChain: Promise<void> = Promise.resolve()
+
+  function scheduleEdit(text: string, placeholderId: string): void {
+    editChain = editChain.then(() =>
+      messenger.editMessage(chatId, placeholderId, text).catch(e => {
+        logger.debug(`stream edit failed: ${getErrorMessage(e)}`)
+      })
+    )
+  }
 
   const onChunk = (chunk: string) => {
     accumulated += chunk
@@ -45,9 +56,7 @@ export function createStreamHandler(
       isFirstChunk = false
       lastEditAt = now
       lastEditLength = accumulated.length
-      messenger.editMessage(chatId, placeholderId, accumulated + ' ⏳').catch(e => {
-        logger.debug(`first chunk push failed: ${e instanceof Error ? e.message : e}`)
-      })
+      scheduleEdit(accumulated + ' ⏳', placeholderId)
       return
     }
 
@@ -59,9 +68,7 @@ export function createStreamHandler(
         accumulated.length > maxLen
           ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中) ⏳'
           : accumulated + ' ⏳'
-      messenger.editMessage(chatId, placeholderId, preview).catch(e => {
-        logger.debug(`stream edit failed: ${e instanceof Error ? e.message : e}`)
-      })
+      scheduleEdit(preview, placeholderId)
     }
   }
 
@@ -82,14 +89,16 @@ export function splitMessage(text: string, maxLength: number = DEFAULT_MAX_LENGT
       parts.push(remaining)
       break
     }
-    // Try to break at newline
+    // Try to break at newline within the allowed window
     let cutAt = remaining.lastIndexOf('\n', maxLength)
-    if (cutAt < maxLength * 0.3) {
-      // Newline too early, hard cut
+    if (cutAt <= 0 || cutAt < maxLength * 0.3) {
+      // No suitable newline break, hard cut at maxLength
       cutAt = maxLength
     }
     parts.push(remaining.slice(0, cutAt))
     remaining = remaining.slice(cutAt)
+    // Skip the newline character we split at
+    if (remaining.startsWith('\n')) remaining = remaining.slice(1)
   }
   return parts
 }
@@ -106,7 +115,13 @@ export async function sendFinalResponse(
 ): Promise<void> {
   const parts = splitMessage(response, maxLen)
   if (placeholderId && parts.length > 0) {
-    await messenger.editMessage(chatId, placeholderId, parts[0]!)
+    try {
+      await messenger.editMessage(chatId, placeholderId, parts[0]!)
+    } catch (e) {
+      // Placeholder edit failed — fall back to sending as new message
+      logger.debug(`final edit failed, falling back to reply: ${getErrorMessage(e)}`)
+      await messenger.reply(chatId, parts[0]!)
+    }
     for (const part of parts.slice(1)) {
       await messenger.reply(chatId, part)
     }

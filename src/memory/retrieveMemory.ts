@@ -10,12 +10,45 @@ import { getAllMemories, updateMemory } from '../store/MemoryStore.js'
 import { migrateMemoryEntry } from './migrateMemory.js'
 import { calculateStrength, reinforceMemory } from './forgettingEngine.js'
 import { spreadActivation } from './associationEngine.js'
+import { retrieveEpisodes } from './retrieveEpisode.js'
+import { shouldRetrieveEpisode, formatEpisodeContext } from './injectEpisode.js'
+import { formatMemoriesForPrompt } from './formatMemory.js'
+import { createLogger } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
 import type { MemoryEntry } from './types.js'
+
+const logger = createLogger('memory')
 
 interface RetrieveOptions {
   maxResults?: number
   projectPath?: string
+}
+
+// Backend names and other domain-specific terms get higher match weight
+const HIGH_VALUE_KEYWORDS = new Set([
+  'iflow', 'opencode', 'codebuddy', 'local', 'openai', 'claude',
+  'backend', 'daemon', 'workflow', 'persona', 'memory', 'lark', 'telegram',
+])
+
+/** Strip @, punctuation, and normalize for matching */
+function normalizeKeyword(kw: string): string {
+  return kw.replace(/^[@#]+/, '').replace(/[^\w\u4e00-\u9fff]/g, '').toLowerCase()
+}
+
+/** Check if two keywords match (with normalization and fuzzy prefix) */
+function keywordMatch(queryKw: string, entryKw: string): number {
+  const nq = normalizeKeyword(queryKw)
+  const ne = normalizeKeyword(entryKw)
+  if (!nq || !ne) return 0
+
+  // Exact match after normalization
+  if (nq === ne) return 1.0
+  // Substring containment (e.g. 'iflow' matches 'iflow_backend')
+  if (ne.includes(nq) || nq.includes(ne)) return 0.8
+  // Prefix match (e.g. 'config' matches 'configuration')
+  if (ne.startsWith(nq) || nq.startsWith(ne)) return 0.6
+
+  return 0
 }
 
 /**
@@ -44,11 +77,20 @@ export async function retrieveRelevantMemories(
   const scored = active.map(entry => {
     let score = 0
 
-    // Keyword overlap (0-1 range, weighted heavily)
-    const overlap = queryKeywords.filter(
-      qk => entry.keywords.some(ek => ek.includes(qk) || qk.includes(ek)),
-    ).length
-    score += (overlap / queryKeywords.length) * 2
+    // Keyword overlap with fuzzy matching and domain keyword boost
+    let keywordScore = 0
+    for (const qk of queryKeywords) {
+      let bestMatch = 0
+      for (const ek of entry.keywords) {
+        bestMatch = Math.max(bestMatch, keywordMatch(qk, ek))
+      }
+      if (bestMatch > 0) {
+        // High-value keywords (backend names etc.) get 1.5x weight
+        const weight = HIGH_VALUE_KEYWORDS.has(normalizeKeyword(qk)) ? 1.5 : 1.0
+        keywordScore += bestMatch * weight
+      }
+    }
+    score += (keywordScore / queryKeywords.length) * 2
 
     // Project path match bonus
     if (projectPath && entry.projectPath === projectPath) {
@@ -65,12 +107,12 @@ export async function retrieveRelevantMemories(
     // Access frequency boost
     score += Math.log(1 + entry.accessCount) * 0.2
 
-    return { entry, score }
+    return { entry, score, keywordScore }
   })
 
-  // Filter out zero-score entries, sort descending, take top N
+  // Filter out entries with no keyword overlap, sort descending, take top N
   const directResults = scored
-    .filter(s => s.score > 0)
+    .filter(s => s.keywordScore > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, maxResults)
     .map(s => s.entry)
@@ -103,8 +145,45 @@ export async function retrieveRelevantMemories(
       lastAccessedAt: now.toISOString(),
     })
     // Fire-and-forget reinforcement (async but we don't need to wait)
-    reinforceMemory(entry.id, 'access').catch(() => {})
+    reinforceMemory(entry.id, 'access').catch(e => logger.debug(`Memory reinforce failed: ${e}`))
   }
 
   return results
+}
+
+/**
+ * Retrieve all memory context (semantic + episodic) for a query.
+ *
+ * Returns formatted string ready for prompt injection.
+ * Episodic memory is only retrieved when:
+ * 1. enableEpisodicMemory config is true
+ * 2. Query contains trigger words (shouldRetrieveEpisode)
+ *
+ * Output order: episodic context first, then semantic memory.
+ */
+export async function retrieveAllMemoryContext(
+  query: string,
+  options?: RetrieveOptions,
+): Promise<string> {
+  const config = await loadConfig()
+
+  // Retrieve semantic memories
+  const memories = await retrieveRelevantMemories(query, options)
+  const semanticContext = formatMemoriesForPrompt(memories)
+
+  // Retrieve episodic memories if enabled and triggered
+  let episodicContext = ''
+  if (config.memory.episodic.enabled && shouldRetrieveEpisode(query)) {
+    const memoryIds = memories.map(m => m.id)
+    const episodes = retrieveEpisodes({
+      query,
+      currentMemoryIds: memoryIds,
+      limit: 3,
+    })
+    episodicContext = formatEpisodeContext(episodes)
+  }
+
+  // Combine: episodic first, then semantic
+  const parts = [episodicContext, semanticContext].filter(Boolean)
+  return parts.join('\n\n')
 }

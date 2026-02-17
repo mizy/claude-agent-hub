@@ -42,3 +42,31 @@ export interface MemoryEntry {
   // Association engine fields
   associations?: Association[]
 }
+
+// ============ Episodic Memory Types ============
+
+export type EpisodeTone = 'technical' | 'casual' | 'urgent' | 'exploratory'
+export type EpisodePlatform = 'lark' | 'telegram' | 'cli'
+
+export interface Episode {
+  id: string // episode-{timestamp}-{hash}
+  timestamp: string // ISO string
+  participants: string[] // [userId, agentId]
+  conversationId?: string // 飞书/Telegram chat_id
+  turnCount: number
+  summary: string // AI generated conversation summary
+  keyDecisions: string[] // key decision points
+  tone: EpisodeTone
+  relatedMemories: string[] // associated semantic memory IDs
+  previousEpisode?: string // previous related episode ID
+  platform: EpisodePlatform
+  triggerKeywords: string[] // trigger keywords for retrieval
+}
+
+export interface EpisodeIndexEntry {
+  id: string
+  timestamp: string
+  triggerKeywords: string[]
+  summary: string // truncated summary for quick lookup
+  platform: EpisodePlatform
+}

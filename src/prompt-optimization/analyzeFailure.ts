@@ -22,7 +22,7 @@ interface LLMAnalysisResult {
 }
 
 /** Extract failed node info from workflow instance */
-function extractFailedNodes(
+export function extractFailedNodes(
   workflow: Workflow,
   instance: WorkflowInstance
 ): FailedNodeInfo[] {

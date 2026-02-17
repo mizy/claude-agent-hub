@@ -18,13 +18,17 @@
  */
 
 // Types
-export type { MemoryCategory, MemoryEntry, MemorySource, Association, AssociationType } from './types.js'
+export type { MemoryCategory, MemoryEntry, MemorySource, Association, AssociationType, Episode, EpisodeTone, EpisodePlatform, EpisodeIndexEntry } from './types.js'
 
 // Management — CRUD and search
 export { addMemory, listMemories, removeMemory, searchMemories } from './manageMemory.js'
 
 // Retrieval — scored ranking
-export { retrieveRelevantMemories } from './retrieveMemory.js'
+export { retrieveRelevantMemories, retrieveAllMemoryContext } from './retrieveMemory.js'
+
+// Episodic memory — retrieval and injection
+export { retrieveEpisodes } from './retrieveEpisode.js'
+export { shouldRetrieveEpisode, formatEpisodeContext } from './injectEpisode.js'
 
 // Formatting — prompt injection
 export { formatMemoriesForPrompt } from './formatMemory.js'
@@ -46,6 +50,10 @@ export {
   cleanupFadingMemories,
   getMemoryHealth,
 } from './forgettingEngine.js'
+
+// Extraction — episodic memory from conversations
+export { extractEpisode } from './extractEpisode.js'
+export type { EpisodeMessage, ExtractEpisodeParams } from './extractEpisode.js'
 
 // Association engine — build, spread, retrieve via associations
 export {

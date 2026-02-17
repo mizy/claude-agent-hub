@@ -25,19 +25,22 @@ export type {
 export {
   resolveBackend,
   resolveBackendForTask,
-  resolveBackendConfig,
   registerBackend,
   clearBackendCache,
   getRegisteredBackends,
 } from './resolveBackend.js'
 
+export { resolveBackendConfig } from './backendConfig.js'
+
 export { buildPrompt } from './promptBuilder.js'
 export { createOpenAICompatibleBackend } from './openaiCompatibleBackend.js'
 
 import { resolveBackend } from './resolveBackend.js'
+import { resolveBackendConfig } from './backendConfig.js'
 import { acquireSlot, releaseSlot, getSlotInfo } from './concurrency.js'
 import { buildPrompt } from './promptBuilder.js'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { createChildSpan, endSpan } from '../store/createSpan.js'
 import { appendSpan } from '../store/TraceStore.js'
 import type { InvokeOptions, InvokeResult, InvokeError } from './types.js'
@@ -61,9 +64,15 @@ export async function invokeBackend(
 ): Promise<Result<InvokeResult, InvokeError>> {
   const backend = await resolveBackend(options.backendType)
 
-  // Apply model override: backendModel param > options.model
+  // Apply model override: backendModel param > options.model > backend config model
   if (options.backendModel && !options.model) {
     options.model = options.backendModel
+  }
+  if (!options.model) {
+    const backendConfig = await resolveBackendConfig(options.backendType)
+    if (backendConfig.model) {
+      options.model = backendConfig.model
+    }
   }
 
   // 组装完整 prompt（persona system prompt + mode 指令 + 用户 prompt）
@@ -141,12 +150,12 @@ export async function invokeBackend(
     // End LLM span with error
     if (llmSpan && traceCtx) {
       const finished = endSpan(llmSpan, {
-        error: { message: error instanceof Error ? error.message : String(error) },
+        error: { message: getErrorMessage(error) },
       })
       appendSpan(traceCtx.taskId, finished)
     }
 
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = getErrorMessage(error)
     logger.error(`Backend ${backend.displayName} threw: ${msg}`)
     throw new Error(`Backend ${backend.displayName} error: ${msg}`, { cause: error })
   }

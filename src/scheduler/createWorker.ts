@@ -5,6 +5,7 @@
 
 import { type Result, err, fromPromise } from '../shared/result.js'
 import { createLogger, type Logger } from '../shared/logger.js'
+import { ensureError } from '../shared/assertError.js'
 import { emitEvent } from './eventBus.js'
 
 export type WorkerStatus = 'idle' | 'running' | 'paused' | 'stopped'
@@ -103,7 +104,7 @@ export function createWorker<T, R>(config: WorkerConfig, handler: TaskHandler<T,
       abortControllers.delete(controller)
       runningTasks--
 
-      const error = e instanceof Error ? e : new Error(String(e))
+      const error = ensureError(e)
 
       // 失败后重试
       if (attempt < maxRetries + 1) {

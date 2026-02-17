@@ -10,6 +10,7 @@ import { tmpdir } from 'os'
 import type * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { getLarkConfig } from '../config/index.js'
 import { sendApprovalResultNotification, uploadLarkImage, sendLarkImage } from './sendLarkNotify.js'
 import { buildWelcomeCard } from './buildLarkCard.js'
@@ -58,18 +59,31 @@ interface LarkSdkResponse {
 // ── Message dedup ──
 
 const DEDUP_TTL_MS = 60_000
+const DEDUP_MAX_SIZE = 200
 const recentMessageIds = new Map<string, number>()
 
 export function isDuplicateMessage(messageId: string): boolean {
   if (!messageId) return false
   if (recentMessageIds.has(messageId)) return true
-  recentMessageIds.set(messageId, Date.now())
-  if (recentMessageIds.size > 100) {
+
+  // Evict expired entries when approaching capacity
+  if (recentMessageIds.size >= DEDUP_MAX_SIZE) {
     const now = Date.now()
     for (const [id, ts] of recentMessageIds) {
       if (now - ts > DEDUP_TTL_MS) recentMessageIds.delete(id)
     }
+    // If still full after eviction, drop oldest half (Map iterates in insertion order)
+    if (recentMessageIds.size >= DEDUP_MAX_SIZE) {
+      const dropCount = Math.floor(DEDUP_MAX_SIZE / 2)
+      let i = 0
+      for (const id of recentMessageIds.keys()) {
+        if (i++ >= dropCount) break
+        recentMessageIds.delete(id)
+      }
+    }
   }
+
+  recentMessageIds.set(messageId, Date.now())
   return false
 }
 
@@ -103,16 +117,20 @@ interface PendingImage {
 
 const pendingImageBuffer = new Map<string, PendingImage>()
 
-function flushPendingImages(
+async function flushPendingImages(
   chatId: string,
   text: string,
   handleMessage: (chatId: string, text: string, isGroup: boolean, hasMention: boolean, images?: string[]) => Promise<void>
-): void {
+): Promise<void> {
   const pending = pendingImageBuffer.get(chatId)
   if (!pending) return
   clearTimeout(pending.timer)
   pendingImageBuffer.delete(chatId)
-  handleMessage(chatId, text, pending.isGroup, pending.hasMention, pending.images)
+  try {
+    await handleMessage(chatId, text, pending.isGroup, pending.hasMention, pending.images)
+  } catch (error) {
+    logger.error(`Failed to handle message with images for chat ${chatId}: ${getErrorMessage(error)}`)
+  }
 }
 
 export async function downloadLarkImage(
@@ -311,8 +329,9 @@ export async function handleCardAction(
   data: LarkCardActionEvent,
   adapter: MessengerAdapter
 ): Promise<unknown> {
-  const chatId = data?.open_chat_id ?? data?.context?.open_chat_id
-  const messageId = data?.open_message_id ?? data?.context?.open_message_id
+  // Lark SDK v2 events put these under `context`; fall back to top-level for compat
+  const chatId = data?.context?.open_chat_id ?? data?.open_chat_id
+  const messageId = data?.context?.open_message_id ?? data?.open_message_id
   const value = data?.action?.value
   if (!chatId || !value) return undefined
 
@@ -401,9 +420,17 @@ export async function processMessageEvent(
     if (existing) {
       clearTimeout(existing.timer)
       existing.images.push(imagePath)
-      existing.timer = setTimeout(() => flushPendingImages(chatId, '', handleMsg), IMAGE_BUFFER_DELAY_MS)
+      existing.timer = setTimeout(() => {
+        flushPendingImages(chatId, '', handleMsg).catch(e => {
+          logger.error(`Failed to flush pending images on timeout: ${getErrorMessage(e)}`)
+        })
+      }, IMAGE_BUFFER_DELAY_MS)
     } else {
-      const timer = setTimeout(() => flushPendingImages(chatId, '', handleMsg), IMAGE_BUFFER_DELAY_MS)
+      const timer = setTimeout(() => {
+        flushPendingImages(chatId, '', handleMsg).catch(e => {
+          logger.error(`Failed to flush pending images on timeout: ${getErrorMessage(e)}`)
+        })
+      }, IMAGE_BUFFER_DELAY_MS)
       pendingImageBuffer.set(chatId, { chatId, images: [imagePath], isGroup, hasMention, timer })
     }
     logger.debug(`Image buffered for chat ${chatId}, waiting ${IMAGE_BUFFER_DELAY_MS}ms for text`)
@@ -413,7 +440,7 @@ export async function processMessageEvent(
   // Text message
   const text = content.text || ''
   if (pendingImageBuffer.has(chatId)) {
-    flushPendingImages(chatId, text, handleMsg)
+    await flushPendingImages(chatId, text, handleMsg)
   } else {
     await handleMsg(chatId, text, isGroup, hasMention)
   }

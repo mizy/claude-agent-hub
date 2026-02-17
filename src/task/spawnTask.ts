@@ -154,10 +154,12 @@ export function spawnTaskProcess(options: SpawnTaskOptions): number {
     detached: true,
     stdio: ['ignore', out, err],
     cwd: taskCwd,
-    env: {
-      ...process.env,
-      CAH_TASK_ID: taskId,
-    },
+    env: (() => {
+      const env: Record<string, string | undefined> = { ...process.env, CAH_TASK_ID: taskId }
+      delete env.CLAUDECODE
+      delete env.CLAUDE_CODE_ENTRYPOINT
+      return env
+    })(),
   })
 
   // Close file descriptors in parent
@@ -261,6 +263,12 @@ export function spawnTaskRunner(): void {
     detached: true,
     stdio: ['ignore', out, err],
     cwd: process.cwd(),
+    env: (() => {
+      const env = { ...process.env }
+      delete env.CLAUDECODE
+      delete env.CLAUDE_CODE_ENTRYPOINT
+      return env
+    })(),
   })
 
   // Close file descriptors in parent

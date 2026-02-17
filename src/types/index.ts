@@ -108,3 +108,11 @@ export type {
   OTLPAttribute,
   TraceContext,
 } from './trace.js'
+
+// Episode types (episodic memory)
+export type {
+  Episode,
+  EpisodeIndexEntry,
+  EpisodeTone,
+  EpisodePlatform,
+} from '../memory/types.js'

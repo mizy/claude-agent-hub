@@ -111,11 +111,13 @@ export function withLock<T>(fn: () => T): T {
 
 export function getQueueData(): QueueData {
   ensureDir(DATA_DIR)
-  return (
-    readJson<QueueData>(QUEUE_FILE, {
-      defaultValue: { jobs: [], updatedAt: new Date().toISOString() },
-    }) ?? { jobs: [], updatedAt: new Date().toISOString() }
-  )
+  const fallback: QueueData = { jobs: [], updatedAt: new Date().toISOString() }
+  const raw = readJson<QueueData>(QUEUE_FILE, { defaultValue: fallback }) ?? fallback
+  // Guard against malformed data (e.g. queue.json contains [] instead of {jobs:[]})
+  if (!Array.isArray(raw.jobs)) {
+    return fallback
+  }
+  return raw
 }
 
 export function saveQueueData(data: QueueData): void {

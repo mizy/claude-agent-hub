@@ -16,6 +16,8 @@ import { getTaskWorkflow, getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { appendExecutionLog } from '../store/TaskLogStore.js'
 import { appendTimelineEvent } from '../store/ExecutionStatsStore.js'
 import { createLogger } from '../shared/logger.js'
+import { isError, getErrorMessage, getErrorStack, getErrorCause } from '../shared/assertError.js'
+import { loggedErrors } from './loggedErrors.js'
 import type { Task } from '../types/task.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 
@@ -56,11 +58,10 @@ export async function prepareNewExecution(task: Task): Promise<{ workflow: Workf
       workflow = await generateWorkflow(task)
     } catch (error) {
       // Planning 失败时，记录详细错误到 execution.log
-      const errorMsg = error instanceof Error ? error.message : String(error)
-      const errorStack = error instanceof Error ? error.stack : undefined
-      const errorCause = error instanceof Error && error.cause
-        ? (error.cause instanceof Error ? error.cause.message : String(error.cause))
-        : undefined
+      const errorMsg = getErrorMessage(error)
+      const errorStack = getErrorStack(error)
+      const cause = getErrorCause(error)
+      const errorCause = cause ? getErrorMessage(cause) : undefined
 
       logger.error(`Workflow 生成失败: ${errorMsg}`)
       appendExecutionLog(task.id, `[ERROR] Workflow generation failed: ${errorMsg}`, {
@@ -89,8 +90,8 @@ export async function prepareNewExecution(task: Task): Promise<{ workflow: Workf
       })
 
       // Mark as already logged to prevent duplicate logging in executeTask catch
-      if (error instanceof Error) {
-        ;(error as any)._logged = true
+      if (isError(error)) {
+        loggedErrors.add(error)
       }
       throw error
     }

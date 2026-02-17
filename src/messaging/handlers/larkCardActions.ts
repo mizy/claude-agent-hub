@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { handleGet, handleLogs, handleStop, handleResume, handleList, handlePause } from './commandHandler.js'
 import { handleApproval } from './approvalHandler.js'
 import { resumePausedTask } from '../../task/index.js'
@@ -77,6 +78,13 @@ export async function dispatchCardAction(params: CardActionParams): Promise<unkn
 
     case 'task_view_result':
       return handleTaskViewResult(chatId, payload.taskId, messenger)
+
+    default: {
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      const _exhaustive: never = payload
+      logger.warn(`Unhandled card action: ${(_exhaustive as Record<string, unknown>).action}`)
+      return undefined
+    }
   }
 }
 
@@ -108,7 +116,7 @@ async function handleListPageAction(
     setTimeout(() => {
       messenger.editCard?.(chatId, messageId, result.larkCard!).then(
         () => logger.debug(`→ [card] update completed for page ${page}`),
-        e => logger.error(`→ [card] update failed for page ${page}: ${e instanceof Error ? e.message : String(e)}`)
+        e => logger.error(`→ [card] update failed for page ${page}: ${getErrorMessage(e)}`)
       )
     }, 100)
     // Return empty response to prevent SDK auto-handling

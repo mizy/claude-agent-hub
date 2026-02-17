@@ -7,6 +7,7 @@
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, appendFileSync } from 'fs'
 import { dirname } from 'path'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { JsonReadOptions, JsonWriteOptions } from './types.js'
 
 const logger = createLogger('json-io')
@@ -34,7 +35,7 @@ export function readJson<T>(filepath: string, options?: JsonReadOptions): T | nu
 
     return parsed
   } catch (e) {
-    logger.debug(`Failed to read JSON: ${filepath} (${e instanceof Error ? e.message : String(e)})`)
+    logger.debug(`Failed to read JSON: ${filepath} (${getErrorMessage(e)})`)
     return (options?.defaultValue as T) ?? null
   }
 }

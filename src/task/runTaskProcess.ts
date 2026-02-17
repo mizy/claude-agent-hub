@@ -17,8 +17,10 @@ import { parseArgs } from 'util'
 import { runTask, resumeTask } from './runTask.js'
 import { ResumeConflictError } from './executeTask.js'
 import { getTask, updateTask, updateProcessInfo, getProcessInfo } from '../store/TaskStore.js'
+import { registerTaskEventListeners } from '../messaging/registerTaskEventListeners.js'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorStack, getErrorMessage } from '../shared/assertError.js'
 
 const logger = createLogger('task-process')
 
@@ -26,7 +28,7 @@ const logger = createLogger('task-process')
 let currentTaskId: string | undefined
 
 function handleFatalError(type: string, error: unknown): void {
-  const message = error instanceof Error ? (error.stack ?? error.message) : String(error)
+  const message = getErrorStack(error) ?? getErrorMessage(error)
   logger.error(`${type}: ${message}`)
 
   if (currentTaskId) {
@@ -73,6 +75,9 @@ async function main(): Promise<void> {
   }
 
   currentTaskId = taskId
+
+  // Register task event → notification bridge
+  registerTaskEventListeners()
 
   logger.info(`Starting task process: ${taskId}`)
   if (isResume) {

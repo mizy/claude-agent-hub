@@ -7,13 +7,15 @@ import { invokeBackend } from '../../backend/index.js'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { buildClientPrompt } from '../../prompts/chatPrompts.js'
 import { logConversation, getRecentConversations } from './conversationLog.js'
 import { getSession, setSession, clearSession, enqueueChat, destroySessions, getModelOverride, getBackendOverride, shouldResetSession, incrementTurn } from './sessionManager.js'
 import { createStreamHandler, sendFinalResponse } from './streamingHandler.js'
 import { sendDetectedImages } from './imageExtractor.js'
 import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
-import { retrieveRelevantMemories, formatMemoriesForPrompt } from '../../memory/index.js'
+import { trackEpisodeTurn, destroyEpisodeTrackers, flushEpisode } from './episodeExtractor.js'
+import { retrieveAllMemoryContext, addMemory } from '../../memory/index.js'
 import { getRegisteredBackends } from '../../backend/resolveBackend.js'
 import type { MessengerAdapter, ClientContext } from './types.js'
 
@@ -24,7 +26,25 @@ const DEFAULT_MAX_LENGTH = 4096
 // Per-chatId AbortController for interrupting active AI calls
 const activeControllers = new Map<string, AbortController>()
 
+// Backends that understand Claude model names (opus/sonnet/haiku)
+const CLAUDE_MODEL_BACKENDS = new Set(['claude-code', 'codebuddy'])
+
+/** Check if a backend supports Claude model names for auto-selection */
+function isClaudeModelBackend(backendType?: string): boolean {
+  return !backendType || CLAUDE_MODEL_BACKENDS.has(backendType)
+}
+
 // ── Model Selection ──
+
+/** Parse inline model keyword from message start (e.g. "@opus question" or "opus 帮我看看") */
+export function parseInlineModel(text: string): { model?: string; actualText: string } {
+  const pattern = /^@?(opus|sonnet|haiku)(?:\s|$)/i
+  const match = text.match(pattern)
+  if (!match) return { actualText: text }
+  const model = match[1]!.toLowerCase()
+  const actualText = text.slice(match[0].length).trim()
+  return { model, actualText }
+}
 
 /** Keywords that signal deep reasoning requiring opus */
 const OPUS_KEYWORDS = /(?:重构|refactor|架构|architect|迁移|migrate|设计|design|审查|review|分析|analyze|debug|调试|思考|think|深入|详细|detailed|复杂|complex|解释|explain|优化|optimize|比较|对比|compare|总结|summarize|推理|reason|elaborate)/i
@@ -124,10 +144,10 @@ export async function handleChat(
 
   return enqueueChat(chatId, () =>
     handleChatInternal(chatId, text, messenger, options).catch(e => {
-      const msg = e instanceof Error ? e.message : String(e)
+      const msg = getErrorMessage(e)
       logger.warn(`chat queue error [${chatId.slice(0, 8)}]: ${msg}`)
       messenger.reply(chatId, `❌ 处理失败: ${msg}`).catch(re => {
-        logger.debug(`Failed to send error reply: ${re instanceof Error ? re.message : String(re)}`)
+        logger.debug(`Failed to send error reply: ${getErrorMessage(re)}`)
       })
     })
   )
@@ -137,6 +157,7 @@ export async function handleChat(
  * Clear the session for a chatId.
  */
 export function clearChatSession(chatId: string): boolean {
+  flushEpisode(chatId)
   return clearSession(chatId)
 }
 
@@ -156,10 +177,15 @@ export function destroyChatHandler(): void {
     controller.abort()
   }
   activeControllers.clear()
+  destroyEpisodeTrackers()
   destroySessions()
 }
 
 // ── Internal ──
+
+// Cached backend override regex (invalidated when backend list changes)
+let cachedBackendPattern: RegExp | null = null
+let cachedBackendList: string | null = null
 
 /** Parse backend override from message text (e.g. "@iflow question" or "/use opencode\nquestion") */
 export async function parseBackendOverride(text: string): Promise<{ backend?: string; actualText: string }> {
@@ -170,8 +196,15 @@ export async function parseBackendOverride(text: string): Promise<{ backend?: st
   const namedBackends = Object.keys(config.backends || {})
 
   const allBackends = [...new Set([...registeredBackends, ...namedBackends])]
-  const pattern = new RegExp(`^[@/](?:backend:|use\\s+)?(${allBackends.join('|')})(?:\\s|\\n)`, 's')
-  const match = text.match(pattern)
+  const backendListKey = allBackends.join(',')
+
+  // Reuse cached regex if backend list hasn't changed
+  if (backendListKey !== cachedBackendList) {
+    cachedBackendPattern = new RegExp(`^[@/](?:backend:|use\\s+)?(${allBackends.join('|')})(?:\\s|\\n)`, 's')
+    cachedBackendList = backendListKey
+  }
+
+  const match = text.match(cachedBackendPattern!)
   if (!match) return { actualText: text }
 
   const backend = match[1]
@@ -198,7 +231,9 @@ async function handleChatInternal(
   const mentionCleaned = text.replace(/@_\w+/g, '').trim()
   // Parse backend override from message (inline directive like @iflow or /use opencode)
   const { backend: inlineBackend, actualText } = await parseBackendOverride(mentionCleaned)
-  const effectiveText = actualText || mentionCleaned
+  // Parse inline model keyword (e.g. "@opus question" or "haiku 帮我看看")
+  const { model: inlineModel, actualText: textAfterModel } = parseInlineModel(actualText || mentionCleaned)
+  const effectiveText = textAfterModel || actualText || mentionCleaned
 
   // Auto-reset session if turn/token limits exceeded
   if (shouldResetSession(chatId)) {
@@ -213,6 +248,22 @@ async function handleChatInternal(
   const sessionBackend = getBackendOverride(chatId)
   const backendOverride = inlineBackend ?? sessionBackend
   logger.info(`💬 chat ${sessionId ? 'continue' : 'new'} [${chatId.slice(0, 8)}]${backendOverride ? ` [backend: ${backendOverride}]` : ''}`)
+
+  // Record backend switch as a user preference memory
+  if (inlineBackend && effectiveText) {
+    try {
+      const topic = effectiveText.length > 50 ? effectiveText.slice(0, 47) + '...' : effectiveText
+      addMemory(
+        `用户在讨论 "${topic}" 时选择使用 ${inlineBackend} backend`,
+        'preference',
+        { type: 'chat', chatId },
+        { keywords: ['backend', inlineBackend, 'preference'], confidence: 0.7 },
+      )
+      logger.info(`记录 backend 偏好: ${inlineBackend} [${chatId.slice(0, 8)}]`)
+    } catch (e) {
+      logger.debug(`Failed to record backend preference: ${getErrorMessage(e)}`)
+    }
+  }
 
   // Log user message
   logConversation({
@@ -233,9 +284,22 @@ async function handleChatInternal(
   const clientPrefix = options?.client ? buildClientPrompt(options.client) + '\n\n' : ''
   const images = options?.images
 
-  // Inject minimal recent history for new sessions (session resume handles continuity)
+  // Detect backend change early — needed for history injection decision
+  const sessionCreatedBy = session?.sessionBackendType
+  const currentBackend = backendOverride ?? undefined
+  const backendChanged = !!(sessionId && sessionCreatedBy !== currentBackend)
+  if (backendChanged) {
+    logger.info(`🔄 session backend changed (${sessionCreatedBy ?? 'default'} → ${currentBackend ?? 'default'}), starting new session`)
+    // Flush episode on backend switch so the conversation boundary is captured
+    flushEpisode(chatId)
+  }
+
+  // Session won't be reused if backend changed or inline backend specified
+  const willStartNewSession = !sessionId || !!inlineBackend || backendChanged
+
+  // Inject minimal recent history when starting a new session (backend switch, new chat, etc.)
   let historyContext = ''
-  if (!sessionId) {
+  if (willStartNewSession) {
     const recent = getRecentConversations(chatId, 5)
     if (recent.length > 0) {
       const summaryLines = recent.map(e => {
@@ -248,19 +312,19 @@ async function handleChatInternal(
   }
 
   // Retrieve relevant memories for context injection
+  // Always retrieve if there's a query — chatMemory.enabled controls extraction, not retrieval
   let memoryContext = ''
-  const chatMemoryConfig = config.memory.chatMemory
-  if (chatMemoryConfig.enabled && effectiveText) {
+  if (effectiveText) {
     try {
-      const memories = await retrieveRelevantMemories(effectiveText, {
-        maxResults: chatMemoryConfig.maxMemories,
+      const context = await retrieveAllMemoryContext(effectiveText, {
+        maxResults: config.memory.chatMemory.maxMemories,
       })
-      if (memories.length > 0) {
-        memoryContext = formatMemoriesForPrompt(memories) + '\n\n'
-        logger.debug(`injected ${memories.length} memories for chat [${chatId.slice(0, 8)}]`)
+      if (context) {
+        memoryContext = context + '\n\n'
+        logger.debug(`injected memory context (${context.length} chars) for chat [${chatId.slice(0, 8)}]`)
       }
     } catch (e) {
-      logger.debug(`memory retrieval failed: ${e instanceof Error ? e.message : e}`)
+      logger.debug(`memory retrieval failed: ${getErrorMessage(e)}`)
     }
   }
 
@@ -272,10 +336,10 @@ async function handleChatInternal(
     prompt = prompt ? `${prompt}\n\n${imagePart}` : imagePart
   }
 
-  // Model selection: user override > auto (haiku→sonnet→opus)
+  // Model selection: inline keyword > session /model override > auto (haiku→sonnet→opus)
   // Only apply auto model selection for Claude backends; non-Claude backends ignore Claude model names
-  const modelOverride = getModelOverride(chatId)
-  const isClaudeBackend = !backendOverride || backendOverride === 'claude-code' || backendOverride === 'codebuddy'
+  const modelOverride = inlineModel ?? getModelOverride(chatId)
+  const isClaudeBackend = isClaudeModelBackend(backendOverride)
   const model = isClaudeBackend || modelOverride ? selectModel(effectiveText, { hasImages, modelOverride }) : undefined
   bench.promptReady = Date.now()
 
@@ -294,6 +358,10 @@ async function handleChatInternal(
     placeholderId = pId
     streamHandlerState.placeholderId = pId
     return pId
+  }).catch(e => {
+    // Placeholder failure is non-critical — streaming edits won't work but final reply still sends
+    logger.debug(`placeholder send failed: ${getErrorMessage(e)}`)
+    return null
   })
 
   const chatMcp = config.backend.chat?.mcpServers ?? []
@@ -301,13 +369,7 @@ async function handleChatInternal(
   bench.parallelStart = Date.now()
   try {
     // Don't reuse session across different backends (session IDs are backend-specific)
-    const sessionCreatedBy = session?.sessionBackendType
-    const currentBackend = backendOverride ?? undefined
-    const backendChanged = sessionId && sessionCreatedBy !== currentBackend
     const effectiveSessionId = (inlineBackend || backendChanged) ? undefined : sessionId
-    if (backendChanged) {
-      logger.info(`🔄 session backend changed (${sessionCreatedBy ?? 'default'} → ${currentBackend ?? 'default'}), starting new session`)
-    }
     const [, result] = await Promise.all([
       placeholderPromise,
       invokeBackend({
@@ -337,7 +399,7 @@ async function handleChatInternal(
         stopStreaming()
         // Edit placeholder to indicate interruption (if it was sent)
         if (placeholderId) {
-          await messenger.editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...').catch(() => {})
+          await messenger.editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...').catch(e => logger.debug(`Edit placeholder failed: ${e}`))
         }
         return
       }
@@ -355,7 +417,7 @@ async function handleChatInternal(
     const durationMs = Date.now() - bench.start
     logger.info(`→ reply ${response.length} chars (${(durationMs / 1000).toFixed(1)}s)`)
 
-    // Log AI reply (with cost and model for aggregation)
+    // Log AI reply (with cost, model, and backend for aggregation)
     logConversation({
       ts: new Date().toISOString(),
       dir: 'out',
@@ -366,6 +428,7 @@ async function handleChatInternal(
       durationMs,
       costUsd: result.value.costUsd,
       model,
+      backendType: backendOverride,
     })
 
     // Update session (track which backend created it for cross-backend detection)
@@ -378,8 +441,9 @@ async function handleChatInternal(
 
     // Append completion marker so user knows the response is final
     const elapsedSec = ((Date.now() - bench.start) / 1000).toFixed(1)
-    const backendLabel = backendOverride ? ` [${backendOverride}]` : ''
-    const completionMarker = `\n\n---\n✅ ${elapsedSec}s${backendLabel}`
+    const backendType = backendOverride ?? 'claude-code'
+    const modelLabel = model ? ` (${model})` : ''
+    const completionMarker = `\n\n---\n⏱️ ${elapsedSec}s | ${backendType}${modelLabel}`
     const finalText = response + completionMarker
 
     // Stop streaming edits before sending final response to prevent race condition
@@ -398,18 +462,23 @@ async function handleChatInternal(
       })
       logger.info(`\n${benchStr}`)
       await messenger.reply(chatId, benchStr).catch(e => {
-        logger.debug(`benchmark reply failed: ${e instanceof Error ? e.message : e}`)
+        logger.debug(`benchmark reply failed: ${getErrorMessage(e)}`)
       })
     }
 
     // Detect and send images from response
     await sendDetectedImages(chatId, response, messenger)
 
-    // Fire-and-forget: extract memories from conversation periodically
-    const keywordTriggered = triggerChatMemoryExtraction(chatId, effectiveText, response, platform)
-    if (keywordTriggered) {
-      await messenger.reply(chatId, '💾 已记录到记忆中').catch(() => {})
+    // Fire-and-forget: extract memories from conversation periodically (only when extraction enabled)
+    if (config.memory.chatMemory.enabled) {
+      const keywordTriggered = triggerChatMemoryExtraction(chatId, effectiveText, response, platform)
+      if (keywordTriggered) {
+        await messenger.reply(chatId, '💾 已记录到记忆中').catch(e => logger.debug(`Memory reply failed: ${e}`))
+      }
     }
+
+    // Track conversation turn for episodic memory (idle timeout + explicit end detection)
+    trackEpisodeTurn(chatId, effectiveText, response, platform)
   } catch (error) {
     // Clean up controller reference on error
     if (activeControllers.get(chatId) === abortController) {
@@ -421,7 +490,7 @@ async function handleChatInternal(
       logger.info(`🛑 AI call aborted [${chatId.slice(0, 8)}]`)
       stopStreaming()
       if (placeholderId) {
-        await messenger.editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...').catch(() => {})
+        await messenger.editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...').catch(e => logger.debug(`Edit placeholder failed: ${e}`))
       }
       return
     }
@@ -431,7 +500,7 @@ async function handleChatInternal(
     const errorMsg = `❌ 处理失败: ${msg}`
     if (placeholderId) {
       await messenger.editMessage(chatId, placeholderId, errorMsg).catch(e => {
-        logger.debug(`error edit failed: ${e instanceof Error ? e.message : e}`)
+        logger.debug(`error edit failed: ${getErrorMessage(e)}`)
       })
     } else {
       await messenger.reply(chatId, errorMsg)

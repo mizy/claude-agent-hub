@@ -13,6 +13,7 @@ import { parseJson, validateJsonWorkflow, extractJson } from './index.js'
 import { appendConversation, appendJsonlLog } from '../store/TaskLogStore.js'
 import { getBackendConfig } from '../config/index.js'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import {
   analyzeProjectContext,
   formatProjectContextForPrompt,
@@ -20,6 +21,8 @@ import {
   formatInsightsForPrompt,
 } from '../analysis/index.js'
 import { retrieveRelevantMemories, formatMemoriesForPrompt, associativeRetrieve } from '../memory/index.js'
+import { getAllPatterns, findMatchingPattern } from '../prompt-optimization/extractSuccessPattern.js'
+import { formatFailureKnowledgeForPrompt } from '../prompt-optimization/failureKnowledgeBase.js'
 import { getAllMemories } from '../store/MemoryStore.js'
 import { migrateMemoryEntry } from '../memory/migrateMemory.js'
 import { calculateStrength } from '../memory/forgettingEngine.js'
@@ -27,7 +30,27 @@ import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from './types.js'
 
+import type { SuccessPattern } from '../prompt-optimization/extractSuccessPattern.js'
+
 const logger = createLogger('workflow-gen')
+
+/** Format a matching success pattern as prompt context */
+function formatSuccessPatternForPrompt(pattern: SuccessPattern): string {
+  const lines = ['## 推荐执行模式（基于历史成功经验）\n']
+  lines.push(`任务类型: ${pattern.taskType}`)
+  lines.push(`参考节点序列: ${pattern.nodeSequence.join(' → ')}`)
+  lines.push(`平均耗时: ${Math.round(pattern.avgDuration / 1000)}s`)
+  lines.push(`样本数: ${pattern.sampleCount}`)
+  lines.push(`置信度: ${(pattern.confidence * 100).toFixed(0)}%`)
+
+  const agents = Object.entries(pattern.agentAssignments)
+  if (agents.length > 0) {
+    lines.push(`Agent 分配: ${agents.map(([, persona]) => persona).join(', ')}`)
+  }
+
+  lines.push('\n> 此模式来自历史成功任务，可作为节点设计参考。')
+  return lines.join('\n')
+}
 
 /**
  * 创建直接回答的 Workflow
@@ -90,7 +113,7 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
       })(),
     ])
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = getErrorMessage(error)
     logger.error(`Planning preparation failed: ${msg}`)
     throw new Error(`Planning preparation failed (analyzeProjectContext/learnFromHistory/retrieveMemories): ${msg}`, { cause: error })
   }
@@ -99,6 +122,14 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   const projectContextPrompt = formatProjectContextForPrompt(projectContext)
   const learningPrompt = formatInsightsForPrompt(learningInsights)
   const memoryPrompt = formatMemoriesForPrompt(memories)
+
+  // Success pattern + failure knowledge injection
+  const query = task.description || task.title
+  const matchingPattern = findMatchingPattern(query, getAllPatterns())
+  const successPatternPrompt = matchingPattern
+    ? formatSuccessPatternForPrompt(matchingPattern)
+    : ''
+  const failureKnowledgePrompt = formatFailureKnowledgeForPrompt()
 
   logger.debug(`项目类型: ${projectContext.projectType}, 语言: ${projectContext.mainLanguage}`)
   logger.debug(`相关历史任务: ${learningInsights.relatedTasks.length} 个`)
@@ -119,13 +150,17 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
 
   // 构建 prompt（生成 Workflow 固定使用"软件架构师"角色）
   logger.debug('构建 prompt...')
+  // Combine memory + success patterns + failure knowledge into one context block
+  const evolutionContext = [memoryPrompt, successPatternPrompt, failureKnowledgePrompt]
+    .filter(Boolean)
+    .join('\n\n')
   const prompt = buildJsonWorkflowPrompt(
     task,
     availablePersonas,
     projectContextPrompt,
     learningPrompt,
     useAgentTeams,
-    memoryPrompt
+    evolutionContext
   )
   logger.debug(`Prompt 长度: ${prompt.length} 字符`)
 

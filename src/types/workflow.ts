@@ -249,6 +249,8 @@ export interface NodeState {
   durationMs?: number
   /** 最后一次错误的分类（transient/recoverable/permanent） */
   lastErrorCategory?: 'transient' | 'recoverable' | 'permanent' | 'unknown'
+  /** autoWait 已被用户审批通过，跳过再次暂停 */
+  autoWaitApproved?: boolean
   /** 执行上下文快照，用于断点续跑诊断 */
   context?: {
     /** 执行时的 workflow 变量快照 */

@@ -13,6 +13,7 @@ import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 
 const logger = createLogger('claude-code')
@@ -99,7 +100,8 @@ export function createClaudeCodeBackend(): BackendAdapter {
           cwd,
           timeout: timeoutMs,
           stdin: 'ignore',
-          buffer: !stream,
+          // Always buffer stderr for error diagnostics; only skip stdout buffering in stream mode
+          buffer: stream ? { stdout: false, stderr: true } : true,
           env,
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
@@ -146,7 +148,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
         await execa('claude', ['--version'], { env })
         return true
       } catch (e) {
-        logger.debug(`claude not available: ${e instanceof Error ? e.message : String(e)}`)
+        logger.debug(`claude not available: ${getErrorMessage(e)}`)
         return false
       }
     },
@@ -222,7 +224,7 @@ function buildMcpConfigJson(serverNames: string[]): string {
     if (Object.keys(selected).length === 0) return ''
     return JSON.stringify({ mcpServers: selected })
   } catch (e) {
-    logger.warn(`Failed to read MCP config: ${e instanceof Error ? e.message : e}`)
+    logger.warn(`Failed to read MCP config: ${getErrorMessage(e)}`)
     return ''
   }
 }

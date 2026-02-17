@@ -4,6 +4,7 @@
  */
 
 import chalk from 'chalk'
+import { getErrorMessage } from './assertError.js'
 
 // ============ 错误分类定义 ============
 
@@ -212,7 +213,7 @@ export class AppError extends Error {
   }
 
   static unknown(cause: unknown): AppError {
-    const message = cause instanceof Error ? cause.message : String(cause)
+    const message = getErrorMessage(cause)
     return new AppError('UNKNOWN', message, 'UNKNOWN', cause)
   }
 

@@ -51,6 +51,9 @@ export const TASKS_DIR = join(DATA_DIR, 'tasks')
 /** 记忆目录 */
 export const MEMORY_DIR = join(DATA_DIR, 'memory')
 
+/** 情景记忆目录 */
+export const EPISODES_DIR = join(DATA_DIR, 'episodes')
+
 /** Prompt 版本目录 */
 export const PROMPT_VERSIONS_DIR = join(DATA_DIR, 'prompt-versions')
 

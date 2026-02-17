@@ -198,7 +198,7 @@ describe('createOpenAICompatibleBackend', () => {
   it('checkAvailable should use resolveBackendConfig with backendName', async () => {
     // Spy on resolveBackendConfig to verify it's called with the correct backendName
     const resolveConfigSpy = vi.spyOn(
-      await import('../resolveBackend.js'),
+      await import('../backendConfig.js'),
       'resolveBackendConfig'
     )
 
@@ -230,7 +230,7 @@ describe('createOpenAICompatibleBackend', () => {
 
   it('invoke should use resolveBackendConfig with backendName', async () => {
     const resolveConfigSpy = vi.spyOn(
-      await import('../resolveBackend.js'),
+      await import('../backendConfig.js'),
       'resolveBackendConfig'
     )
 

@@ -30,6 +30,11 @@ import {
 } from '../src/store/TaskWorkflowStore.js'
 import { saveInstance, getInstance } from '../src/store/WorkflowStore.js'
 import { pauseTask, resumePausedTask, injectNode } from '../src/task/manageTaskLifecycle.js'
+import { spawnTaskProcess } from '../src/task/spawnTask.js'
+
+vi.mock('../src/task/spawnTask.js', () => ({
+  spawnTaskProcess: vi.fn(() => 12345),
+}))
 import type { Task } from '../src/types/task.js'
 import type { Workflow, WorkflowInstance } from '../src/workflow/types.js'
 import {
@@ -278,7 +283,7 @@ describe('Pause/Resume Task', () => {
     expect(result.error).toContain('only \'paused\' tasks')
   })
 
-  it('should fail to resume if process is dead', () => {
+  it('should auto-spawn when resuming with dead process', () => {
     const { taskId } = setupTask({ status: 'paused' })
     // Save a process.json with a PID that's definitely not running
     saveProcessInfo(taskId, {
@@ -288,16 +293,18 @@ describe('Pause/Resume Task', () => {
     })
 
     const result = resumePausedTask(taskId)
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('not running')
+    expect(result.success).toBe(true)
+    expect(result.task?.status).toBe('developing')
+    expect(spawnTaskProcess).toHaveBeenCalledWith({ taskId, resume: true })
   })
 
-  it('should fail to resume if no process info', () => {
+  it('should auto-spawn when resuming with no process info', () => {
     const { taskId } = setupTask({ status: 'paused' })
-    // No process.json at all
+    // No process.json at all → auto-spawn
     const result = resumePausedTask(taskId)
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('not running')
+    expect(result.success).toBe(true)
+    expect(result.task?.status).toBe('developing')
+    expect(spawnTaskProcess).toHaveBeenCalledWith({ taskId, resume: true })
   })
 
   it('should return error for non-existent task', () => {

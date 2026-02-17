@@ -63,6 +63,12 @@ describe('parseCommandText', () => {
     expect(parseCommandText('@Bot /help')).toEqual({ cmd: '/help', args: '' })
     expect(parseCommandText('@MyBot /run task')).toEqual({ cmd: '/run', args: 'task' })
   })
+
+  it('should strip Unicode @mentions (CJK, emoji, etc.)', () => {
+    expect(parseCommandText('@机器人 /help')).toEqual({ cmd: '/help', args: '' })
+    expect(parseCommandText('@ロボット /run task')).toEqual({ cmd: '/run', args: 'task' })
+    expect(parseCommandText('@봇 /help')).toEqual({ cmd: '/help', args: '' })
+  })
 })
 
 describe('routeMessage — image routing', () => {

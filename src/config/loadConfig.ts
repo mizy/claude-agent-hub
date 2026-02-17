@@ -256,7 +256,7 @@ export function getDefaultConfig(): Config {
       type: 'claude-code',
       model: 'opus',
       enableAgentTeams: false,
-      chat: { mcpServers: [] },
+      chat: { mcpServers: [], session: { timeoutMinutes: 60, maxTurns: 10, maxEstimatedTokens: 50_000, maxSessions: 200 } },
     },
     memory: {
       forgetting: {
@@ -284,6 +284,11 @@ export function getDefaultConfig(): Config {
       chatMemory: {
         enabled: true,
         maxMemories: 5,
+        extractEveryNTurns: 5,
+        triggerKeywords: [],
+      },
+      episodic: {
+        enabled: true,
       },
     },
   }

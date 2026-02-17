@@ -18,9 +18,17 @@ import {
   stopLarkWsClient,
   startTelegramClient,
   stopTelegramClient,
+  registerTaskEventListeners,
 } from '../messaging/index.js'
-import { destroyChatHandler, loadSessions } from '../messaging/index.js'
+import { destroyChatHandler, loadSessions, configureSession } from '../messaging/index.js'
 import { acquirePidLock, releasePidLock, isServiceRunning } from './pidLock.js'
+import { runSelfcheck, runFixes, generateRepairTask } from '../selfcheck/index.js'
+import type { SelfcheckReport } from '../selfcheck/index.js'
+import { runEvolutionCycle } from '../prompt-optimization/index.js'
+import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
+import { createLogger } from '../shared/logger.js'
+
+const logger = createLogger('daemon')
 
 interface DaemonOptions {
   detach?: boolean
@@ -80,24 +88,35 @@ async function spawnDetached(): Promise<void> {
   }
 
   const { DATA_DIR } = await import('../store/paths.js')
-  const { mkdirSync, openSync } = await import('fs')
+  const { mkdirSync, openSync, existsSync, renameSync } = await import('fs')
   const { join } = await import('path')
 
   // 确保数据目录存在
   mkdirSync(DATA_DIR, { recursive: true })
 
-  // 创建日志文件
+  // Log rotation: rename existing logs to .old before creating new ones
   const logFile = join(DATA_DIR, 'daemon.log')
   const errFile = join(DATA_DIR, 'daemon.err.log')
-  const logFd = openSync(logFile, 'a')
-  const errFd = openSync(errFile, 'a')
+  if (existsSync(logFile)) {
+    renameSync(logFile, logFile + '.old')
+  }
+  if (existsSync(errFile)) {
+    renameSync(errFile, errFile + '.old')
+  }
+  const logFd = openSync(logFile, 'w')
+  const errFd = openSync(errFile, 'w')
 
   const args = process.argv.slice(2).filter(a => a !== '--detach' && a !== '-D')
   const child = spawn(process.execPath, [...process.execArgv, ...getEntryArgs(), ...args], {
     detached: true,
     stdio: ['ignore', logFd, errFd],
     cwd: process.cwd(), // 确保工作目录正确，能找到 dist 文件
-    env: process.env, // 传递环境变量（包括 CAH_DATA_DIR）
+    env: (() => {
+      const env = { ...process.env }
+      delete env.CLAUDECODE
+      delete env.CLAUDE_CODE_ENTRYPOINT
+      return env
+    })(),
   })
   child.unref()
 
@@ -105,7 +124,7 @@ async function spawnDetached(): Promise<void> {
   console.log(chalk.gray(`  日志: ${logFile}`))
   console.log(chalk.gray(`  错误: ${errFile}`))
   console.log(chalk.gray(`  使用 cah daemon stop 停止`))
-  console.log(chalk.gray(`  使用 tail -f ${logFile} 查看日志`))
+  console.log(chalk.gray(`  使用 tail -F ${logFile} 查看日志`))
 }
 
 /** 获取当前入口脚本参数 */
@@ -130,8 +149,70 @@ function getEntryArgs(): string[] {
   return [script]
 }
 
+/** Handle selfcheck failure: auto-fix fixable issues, generate repair tasks, and notify */
+async function handleSelfcheckFailure(report: SelfcheckReport): Promise<void> {
+  // Try auto-fix for fixable failures
+  const fixableChecks = report.checks.filter(c => c.status === 'fail' && c.fixable && c.fix)
+  if (fixableChecks.length > 0) {
+    logger.info(`Attempting auto-fix for ${fixableChecks.length} fixable issue(s)`)
+    const fixes = await runFixes(report)
+    for (const fix of fixes) {
+      logger.info(`Fixed: ${fix}`)
+    }
+  }
+
+  // Generate repair task for unfixable failures (self-healing loop)
+  const repairResult = await generateRepairTask(report)
+  if (repairResult) {
+    logger.info(`Created repair task: ${repairResult.taskId}`)
+  }
+
+  // Send notification for failures
+  const failedChecks = report.checks.filter(c => c.status === 'fail')
+  const lines = [
+    `⚠️ 健康检查异常 (${report.totalScore}/100)`,
+    '',
+    ...failedChecks.map(c => {
+      const diagnosis = c.diagnosis ? ` — ${c.diagnosis.rootCause}` : ''
+      return `✗ ${c.name} (${c.score}/100)${diagnosis}`
+    }),
+  ]
+
+  try {
+    const { getNotifyConfig } = await import('../config/index.js')
+    const notifyConfig = await getNotifyConfig()
+
+    // Lark notification
+    const { getDefaultLarkChatId } = await import('../messaging/larkWsClient.js')
+    const larkChatId = notifyConfig?.lark?.chatId || getDefaultLarkChatId()
+    if (larkChatId) {
+      const { sendLarkMessageViaApi } = await import('../messaging/sendLarkNotify.js')
+      await sendLarkMessageViaApi(larkChatId, lines.join('\n'))
+    }
+
+    // Telegram notification
+    const { getDefaultChatId: getDefaultTelegramChatId } = await import('../messaging/telegramClient.js')
+    const tg = notifyConfig?.telegram
+    if (tg?.botToken) {
+      const tgChatId = tg.chatId || getDefaultTelegramChatId()
+      if (tgChatId) {
+        const { sendTelegramTextMessage } = await import('../messaging/sendTelegramNotify.js')
+        await sendTelegramTextMessage(lines.join('\n'), tgChatId)
+      }
+    }
+  } catch (error) {
+    logger.warn(`Failed to send selfcheck failure notification: ${error}`)
+  }
+}
+
 /** 实际运行守护进程（前台阻塞） */
 async function runDaemon(): Promise<void> {
+  // Remove CLAUDECODE env var early — daemon may be started from a Claude Code session,
+  // and all child processes (task workers, queue runners) would inherit it, causing
+  // "cannot be launched inside another Claude Code session" errors.
+  delete process.env.CLAUDECODE
+  delete process.env.CLAUDE_CODE_ENTRYPOINT
+
   // 尝试获取 PID 锁
   const lockResult = acquirePidLock()
   if (!lockResult.success) {
@@ -144,6 +225,9 @@ async function runDaemon(): Promise<void> {
     console.error(chalk.gray(`  或使用 'kill ${lock.pid}' 强制停止`))
     process.exit(1)
   }
+
+  // Register task event → notification bridge
+  registerTaskEventListeners()
 
   // 启用配置文件监听（自动重载）
   const config = await loadConfig({ watch: true })
@@ -172,7 +256,43 @@ async function runDaemon(): Promise<void> {
   })
   scheduledJobs.push(job)
 
-  // Restore chat sessions from disk before starting notification platforms
+  // Periodic selfcheck — every 30 minutes
+  const selfcheckJob = cron.schedule('*/30 * * * *', async () => {
+    try {
+      const report = await runSelfcheck()
+      if (report.hasFailed) {
+        logger.warn(`Selfcheck failed (score: ${report.totalScore}/100)`)
+        await handleSelfcheckFailure(report)
+      } else {
+        logger.debug(`Selfcheck passed (score: ${report.totalScore}/100)`)
+      }
+    } catch (error) {
+      logger.error(`Selfcheck cron error: ${error}`)
+    }
+  })
+  scheduledJobs.push(selfcheckJob)
+
+  // Periodic evolution cycle — every hour, run evolution for all personas
+  const evolutionJob = cron.schedule('0 * * * *', () => {
+    try {
+      for (const persona of Object.values(BUILTIN_PERSONAS)) {
+        const report = runEvolutionCycle(persona.name)
+        if (report.activeVersion) {
+          logger.debug(
+            `Evolution [${persona.name}]: active=v${report.activeVersion.version} ` +
+              `(${(report.activeVersion.successRate * 100).toFixed(0)}% success, ${report.activeVersion.totalTasks} tasks), ` +
+              `candidates=${report.candidateVersions}, trend=${report.failureTrend}`
+          )
+        }
+      }
+    } catch (error) {
+      logger.debug(`Evolution cron error: ${error}`)
+    }
+  })
+  scheduledJobs.push(evolutionJob)
+
+  // Configure and restore chat sessions from disk before starting notification platforms
+  configureSession(config.backend.chat.session)
   loadSessions()
 
   // 根据配置自动启动通知平台

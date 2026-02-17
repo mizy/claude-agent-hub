@@ -5,7 +5,6 @@
  */
 
 import { loadConfig } from '../config/index.js'
-import type { BackendConfig } from '../config/schema.js'
 import type { BackendAdapter } from './types.js'
 import type { Task } from '../types/task.js'
 import { createClaudeCodeBackend } from './claudeCodeBackend.js'
@@ -93,24 +92,6 @@ export async function resolveBackend(backendType?: string): Promise<BackendAdapt
  */
 export async function resolveBackendForTask(task: Task): Promise<BackendAdapter> {
   return resolveBackend(task.backend)
-}
-
-/**
- * 解析任务指定的 backend 配置（用于获取 model 等详细配置）
- *
- * 优先级：task.backend (named) > config.defaultBackend (named) > config.backend
- */
-export async function resolveBackendConfig(backendType?: string): Promise<BackendConfig> {
-  const config = await loadConfig()
-  const namedBackends = config.backends ?? {}
-
-  if (backendType && namedBackends[backendType]) {
-    return namedBackends[backendType]!
-  }
-  if (config.defaultBackend && namedBackends[config.defaultBackend]) {
-    return namedBackends[config.defaultBackend]!
-  }
-  return config.backend
 }
 
 /** 注册自定义后端（用于扩展） */

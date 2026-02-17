@@ -26,8 +26,8 @@ export async function showDaemonLogs(options: ShowLogsOptions): Promise<void> {
   console.log(chalk.gray(`日志文件: ${logFile}\n`))
 
   if (options.follow) {
-    // 使用 tail -f 持续监听
-    const tail = spawn('tail', ['-f', logFile], {
+    // 使用 tail -F 持续监听（-F 支持文件 rotation 时自动跟踪新文件）
+    const tail = spawn('tail', ['-F', logFile], {
       stdio: 'inherit',
     })
 

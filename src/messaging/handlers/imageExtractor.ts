@@ -6,35 +6,49 @@
 import { readFileSync, existsSync } from 'fs'
 import { resolve, isAbsolute } from 'path'
 import { createLogger } from '../../shared/logger.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import type { MessengerAdapter } from './types.js'
 
 const logger = createLogger('image-extractor')
 
+// Compiled once at module load — reused across calls (reset lastIndex before each use)
+const IMAGE_EXT = '(?:png|jpg|jpeg|gif|webp|bmp)'
+const ABSOLUTE_RE = new RegExp(
+  `(?:^|\\s|["'\`])(\\/[\\w./-]+\\.${IMAGE_EXT})(?:\\s|$|["'\`\\)\\]},;:])`,
+  'gim'
+)
+const MARKDOWN_RE = new RegExp(
+  `!\\[.*?\\]\\(([\\w./-]+\\.${IMAGE_EXT})\\)`,
+  'gi'
+)
+const RELATIVE_RE = new RegExp(
+  `(?:^|\\s|["'\`])(\\.?\\/[\\w./-]+\\.${IMAGE_EXT}|[\\w-]+\\.${IMAGE_EXT})(?:\\s|$|["'\`\\)\\]},;:])`,
+  'gim'
+)
+
 /** Extract local image file paths from text */
 export function extractImagePaths(text: string): string[] {
   const paths: string[] = []
+  let match: RegExpExecArray | null
 
   // Pattern 1: Absolute paths (/path/to/image.png)
-  const absoluteRegex =
-    /(?:^|\s|["'`])(\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
-  let match: RegExpExecArray | null
-  while ((match = absoluteRegex.exec(text)) !== null) {
+  ABSOLUTE_RE.lastIndex = 0
+  while ((match = ABSOLUTE_RE.exec(text)) !== null) {
     const filePath = match[1]!
     if (existsSync(filePath)) paths.push(filePath)
   }
 
   // Pattern 2: Markdown image syntax ![alt](path)
-  const markdownRegex = /!\[.*?\]\(([\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp))\)/gi
-  while ((match = markdownRegex.exec(text)) !== null) {
+  MARKDOWN_RE.lastIndex = 0
+  while ((match = MARKDOWN_RE.exec(text)) !== null) {
     const filePath = match[1]!
     const resolved = resolveImagePath(filePath)
     if (resolved && existsSync(resolved)) paths.push(resolved)
   }
 
   // Pattern 3: Relative paths mentioned in text (./image.png or image.png)
-  const relativeRegex =
-    /(?:^|\s|["'`])(\.?\/[\w./-]+\.(?:png|jpg|jpeg|gif|webp|bmp)|[\w-]+\.(?:png|jpg|jpeg|gif|webp|bmp))(?:\s|$|["'`)\]},;:])/gim
-  while ((match = relativeRegex.exec(text)) !== null) {
+  RELATIVE_RE.lastIndex = 0
+  while ((match = RELATIVE_RE.exec(text)) !== null) {
     const filePath = match[1]!
     const resolved = resolveImagePath(filePath)
     if (resolved && existsSync(resolved)) paths.push(resolved)
@@ -81,7 +95,7 @@ export async function sendDetectedImages(
       await messenger.replyImage(chatId, imageData, imgPath)
       logger.info(`✓ Image sent: ${imgPath}`)
     } catch (e) {
-      logger.error(`✗ Failed to send image ${imgPath}: ${e instanceof Error ? e.message : e}`)
+      logger.error(`✗ Failed to send image ${imgPath}: ${getErrorMessage(e)}`)
     }
   }
 }

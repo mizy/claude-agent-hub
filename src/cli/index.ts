@@ -27,6 +27,7 @@ import { registerMemoryCommands } from './commands/memory.js'
 import { registerPromptCommands } from './commands/prompt.js'
 import { registerDashboardCommand } from './commands/server.js'
 import { registerBackendCommands } from './commands/backend.js'
+import { registerSelfcheckCommand } from './commands/selfcheck.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask, getAllTasks, listTasks } from '../task/queryTask.js'
@@ -41,6 +42,8 @@ import { success, error, info, warn } from './output.js'
 import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
 import { findClosestMatch } from '../shared/levenshtein.js'
 import { truncateText } from '../shared/truncateText.js'
+import { getErrorMessage } from '../shared/assertError.js'
+import { registerTaskEventListeners } from '../messaging/registerTaskEventListeners.js'
 
 /** Options that consume the next argv as value (for positional counting) */
 const OPTIONS_WITH_VALUE = new Set([
@@ -92,7 +95,11 @@ const KNOWN_COMMANDS = [
   'memory',
   'prompt',
   'backend',
+  'selfcheck',
 ]
+
+// Bridge task lifecycle events to messaging notifications
+registerTaskEventListeners()
 
 const program = new Command()
 
@@ -233,7 +240,7 @@ async function handleTaskDescription(
       }
     }
   } catch (err) {
-    error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
+    error(`Failed: ${getErrorMessage(err)}`)
   }
 }
 
@@ -260,7 +267,7 @@ program
 
       success('Task execution completed')
     } catch (err) {
-      error(`Execution failed: ${err instanceof Error ? err.message : String(err)}`)
+      error(`Execution failed: ${getErrorMessage(err)}`)
     }
   })
 
@@ -274,6 +281,7 @@ registerMemoryCommands(program)
 registerPromptCommands(program)
 registerDashboardCommand(program)
 registerBackendCommands(program)
+registerSelfcheckCommand(program)
 
 // cah list - 查看任务列表的快捷命令
 program

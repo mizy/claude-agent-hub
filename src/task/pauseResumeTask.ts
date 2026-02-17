@@ -11,6 +11,7 @@ import {
 import { getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { getInstance as getInstanceById, saveInstance, updateInstanceStatus } from '../store/WorkflowStore.js'
 import { resumeWaitingJobsForInstance } from '../workflow/index.js'
+import { spawnTaskProcess } from './spawnTask.js'
 import { appendExecutionLog, appendJsonlLog } from '../store/TaskLogStore.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
@@ -94,12 +95,7 @@ export function resumePausedTask(id: string): PauseTaskResult {
 
   // Check process is still alive
   const processInfo = getProcessInfo(task.id)
-  if (!processInfo || !isProcessRunning(processInfo.pid)) {
-    return {
-      success: false,
-      error: `Task process is not running. Use 'cah task resume ${id}' to restart it instead.`,
-    }
-  }
+  const processAlive = processInfo && isProcessRunning(processInfo.pid)
 
   // Update task status back to developing
   updateTask(task.id, { status: 'developing' })
@@ -108,25 +104,46 @@ export function resumePausedTask(id: string): PauseTaskResult {
   const instance = getTaskInstance(task.id)
   if (instance && instance.status === 'paused') {
     updateInstanceStatus(instance.id, 'running')
-    // Clear pause metadata
+    // Clear pause metadata and mark autoWait nodes as approved
     const inst = getInstanceById(instance.id)
     if (inst) {
+      const wasAutoWait = inst.pauseReason?.startsWith('autoWait:')
       inst.pausedAt = undefined
       inst.pauseReason = undefined
+
+      // Mark pending nodes as autoWaitApproved so they won't pause again
+      if (wasAutoWait) {
+        for (const [, nodeState] of Object.entries(inst.nodeStates)) {
+          if (nodeState.status === 'pending') {
+            nodeState.autoWaitApproved = true
+          }
+        }
+      }
+
       saveInstance(inst)
     }
-    // Resume any autoWait jobs that were waiting in the queue
-    resumeWaitingJobsForInstance(instance.id)
-  }
 
-  logger.info(`Resumed paused task: ${task.id}`)
+    if (processAlive) {
+      // Process alive: just resume waiting jobs in-process
+      resumeWaitingJobsForInstance(instance.id)
+    }
+  }
 
   appendExecutionLog(task.id, 'Task resumed from pause', { scope: 'lifecycle' })
   appendJsonlLog(task.id, {
     event: 'task_resumed',
     message: `Task resumed: ${task.title}`,
-    data: { instanceId: instance?.id },
+    data: { instanceId: instance?.id, respawn: !processAlive },
   })
+
+  // Process dead (e.g. autoWait pause where process exited): spawn a new one
+  if (!processAlive) {
+    logger.info(`Process not alive for paused task ${task.id}, spawning new process`)
+    const pid = spawnTaskProcess({ taskId: task.id, resume: true })
+    logger.info(`Resumed paused task ${task.id} with new process PID: ${pid}`)
+  } else {
+    logger.info(`Resumed paused task: ${task.id} (process ${processInfo!.pid} still alive)`)
+  }
 
   const updatedTask = getTask(task.id)
   return { success: true, task: updatedTask ?? task }

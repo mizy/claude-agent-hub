@@ -9,7 +9,8 @@ import OpenAI from 'openai'
 import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import { buildClaudeSystemPrompt } from '../shared/readClaudeConfig.js'
-import { resolveBackendConfig } from './resolveBackend.js'
+import { resolveBackendConfig } from './backendConfig.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { Result } from '../shared/result.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 
@@ -147,7 +148,7 @@ export function createOpenAICompatibleBackend(backendName?: string): BackendAdap
         }
 
         // Timeout detection
-        const msg = error instanceof Error ? error.message : String(error)
+        const msg = getErrorMessage(error)
         if (msg.includes('timeout') || msg.includes('ETIMEDOUT')) {
           return err({ type: 'timeout', message: `超时 (${durationMs}ms): ${msg}` })
         }
@@ -171,7 +172,7 @@ export function createOpenAICompatibleBackend(backendName?: string): BackendAdap
         await client.models.list()
         return true
       } catch (e) {
-        logger.debug(`OpenAI compatible API not available: ${e instanceof Error ? e.message : String(e)}`)
+        logger.debug(`OpenAI compatible API not available: ${getErrorMessage(e)}`)
         return false
       }
     },

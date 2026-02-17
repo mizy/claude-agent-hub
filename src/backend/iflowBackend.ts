@@ -10,6 +10,7 @@ import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 
 const logger = createLogger('iflow')
@@ -49,7 +50,7 @@ export function createIflowBackend(): BackendAdapter {
           cwd,
           timeout: timeoutMs,
           stdin: 'ignore',
-          buffer: !stream,
+          buffer: stream ? { stdout: false, stderr: true } : true,
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
 
@@ -98,7 +99,7 @@ export function createIflowBackend(): BackendAdapter {
         await execa('iflow', ['--version'])
         return true
       } catch (e) {
-        logger.debug(`iflow not available: ${e instanceof Error ? e.message : String(e)}`)
+        logger.debug(`iflow not available: ${getErrorMessage(e)}`)
         return false
       }
     },

@@ -34,7 +34,7 @@ export {
 export { handleApproval, parseApprovalCommand } from './handlers/approvalHandler.js'
 export { handleChat, clearChatSession, getChatSessionInfo, destroyChatHandler } from './handlers/chatHandler.js'
 export { routeMessage, parseCommandText } from './handlers/messageRouter.js'
-export { loadSessions } from './handlers/sessionManager.js'
+export { loadSessions, configureSession } from './handlers/sessionManager.js'
 export type {
   MessengerAdapter,
   SendOptions,
@@ -107,6 +107,10 @@ export {
 } from './sendTaskNotify.js'
 export type { TaskNotifyInfo, NodeInfo } from './sendTaskNotify.js'
 
+// ── Task event listeners (call at startup to bridge events → notifications) ──
+
+export { registerTaskEventListeners } from './registerTaskEventListeners.js'
+
 // ── Lark event routing ──
 
 export {
@@ -126,6 +130,10 @@ export {
   buildMarkdownCard,
   convertMarkdownTables,
 } from './larkCardWrapper.js'
+
+// ── Episode extractor ──
+
+export { triggerEpisodeOnTaskCreation, flushEpisode, clearEpisodeTracker } from './handlers/episodeExtractor.js'
 
 // ── Streaming handler ──
 

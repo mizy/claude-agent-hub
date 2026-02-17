@@ -24,9 +24,22 @@ export const gitConfigSchema = z.object({
   auto_push: z.boolean().default(false),
 })
 
+export const sessionConfigSchema = z.object({
+  /** Session timeout in minutes (default 60) */
+  timeoutMinutes: z.number().default(60),
+  /** Max turns before auto-reset (default 10) */
+  maxTurns: z.number().default(10),
+  /** Max estimated tokens before auto-reset (default 50000) */
+  maxEstimatedTokens: z.number().default(50_000),
+  /** Max concurrent sessions in memory (LRU eviction, default 200) */
+  maxSessions: z.number().default(200),
+})
+
 export const chatConfigSchema = z.object({
   /** MCP servers to enable in chat mode (empty = all disabled for speed) */
   mcpServers: z.array(z.string()).default([]),
+  /** Session management settings */
+  session: sessionConfigSchema.default({}),
 })
 
 export const openaiCompatibleConfigSchema = z.object({
@@ -104,6 +117,14 @@ export const memoryReinforceConfigSchema = z.object({
 export const chatMemoryConfigSchema = z.object({
   enabled: z.boolean().default(true),
   maxMemories: z.number().default(5),
+  /** How many turns between periodic extractions (default 5) */
+  extractEveryNTurns: z.number().default(5),
+  /** Extra trigger keywords (beyond built-in remember/decision/correction/emphasis keywords) */
+  triggerKeywords: z.array(z.string()).default([]),
+})
+
+export const episodicMemoryConfigSchema = z.object({
+  enabled: z.boolean().default(true),
 })
 
 export const memoryConfigSchema = z.object({
@@ -111,6 +132,7 @@ export const memoryConfigSchema = z.object({
   association: memoryAssociationConfigSchema.default({}),
   reinforce: memoryReinforceConfigSchema.default({}),
   chatMemory: chatMemoryConfigSchema.default({}),
+  episodic: episodicMemoryConfigSchema.default({}),
 })
 
 export const daemonConfigSchema = z.object({
@@ -136,6 +158,7 @@ export type AgentConfig = z.infer<typeof agentConfigSchema>
 export type TaskConfig = z.infer<typeof taskConfigSchema>
 export type GitConfig = z.infer<typeof gitConfigSchema>
 export type BackendConfig = z.infer<typeof backendConfigSchema>
+export type SessionConfig = z.infer<typeof sessionConfigSchema>
 export type ChatConfig = z.infer<typeof chatConfigSchema>
 export type OpenAICompatibleConfig = z.infer<typeof openaiCompatibleConfigSchema>
 export type LarkConfig = z.infer<typeof larkConfigSchema>
@@ -146,5 +169,6 @@ export type MemoryForgettingConfig = z.infer<typeof memoryForgettingConfigSchema
 export type MemoryAssociationConfig = z.infer<typeof memoryAssociationConfigSchema>
 export type MemoryReinforceConfig = z.infer<typeof memoryReinforceConfigSchema>
 export type ChatMemoryConfig = z.infer<typeof chatMemoryConfigSchema>
+export type EpisodicMemoryConfig = z.infer<typeof episodicMemoryConfigSchema>
 export type MemoryConfig = z.infer<typeof memoryConfigSchema>
 export type Config = z.infer<typeof configSchema>

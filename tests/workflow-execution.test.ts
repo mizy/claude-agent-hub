@@ -392,7 +392,7 @@ describe('canExecuteNode', () => {
     expect(canExecuteNode('task1', workflow, instance)).toBe(false)
   })
 
-  it('should allow node when any upstream is done (OR logic for non-join)', () => {
+  it('should require ALL upstream for multi-edge node (AND logic)', () => {
     const workflow = makeWorkflow(
       [
         { id: 'a', type: 'task', name: 'A', task: { persona: 'c', prompt: 'p' } },
@@ -406,11 +406,11 @@ describe('canExecuteNode', () => {
     )
     const instance = makeInstance({
       a: ns('done'),
-      b: ns('pending'), // b not done, but a is done → c can execute
+      b: ns('pending'), // b not done → c cannot execute
       c: ns('pending'),
     })
 
-    expect(canExecuteNode('c', workflow, instance)).toBe(true)
+    expect(canExecuteNode('c', workflow, instance)).toBe(false)
   })
 
   it('should require ALL upstream for join node (AND logic)', () => {

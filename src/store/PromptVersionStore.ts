@@ -77,6 +77,12 @@ export function updatePromptVersionStats(
   return store.updateSync(versionId, { stats })
 }
 
+/** Retire a specific version (set status to 'retired') */
+export function retireVersion(personaName: string, versionId: string): boolean {
+  const store = getStoreForPersona(personaName)
+  return store.updateSync(versionId, { status: 'retired' as const })
+}
+
 /**
  * Rollback to a target version:
  * - Set target version to 'active'

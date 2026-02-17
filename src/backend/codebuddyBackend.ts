@@ -12,6 +12,7 @@ import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 
 const logger = createLogger('codebuddy')
@@ -84,7 +85,7 @@ export function createCodebuddyBackend(): BackendAdapter {
           cwd,
           timeout: timeoutMs,
           stdin: 'ignore',
-          buffer: !stream,
+          buffer: stream ? { stdout: false, stderr: true } : true,
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
 
@@ -126,7 +127,7 @@ export function createCodebuddyBackend(): BackendAdapter {
           await execa('cbc', ['--version'])
           return true
         } catch (e) {
-          logger.debug(`codebuddy/cbc not available: ${e instanceof Error ? e.message : String(e)}`)
+          logger.debug(`codebuddy/cbc not available: ${getErrorMessage(e)}`)
           return false
         }
       }
@@ -142,7 +143,7 @@ async function resolveBinary(): Promise<string> {
     await execa('codebuddy', ['--version'])
     return 'codebuddy'
   } catch (e) {
-    logger.debug(`codebuddy binary not found, falling back to cbc: ${e instanceof Error ? e.message : String(e)}`)
+    logger.debug(`codebuddy binary not found, falling back to cbc: ${getErrorMessage(e)}`)
     return 'cbc'
   }
 }

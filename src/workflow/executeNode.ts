@@ -8,6 +8,7 @@ import { getWorkflow, getInstance, saveInstance } from '../store/WorkflowStore.j
 import { getTask, updateTask } from '../store/TaskStore.js'
 import { createLogger, logError as logErrorHelper } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { isError, getErrorStack } from '../shared/assertError.js'
 import { logNodeStarted, logNodeCompleted, logNodeFailed } from './logNodeExecution.js'
 import { executeNodeByType } from './nodeTypeHandlers.js'
 import { createRootSpan, createChildSpan, endSpan } from '../store/createSpan.js'
@@ -60,11 +61,16 @@ async function notifyAutoWaitPause(
   try {
     const { getLarkConfig } = await import('../config/index.js')
     const larkConfig = await getLarkConfig()
-    const larkChatId = larkConfig?.chatId
+    const { getDefaultLarkChatId } = await import('../messaging/larkWsClient.js')
+    const larkChatId = larkConfig?.chatId || getDefaultLarkChatId()
+
     if (!larkChatId || !taskId) {
       // Fallback to webhook if no chat ID
       const webhookUrl = larkConfig?.webhookUrl
-      if (!webhookUrl) return
+      if (!webhookUrl) {
+        logger.warn(`autoWait notification skipped: no Lark chatId or webhook configured`)
+        return
+      }
 
       const { sendReviewNotification } = await import('../messaging/index.js')
       await sendReviewNotification({
@@ -121,8 +127,9 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     }
   }
 
-  // 检查 autoWait：执行前自动暂停
-  if (shouldAutoWait(node)) {
+  // 检查 autoWait：执行前自动暂停（跳过已被用户 approve 的节点）
+  const nodeState = instance.nodeStates[nodeId]
+  if (shouldAutoWait(node) && !nodeState?.autoWaitApproved) {
     const taskId = instance.variables?.taskId as string | undefined
     const reason = `autoWait: ${node.name}`
     logger.info(`Node ${nodeId} (${node.name}) has autoWait, pausing before execution`)
@@ -143,7 +150,7 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     }
 
     // Send Lark notification asynchronously (fire-and-forget)
-    notifyAutoWaitPause(workflow.name, node.name, taskId, node.description || node.task?.prompt).catch(() => {})
+    notifyAutoWaitPause(workflow.name, node.name, taskId, node.description || node.task?.prompt).catch(e => logger.debug(`Auto-wait-pause notify failed: ${e}`))
 
     // Return special result — the NodeWorker will re-queue this node
     // when the user resumes (the node stays in pending/ready state)
@@ -273,14 +280,14 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
       const finished = endSpan(traceCtx.currentSpan, {
         error: {
           message: errorMessage,
-          stack: error instanceof Error ? error.stack : undefined,
+          stack: getErrorStack(error),
         },
       })
       appendSpan(taskId!, finished)
     }
 
     // 使用增强的错误日志记录，包含完整上下文
-    logErrorHelper(logger, `Node ${nodeId} failed`, error instanceof Error ? error : errorMessage, {
+    logErrorHelper(logger, `Node ${nodeId} failed`, isError(error) ? error : errorMessage, {
       workflowId,
       instanceId,
       nodeId,

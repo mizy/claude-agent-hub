@@ -5,14 +5,33 @@
 
 import { join } from 'path'
 import { createLogger } from '../../shared/logger.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { readJson, writeJson } from '../../store/readWriteJson.js'
 import { DATA_DIR } from '../../store/paths.js'
 import type { ChatSession } from './types.js'
+import type { SessionConfig } from '../../config/schema.js'
 
 const logger = createLogger('session-manager')
 
-const SESSION_TIMEOUT_MS = 60 * 60 * 1000 // 60 minutes — longer timeout maximizes Claude API prompt cache hits
 const SESSIONS_FILE = join(DATA_DIR, 'sessions.json')
+
+// Default config values (overridden by configureSession)
+let sessionConfig: SessionConfig = {
+  timeoutMinutes: 60,
+  maxTurns: 10,
+  maxEstimatedTokens: 50_000,
+  maxSessions: 200,
+}
+
+/** Configure session parameters from config. Call once at startup. */
+export function configureSession(config: SessionConfig): void {
+  sessionConfig = config
+  logger.info(`Session config: timeout=${config.timeoutMinutes}m, maxTurns=${config.maxTurns}, maxTokens=${config.maxEstimatedTokens}, maxSessions=${config.maxSessions}`)
+}
+
+function getTimeoutMs(): number {
+  return sessionConfig.timeoutMinutes * 60 * 1000
+}
 
 const sessions = new Map<string, ChatSession>()
 
@@ -25,15 +44,16 @@ function ensureCleanupTimer(): void {
   if (cleanupTimer) return
   cleanupTimer = setInterval(() => {
     const now = Date.now()
+    const timeoutMs = getTimeoutMs()
     let changed = false
     for (const [chatId, session] of sessions) {
-      if (now - session.lastActiveAt > SESSION_TIMEOUT_MS) {
+      if (now - session.lastActiveAt > timeoutMs) {
         sessions.delete(chatId)
         changed = true
         logger.info(`Session expired for chat ${chatId}`)
       }
     }
-    if (changed) persistSessions()
+    if (changed) schedulePersist()
     if (sessions.size === 0 && cleanupTimer) {
       clearInterval(cleanupTimer)
       cleanupTimer = null
@@ -41,9 +61,24 @@ function ensureCleanupTimer(): void {
   }, 60_000)
 }
 
-// ── Disk persistence ──
+// ── Debounced disk persistence ──
 
-function persistSessions(): void {
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+const PERSIST_DELAY_MS = 2000
+
+function schedulePersist(): void {
+  if (persistTimer) return // already scheduled
+  persistTimer = setTimeout(() => {
+    persistTimer = null
+    persistSessionsNow()
+  }, PERSIST_DELAY_MS)
+}
+
+function persistSessionsNow(): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
   try {
     const data: Record<string, ChatSession> = {}
     for (const [chatId, session] of sessions) {
@@ -51,9 +86,27 @@ function persistSessions(): void {
     }
     writeJson(SESSIONS_FILE, data)
   } catch (e) {
-    logger.debug(`Failed to persist sessions: ${e instanceof Error ? e.message : e}`)
+    logger.debug(`Failed to persist sessions: ${getErrorMessage(e)}`)
   }
 }
+
+// ── LRU eviction ──
+
+/** Evict oldest sessions when over maxSessions limit */
+function evictIfNeeded(): void {
+  const max = sessionConfig.maxSessions
+  if (sessions.size <= max) return
+
+  // Sort by lastActiveAt ascending (oldest first)
+  const entries = [...sessions.entries()].sort((a, b) => a[1].lastActiveAt - b[1].lastActiveAt)
+  const toEvict = entries.slice(0, sessions.size - max)
+  for (const [chatId] of toEvict) {
+    sessions.delete(chatId)
+    logger.info(`Session evicted (LRU) for chat ${chatId.slice(0, 8)}`)
+  }
+}
+
+// ── Public API ──
 
 /** Load sessions from disk. Call on daemon startup to restore chat continuity. */
 export function loadSessions(): void {
@@ -61,9 +114,10 @@ export function loadSessions(): void {
   if (!data) return
 
   const now = Date.now()
+  const timeoutMs = getTimeoutMs()
   let restored = 0
   for (const [chatId, session] of Object.entries(data)) {
-    if (now - session.lastActiveAt > SESSION_TIMEOUT_MS) continue
+    if (now - session.lastActiveAt > timeoutMs) continue
     // Backward compat: old sessions lack turnCount/estimatedTokens
     session.turnCount ??= 0
     session.estimatedTokens ??= 0
@@ -71,6 +125,7 @@ export function loadSessions(): void {
     restored++
   }
   if (restored > 0) {
+    evictIfNeeded()
     ensureCleanupTimer()
     logger.info(`Restored ${restored} chat session(s) from disk`)
   }
@@ -85,14 +140,15 @@ export function getSession(chatId: string): ChatSession | undefined {
 export function setSession(chatId: string, sessionId: string, backendType?: string): void {
   const existing = sessions.get(chatId)
   sessions.set(chatId, { sessionId, lastActiveAt: Date.now(), turnCount: 0, estimatedTokens: 0, modelOverride: existing?.modelOverride, backendOverride: existing?.backendOverride, sessionBackendType: backendType })
+  evictIfNeeded()
   ensureCleanupTimer()
-  persistSessions()
+  schedulePersist()
 }
 
 /** Clear session for a chatId */
 export function clearSession(chatId: string): boolean {
   const result = sessions.delete(chatId)
-  if (result) persistSessions()
+  if (result) schedulePersist()
   return result
 }
 
@@ -101,13 +157,13 @@ export function setModelOverride(chatId: string, model: string | undefined): voi
   const session = sessions.get(chatId)
   if (session) {
     session.modelOverride = model
-    persistSessions()
   } else {
     // No session yet — store a placeholder so override takes effect on next chat
     sessions.set(chatId, { sessionId: '', lastActiveAt: Date.now(), turnCount: 0, estimatedTokens: 0, modelOverride: model })
+    evictIfNeeded()
     ensureCleanupTimer()
-    persistSessions()
   }
+  schedulePersist()
 }
 
 /** Get model override for a chatId */
@@ -120,21 +176,18 @@ export function setBackendOverride(chatId: string, backend: string | undefined):
   const session = sessions.get(chatId)
   if (session) {
     session.backendOverride = backend
-    persistSessions()
   } else {
     sessions.set(chatId, { sessionId: '', lastActiveAt: Date.now(), turnCount: 0, estimatedTokens: 0, backendOverride: backend })
+    evictIfNeeded()
     ensureCleanupTimer()
-    persistSessions()
   }
+  schedulePersist()
 }
 
 /** Get backend override for a chatId */
 export function getBackendOverride(chatId: string): string | undefined {
   return sessions.get(chatId)?.backendOverride
 }
-
-const MAX_TURNS = 10
-const MAX_ESTIMATED_TOKENS = 50_000
 
 /** Rough token estimate from char count (~3 chars/token average for mixed CJK/Latin) */
 function estimateTokens(charCount: number): number {
@@ -145,7 +198,7 @@ function estimateTokens(charCount: number): number {
 export function shouldResetSession(chatId: string): boolean {
   const session = sessions.get(chatId)
   if (!session) return false
-  return session.turnCount > MAX_TURNS || session.estimatedTokens > MAX_ESTIMATED_TOKENS
+  return session.turnCount > sessionConfig.maxTurns || session.estimatedTokens > sessionConfig.maxEstimatedTokens
 }
 
 /** Increment turn count and accumulate estimated tokens after a chat round */
@@ -155,13 +208,12 @@ export function incrementTurn(chatId: string, inputLen: number, outputLen: numbe
   session.turnCount++
   session.estimatedTokens += estimateTokens(inputLen) + estimateTokens(outputLen)
   session.lastActiveAt = Date.now()
-  persistSessions()
 
   if (shouldResetSession(chatId)) {
     logger.info(`Session reset for chat ${chatId.slice(0, 8)}: turns=${session.turnCount}, tokens≈${session.estimatedTokens}`)
     sessions.delete(chatId)
-    persistSessions()
   }
+  schedulePersist()
 }
 
 /**
@@ -181,11 +233,22 @@ export function enqueueChat(chatId: string, fn: () => Promise<void>): Promise<vo
   return task
 }
 
+/** Get session count for diagnostics */
+export function getSessionCount(): number {
+  return sessions.size
+}
+
 /**
  * Cleanup in-memory sessions and stop the timer.
- * Disk file is preserved so sessions survive daemon restart.
+ * Flush pending persist to disk so sessions survive daemon restart.
  */
 export function destroySessions(): void {
+  // Flush any pending debounced persist
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+    persistSessionsNow()
+  }
   if (cleanupTimer) {
     clearInterval(cleanupTimer)
     cleanupTimer = null

@@ -4,6 +4,7 @@
  */
 
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 
 const logger = createLogger('event-bus')
 
@@ -56,10 +57,10 @@ function createEventBus(): EventBus {
       const promises = Array.from(eventHandlers).map(handler => {
         try {
           return Promise.resolve(handler(payload)).catch(e => {
-            logger.error(`Event handler error for ${event}: ${e instanceof Error ? e.message : e}`)
+            logger.error(`Event handler error for ${event}: ${getErrorMessage(e)}`)
           })
         } catch (e) {
-          logger.error(`Event handler error for ${event}: ${e instanceof Error ? e.message : e}`)
+          logger.error(`Event handler error for ${event}: ${getErrorMessage(e)}`)
           return Promise.resolve()
         }
       })

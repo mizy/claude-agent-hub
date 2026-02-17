@@ -15,6 +15,7 @@ import {
   getProcessInfo,
   isProcessRunning,
   updateProcessInfo,
+  updateTask,
   type ProcessInfo,
 } from '../store/TaskStore.js'
 import { getTaskInstance, getTaskWorkflow } from '../store/TaskWorkflowStore.js'
@@ -153,6 +154,15 @@ export function detectOrphanedTasks(): OrphanedTask[] {
 
         // 更新进程状态为 crashed
         updateProcessInfo(task.id, { status: 'crashed' })
+
+        // 同时更新任务状态为 failed（如果任务还在 planning 或 developing 状态）
+        if (task.status === 'planning' || task.status === 'developing') {
+          updateTask(task.id, {
+            status: 'failed',
+            error: 'Process crashed or terminated unexpectedly',
+          })
+          logger.info(`Task ${task.id} marked as failed due to crashed process`)
+        }
       }
     }
   }
@@ -288,8 +298,27 @@ export async function resumeFailedTask(taskId: string): Promise<{
 
   // 有 instance，恢复 workflow instance（重置失败节点状态）
   const result = await recoverWorkflowInstance(instance.id)
+
+  // 如果恢复失败（找不到 failed node），说明是进程崩溃导致的 failed，没有具体的失败节点
+  // 这种情况下从头重启任务
   if (!result.success) {
-    return result
+    logger.info(`Cannot recover instance (${result.error}), restarting task from beginning: ${taskId}`)
+
+    appendExecutionLog(taskId, `Task restarted (process crashed before any node failed)`, { scope: 'lifecycle' })
+    appendJsonlLog(taskId, {
+      event: 'task_started',
+      message: `Task restarted: ${task.title}`,
+      data: { reason: 'process_crash_no_failed_node', mode: 'restart' },
+    })
+
+    // 启动后台进程（非 resume 模式，从头开始）
+    const pid = spawnTaskProcess({
+      taskId,
+      resume: false,
+    })
+
+    logger.info(`Task process started (restart mode after crash): PID ${pid}`)
+    return { success: true, pid, mode: 'restart' }
   }
 
   logger.info(`Failed task recovered: ${taskId}, node: ${result.failedNodeId}`)

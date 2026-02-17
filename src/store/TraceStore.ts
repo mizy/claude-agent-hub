@@ -9,6 +9,7 @@
 
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { appendToFile, ensureDir } from './readWriteJson.js'
 import { TASK_PATHS } from './paths.js'
 import type { Span, Trace, SpanStatus } from '../types/trace.js'
@@ -123,7 +124,7 @@ function readSpansFromFile(filePath: string): Span[] {
 
     return spans
   } catch (e) {
-    logger.debug(`Failed to read trace file: ${filePath} (${e instanceof Error ? e.message : String(e)})`)
+    logger.debug(`Failed to read trace file: ${filePath} (${getErrorMessage(e)})`)
     return []
   }
 }

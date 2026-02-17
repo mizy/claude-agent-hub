@@ -1,8 +1,11 @@
 /**
  * Extract error message from unknown error value
  *
- * Replaces the repeated pattern: error instanceof Error ? error.message : String(error)
+ * @deprecated Use getErrorMessage from './assertError.js' instead.
+ * This is a thin wrapper kept for backward compatibility.
  */
+import { getErrorMessage } from './assertError.js'
+
 export function formatErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return getErrorMessage(error)
 }

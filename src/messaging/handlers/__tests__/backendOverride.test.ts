@@ -126,6 +126,53 @@ describe('parseBackendOverride', () => {
   })
 })
 
+// ── parseInlineModel unit tests ──
+
+describe('parseInlineModel', () => {
+  let parseInlineModel: typeof import('../chatHandler.js').parseInlineModel
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    const mod = await import('../chatHandler.js')
+    parseInlineModel = mod.parseInlineModel
+  })
+
+  it('@opus 帮我分析 → opus model', () => {
+    const result = parseInlineModel('@opus 帮我分析')
+    expect(result).toEqual({ model: 'opus', actualText: '帮我分析' })
+  })
+
+  it('sonnet 写个函数 → sonnet model', () => {
+    const result = parseInlineModel('sonnet 写个函数')
+    expect(result).toEqual({ model: 'sonnet', actualText: '写个函数' })
+  })
+
+  it('@haiku hi → haiku model', () => {
+    const result = parseInlineModel('@haiku hi')
+    expect(result).toEqual({ model: 'haiku', actualText: 'hi' })
+  })
+
+  it('OPUS 大写 → opus (case-insensitive)', () => {
+    const result = parseInlineModel('OPUS 大写测试')
+    expect(result).toEqual({ model: 'opus', actualText: '大写测试' })
+  })
+
+  it('普通消息 → no model override', () => {
+    const result = parseInlineModel('普通问题')
+    expect(result).toEqual({ model: undefined, actualText: '普通问题' })
+  })
+
+  it('opus with no content → model with empty actualText', () => {
+    const result = parseInlineModel('opus')
+    expect(result).toEqual({ model: 'opus', actualText: '' })
+  })
+
+  it('消息中间的 opus 不匹配 → no model override', () => {
+    const result = parseInlineModel('请用 opus 模型')
+    expect(result).toEqual({ model: undefined, actualText: '请用 opus 模型' })
+  })
+})
+
 // ── chatHandler integration tests for backend override ──
 
 // Mock sessionManager to inspect session state
@@ -207,7 +254,7 @@ describe('chatHandler — backend override', () => {
     expect(messenger.editMessage).toHaveBeenCalledWith(
       'chat-be-3',
       'placeholder-msg-id',
-      expect.stringContaining('[iflow]')
+      expect.stringContaining('| iflow')
     )
   })
 
@@ -271,6 +318,111 @@ describe('chatHandler — backend override', () => {
     expect(mockInvokeBackend).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: undefined,
+      })
+    )
+  })
+
+  // ── Model keyword integration tests ──
+
+  it('should pass opus model when message starts with @opus', async () => {
+    await handleChat('chat-model-1', '@opus 帮我分析这段代码', messenger, {
+      client: createClientContext(),
+    })
+
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'opus',
+      })
+    )
+    // Prompt should not contain the @opus prefix
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('帮我分析这段代码'),
+      })
+    )
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.not.stringContaining('@opus'),
+      })
+    )
+  })
+
+  it('should pass sonnet model when message starts with sonnet', async () => {
+    await handleChat('chat-model-2', 'sonnet 写个函数', messenger, {
+      client: createClientContext(),
+    })
+
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'sonnet',
+      })
+    )
+  })
+
+  it('should pass haiku model when message starts with haiku', async () => {
+    await handleChat('chat-model-3', 'haiku 简单问题', messenger, {
+      client: createClientContext(),
+    })
+
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'haiku',
+      })
+    )
+  })
+
+  it('should be case-insensitive for model keywords (OPUS)', async () => {
+    await handleChat('chat-model-4', 'OPUS 大写测试', messenger, {
+      client: createClientContext(),
+    })
+
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'opus',
+      })
+    )
+  })
+
+  it('should not override model when message has no keyword', async () => {
+    await handleChat('chat-model-5', '普通消息不含关键字', messenger, {
+      client: createClientContext(),
+    })
+
+    // Model should be auto-selected (sonnet for normal length), not undefined
+    const call = mockInvokeBackend.mock.calls[0]![0]
+    expect(call.model).toBeDefined()
+    // No model keyword → auto-selection picks based on content
+    expect(['haiku', 'sonnet', 'opus']).toContain(call.model)
+  })
+
+  it('should not set model for non-claude backend without explicit keyword', async () => {
+    await handleChat('chat-model-6', '@iflow 帮我分析', messenger, {
+      client: createClientContext(),
+    })
+
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backendType: 'iflow',
+        model: undefined,
+      })
+    )
+  })
+
+  it('should coexist with @backend: @iflow + opus keyword', async () => {
+    // @iflow is parsed first as backend, then "opus 问题" is parsed as model keyword
+    await handleChat('chat-model-7', '@iflow opus 问题', messenger, {
+      client: createClientContext(),
+    })
+
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backendType: 'iflow',
+        model: 'opus',
+      })
+    )
+    expect(mockInvokeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('问题'),
       })
     )
   })

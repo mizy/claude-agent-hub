@@ -125,6 +125,16 @@ export {
   updateMemory,
 } from './MemoryStore.js'
 
+// EpisodeStore - 情景记忆存储
+export {
+  saveEpisode,
+  getEpisode,
+  deleteEpisode,
+  listEpisodes,
+  searchEpisodes,
+  getEpisodesByTimeRange,
+} from './EpisodeStore.js'
+
 // PromptVersionStore - Prompt 版本存储
 export {
   generateVersionId,
@@ -135,6 +145,7 @@ export {
   getLatestVersion,
   updatePromptVersionStats,
   rollbackToVersion,
+  retireVersion,
 } from './PromptVersionStore.js'
 
 // TaskMessageStore - 任务消息队列

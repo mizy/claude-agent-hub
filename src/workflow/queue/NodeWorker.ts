@@ -13,6 +13,7 @@ import {
 import { getInstance, getWorkflow } from '../../store/WorkflowStore.js'
 import { failWorkflowInstance, markNodeWaiting } from '../engine/StateManager.js'
 import { createLogger } from '../../shared/logger.js'
+import { isError, getErrorStack, getErrorMessage } from '../../shared/assertError.js'
 import {
   shouldRetry,
   classifyError,
@@ -244,9 +245,8 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
   } catch (error) {
     // 捕获完整的错误信息，包括堆栈
     let errorMessage: string
-    if (error instanceof Error) {
-      // 包含堆栈以便调试
-      errorMessage = error.stack || error.message || 'Unknown error'
+    if (isError(error)) {
+      errorMessage = getErrorStack(error) || error.message || 'Unknown error'
     } else if (error === undefined || error === null) {
       errorMessage = 'Unknown error (undefined/null error object)'
     } else {
@@ -334,7 +334,7 @@ async function handleNodeFailure(
           logger.debug(`Retry job enqueued for node ${nodeId}`)
         } catch (retryError) {
           logger.error(
-            `Failed to enqueue retry for node ${nodeId}: ${retryError instanceof Error ? retryError.message : String(retryError)}`
+            `Failed to enqueue retry for node ${nodeId}: ${getErrorMessage(retryError)}`
           )
         }
       }, retryDecision.delayMs)

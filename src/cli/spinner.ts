@@ -3,6 +3,7 @@
  */
 
 import ora, { type Ora } from 'ora'
+import { ensureError } from '../shared/assertError.js'
 
 interface Spinner {
   start(text?: string): void
@@ -66,7 +67,7 @@ export async function withSpinner<T>(
     spinner.succeed(successText)
     return result
   } catch (e) {
-    const error = e instanceof Error ? e : new Error(String(e))
+    const error = ensureError(e)
     const failText =
       typeof options?.failText === 'function' ? options.failText(error) : options?.failText
     spinner.fail(failText ?? error.message)

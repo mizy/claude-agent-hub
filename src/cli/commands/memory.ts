@@ -9,8 +9,14 @@ import {
   reinforceMemory,
   cleanupFadingMemories,
   calculateStrength,
+  retrieveEpisodes,
 } from '../../memory/index.js'
 import { getMemory } from '../../store/MemoryStore.js'
+import {
+  listEpisodes,
+  getEpisode,
+  saveEpisode,
+} from '../../store/EpisodeStore.js'
 import { migrateMemoryEntry } from '../../memory/migrateMemory.js'
 import type { MemoryCategory } from '../../memory/index.js'
 import { success, error, info, table } from '../output.js'
@@ -298,6 +304,110 @@ export function registerMemoryCommands(program: Command) {
       }
 
       console.log()
+    })
+
+  // ── Episodic memory commands ──
+
+  memory
+    .command('episodes')
+    .description('列出情景记忆（对话回忆）')
+    .option('-l, --limit <n>', '限制数量', '20')
+    .action(options => {
+      const limit = parseInt(options.limit, 10) || 20
+      const episodes = listEpisodes().slice(0, limit)
+
+      if (episodes.length === 0) {
+        info('暂无情景记忆')
+        return
+      }
+
+      console.log(chalk.bold(`\n情景记忆 (${episodes.length})\n`))
+
+      table(
+        episodes.map(e => ({
+          id: e.id.slice(0, 20),
+          time: e.timestamp.slice(0, 16).replace('T', ' '),
+          summary: e.summary.length > 80 ? e.summary.slice(0, 77) + '...' : e.summary,
+          platform: e.platform,
+        })),
+        [
+          { key: 'id', header: 'ID', width: 20 },
+          { key: 'time', header: '时间', width: 16 },
+          { key: 'summary', header: '摘要', width: 80 },
+          { key: 'platform', header: '平台', width: 8 },
+        ],
+      )
+
+      console.log()
+    })
+
+  memory
+    .command('recall')
+    .description('回忆特定对话')
+    .argument('<query>', '搜索关键词（支持时间表达如"昨天"）')
+    .option('-l, --limit <n>', '返回数量', '3')
+    .action((query, options) => {
+      const limit = parseInt(options.limit, 10) || 3
+      const results = retrieveEpisodes({ query, limit })
+
+      if (results.length === 0) {
+        info(`未找到匹配 "${query}" 的情景记忆`)
+        return
+      }
+
+      console.log(chalk.bold(`\n回忆结果 (${results.length})\n`))
+
+      for (const ep of results) {
+        console.log(chalk.cyan(`── ${ep.id} ──`))
+        console.log(chalk.gray(`  时间: ${ep.timestamp.slice(0, 16).replace('T', ' ')}`))
+        console.log(chalk.gray(`  基调: ${ep.tone} | 平台: ${ep.platform} | 轮次: ${ep.turnCount}`))
+        console.log(chalk.gray(`  相关性: ${(ep.score * 100).toFixed(0)}%`))
+        console.log()
+        console.log(`  ${ep.summary}`)
+
+        if (ep.keyDecisions.length > 0) {
+          console.log()
+          console.log(chalk.yellow('  关键决策:'))
+          for (const d of ep.keyDecisions) {
+            console.log(`    • ${d}`)
+          }
+        }
+
+        if (ep.relatedMemories.length > 0) {
+          console.log()
+          console.log(chalk.gray(`  关联记忆: ${ep.relatedMemories.map(id => id.slice(0, 8)).join(', ')}`))
+        }
+
+        console.log()
+      }
+    })
+
+  memory
+    .command('link')
+    .description('手动关联情景记忆和语义记忆')
+    .argument('<episodeId>', '情景记忆 ID')
+    .argument('<memoryId>', '语义记忆 ID')
+    .action((episodeId, memoryId) => {
+      const episode = getEpisode(episodeId)
+      if (!episode) {
+        error(`未找到情景记忆: ${episodeId}`)
+        return
+      }
+
+      const mem = getMemory(memoryId)
+      if (!mem) {
+        error(`未找到语义记忆: ${memoryId}`)
+        return
+      }
+
+      if (episode.relatedMemories.includes(memoryId)) {
+        info('已经存在关联')
+        return
+      }
+
+      episode.relatedMemories.push(memoryId)
+      saveEpisode(episode)
+      success(`已关联: ${episodeId.slice(0, 20)} ↔ ${memoryId.slice(0, 8)}`)
     })
 
   memory

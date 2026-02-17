@@ -9,6 +9,7 @@ import { invokeBackend } from '../backend/index.js'
 import { buildMemoryExtractionPrompt, type TaskSummary } from '../prompts/memoryPrompts.js'
 import { addMemory } from './manageMemory.js'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { Task } from '../types/task.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 import type { MemoryCategory, MemoryEntry } from './types.js'
@@ -130,7 +131,7 @@ export async function extractMemoryFromTask(
     logger.info(`Extracted ${entries.length} memories from task ${task.id}`)
     return entries
   } catch (error) {
-    logger.warn(`Memory extraction failed: ${error instanceof Error ? error.message : String(error)}`)
+    logger.warn(`Memory extraction failed: ${getErrorMessage(error)}`)
     return []
   }
 }
