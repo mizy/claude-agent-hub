@@ -19,6 +19,7 @@ import type { NodeJobData } from '../types.js'
 const logger = createLogger('workflow-queue')
 
 const MAX_JOB_ATTEMPTS = 3
+const AUTO_CLEANUP_THRESHOLD = 50 // Auto-cleanup when completed+failed exceeds this
 
 // ============ Core Queue Operations ============
 
@@ -128,7 +129,7 @@ export function getNextJob(instanceId?: string): Job | null {
 }
 
 /**
- * Mark job as completed
+ * Mark job as completed (auto-cleans old jobs when threshold exceeded)
  */
 export function completeJob(jobId: string): void {
   withLock(() => {
@@ -138,6 +139,17 @@ export function completeJob(jobId: string): void {
     if (job) {
       job.status = 'completed'
       job.completedAt = new Date().toISOString()
+
+      // Auto-cleanup: remove oldest completed/failed jobs beyond threshold
+      const doneJobs = queueData.jobs.filter(j => j.status === 'completed' || j.status === 'failed')
+      if (doneJobs.length > AUTO_CLEANUP_THRESHOLD) {
+        doneJobs.sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
+        const toRemove = new Set(doneJobs.slice(AUTO_CLEANUP_THRESHOLD).map(j => j.id))
+        const before = queueData.jobs.length
+        queueData.jobs = queueData.jobs.filter(j => !toRemove.has(j.id))
+        logger.debug(`Auto-cleaned ${before - queueData.jobs.length} old jobs (threshold: ${AUTO_CLEANUP_THRESHOLD})`)
+      }
+
       saveQueueData(queueData)
     }
   })
@@ -167,6 +179,16 @@ export function failJob(jobId: string, error: string): void {
       job.status = 'failed'
       job.completedAt = new Date().toISOString()
       job.error = error
+
+      // Auto-cleanup: same logic as completeJob()
+      const doneJobs = queueData.jobs.filter(j => j.status === 'completed' || j.status === 'failed')
+      if (doneJobs.length > AUTO_CLEANUP_THRESHOLD) {
+        doneJobs.sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
+        const toRemove = new Set(doneJobs.slice(AUTO_CLEANUP_THRESHOLD).map(j => j.id))
+        const before = queueData.jobs.length
+        queueData.jobs = queueData.jobs.filter(j => !toRemove.has(j.id))
+        logger.debug(`Auto-cleaned ${before - queueData.jobs.length} old jobs (threshold: ${AUTO_CLEANUP_THRESHOLD})`)
+      }
     }
 
     saveQueueData(queueData)
@@ -185,6 +207,17 @@ export function markJobFailed(jobId: string, error: string): void {
       job.status = 'failed'
       job.completedAt = new Date().toISOString()
       job.error = error
+
+      // Auto-cleanup: same logic as completeJob()
+      const doneJobs = queueData.jobs.filter(j => j.status === 'completed' || j.status === 'failed')
+      if (doneJobs.length > AUTO_CLEANUP_THRESHOLD) {
+        doneJobs.sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
+        const toRemove = new Set(doneJobs.slice(AUTO_CLEANUP_THRESHOLD).map(j => j.id))
+        const before = queueData.jobs.length
+        queueData.jobs = queueData.jobs.filter(j => !toRemove.has(j.id))
+        logger.debug(`Auto-cleaned ${before - queueData.jobs.length} old jobs (threshold: ${AUTO_CLEANUP_THRESHOLD})`)
+      }
+
       saveQueueData(queueData)
     }
 

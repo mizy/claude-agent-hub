@@ -1,7 +1,8 @@
 /**
  * Register messaging listeners for task lifecycle events.
  *
- * Called during daemon startup to bridge task events → notifications.
+ * Called during daemon startup, CLI entry, and subprocess entry
+ * to bridge task events → notifications.
  * This keeps the dependency direction: messaging → task events (via shared),
  * without task importing messaging.
  */

@@ -53,7 +53,8 @@ export function registerSelfcheckCommand(program: Command) {
 
       const shouldFix = options.fix || options.autoFix
 
-      if (shouldFix && report.hasFailed) {
+      const hasFixable = report.checks.some(c => (c.status === 'fail' || c.status === 'warning') && c.fixable)
+      if (shouldFix && (report.hasFailed || hasFixable)) {
         console.log()
         console.log(chalk.bold('🔧 自动修复'))
         console.log()
@@ -86,9 +87,9 @@ export function registerSelfcheckCommand(program: Command) {
           process.exit(verifyReport.hasFailed ? 1 : 0)
           return
         }
-      } else if (report.hasFailed) {
-        const hasFixable = report.checks.some(c => c.status === 'fail' && c.fixable)
-        if (hasFixable) {
+      } else if (report.hasFailed || report.hasWarning) {
+        const hasFixableHint = report.checks.some(c => (c.status === 'fail' || c.status === 'warning') && c.fixable)
+        if (hasFixableHint) {
           console.log()
           console.log(chalk.cyan('💡 执行 cah selfcheck --auto-fix 自动修复可修复的问题'))
         }

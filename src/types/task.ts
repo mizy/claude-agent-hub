@@ -54,6 +54,10 @@ export interface Task {
   lastRejectReason?: string
   /** Error message when task status is 'failed' */
   error?: string
+  /** Task source: 'manual' (default) | 'selfdrive' | 'repair' | etc. */
+  source?: string
+  /** Arbitrary metadata for task identification (e.g. goalId for selfdrive tasks) */
+  metadata?: Record<string, string>
   createdAt: string
   updatedAt?: string
 
@@ -78,4 +82,6 @@ export interface CreateTaskOptions {
   backend?: string
   /** Task-level model override */
   model?: string
+  /** Task source identifier */
+  source?: string
 }

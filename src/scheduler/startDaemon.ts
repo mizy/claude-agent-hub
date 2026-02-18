@@ -26,6 +26,7 @@ import { runSelfcheck, runFixes, generateRepairTask } from '../selfcheck/index.j
 import type { SelfcheckReport } from '../selfcheck/index.js'
 import { runEvolutionCycle } from '../prompt-optimization/index.js'
 import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
+import { resumeSelfDriveIfEnabled, stopSelfDrive } from '../selfdrive/index.js'
 import { createLogger } from '../shared/logger.js'
 
 const logger = createLogger('daemon')
@@ -319,11 +320,13 @@ async function runDaemon(): Promise<void> {
 
   store.setDaemonPid(process.pid)
   startSleepPrevention()
+  resumeSelfDriveIfEnabled()
   console.log(chalk.green(`✓ 守护进程运行中 (PID: ${process.pid})`))
   console.log(chalk.gray('  Ctrl+C 停止'))
 
   // Synchronous cleanup — safe to call from crash handlers
   const cleanupSync = () => {
+    stopSelfDrive()
     stopSleepPrevention()
     stopAllJobs()
     destroyChatHandler()

@@ -116,18 +116,18 @@ describe('readAllSkills', () => {
     mockExistsSync.mockReturnValue(true)
 
     // List skill directories
-    mockReaddirSync.mockImplementation((path: any) => {
+    mockReaddirSync.mockImplementation((path: unknown) => {
       const pathStr = String(path)
       if (pathStr === join(CLAUDE_DIR, 'skills')) {
         return [
           { name: 'my-skill', isDirectory: () => true },
-        ] as any
+        ] as unknown as ReturnType<typeof readdirSync>
       }
       // Files inside skill directory
       if (pathStr.includes('my-skill')) {
-        return ['SKILL.md'] as any
+        return ['SKILL.md'] as unknown as ReturnType<typeof readdirSync>
       }
-      return [] as any
+      return [] as unknown as ReturnType<typeof readdirSync>
     })
 
     mockReadFileSync.mockReturnValue(
@@ -153,15 +153,15 @@ describe('readAllSkills', () => {
   it('should fallback to dir name when frontmatter has no name', () => {
     mockExistsSync.mockReturnValue(true)
 
-    mockReaddirSync.mockImplementation((path: any) => {
+    mockReaddirSync.mockImplementation((path: unknown) => {
       const pathStr = String(path)
       if (pathStr === join(CLAUDE_DIR, 'skills')) {
-        return [{ name: 'fallback-skill', isDirectory: () => true }] as any
+        return [{ name: 'fallback-skill', isDirectory: () => true }] as unknown as ReturnType<typeof readdirSync>
       }
       if (pathStr.includes('fallback-skill')) {
-        return ['SKILL.md'] as any
+        return ['SKILL.md'] as unknown as ReturnType<typeof readdirSync>
       }
-      return [] as any
+      return [] as unknown as ReturnType<typeof readdirSync>
     })
 
     mockReadFileSync.mockReturnValue('---\ndescription: A skill\n---\nBody')
@@ -175,18 +175,18 @@ describe('readAllSkills', () => {
   it('should skip non-directory entries', () => {
     mockExistsSync.mockReturnValue(true)
 
-    mockReaddirSync.mockImplementation((path: any) => {
+    mockReaddirSync.mockImplementation((path: unknown) => {
       const pathStr = String(path)
       if (pathStr === join(CLAUDE_DIR, 'skills')) {
         return [
           { name: 'readme.md', isDirectory: () => false },
           { name: 'real-skill', isDirectory: () => true },
-        ] as any
+        ] as unknown as ReturnType<typeof readdirSync>
       }
       if (pathStr.includes('real-skill')) {
-        return ['SKILL.md'] as any
+        return ['SKILL.md'] as unknown as ReturnType<typeof readdirSync>
       }
-      return [] as any
+      return [] as unknown as ReturnType<typeof readdirSync>
     })
 
     mockReadFileSync.mockReturnValue('---\nname: Real\n---\ncontent')
@@ -200,15 +200,15 @@ describe('readAllSkills', () => {
   it('should find SKILL.md case-insensitively', () => {
     mockExistsSync.mockReturnValue(true)
 
-    mockReaddirSync.mockImplementation((path: any) => {
+    mockReaddirSync.mockImplementation((path: unknown) => {
       const pathStr = String(path)
       if (pathStr === join(CLAUDE_DIR, 'skills')) {
-        return [{ name: 'lower-case', isDirectory: () => true }] as any
+        return [{ name: 'lower-case', isDirectory: () => true }] as unknown as ReturnType<typeof readdirSync>
       }
       if (pathStr.includes('lower-case')) {
-        return ['skill.md'] as any  // lowercase
+        return ['skill.md'] as unknown as ReturnType<typeof readdirSync>  // lowercase
       }
-      return [] as any
+      return [] as unknown as ReturnType<typeof readdirSync>
     })
 
     mockReadFileSync.mockReturnValue('---\nname: Lower\n---\nbody')
@@ -236,12 +236,12 @@ describe('buildClaudeSystemPrompt', () => {
     })
 
     // No skills dir entries (readAllSkills will call readdirSync)
-    mockReaddirSync.mockImplementation((path: any) => {
+    mockReaddirSync.mockImplementation((path: unknown) => {
       const pathStr = String(path)
       if (pathStr === join(CLAUDE_DIR, 'skills')) {
-        return [] as any
+        return [] as unknown as ReturnType<typeof readdirSync>
       }
-      return [] as any
+      return [] as unknown as ReturnType<typeof readdirSync>
     })
 
     const result = buildClaudeSystemPrompt({ projectPath: '/my/project' })
@@ -253,11 +253,11 @@ describe('buildClaudeSystemPrompt', () => {
   })
 
   it('should work with no options (global only)', () => {
-    mockExistsSync.mockImplementation((path: any) => {
+    mockExistsSync.mockImplementation((path: unknown) => {
       return String(path) === join(CLAUDE_DIR, 'CLAUDE.md')
     })
     mockReadFileSync.mockReturnValue('Global only')
-    mockReaddirSync.mockReturnValue([] as any)
+    mockReaddirSync.mockReturnValue([] as unknown as ReturnType<typeof readdirSync>)
 
     const result = buildClaudeSystemPrompt()
 
@@ -268,7 +268,7 @@ describe('buildClaudeSystemPrompt', () => {
   it('should skip memory when includeMemory is false', () => {
     mockExistsSync.mockReturnValue(true)
     mockReadFileSync.mockReturnValue('content')
-    mockReaddirSync.mockReturnValue([] as any)
+    mockReaddirSync.mockReturnValue([] as unknown as ReturnType<typeof readdirSync>)
 
     const result = buildClaudeSystemPrompt({
       projectPath: '/proj',
@@ -296,7 +296,7 @@ describe('buildClaudeSystemPrompt', () => {
 
   it('should return empty string when nothing is found', () => {
     mockExistsSync.mockReturnValue(false)
-    mockReaddirSync.mockReturnValue([] as any)
+    mockReaddirSync.mockReturnValue([] as unknown as ReturnType<typeof readdirSync>)
 
     const result = buildClaudeSystemPrompt()
 

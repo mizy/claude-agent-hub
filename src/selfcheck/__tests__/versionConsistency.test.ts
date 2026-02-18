@@ -47,7 +47,7 @@ describe('versionConsistencyCheck', () => {
 
   it('returns pass when daemon not running', async () => {
     vi.mocked(existsSync).mockReturnValue(true)
-    vi.mocked(statSync).mockReturnValue({ mtime: new Date() } as any)
+    vi.mocked(statSync).mockReturnValue({ mtime: new Date() } as ReturnType<typeof statSync>)
     vi.mocked(getPidLock).mockReturnValue(null)
 
     const check = await loadCheck()
@@ -61,7 +61,7 @@ describe('versionConsistencyCheck', () => {
     const startTime = new Date('2026-02-16T09:00:00Z') // started before build
 
     vi.mocked(existsSync).mockReturnValue(true)
-    vi.mocked(statSync).mockReturnValue({ mtime: buildTime } as any)
+    vi.mocked(statSync).mockReturnValue({ mtime: buildTime } as ReturnType<typeof statSync>)
     vi.mocked(getPidLock).mockReturnValue({ pid: 12345, startedAt: startTime.toISOString(), cwd: '/test', command: 'node' })
     vi.mocked(isProcessRunning).mockReturnValue(true)
     vi.mocked(execSync).mockReturnValue(startTime.toString())
@@ -82,7 +82,7 @@ describe('versionConsistencyCheck', () => {
     const startTime = new Date('2026-02-16T10:00:00Z') // started after build
 
     vi.mocked(existsSync).mockReturnValue(true)
-    vi.mocked(statSync).mockReturnValue({ mtime: buildTime } as any)
+    vi.mocked(statSync).mockReturnValue({ mtime: buildTime } as ReturnType<typeof statSync>)
     vi.mocked(getPidLock).mockReturnValue({ pid: 12345, startedAt: startTime.toISOString(), cwd: '/test', command: 'node' })
     vi.mocked(isProcessRunning).mockReturnValue(true)
     vi.mocked(execSync).mockReturnValue(startTime.toString())

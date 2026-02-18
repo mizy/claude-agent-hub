@@ -11,6 +11,7 @@ export function registerTaskListCommands(task: Command) {
     .description('列出任务队列')
     .option('-s, --status <status>', '按状态筛选')
     .option('-a, --agent <agent>', '按 Agent 筛选')
+    .option('--source <source>', '按来源筛选 (如 selfdrive)')
     .option('--no-progress', '隐藏进度显示')
     .option('-w, --watch', '持续更新模式')
     .option('-i, --interval <ms>', '更新间隔 (毫秒)', '2000')

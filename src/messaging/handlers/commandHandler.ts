@@ -10,12 +10,14 @@ import { truncateText } from '../../shared/truncateText.js'
 import * as taskCmd from './taskCommands.js'
 import * as queryCmd from './queryCommands.js'
 import * as sysCmd from './systemCommands.js'
+import * as selfCmd from './selfCommands.js'
 import type { CommandResult } from './types.js'
 
 // Re-export all handlers for backward compatibility
 export { handleRun, handleStop, handleResume, handleMsg, handlePause, handleSnapshot } from './taskCommands.js'
 export { handleList, handleLogs, handleGet } from './queryCommands.js'
 export { handleHelp, handleStatus, handleMemory, handleCost, handleReload } from './systemCommands.js'
+export { handleSelf } from './selfCommands.js'
 
 const logger = createLogger('command-handler')
 
@@ -55,6 +57,8 @@ export async function handleCommand(command: string, args: string): Promise<Comm
       return taskCmd.handlePause(args)
     case '/snapshot':
       return taskCmd.handleSnapshot(args)
+    case '/self':
+      return selfCmd.handleSelf(args)
     default:
       return { text: `未知指令: ${command}\n输入 /help 查看可用指令` }
   }

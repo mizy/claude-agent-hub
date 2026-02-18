@@ -14,6 +14,7 @@ import {
   saveProcessInfo,
   updateProcessInfo,
 } from '../store/TaskStore.js'
+import { registerTaskEventListeners } from '../messaging/registerTaskEventListeners.js'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { releaseRunnerLock } from './spawnTask.js'
@@ -21,16 +22,51 @@ import { isRunningStatus } from '../types/taskStatus.js'
 
 const logger = createLogger('queue-runner')
 
-// 确保异常退出时也能清理锁文件
+// Graceful shutdown state
+let shuttingDown = false
+let currentTaskId: string | null = null
+let currentTaskPromise: Promise<void> | null = null
+
+// Graceful shutdown timeout (wait up to 60s for current task node to finish)
+const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 60 * 1000
+
 function setupSignalHandlers(): void {
-  const cleanup = (signal: string) => {
-    logger.info(`Received ${signal}, cleaning up...`)
+  const gracefulShutdown = async (signal: string) => {
+    if (shuttingDown) {
+      logger.info(`Received ${signal} again during shutdown, force exiting`)
+      releaseRunnerLock()
+      process.exit(1)
+    }
+
+    shuttingDown = true
+    logger.info(`Received ${signal}, graceful shutdown initiated`)
+
+    if (!currentTaskPromise) {
+      // No task running, exit immediately
+      logger.info('No task running, exiting immediately')
+      releaseRunnerLock()
+      process.exit(0)
+    }
+
+    logger.info(`Waiting for current task ${currentTaskId} to finish (timeout: ${GRACEFUL_SHUTDOWN_TIMEOUT_MS / 1000}s)...`)
+
+    // Wait for current task or timeout
+    const timeout = new Promise<void>(resolve =>
+      setTimeout(() => {
+        logger.warn(`Graceful shutdown timeout reached, force exiting`)
+        resolve()
+      }, GRACEFUL_SHUTDOWN_TIMEOUT_MS)
+    )
+
+    await Promise.race([currentTaskPromise, timeout])
+
     releaseRunnerLock()
+    logger.info('Graceful shutdown complete')
     process.exit(0)
   }
 
-  process.on('SIGINT', () => cleanup('SIGINT'))
-  process.on('SIGTERM', () => cleanup('SIGTERM'))
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
   process.on('uncaughtException', err => {
     logger.error(`Uncaught exception: ${err.message}`)
     releaseRunnerLock()
@@ -47,6 +83,9 @@ setupSignalHandlers()
 
 async function main(): Promise<void> {
   logger.info('Queue runner started')
+
+  // Register task event → notification bridge (so completion notifications are sent)
+  registerTaskEventListeners()
 
   try {
     // 循环执行所有 pending 任务
@@ -92,15 +131,30 @@ async function main(): Promise<void> {
         status: 'running',
       })
 
-      try {
-        await runTask(task)
-        updateProcessInfo(task.id, { status: 'stopped' })
-        logger.info(`Task completed: ${task.id}`)
-      } catch (error) {
-        updateProcessInfo(task.id, { status: 'stopped' })
-        const errorMessage = formatErrorMessage(error)
-        logger.error(`Task failed: ${errorMessage}`)
-        updateTask(task.id, { status: 'failed' })
+      // Track current task for graceful shutdown
+      currentTaskId = task.id
+      const taskPromise = runTask(task)
+        .then(() => {
+          updateProcessInfo(task.id, { status: 'stopped' })
+          logger.info(`Task completed: ${task.id}`)
+        })
+        .catch(error => {
+          updateProcessInfo(task.id, { status: 'stopped' })
+          const errorMessage = formatErrorMessage(error)
+          logger.error(`Task failed: ${errorMessage}`)
+          updateTask(task.id, { status: 'failed' })
+        })
+        .finally(() => {
+          currentTaskId = null
+          currentTaskPromise = null
+        })
+      currentTaskPromise = taskPromise
+      await taskPromise
+
+      // After task completes, check if we should stop accepting new tasks
+      if (shuttingDown) {
+        logger.info('Shutdown requested, not picking up more tasks')
+        break
       }
     }
   } finally {

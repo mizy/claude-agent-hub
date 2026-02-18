@@ -36,7 +36,11 @@ export const queueHealthCheck: HealthCheck = {
 
     // Check each job entry
     let staleJobs = 0
+    let staleActiveJobs = 0
     const activeJobs: string[] = []
+    const now = Date.now()
+    const STALE_ACTIVE_THRESHOLD = 60 * 60 * 1000 // 1 hour
+
     for (const entry of jobs) {
       if (!entry || typeof entry !== 'object') {
         score -= 5
@@ -49,6 +53,14 @@ export const queueHealthCheck: HealthCheck = {
 
       if (jobStatus === 'active' || jobStatus === 'waiting') {
         activeJobs.push(jobId ?? 'unknown')
+        // Detect stale active jobs (active for too long, likely orphaned)
+        const createdAt = job.createdAt as string | undefined
+        if (jobStatus === 'active' && createdAt) {
+          const age = now - new Date(createdAt).getTime()
+          if (age > STALE_ACTIVE_THRESHOLD) {
+            staleActiveJobs++
+          }
+        }
       }
       if (jobStatus === 'completed') {
         staleJobs++
@@ -58,14 +70,25 @@ export const queueHealthCheck: HealthCheck = {
     if (activeJobs.length > 0) {
       details.push(`${activeJobs.length} active/waiting job(s): ${activeJobs.join(', ')}`)
     }
+    if (staleActiveJobs > 0) {
+      score -= 5
+      details.push(`${staleActiveJobs} stale active job(s) older than 1 hour (likely orphaned)`)
+    }
     let diagnosis: Diagnosis | undefined
+    const issues: string[] = []
     if (staleJobs > 0) {
       score -= 5
       details.push(`${staleJobs} completed job(s) in queue (should be pruned)`)
+      issues.push(`${staleJobs} completed job(s) that should have been cleaned up`)
+    }
+    if (staleActiveJobs > 0) {
+      issues.push(`${staleActiveJobs} stale active job(s) that appear orphaned`)
+    }
+    if (issues.length > 0) {
       diagnosis = {
         category: 'corrupt_data',
-        rootCause: `Queue has ${staleJobs} completed job(s) that should have been cleaned up`,
-        suggestedFix: 'Prune completed jobs from queue (cah selfcheck --fix)',
+        rootCause: `Queue has ${issues.join(' and ')}`,
+        suggestedFix: 'Prune stale jobs from queue (cah selfcheck --fix)',
       }
     }
     if (jobs.length === 0) {
@@ -75,7 +98,7 @@ export const queueHealthCheck: HealthCheck = {
     }
 
     score = Math.max(0, score)
-    const needsFix = staleJobs > 0
+    const needsFix = staleJobs > 0 || staleActiveJobs > 0
     const status = score >= 80 ? (score === 100 ? 'pass' : 'warning') : 'fail'
 
     return {
@@ -84,16 +107,31 @@ export const queueHealthCheck: HealthCheck = {
       score,
       details,
       fixable: needsFix,
-      fix: needsFix ? () => pruneCompletedJobs(queue, jobs, staleJobs) : undefined,
+      fix: needsFix ? () => pruneStaleJobs(queue, jobs, staleJobs, staleActiveJobs, STALE_ACTIVE_THRESHOLD) : undefined,
       diagnosis,
     }
   },
 }
 
-async function pruneCompletedJobs(queue: unknown, jobs: unknown[], staleCount: number): Promise<string> {
+async function pruneStaleJobs(
+  queue: unknown, jobs: unknown[],
+  completedCount: number, staleActiveCount: number,
+  staleThreshold: number
+): Promise<string> {
+  const now = Date.now()
   const filtered = jobs.filter(entry => {
     if (!entry || typeof entry !== 'object') return true
-    return (entry as Record<string, unknown>).status !== 'completed'
+    const job = entry as Record<string, unknown>
+    // Remove completed jobs
+    if (job.status === 'completed') return false
+    // Remove stale active jobs (orphaned)
+    if (job.status === 'active') {
+      const createdAt = job.createdAt as string | undefined
+      if (createdAt && (now - new Date(createdAt).getTime()) > staleThreshold) {
+        return false
+      }
+    }
+    return true
   })
 
   // Preserve queue structure (object with jobs array, or plain array)
@@ -105,5 +143,8 @@ async function pruneCompletedJobs(queue: unknown, jobs: unknown[], staleCount: n
     : filtered
 
   writeFileSync(QUEUE_FILE, JSON.stringify(updated, null, 2) + '\n')
-  return `Pruned ${staleCount} completed job(s) from queue`
+  const parts: string[] = []
+  if (completedCount > 0) parts.push(`${completedCount} completed`)
+  if (staleActiveCount > 0) parts.push(`${staleActiveCount} stale active`)
+  return `Pruned ${parts.join(' and ')} job(s) from queue`
 }

@@ -56,10 +56,23 @@ cah prompt diff <p> <v1> <v2>  # 对比版本内容
 cah prompt test <p>      # 启动 A/B 测试
 cah prompt evaluate <id> # 评估测试结果
 
+# 自管理
+cah self check           # 健康检查（= cah selfcheck）
+cah self check --auto-fix # 自动修复并验证
+cah self evolve          # 运行一轮自我进化
+cah self evolve analyze  # 分析失败任务模式
+cah self evolve validate <id> # 验证进化效果
+cah self evolve history  # 查看进化历史
+cah self drive start     # 启动自驱模式
+cah self drive stop      # 停止自驱
+cah self drive status    # 查看自驱状态
+cah self drive goals     # 查看自驱目标
+cah self status          # 综合状态（健康+进化+自驱）
+
 # 后端 & 系统
 cah backend list         # 列出可用后端
 cah backend current      # 当前后端
-cah selfcheck            # 系统自检
+cah selfcheck            # 系统自检（快捷方式）
 ```
 
 ## 分层架构
@@ -82,6 +95,8 @@ Persona (persona/)                       AI 人格定义
 Prompts (prompts/)                       提示词模板
 Memory (memory/)                         任务记忆：学习、检索、注入
 PromptOptimization (prompt-optimization/) 提示词自进化：失败分析、版本管理
+SelfEvolve (selfevolve/)                 自进化引擎：失败分析→改进→验证→历史
+SelfDrive (selfdrive/)                   自驱引擎：目标管理、调度、daemon 集成
         │
 Store (store/)  ─────────────────────── 持久层：文件存储、Trace（OTLP 兼容）
 Config (config/)                         配置加载
@@ -110,6 +125,8 @@ Types (types/)                           类型定义
 | Output | `output/index.ts` | 任务输出保存、标题生成 |
 | Server | `server/index.ts` | HTTP server、Workflow 可视化面板 |
 | Prompts | `prompts/index.ts` | 任务执行/对话提示词模板 |
+| SelfEvolve | `selfevolve/index.ts` | 失败分析、改进应用、进化验证、历史记录、进化周期编排 |
+| SelfDrive | `selfdrive/index.ts` | 目标管理、调度器、daemon 集成、自驱状态持久化 |
 | Types | `types/index.ts` | 类型定义（task, workflow, persona, output, trace, promptVersion） |
 
 ## 任务执行流程

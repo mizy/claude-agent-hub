@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { extractSuccessPatterns, findMatchingPattern, type SuccessPattern } from '../extractSuccessPattern.js'
 import type { Task } from '../../types/task.js'
+import type { Workflow, WorkflowInstance } from '../../types/workflow.js'
 
 // Mock stores
 vi.mock('../../store/TaskWorkflowStore.js', () => ({
@@ -39,7 +40,7 @@ function makeWorkflow(nodes: Array<{ id: string; name: string; type: string; per
     edges: [],
     variables: {},
     createdAt: new Date().toISOString(),
-  }
+  } as unknown as Workflow
 }
 
 function makeInstance(status: 'completed' | 'failed' = 'completed', durationMs = 60000) {
@@ -55,7 +56,7 @@ function makeInstance(status: 'completed' | 'failed' = 'completed', durationMs =
     loopCounts: {},
     startedAt: start.toISOString(),
     completedAt: end.toISOString(),
-  }
+  } as unknown as WorkflowInstance
 }
 
 beforeEach(() => {
@@ -81,9 +82,9 @@ describe('extractSuccessPatterns', () => {
         { id: 'n1', name: '分析代码', type: 'task', persona: 'Analyst' },
         { id: 'n2', name: '实现功能', type: 'task', persona: 'Pragmatist' },
         { id: 'end', name: 'End', type: 'end' },
-      ]) as any
+      ])
     )
-    mockGetInstance.mockReturnValue(makeInstance('completed', 120000) as any)
+    mockGetInstance.mockReturnValue(makeInstance('completed', 120000))
 
     const result = extractSuccessPatterns([task])
     expect(result).toHaveLength(1)
@@ -103,10 +104,10 @@ describe('extractSuccessPatterns', () => {
         { id: 'n1', name: '分析', type: 'task', persona: 'A' },
         { id: 'n2', name: '实现', type: 'task', persona: 'B' },
         { id: 'end', name: 'End', type: 'end' },
-      ]) as any
+      ])
     )
-    mockGetInstance.mockReturnValueOnce(makeInstance('completed', 60000) as any)
-    mockGetInstance.mockReturnValueOnce(makeInstance('completed', 80000) as any)
+    mockGetInstance.mockReturnValueOnce(makeInstance('completed', 60000))
+    mockGetInstance.mockReturnValueOnce(makeInstance('completed', 80000))
 
     const result = extractSuccessPatterns(tasks)
     expect(result).toHaveLength(1)
@@ -120,9 +121,9 @@ describe('extractSuccessPatterns', () => {
     mockGetWorkflow.mockReturnValue(
       makeWorkflow([
         { id: 'n1', name: 'A', type: 'task', persona: 'X' },
-      ]) as any
+      ])
     )
-    mockGetInstance.mockReturnValue(makeInstance() as any)
+    mockGetInstance.mockReturnValue(makeInstance())
 
     const r1 = extractSuccessPatterns(tasks1)
     expect(r1[0]!.confidence).toBe(0.2) // 1/5
@@ -131,9 +132,9 @@ describe('extractSuccessPatterns', () => {
     vi.clearAllMocks()
     const tasks5 = Array.from({ length: 6 }, (_, i) => makeTask(`t${i}`))
     mockGetWorkflow.mockReturnValue(
-      makeWorkflow([{ id: 'n1', name: 'A', type: 'task', persona: 'X' }]) as any
+      makeWorkflow([{ id: 'n1', name: 'A', type: 'task', persona: 'X' }])
     )
-    mockGetInstance.mockReturnValue(makeInstance() as any)
+    mockGetInstance.mockReturnValue(makeInstance())
 
     const r2 = extractSuccessPatterns(tasks5)
     expect(r2[0]!.confidence).toBe(1)
@@ -146,16 +147,16 @@ describe('extractSuccessPatterns', () => {
       makeWorkflow([
         { id: 'n1', name: 'A', type: 'task', persona: 'X' },
         { id: 'n2', name: 'B', type: 'task', persona: 'Y' },
-      ]) as any
+      ])
     )
     mockGetWorkflow.mockReturnValueOnce(
       makeWorkflow([
         { id: 'n1', name: 'X', type: 'task', persona: 'A' },
         { id: 'n2', name: 'Y', type: 'task', persona: 'B' },
         { id: 'n3', name: 'Z', type: 'task', persona: 'C' },
-      ]) as any
+      ])
     )
-    mockGetInstance.mockReturnValue(makeInstance() as any)
+    mockGetInstance.mockReturnValue(makeInstance())
 
     const result = extractSuccessPatterns(tasks)
     expect(result).toHaveLength(2)

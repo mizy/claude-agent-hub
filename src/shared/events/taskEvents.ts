@@ -60,6 +60,32 @@ class TaskEventBus extends EventEmitter<TaskEventMap> {
     }
     return listeners.length > 0
   }
+
+  /**
+   * Emit event and wait for all async listeners to complete.
+   * Use this when the process may exit soon after emitting (e.g. task subprocess).
+   */
+  async emitAsync<K extends keyof TaskEventMap>(event: K, ...args: TaskEventMap[K]): Promise<void> {
+    const listeners = this.listeners(event)
+    const promises: Promise<unknown>[] = []
+    for (const listener of listeners) {
+      try {
+        const result = (listener as (...a: unknown[]) => unknown)(...args)
+        if (result && typeof (result as Promise<unknown>).then === 'function') {
+          promises.push(
+            (result as Promise<unknown>).catch((e: unknown) => {
+              logger.error(`Async listener error for ${String(event)}: ${getErrorMessage(e)}`)
+            })
+          )
+        }
+      } catch (e) {
+        logger.error(`Listener error for ${String(event)}: ${getErrorMessage(e)}`)
+      }
+    }
+    if (promises.length > 0) {
+      await Promise.all(promises)
+    }
+  }
 }
 
 export const taskEventBus = new TaskEventBus()

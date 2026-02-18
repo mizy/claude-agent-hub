@@ -14,10 +14,16 @@ const logger = createLogger('task')
 
 export interface CreateTaskOptions {
   description: string
+  /** Override auto-generated title (defaults to truncated description) */
+  title?: string
   priority?: TaskPriority | string
   assignee?: string
   backend?: string
   model?: string
+  source?: string
+  metadata?: Record<string, string>
+  /** Override cwd (defaults to process.cwd()) */
+  cwd?: string
 }
 
 /**
@@ -28,7 +34,7 @@ export function createTaskWithFolder(options: CreateTaskOptions): Task {
   // Validate priority
   const priority = parseTaskPriority(options.priority)
 
-  const title = truncateText(options.description, 50)
+  const title = options.title ?? truncateText(options.description, 50)
 
   // Generate timestamp-based ID
   const taskId = generateTaskId(title)
@@ -46,7 +52,9 @@ export function createTaskWithFolder(options: CreateTaskOptions): Task {
     assignee: options.assignee,
     backend: options.backend,
     model: options.model,
-    cwd: process.cwd(),
+    source: options.source,
+    metadata: options.metadata,
+    cwd: options.cwd ?? process.cwd(),
     createdAt: new Date().toISOString(),
     retryCount: 0,
   }

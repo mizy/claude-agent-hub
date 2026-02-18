@@ -367,6 +367,10 @@ async function handleChatInternal(
   const chatMcp = config.backend.chat?.mcpServers ?? []
 
   bench.parallelStart = Date.now()
+
+  // Long-running warning disabled: placeholder icon already indicates progress
+  const clearLongRunningTimers = () => {}
+
   try {
     // Don't reuse session across different backends (session IDs are backend-specific)
     const effectiveSessionId = (inlineBackend || backendChanged) ? undefined : sessionId
@@ -385,6 +389,7 @@ async function handleChatInternal(
         signal,
       }),
     ])
+    clearLongRunningTimers()
     bench.backendDone = Date.now()
 
     // Clean up controller reference (this turn is done)
@@ -480,6 +485,7 @@ async function handleChatInternal(
     // Track conversation turn for episodic memory (idle timeout + explicit end detection)
     trackEpisodeTurn(chatId, effectiveText, response, platform)
   } catch (error) {
+    clearLongRunningTimers()
     // Clean up controller reference on error
     if (activeControllers.get(chatId) === abortController) {
       activeControllers.delete(chatId)

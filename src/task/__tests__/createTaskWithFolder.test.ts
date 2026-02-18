@@ -65,7 +65,7 @@ describe('createTaskWithFolder', () => {
     expect(lowTask.priority).toBe('low')
 
     // Invalid priority defaults to medium
-    const invalidTask = createTaskWithFolder({ description: 'Invalid priority', priority: 'urgent' as any })
+    const invalidTask = createTaskWithFolder({ description: 'Invalid priority', priority: 'urgent' as unknown as 'low' | 'medium' | 'high' })
     expect(invalidTask.priority).toBe('medium')
   })
 

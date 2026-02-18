@@ -149,7 +149,8 @@ export async function emitWorkflowCompleted(ctx: CompletionContext): Promise<voi
       durationMs: state?.durationMs,
     }
   })
-  taskEventBus.emit('task:completed', {
+  // Use emitAsync to ensure notifications are sent before process exits
+  await taskEventBus.emitAsync('task:completed', {
     task,
     success,
     durationMs: totalDurationMs,

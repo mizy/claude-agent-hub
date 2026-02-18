@@ -13,7 +13,8 @@
  * We convert tables to a readable text format using only **bold** and plain text.
  *
  * For 2-column tables (key-value): **key**: value
- * For 3+ columns: **col1**: val1 / **col2**: val2 / ...
+ * For 3+ columns: each row becomes a block with the first column as title,
+ *   remaining columns as indented fields, separated by blank lines.
  */
 export function convertMarkdownTables(text: string): string {
   return text.replace(
@@ -38,12 +39,17 @@ export function convertMarkdownTables(text: string): string {
         if (isKeyValue) {
           return `**${cells[0] ?? ''}**: ${cells[1] ?? ''}`
         }
-        return headers.map((h, i) => `**${h}**: ${cells[i] ?? ''}`).join(' / ')
+        // Multi-column: first column as title, rest as fields on separate lines
+        const title = `**${cells[0] ?? ''}**`
+        const fields = headers.slice(1).map((h, i) => `  ${h}: ${cells[i + 1] ?? ''}`)
+        return title + '\n' + fields.join('\n')
       })
 
       // Preserve leading newline if the match had one
       const prefix = match.startsWith('\n') ? '\n' : ''
-      return prefix + converted.join('\n')
+      // Separate multi-column row blocks with blank lines for readability
+      const separator = isKeyValue ? '\n' : '\n\n'
+      return prefix + converted.join(separator)
     }
   )
 }

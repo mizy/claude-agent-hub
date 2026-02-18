@@ -92,7 +92,7 @@ describe('sendTaskCompletionNotify', () => {
       notify: {
         telegram: { botToken: 'test-token', chatId: '12345' },
       },
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>)
 
     const { sendTelegramTextMessage } = await import('../sendTelegramNotify.js')
 
@@ -110,7 +110,7 @@ describe('sendTaskCompletionNotify', () => {
       notify: {
         lark: { chatId: 'oc_test123' },
       },
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>)
 
     const { sendLarkCardViaApi } = await import('../sendLarkNotify.js')
     const { getDefaultLarkChatId } = await import('../larkWsClient.js')
@@ -127,7 +127,7 @@ describe('sendTaskCompletionNotify', () => {
       notify: {
         telegram: { botToken: 'test-token', chatId: '12345' },
       },
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>)
 
     const { sendTelegramTextMessage } = await import('../sendTelegramNotify.js')
 
@@ -154,7 +154,7 @@ describe('sendTaskCompletionNotify', () => {
       notify: {
         telegram: { botToken: 'test-token', chatId: '12345' },
       },
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>)
 
     const { sendTelegramTextMessage } = await import('../sendTelegramNotify.js')
 
@@ -175,7 +175,7 @@ describe('sendTaskCompletionNotify', () => {
       notify: {
         telegram: { botToken: 'test-token', chatId: '12345' },
       },
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>)
 
     const { sendTelegramTextMessage } = await import('../sendTelegramNotify.js')
 
@@ -191,7 +191,7 @@ describe('sendTaskCompletionNotify', () => {
       notify: {
         telegram: { botToken: 'test-token', chatId: '12345' },
       },
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>)
 
     const { sendTelegramTextMessage } = await import('../sendTelegramNotify.js')
     vi.mocked(sendTelegramTextMessage).mockRejectedValue(new Error('network error'))
@@ -206,7 +206,7 @@ describe('sendTaskCompletionNotify', () => {
       notify: {
         lark: { chatId: 'oc_test' },
       },
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>)
 
     const { sendLarkCardViaApi } = await import('../sendLarkNotify.js')
     const { getDefaultLarkChatId } = await import('../larkWsClient.js')

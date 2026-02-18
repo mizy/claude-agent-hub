@@ -15,7 +15,7 @@ function makeWorkflow(
     description: '',
     nodes: nodes.map(n => ({
       id: n.id,
-      type: (n.type ?? 'task') as any,
+      type: (n.type ?? 'task') as 'start' | 'end' | 'task',
       name: n.name ?? n.id,
     })),
     edges: edges.map((e, i) => ({ id: `e${i}`, from: e.from, to: e.to })),
@@ -24,10 +24,12 @@ function makeWorkflow(
   }
 }
 
+type NodeStatus = 'pending' | 'ready' | 'running' | 'waiting' | 'done' | 'failed' | 'skipped'
+
 function makeInstance(
-  nodeStates: Record<string, { status: string; attempts?: number }>
+  nodeStates: Record<string, { status: NodeStatus; attempts?: number }>
 ): WorkflowInstance {
-  const states: Record<string, any> = {}
+  const states: Record<string, { status: NodeStatus; attempts: number }> = {}
   for (const [id, s] of Object.entries(nodeStates)) {
     states[id] = { status: s.status, attempts: s.attempts ?? 0 }
   }

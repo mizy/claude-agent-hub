@@ -44,7 +44,7 @@ export async function runFixes(report: SelfcheckReport): Promise<string[]> {
   const results: string[] = [];
 
   for (const check of report.checks) {
-    if (check.status === 'fail' && check.fixable && check.fix) {
+    if ((check.status === 'fail' || check.status === 'warning') && check.fixable && check.fix) {
       const description = await check.fix();
       results.push(`[${check.name}] ${description}`);
     }

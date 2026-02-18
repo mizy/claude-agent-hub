@@ -95,7 +95,7 @@ export async function extractMemoryFromTask(
       prompt,
       mode: 'review',
       disableMcp: true,
-      timeoutMs: 60_000,
+      timeoutMs: 180_000,
     })
 
     if (!result.ok) {

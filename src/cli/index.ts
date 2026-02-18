@@ -28,6 +28,7 @@ import { registerPromptCommands } from './commands/prompt.js'
 import { registerDashboardCommand } from './commands/server.js'
 import { registerBackendCommands } from './commands/backend.js'
 import { registerSelfcheckCommand } from './commands/selfcheck.js'
+import { registerSelfCommand } from './commands/self.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask, getAllTasks, listTasks } from '../task/queryTask.js'
@@ -96,6 +97,7 @@ const KNOWN_COMMANDS = [
   'prompt',
   'backend',
   'selfcheck',
+  'self',
 ]
 
 // Bridge task lifecycle events to messaging notifications
@@ -282,6 +284,7 @@ registerPromptCommands(program)
 registerDashboardCommand(program)
 registerBackendCommands(program)
 registerSelfcheckCommand(program)
+registerSelfCommand(program)
 
 // cah list - 查看任务列表的快捷命令
 program
@@ -290,6 +293,7 @@ program
   .description('列出任务队列 (cah task list 的快捷方式)')
   .option('-s, --status <status>', '按状态筛选')
   .option('-a, --agent <agent>', '按 Agent 筛选')
+  .option('--source <source>', '按来源筛选 (如 selfdrive)')
   .option('--no-progress', '隐藏进度显示')
   .option('-w, --watch', '持续更新模式')
   .option('-i, --interval <ms>', '更新间隔 (毫秒)', '2000')

@@ -18,7 +18,7 @@ import {
   updateTask,
   type ProcessInfo,
 } from '../store/TaskStore.js'
-import { getTaskInstance, getTaskWorkflow } from '../store/TaskWorkflowStore.js'
+import { getTaskInstance, getTaskWorkflow, saveTaskInstance } from '../store/TaskWorkflowStore.js'
 import { appendExecutionLog, appendJsonlLog } from '../store/TaskLogStore.js'
 import { recoverWorkflowInstance } from '../workflow/index.js'
 import { spawnTaskProcess } from './spawnTask.js'
@@ -155,13 +155,39 @@ export function detectOrphanedTasks(): OrphanedTask[] {
         // 更新进程状态为 crashed
         updateProcessInfo(task.id, { status: 'crashed' })
 
-        // 同时更新任务状态为 failed（如果任务还在 planning 或 developing 状态）
+        // 决定 requeue 还是标记 failed：检查 instance 是否有 failed 节点
         if (task.status === 'planning' || task.status === 'developing') {
-          updateTask(task.id, {
-            status: 'failed',
-            error: 'Process crashed or terminated unexpectedly',
-          })
-          logger.info(`Task ${task.id} marked as failed due to crashed process`)
+          const instance = getTaskInstance(task.id)
+          const hasFailedNodes = instance
+            ? Object.values(instance.nodeStates).some(ns => ns.status === 'failed')
+            : false
+
+          if (instance && !hasFailedNodes) {
+            // No failed nodes — process was killed mid-execution, requeue the task
+            // Reset running nodes back to pending so workflow can restart them
+            let resetCount = 0
+            for (const [nodeId, ns] of Object.entries(instance.nodeStates)) {
+              if (ns.status === 'running') {
+                instance.nodeStates[nodeId] = { ...ns, status: 'pending', startedAt: undefined, completedAt: undefined }
+                resetCount++
+              }
+            }
+            instance.status = 'running' // keep instance active for resume
+            saveTaskInstance(task.id, instance)
+
+            updateTask(task.id, {
+              status: 'pending',
+              error: undefined,
+            })
+            logger.info(`Task ${task.id} requeued (${resetCount} running nodes reset to pending)`)
+          } else {
+            // Has failed nodes or no instance — mark as failed
+            updateTask(task.id, {
+              status: 'failed',
+              error: 'Process crashed or terminated unexpectedly',
+            })
+            logger.info(`Task ${task.id} marked as failed due to crashed process`)
+          }
         }
       }
     }

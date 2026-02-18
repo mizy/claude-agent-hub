@@ -72,7 +72,8 @@ function parseExtraction(text: string): RawEpisodeExtraction | null {
     const parsed = JSON.parse(jsonMatch[0])
     if (typeof parsed.summary !== 'string' || !parsed.summary) return null
     return parsed
-  } catch {
+  } catch (e) {
+    logger.debug(`Episode JSON parse failed: ${getErrorMessage(e)}`)
     return null
   }
 }
@@ -126,7 +127,7 @@ export async function extractEpisode(params: ExtractEpisodeParams): Promise<Epis
 
     const extraction = parseExtraction(result.value.response)
     if (!extraction) {
-      logger.warn('Failed to parse episode extraction result')
+      logger.warn(`Failed to parse episode extraction result. Raw response (first 500 chars): ${result.value.response.slice(0, 500)}`)
       return null
     }
 

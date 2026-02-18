@@ -47,4 +47,5 @@ export const TASK_COMMANDS = new Set([
   '/msg',
   '/pause',
   '/snapshot',
+  '/self',
 ])

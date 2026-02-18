@@ -20,6 +20,15 @@ import { invokeBackend } from '../../backend/index.js'
 
 const mockInvoke = vi.mocked(invokeBackend)
 
+type InvokeReturn = Awaited<ReturnType<typeof invokeBackend>>
+
+function mockOkResponse(response: string): InvokeReturn {
+  return {
+    ok: true,
+    value: { response },
+  } as unknown as InvokeReturn
+}
+
 function makeVersion(overrides?: Partial<PromptVersion>): PromptVersion {
   return {
     id: 'pv-test-001',
@@ -76,15 +85,10 @@ describe('generateImprovement', () => {
   })
 
   it('should generate a new candidate version on success', async () => {
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          improvedPrompt: 'You are a pragmatic developer. Always specify exact build commands.',
-          changelog: 'Added explicit build command guidance to reduce ambiguity',
-        }),
-      },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      improvedPrompt: 'You are a pragmatic developer. Always specify exact build commands.',
+      changelog: 'Added explicit build command guidance to reduce ambiguity',
+    })))
 
     const result = await generateImprovement(makeVersion(), [makeFailure()])
 
@@ -103,32 +107,24 @@ describe('generateImprovement', () => {
     mockInvoke.mockResolvedValue({
       ok: false,
       error: { message: 'Service unavailable' },
-    } as any)
+    } as unknown as InvokeReturn)
 
     const result = await generateImprovement(makeVersion(), [makeFailure()])
     expect(result).toBeNull()
   })
 
   it('should return null when response JSON is invalid', async () => {
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: { response: 'Not valid JSON at all' },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse('Not valid JSON at all'))
 
     const result = await generateImprovement(makeVersion(), [makeFailure()])
     expect(result).toBeNull()
   })
 
   it('should return null when response missing required fields', async () => {
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          improvedPrompt: 'Updated prompt',
-          // missing changelog
-        }),
-      },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      improvedPrompt: 'Updated prompt',
+      // missing changelog
+    })))
 
     const result = await generateImprovement(makeVersion(), [makeFailure()])
     expect(result).toBeNull()
@@ -142,15 +138,10 @@ describe('generateImprovement', () => {
     const { savePromptVersion } = await import('../../store/PromptVersionStore.js')
     savePromptVersion(makeVersion({ version: 3, id: 'pv-existing-003', personaName: persona }))
 
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          improvedPrompt: 'Better prompt',
-          changelog: 'Improved clarity',
-        }),
-      },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      improvedPrompt: 'Better prompt',
+      changelog: 'Improved clarity',
+    })))
 
     const result = await generateImprovement(
       makeVersion({ personaName: persona }),
@@ -162,15 +153,10 @@ describe('generateImprovement', () => {
   })
 
   it('should call backend with sonnet model', async () => {
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          improvedPrompt: 'Better prompt',
-          changelog: 'Fixed issues',
-        }),
-      },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      improvedPrompt: 'Better prompt',
+      changelog: 'Fixed issues',
+    })))
 
     await generateImprovement(makeVersion(), [makeFailure()])
 

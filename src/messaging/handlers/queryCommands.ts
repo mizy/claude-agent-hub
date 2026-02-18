@@ -47,14 +47,17 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 function buildTaskListItems(tasks: Task[]): TaskListItem[] {
-  return tasks.map(t => ({
-    id: t.id,
-    shortId: t.id.replace(/^task-/, '').slice(0, 4),
-    title: truncateText(t.title, 40),
-    status: t.status,
-    priority: t.priority,
-    relativeTime: formatRelativeTime(t.updatedAt || t.createdAt),
-  }))
+  return tasks.map(t => {
+    const prefix = t.source === 'selfdrive' ? '[自驱] ' : ''
+    return {
+      id: t.id,
+      shortId: t.id.replace(/^task-/, '').slice(0, 4),
+      title: truncateText(`${prefix}${t.title}`, 40),
+      status: t.status,
+      priority: t.priority,
+      relativeTime: formatRelativeTime(t.updatedAt || t.createdAt),
+    }
+  })
 }
 
 function formatTaskLine(item: TaskListItem): string {

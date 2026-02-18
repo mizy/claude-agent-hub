@@ -342,10 +342,13 @@ export async function updateLarkCard(messageId: string, card: LarkCard): Promise
   }
 
   try {
-    await client.im.v1.message.patch({
-      path: { message_id: messageId },
-      data: { content: JSON.stringify(card) },
-    })
+    await withRetry(
+      () => client.im.v1.message.patch({
+        path: { message_id: messageId },
+        data: { content: JSON.stringify(card) },
+      }),
+      'updateLarkCard'
+    )
     return true
   } catch (error) {
     const errorMessage = formatErrorMessage(error)

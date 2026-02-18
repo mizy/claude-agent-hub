@@ -39,6 +39,8 @@ const logger = createLogger('task-notify')
 export async function sendTaskCreatedNotification(task: Task): Promise<void> {
   try {
     const notifyConfig = await getNotifyConfig()
+    const sourcePrefix = task.source === 'selfdrive' ? '[自驱] ' : ''
+    const displayTitle = `${sourcePrefix}${task.title}`
 
     // ── Telegram ──
     const tg = notifyConfig?.telegram
@@ -49,7 +51,7 @@ export async function sendTaskCreatedNotification(task: Task): Promise<void> {
           `✅ 任务已创建`,
           ``,
           `ID: ${task.id}`,
-          `标题: ${task.title}`,
+          `标题: ${displayTitle}`,
           `状态: 🔵 ${task.status}`,
         ].join('\n')
         await sendTelegramTextMessage(message, tgChatId).catch(() => {
@@ -61,7 +63,7 @@ export async function sendTaskCreatedNotification(task: Task): Promise<void> {
     // ── Lark ── Send via API client (text message type)
     const larkChatId = notifyConfig?.lark?.chatId || getDefaultLarkChatId()
     if (larkChatId) {
-      const text = `✅ 任务已创建\nID: ${task.id}\n标题: ${task.title}\n状态: 🔵 ${task.status}`
+      const text = `✅ 任务已创建\nID: ${task.id}\n标题: ${displayTitle}\n状态: 🔵 ${task.status}`
       const sent = await sendLarkMessageViaApi(larkChatId, text)
       if (sent) {
         logger.info(`Sent task creation notification for ${task.id}`)
@@ -102,6 +104,8 @@ export async function sendTaskCompletionNotify(
   const notifyConfig = await getNotifyConfig()
   const duration = formatDuration(info.durationMs)
   const status = success ? 'completed' : 'failed'
+  const sourcePrefix = task.source === 'selfdrive' ? '[自驱] ' : ''
+  const displayTitle = `${sourcePrefix}${task.title}`
   logger.info(`Task ${task.id} ${status}, sending notifications... (title: "${task.title}")`)
 
   // Read output summary (best-effort, non-blocking)
@@ -115,7 +119,7 @@ export async function sendTaskCompletionNotify(
       const lines = [
         `📋 任务${success ? '完成' : '失败'}通知`,
         '',
-        `标题: ${task.title}`,
+        `标题: ${displayTitle}`,
         `状态: ${statusText}`,
         `耗时: ${duration}`,
       ]
@@ -153,7 +157,7 @@ export async function sendTaskCompletionNotify(
     if (larkChatId) {
       const cardInfo = {
         id: task.id,
-        title: task.title,
+        title: displayTitle,
         workflowName: info.workflowName,
         nodesCompleted: info.nodesCompleted,
         nodesFailed: info.nodesFailed,

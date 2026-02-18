@@ -22,6 +22,7 @@ export { getTaskDetail, type GetTaskDetailOptions } from './formatTask.js'
 export interface ListOptions {
   status?: string
   agent?: string
+  source?: string
   progress?: boolean
   watch?: boolean
   interval?: number
@@ -36,6 +37,10 @@ function getFilteredTasks(options: ListOptions): Task[] {
 
   if (options.agent) {
     tasks = tasks.filter(t => t.assignee === options.agent)
+  }
+
+  if (options.source) {
+    tasks = tasks.filter(t => t.source === options.source)
   }
 
   return tasks

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { PromptVersion } from '../../types/promptVersion.js'
+import type { Task } from '../../types/task.js'
 
 // Shared state for mock store
 const versions = new Map<string, PromptVersion>()
@@ -181,7 +182,7 @@ describe('refreshSuccessPatterns', () => {
       { id: 'sp-2', sampleCount: 1, taskType: 'feature', nodeSequence: [], agentAssignments: {}, avgDuration: 0, confidence: 0.2, extractedAt: '' },
     ])
 
-    const count = refreshSuccessPatterns([{ id: 'task-1', status: 'completed' }] as any[])
+    const count = refreshSuccessPatterns([{ id: 'task-1', status: 'completed' }] as unknown as Task[])
     expect(count).toBe(1)
     expect(successPattern.savePattern).toHaveBeenCalledWith(expect.objectContaining({ id: 'sp-1' }))
     expect(successPattern.savePattern).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'sp-2' }))

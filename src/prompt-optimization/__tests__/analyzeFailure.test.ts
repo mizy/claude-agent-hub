@@ -18,6 +18,15 @@ import { invokeBackend } from '../../backend/index.js'
 
 const mockInvoke = vi.mocked(invokeBackend)
 
+type InvokeReturn = Awaited<ReturnType<typeof invokeBackend>>
+
+function mockOkResponse(response: string): InvokeReturn {
+  return {
+    ok: true,
+    value: { response },
+  } as unknown as InvokeReturn
+}
+
 function makeTask(overrides?: Partial<Task>): Task {
   return {
     id: 'task-test-001',
@@ -88,17 +97,12 @@ describe('analyzeFailure', () => {
   })
 
   it('should return FailureAnalysis when failure is prompt-related', async () => {
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          category: 'prompt_unclear',
-          rootCause: 'The prompt did not specify which module to build',
-          suggestion: 'Add explicit module path to the prompt',
-          isPromptRelated: true,
-        }),
-      },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      category: 'prompt_unclear',
+      rootCause: 'The prompt did not specify which module to build',
+      suggestion: 'Add explicit module path to the prompt',
+      isPromptRelated: true,
+    })))
 
     const result = await analyzeFailure(makeTask(), makeWorkflow(), makeInstance(), 'pv-001')
 
@@ -112,17 +116,12 @@ describe('analyzeFailure', () => {
   })
 
   it('should return null when failure is not prompt-related', async () => {
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          category: 'other',
-          rootCause: 'Network timeout',
-          suggestion: 'Retry',
-          isPromptRelated: false,
-        }),
-      },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      category: 'other',
+      rootCause: 'Network timeout',
+      suggestion: 'Retry',
+      isPromptRelated: false,
+    })))
 
     const result = await analyzeFailure(makeTask(), makeWorkflow(), makeInstance(), 'pv-001')
     expect(result).toBeNull()
@@ -132,34 +131,28 @@ describe('analyzeFailure', () => {
     mockInvoke.mockResolvedValue({
       ok: false,
       error: { message: 'Backend unavailable' },
-    } as any)
+    } as unknown as InvokeReturn)
 
     const result = await analyzeFailure(makeTask(), makeWorkflow(), makeInstance(), 'pv-001')
     expect(result).toBeNull()
   })
 
   it('should return null when response is not valid JSON', async () => {
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: { response: 'This is not JSON' },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse('This is not JSON'))
 
     const result = await analyzeFailure(makeTask(), makeWorkflow(), makeInstance(), 'pv-001')
     expect(result).toBeNull()
   })
 
   it('should handle JSON wrapped in markdown code blocks', async () => {
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: '```json\n' + JSON.stringify({
-          category: 'context_insufficient',
-          rootCause: 'Missing file paths',
-          suggestion: 'Include project root in prompt',
-          isPromptRelated: true,
-        }) + '\n```',
-      },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse(
+      '```json\n' + JSON.stringify({
+        category: 'context_insufficient',
+        rootCause: 'Missing file paths',
+        suggestion: 'Include project root in prompt',
+        isPromptRelated: true,
+      }) + '\n```'
+    ))
 
     const result = await analyzeFailure(makeTask(), makeWorkflow(), makeInstance(), 'pv-001')
     expect(result).not.toBeNull()
@@ -167,17 +160,12 @@ describe('analyzeFailure', () => {
   })
 
   it('should normalize invalid category to other', async () => {
-    mockInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          category: 'invalid_category',
-          rootCause: 'Something',
-          suggestion: 'Fix it',
-          isPromptRelated: true,
-        }),
-      },
-    } as any)
+    mockInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      category: 'invalid_category',
+      rootCause: 'Something',
+      suggestion: 'Fix it',
+      isPromptRelated: true,
+    })))
 
     const result = await analyzeFailure(makeTask(), makeWorkflow(), makeInstance(), 'pv-001')
     // category normalized to 'other', but isPromptRelated=true so still returns result

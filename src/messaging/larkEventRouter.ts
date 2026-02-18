@@ -22,6 +22,24 @@ import type { MessengerAdapter, ClientContext } from './handlers/types.js'
 
 const logger = createLogger('lark-ws')
 
+/** Simple retry for transient Lark API failures (network, TLS disconnect) */
+async function withRetry<T>(fn: () => Promise<T>, label: string, maxRetries = 1): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      if (attempt < maxRetries) {
+        const delay = 500 * (attempt + 1)
+        logger.debug(`${label} attempt ${attempt + 1} failed, retrying in ${delay}ms...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+  throw lastError
+}
+
 // ── Event types ──
 
 export interface LarkMessageEvent {
@@ -171,28 +189,34 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
   return {
     async reply(chatId, text) {
       try {
-        await larkClient.im.v1.message.create({
-          params: { receive_id_type: 'chat_id' },
-          data: {
-            receive_id: chatId,
-            content: buildMarkdownCard(text),
-            msg_type: 'interactive',
-          },
-        })
+        await withRetry(
+          () => larkClient.im.v1.message.create({
+            params: { receive_id_type: 'chat_id' },
+            data: {
+              receive_id: chatId,
+              content: buildMarkdownCard(text),
+              msg_type: 'interactive',
+            },
+          }),
+          'reply'
+        )
       } catch (error) {
         logger.error(`→ reply failed: ${formatErrorMessage(error)}`)
       }
     },
     async sendAndGetId(chatId, text) {
       try {
-        const res = await larkClient.im.v1.message.create({
-          params: { receive_id_type: 'chat_id' },
-          data: {
-            receive_id: chatId,
-            content: buildMarkdownCard(text),
-            msg_type: 'interactive',
-          },
-        })
+        const res = await withRetry(
+          () => larkClient.im.v1.message.create({
+            params: { receive_id_type: 'chat_id' },
+            data: {
+              receive_id: chatId,
+              content: buildMarkdownCard(text),
+              msg_type: 'interactive',
+            },
+          }),
+          'sendAndGetId'
+        )
         return (res as LarkSdkResponse)?.data?.message_id ?? null
       } catch (error) {
         logger.error(`→ send failed: ${formatErrorMessage(error)}`)
@@ -202,12 +226,15 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
     async editMessage(chatId, messageId, text) {
       if (!messageId) return
       try {
-        await larkClient.im.v1.message.patch({
-          path: { message_id: messageId },
-          data: {
-            content: buildMarkdownCard(text),
-          },
-        })
+        await withRetry(
+          () => larkClient.im.v1.message.patch({
+            path: { message_id: messageId },
+            data: {
+              content: buildMarkdownCard(text),
+            },
+          }),
+          'editMessage'
+        )
       } catch (error) {
         const msg = formatErrorMessage(error)
         if (msg.includes('NOT a card') || msg.includes('not a card')) {
@@ -223,14 +250,17 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
     },
     async replyCard(chatId: string, card: LarkCard) {
       try {
-        await larkClient.im.v1.message.create({
-          params: { receive_id_type: 'chat_id' },
-          data: {
-            receive_id: chatId,
-            content: JSON.stringify(card),
-            msg_type: 'interactive',
-          },
-        })
+        await withRetry(
+          () => larkClient.im.v1.message.create({
+            params: { receive_id_type: 'chat_id' },
+            data: {
+              receive_id: chatId,
+              content: JSON.stringify(card),
+              msg_type: 'interactive',
+            },
+          }),
+          'replyCard'
+        )
       } catch (error) {
         logger.error(`→ card send failed: ${formatErrorMessage(error)}`)
       }
@@ -239,12 +269,15 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
       if (!messageId) return
       try {
         logger.debug(`→ editCard called for msgId=${messageId}`)
-        const res = await larkClient.im.v1.message.patch({
-          path: { message_id: messageId },
-          data: {
-            content: JSON.stringify(card),
-          },
-        })
+        const res = await withRetry(
+          () => larkClient.im.v1.message.patch({
+            path: { message_id: messageId },
+            data: {
+              content: JSON.stringify(card),
+            },
+          }),
+          'editCard'
+        )
         logger.debug(`→ editCard response: ${JSON.stringify(res).slice(0, 200)}`)
       } catch (error) {
         const msg = formatErrorMessage(error)

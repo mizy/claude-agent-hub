@@ -14,6 +14,15 @@ import type { EpisodeMessage } from '../extractEpisode.js'
 
 const mockedInvoke = vi.mocked(invokeBackend)
 
+type InvokeReturn = Awaited<ReturnType<typeof invokeBackend>>
+
+function mockOkResponse(response: string): InvokeReturn {
+  return {
+    ok: true,
+    value: { response, durationMs: 500 },
+  } as unknown as InvokeReturn
+}
+
 function clearEpisodes() {
   if (existsSync(EPISODES_DIR)) {
     rmSync(EPISODES_DIR, { recursive: true, force: true })
@@ -46,7 +55,7 @@ describe('extractEpisode', () => {
         }),
         durationMs: 1000,
       },
-    } as any)
+    } as unknown as InvokeReturn)
 
     const episode = await extractEpisode({
       messages: sampleMessages,
@@ -69,18 +78,12 @@ describe('extractEpisode', () => {
   })
 
   it('generates episode ID in correct format', async () => {
-    mockedInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          summary: 'test',
-          keyDecisions: [],
-          tone: 'casual',
-          triggerKeywords: ['test'],
-        }),
-        durationMs: 500,
-      },
-    } as any)
+    mockedInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      summary: 'test',
+      keyDecisions: [],
+      tone: 'casual',
+      triggerKeywords: ['test'],
+    })))
 
     const episode = await extractEpisode({
       messages: sampleMessages,
@@ -91,18 +94,12 @@ describe('extractEpisode', () => {
   })
 
   it('defaults to technical tone for invalid tone value', async () => {
-    mockedInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          summary: 'test',
-          keyDecisions: [],
-          tone: 'invalid-tone',
-          triggerKeywords: [],
-        }),
-        durationMs: 500,
-      },
-    } as any)
+    mockedInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      summary: 'test',
+      keyDecisions: [],
+      tone: 'invalid-tone',
+      triggerKeywords: [],
+    })))
 
     const episode = await extractEpisode({
       messages: sampleMessages,
@@ -125,7 +122,7 @@ describe('extractEpisode', () => {
     mockedInvoke.mockResolvedValue({
       ok: false,
       error: { message: 'timeout' },
-    } as any)
+    } as unknown as InvokeReturn)
 
     const result = await extractEpisode({
       messages: sampleMessages,
@@ -135,10 +132,7 @@ describe('extractEpisode', () => {
   })
 
   it('returns null on unparseable LLM response', async () => {
-    mockedInvoke.mockResolvedValue({
-      ok: true,
-      value: { response: 'not json at all', durationMs: 500 },
-    } as any)
+    mockedInvoke.mockResolvedValue(mockOkResponse('not json at all'))
 
     const result = await extractEpisode({
       messages: sampleMessages,
@@ -148,18 +142,12 @@ describe('extractEpisode', () => {
   })
 
   it('links relatedMemoryIds when provided', async () => {
-    mockedInvoke.mockResolvedValue({
-      ok: true,
-      value: {
-        response: JSON.stringify({
-          summary: 'test',
-          keyDecisions: [],
-          tone: 'technical',
-          triggerKeywords: ['test'],
-        }),
-        durationMs: 500,
-      },
-    } as any)
+    mockedInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
+      summary: 'test',
+      keyDecisions: [],
+      tone: 'technical',
+      triggerKeywords: ['test'],
+    })))
 
     const episode = await extractEpisode({
       messages: sampleMessages,
