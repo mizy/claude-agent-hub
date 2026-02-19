@@ -41,7 +41,7 @@ async function restartDaemonFix(): Promise<string> {
 
   const { running } = isServiceRunning('daemon')
   if (running) {
-    await stopDaemon({})
+    await stopDaemon({ keepDashboard: true })
     // Wait for process to fully stop
     await new Promise(r => setTimeout(r, 1500))
   }

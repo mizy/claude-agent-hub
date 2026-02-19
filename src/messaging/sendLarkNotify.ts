@@ -283,7 +283,10 @@ export async function uploadLarkImage(
       }),
       'uploadLarkImage'
     )
-    const imageKey = (res as { data?: { image_key?: string } })?.data?.image_key
+    // Lark SDK may return image_key at res.data.image_key or res.image_key depending on version
+    const resAny = res as Record<string, unknown>
+    const dataObj = (resAny.data ?? resAny) as Record<string, unknown>
+    const imageKey = (dataObj.image_key as string) ?? undefined
     if (!imageKey) {
       logger.error('Lark image upload returned no image_key')
       logger.error(`Response: ${JSON.stringify(res).slice(0, 500)}`)

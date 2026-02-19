@@ -49,6 +49,8 @@ export interface InvokeResult {
   costUsd?: number
   /** 等待并发槽位的毫秒数 */
   slotWaitMs?: number
+  /** MCP 工具产生的本地图片路径（如截图），由 chatHandler 直接发送 */
+  mcpImagePaths?: string[]
 }
 
 export type InvokeError =

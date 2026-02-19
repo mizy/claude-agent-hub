@@ -312,9 +312,11 @@ async function handleChatInternal(
   }
 
   // Retrieve relevant memories for context injection
-  // Always retrieve if there's a query — chatMemory.enabled controls extraction, not retrieval
+  // Only inject when starting a new session — continuing an existing session already has full
+  // conversation history in the backend (via sessionId), so injecting memories would be redundant
+  // and potentially cause confusion (same info appears twice: once in memory, once in history).
   let memoryContext = ''
-  if (effectiveText) {
+  if (effectiveText && willStartNewSession) {
     try {
       const context = await retrieveAllMemoryContext(effectiveText, {
         maxResults: config.memory.chatMemory.maxMemories,
@@ -418,6 +420,7 @@ async function handleChatInternal(
     }
 
     const response = result.value.response
+    const mcpImagePaths = result.value.mcpImagePaths ?? []
     const newSessionId = result.value.sessionId
     const durationMs = Date.now() - bench.start
     logger.info(`→ reply ${response.length} chars (${(durationMs / 1000).toFixed(1)}s)`)
@@ -471,7 +474,26 @@ async function handleChatInternal(
       })
     }
 
-    // Detect and send images from response
+    // Send MCP-generated images (e.g. screenshots) directly via backend result
+    if (mcpImagePaths.length > 0 && messenger.replyImage) {
+      const { readFileSync, existsSync } = await import('fs')
+      for (const imgPath of mcpImagePaths) {
+        try {
+          if (!existsSync(imgPath)) {
+            logger.warn(`MCP image not found: ${imgPath}`)
+            continue
+          }
+          const imageData = readFileSync(imgPath)
+          logger.info(`Sending MCP image (${imageData.length} bytes): ${imgPath}`)
+          await messenger.replyImage(chatId, imageData, imgPath)
+          logger.info(`✓ MCP image sent: ${imgPath}`)
+        } catch (e) {
+          logger.error(`✗ Failed to send MCP image ${imgPath}: ${getErrorMessage(e)}`)
+        }
+      }
+    }
+
+    // Detect and send images from response text (e.g. file paths mentioned by AI)
     await sendDetectedImages(chatId, response, messenger)
 
     // Fire-and-forget: extract memories from conversation periodically (only when extraction enabled)

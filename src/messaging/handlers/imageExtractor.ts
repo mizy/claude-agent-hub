@@ -14,15 +14,15 @@ const logger = createLogger('image-extractor')
 // Compiled once at module load — reused across calls (reset lastIndex before each use)
 const IMAGE_EXT = '(?:png|jpg|jpeg|gif|webp|bmp)'
 const ABSOLUTE_RE = new RegExp(
-  `(?:^|\\s|["'\`])(\\/[\\w./-]+\\.${IMAGE_EXT})(?:\\s|$|["'\`\\)\\]},;:])`,
+  `(?:^|\\s|["'\`(])(\\/[\\w./-]+\\.${IMAGE_EXT})(?:\\s|$|["'\`\\)\\]},;:])`,
   'gim'
 )
 const MARKDOWN_RE = new RegExp(
-  `!\\[.*?\\]\\(([\\w./-]+\\.${IMAGE_EXT})\\)`,
+  `!?\\[.*?\\]\\(([\\w./:@-]+\\.${IMAGE_EXT})\\)`,
   'gi'
 )
 const RELATIVE_RE = new RegExp(
-  `(?:^|\\s|["'\`])(\\.?\\/[\\w./-]+\\.${IMAGE_EXT}|[\\w-]+\\.${IMAGE_EXT})(?:\\s|$|["'\`\\)\\]},;:])`,
+  `(?:^|\\s|["'\`(])(\\.?\\/[\\w./-]+\\.${IMAGE_EXT}|[\\w-]+\\.${IMAGE_EXT})(?:\\s|$|["'\`\\)\\]},;:])`,
   'gim'
 )
 

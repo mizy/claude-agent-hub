@@ -4,9 +4,9 @@
  * 将 Claude Code CLI 封装为 BackendAdapter 实现
  */
 
-import { readFileSync } from 'fs'
+import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
+import { tmpdir, homedir } from 'os'
 import { execa, type ResultPromise } from 'execa'
 import chalk from 'chalk'
 import { ok, err } from '../shared/result.js'
@@ -41,10 +41,17 @@ function isClaudeJsonOutput(data: unknown): data is ClaudeJsonOutput {
   )
 }
 
+interface StreamContentBlock {
+  type: string
+  text?: string
+  source?: { type: string; media_type?: string; data?: string }
+  content?: StreamContentBlock[] // tool_result blocks nest content inside
+}
+
 interface StreamJsonEvent {
   type: string
   message?: {
-    content?: Array<{ type: string; text?: string }>
+    content?: StreamContentBlock[]
   }
   tool_use_result?: {
     stdout?: string
@@ -108,8 +115,11 @@ export function createClaudeCodeBackend(): BackendAdapter {
         perf.spawn = Date.now() - startTime
 
         let rawOutput: string
+        let mcpImagePaths: string[] = []
         if (stream) {
-          rawOutput = await streamOutput(subprocess, onChunk, startTime, perf)
+          const streamResult = await streamOutput(subprocess, onChunk, startTime, perf)
+          rawOutput = streamResult.rawOutput
+          mcpImagePaths = streamResult.extractedImagePaths
         } else {
           const result = await subprocess
           rawOutput = result.stdout
@@ -120,6 +130,10 @@ export function createClaudeCodeBackend(): BackendAdapter {
           `[perf] spawn: ${perf.spawn}ms, first-stdout: ${perf.firstStdout}ms, first-delta: ${perf.firstDelta}ms, total: ${durationMs}ms`
         )
         const parsed = parseClaudeOutput(rawOutput)
+
+        if (mcpImagePaths.length > 0) {
+          logger.info(`Extracted ${mcpImagePaths.length} MCP image(s): ${mcpImagePaths.join(', ')}`)
+        }
 
         logger.info(
           `完成 (${(durationMs / 1000).toFixed(1)}s, API: ${((parsed.durationApiMs ?? 0) / 1000).toFixed(1)}s)`
@@ -132,6 +146,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
           sessionId: parsed.sessionId,
           durationApiMs: parsed.durationApiMs,
           costUsd: parsed.costUsd,
+          mcpImagePaths: mcpImagePaths.length > 0 ? mcpImagePaths : undefined,
         })
       } catch (error: unknown) {
         if (signal?.aborted) {
@@ -275,6 +290,40 @@ function parseClaudeOutput(raw: string): {
   }
 }
 
+/** Save base64-encoded image data to a temp file and return the path */
+function saveBase64Image(data: string, mediaType?: string): string {
+  const ext = mediaType?.includes('png') ? 'png' : mediaType?.includes('gif') ? 'gif' : 'png'
+  const filePath = join(tmpdir(), `cah-mcp-screenshot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`)
+  writeFileSync(filePath, Buffer.from(data, 'base64'))
+  logger.info(`Saved MCP image to ${filePath}`)
+  return filePath
+}
+
+/** Extract base64 image content blocks from a user/tool_result event */
+function extractImagesFromEvent(event: StreamJsonEvent): string[] {
+  if (event.type !== 'user' || !event.message?.content) return []
+  const paths: string[] = []
+
+  function extractFromBlocks(blocks: StreamContentBlock[]) {
+    for (const block of blocks) {
+      if (block.type === 'image' && block.source?.type === 'base64' && block.source.data) {
+        try {
+          paths.push(saveBase64Image(block.source.data, block.source.media_type))
+        } catch (e) {
+          logger.debug(`Failed to save base64 image: ${getErrorMessage(e)}`)
+        }
+      }
+      // tool_result blocks nest their content inside a content array
+      if (block.type === 'tool_result' && block.content) {
+        extractFromBlocks(block.content)
+      }
+    }
+  }
+
+  extractFromBlocks(event.message.content)
+  return paths
+}
+
 // 100MB max output size to prevent OOM
 const MAX_OUTPUT_BYTES = 100 * 1024 * 1024
 
@@ -283,8 +332,9 @@ async function streamOutput(
   onChunk?: (chunk: string) => void,
   startTime?: number,
   perf?: { spawn: number; firstStdout: number; firstDelta: number }
-): Promise<string> {
+): Promise<{ rawOutput: string; extractedImagePaths: string[] }> {
   const chunks: string[] = []
+  const extractedImagePaths: string[] = []
   let buffer = ''
   let totalBytes = 0
   let truncated = false
@@ -350,12 +400,18 @@ async function streamOutput(
                 process.stdout.write(chalk.dim(assistantText + '\n'))
               }
             }
-          } else if (event.type === 'user' && event.tool_use_result) {
+          } else if (event.type === 'user') {
+            // Extract base64 images from MCP tool results (e.g. browsermcp screenshots)
+            const imgPaths = extractImagesFromEvent(event)
+            extractedImagePaths.push(...imgPaths)
+
             // Tool output (build logs, test output etc.) — only show in CLI, never send to Lark
-            const toolOutput =
-              (event.tool_use_result.stdout ?? '') + (event.tool_use_result.stderr ?? '')
-            if (toolOutput && !onChunk) {
-              process.stdout.write(chalk.dim(toolOutput + '\n'))
+            if (event.tool_use_result) {
+              const toolOutput =
+                (event.tool_use_result.stdout ?? '') + (event.tool_use_result.stderr ?? '')
+              if (toolOutput && !onChunk) {
+                process.stdout.write(chalk.dim(toolOutput + '\n'))
+              }
             }
           }
         } catch {
@@ -371,12 +427,10 @@ async function streamOutput(
   await subprocess
 
   const output = chunks.join('')
-  if (truncated) {
-    return (
-      output +
-      `\n\n[OUTPUT TRUNCATED: exceeded ${MAX_OUTPUT_BYTES / 1024 / 1024}MB limit, ${(totalBytes / 1024 / 1024).toFixed(1)}MB total]`
-    )
-  }
-  return output
+  const result = truncated
+    ? output + `\n\n[OUTPUT TRUNCATED: exceeded ${MAX_OUTPUT_BYTES / 1024 / 1024}MB limit, ${(totalBytes / 1024 / 1024).toFixed(1)}MB total]`
+    : output
+
+  return { rawOutput: result, extractedImagePaths }
 }
 

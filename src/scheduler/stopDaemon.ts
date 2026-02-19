@@ -11,6 +11,7 @@ const logger = createLogger('stop-daemon')
 
 interface StopOptions {
   agent?: string
+  keepDashboard?: boolean
 }
 
 export interface StopResult {
@@ -139,10 +140,12 @@ export async function stopDaemon(_options: StopOptions): Promise<StopResult> {
     console.log(chalk.green(`✓ 已停止 ${taskKilled} 个任务进程`))
   }
 
-  // 4. Kill dashboard
-  result.dashboardWasRunning = killDashboard()
-  if (result.dashboardWasRunning) {
-    console.log(chalk.green('✓ 已停止 Dashboard'))
+  // 4. Kill dashboard (unless keepDashboard is set)
+  if (!_options.keepDashboard) {
+    result.dashboardWasRunning = killDashboard()
+    if (result.dashboardWasRunning) {
+      console.log(chalk.green('✓ 已停止 Dashboard'))
+    }
   }
 
   return result
