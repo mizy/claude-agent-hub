@@ -31,7 +31,7 @@ export const TASK_PROMPTS = {
 
 ## 当前时间
 {{currentTime}}
-## 工作目录)
+## 工作目录
 {{cwd}}
 
 ## 当前节点
@@ -148,7 +148,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 4. **switch** - 条件分支节点
    \`\`\`json
    { "id": "唯一ID", "type": "switch", "name": "判断", "switch": {
-     "expression": "outputs.check.result",
+     "expression": "outputs.check._raw",
      "cases": [
        { "value": "success", "targetNode": "success-node" },
        { "value": "default", "targetNode": "fallback-node" }
@@ -194,6 +194,57 @@ Return ONLY the title text, nothing else. Use the same language as the content (
    }}
    \`\`\`
 
+## 条件边与循环边
+
+边（edge）支持 condition 和 maxLoops 属性，用于实现条件分支和循环：
+
+\`\`\`json
+{
+  "from": "review", "to": "fix",
+  "condition": "outputs.review.approved == false"
+}
+\`\`\`
+- **condition**：表达式为 true 时走这条边，为 false 时跳过
+- **maxLoops**：限制循环边最大执行次数，防止无限循环。超过次数后自动跳过该边
+
+### Review-Fix 循环模式
+
+对于需要质量保证的任务（功能开发、重构、复杂修改），推荐使用 review-fix 循环：
+
+1. **开发节点**（Pragmatist persona）完成代码实现
+2. **review 节点**（Reviewer persona）独立评审，输出中必须包含关键字 APPROVED 或 REJECTED
+3. 通过条件边判断：APPROVED → 继续后续节点；REJECTED → 回到修复节点
+4. 修复节点到 review 节点的边设置 maxLoops=3，防止无限循环
+
+示例：
+\`\`\`json
+{
+  "nodes": [
+    { "id": "start", "type": "start", "name": "开始" },
+    { "id": "implement", "type": "task", "name": "实现功能", "task": { "agent": "Pragmatist", "prompt": "实现 xxx 功能，完成后运行 typecheck 确认无误" } },
+    { "id": "review", "type": "task", "name": "代码评审", "task": { "agent": "Reviewer", "prompt": "评审上一节点的代码变更。检查逻辑正确性、边界处理、代码风格。\\n\\n评审结果必须以 APPROVED 或 REJECTED 开头。如果 REJECTED，说明具体问题和修复建议。" } },
+    { "id": "fix", "type": "task", "name": "修复问题", "task": { "agent": "Pragmatist", "prompt": "根据评审意见修复代码问题，修复后运行验证确认" } },
+    { "id": "end", "type": "end", "name": "结束" }
+  ],
+  "edges": [
+    { "from": "start", "to": "implement" },
+    { "from": "implement", "to": "review" },
+    { "from": "review", "to": "end", "condition": "outputs.review._raw.includes('APPROVED')" },
+    { "from": "review", "to": "fix", "condition": "!outputs.review._raw.includes('APPROVED')" },
+    { "from": "fix", "to": "review", "maxLoops": 3 }
+  ]
+}
+\`\`\`
+
+**何时使用 review-fix 循环：**
+- 核心功能开发（逻辑复杂，容易出错）
+- 重构（需要确保行为一致性）
+- 涉及安全或性能的修改
+
+**何时不需要：**
+- 简单的配置修改、文档更新、Git 提交
+- 2-3 个节点的简单任务
+
 ## 输出格式
 
 请严格按照以下 JSON 格式输出：
@@ -209,7 +260,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
   ],
   "edges": [
     { "from": "start", "to": "first-node" },
-    // ... 节点连接
+    // ... 节点连接（可添加 condition 和 maxLoops）
     { "from": "last-node", "to": "end" }
   ],
   "variables": {
@@ -221,17 +272,23 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 ## 表达式语法
 
 在条件和脚本中可以使用：
-- \`outputs.nodeId.xxx\` - 访问节点输出
+- \`outputs.nodeId.xxx\` - 访问节点输出（结构化字段）
+- \`outputs.nodeId._raw\` - 节点的原始文本输出（注意：节点输出结构为 \`{ _raw: '原始文本', ... }\`，条件表达式应使用 \`_raw\` 字段）
+- \`outputs.nodeId._raw.includes('xxx')\` - 检查输出是否包含关键字（自动转为函数调用）
+- \`startsWith(str, prefix)\` - 检查字符串开头
+- \`lower(str)\` / \`upper(str)\` - 大小写转换
 - \`variables.xxx\` - 访问变量
 - \`len(array)\` - 数组长度
+- \`has(obj, key)\` - 检查对象是否有某属性
 - \`&&\` / \`||\` - 逻辑运算
 - 数学运算: +, -, *, /
 
 ## 规则
 1. 每个节点必须有唯一的 id
 2. edges 定义节点之间的连接关系
-3. 条件边使用 condition 属性
-4. 只输出 JSON，不要有其他文字
+3. 条件边使用 condition 属性，循环边使用 maxLoops 属性
+4. review 节点的 prompt 必须要求输出以 APPROVED 或 REJECTED 开头，以便条件边判断
+5. 只输出 JSON，不要有其他文字
 
 ## 常见失败模式（请规避）
 

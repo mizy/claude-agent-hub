@@ -97,12 +97,20 @@ export function injectNode(taskId: string, nodePrompt: string, persona = 'Pragma
   })
 
   // Add edges: newNode → each original target
+  // Update condition expressions: replace references to anchor node's output with injected node's output
   for (const edge of outEdges) {
+    let condition = edge.condition
+    if (condition && anchorNodeId) {
+      condition = condition.replace(
+        new RegExp(`outputs\\.${anchorNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`, 'g'),
+        `outputs.${newNodeId}.`
+      )
+    }
     workflow.edges.push({
       id: `edge-${generateId().slice(0, 8)}`,
       from: newNodeId,
       to: edge.to,
-      condition: edge.condition,
+      condition,
     })
   }
 

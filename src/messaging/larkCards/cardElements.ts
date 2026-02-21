@@ -39,6 +39,7 @@ export interface LarkCardButton {
   tag: 'button'
   text: { tag: 'plain_text'; content: string }
   type?: 'primary' | 'danger' | 'default'
+  size?: 'small' | 'medium' | 'large'
   value?: CardActionPayload | Record<string, string>
 }
 
@@ -71,9 +72,10 @@ export function actionElement(buttons: LarkCardButton[]): LarkCardElement {
 export function button(
   label: string,
   type: 'primary' | 'danger' | 'default',
-  value: CardActionPayload | Record<string, string>
+  value: CardActionPayload | Record<string, string>,
+  size: 'small' | 'medium' | 'large' = 'small'
 ): LarkCardButton {
-  return { tag: 'button', text: { tag: 'plain_text', content: label }, type, value }
+  return { tag: 'button', text: { tag: 'plain_text', content: label }, type, size, value }
 }
 
 // ── Action payload builders ──

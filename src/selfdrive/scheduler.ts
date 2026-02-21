@@ -25,6 +25,7 @@ function parseScheduleMs(schedule: string): number | null {
   if (!match) return null
 
   const value = parseInt(match[1]!, 10)
+  if (value <= 0) return null
   const unit = match[2]!
 
   switch (unit) {
@@ -58,19 +59,25 @@ const GOAL_TASK_PROMPTS: Record<string, string> = {
 - 配置调整（调度频率、阈值、超时等）
 - 新能力补全（发现系统缺少某个功能）
 
+重要约束：
+- 每轮只选择 2-3 个最高价值的改进，不要贪多
+- 只实施低风险改进，排除涉及数据结构变更或核心引擎流程的修改
+- 工作流节点数不要超过 5 个（含 start/end），保持简单
+- 改进后必须运行 typecheck 验证，确保不引入回归
+
 生成改进方案并应用，记录进化历史。`,
   'cleanup': '执行数据清理：清理过期日志、孤儿文件、过时的记忆条目等。',
 }
 
 // ============ Conflict Detection ============
 
-/** Check if there's already a running selfdrive task for the same goal */
-function hasRunningSelfdriveTask(goalId: string): boolean {
+/** Check if there's already a running selfdrive task for the same goal type */
+function hasRunningSelfdriveTask(goalType: string): boolean {
   const runningStatuses = ['pending', 'planning', 'developing']
   const tasks = getAllTasks()
 
   return tasks.some(
-    t => runningStatuses.includes(t.status) && t.source === 'selfdrive' && t.metadata?.goalId === goalId
+    t => runningStatuses.includes(t.status) && t.source === 'selfdrive' && t.metadata?.goalType === goalType
   )
 }
 
@@ -86,9 +93,9 @@ async function executeGoal(goal: DriveGoal): Promise<void> {
     return
   }
 
-  // Check for running selfdrive task of same goal
-  if (hasRunningSelfdriveTask(goal.id)) {
-    logger.info(`Skipping goal ${goal.id}: selfdrive task already running`)
+  // Check for running selfdrive task of same goal type
+  if (hasRunningSelfdriveTask(goal.type)) {
+    logger.info(`Skipping goal ${goal.id} (${goal.type}): selfdrive task of same type already running`)
     return
   }
 
@@ -141,12 +148,12 @@ export function startScheduler(): void {
 
     // Run immediately if due
     if (isDue(goal)) {
-      executeGoal(goal).catch(err => logger.error(`Goal ${goal.id} error: ${err}`))
+      executeGoal(goal).catch(err => logger.error(`Goal ${goal.id} error: ${getErrorMessage(err)}`))
     }
 
     // Schedule periodic execution
     const timer = setInterval(() => {
-      executeGoal(goal).catch(err => logger.error(`Goal ${goal.id} error: ${err}`))
+      executeGoal(goal).catch(err => logger.error(`Goal ${goal.id} error: ${getErrorMessage(err)}`))
     }, intervalMs)
 
     // Don't block process exit

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { rmSync, existsSync } from 'fs'
+import { rmSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -94,8 +94,22 @@ describe('daemon', () => {
     expect(startScheduler).toHaveBeenCalledOnce()
   })
 
-  it('resumeSelfDriveIfEnabled does nothing when disabled', () => {
-    // Never started → state.enabled = false
+  it('resumeSelfDriveIfEnabled auto-starts even when never started before', () => {
+    // Never started → state.enabled = false, but auto-start kicks in
+    resumeSelfDriveIfEnabled()
+    expect(ensureBuiltinGoals).toHaveBeenCalledOnce()
+    expect(startScheduler).toHaveBeenCalledOnce()
+  })
+
+  it('resumeSelfDriveIfEnabled does nothing when permanently disabled', () => {
+    // Simulate permanently disabled state
+    // fs functions imported at top level
+    mkdirSync(SELFDRIVE_DIR, { recursive: true })
+    writeFileSync(
+      join(SELFDRIVE_DIR, 'state.json'),
+      JSON.stringify({ enabled: false, permanentlyDisabled: true })
+    )
+
     resumeSelfDriveIfEnabled()
     expect(startScheduler).not.toHaveBeenCalled()
   })

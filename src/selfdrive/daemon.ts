@@ -19,6 +19,7 @@ const logger = createLogger('selfdrive')
 
 interface SelfDriveState {
   enabled: boolean
+  permanentlyDisabled?: boolean
   startedAt?: string
   stoppedAt?: string
 }
@@ -97,12 +98,23 @@ export function getSelfDriveStatus(): {
   }
 }
 
-/** Resume self-drive if it was previously enabled (called on daemon start) */
+/**
+ * Resume self-drive on daemon start.
+ * Auto-starts unless the user has explicitly and permanently disabled it.
+ * A temporary stop (via stopSelfDrive) is NOT permanent — daemon restart resumes it.
+ */
 export function resumeSelfDriveIfEnabled(): void {
   const state = getState()
-  if (state.enabled) {
-    logger.info('Resuming self-drive from previous state')
-    ensureBuiltinGoals()
-    startScheduler()
+  if (state.permanentlyDisabled) {
+    logger.info('Self-drive permanently disabled, skipping auto-start')
+    return
   }
+  logger.info('Auto-starting self-drive on daemon start')
+  ensureBuiltinGoals()
+  startScheduler()
+  saveState({
+    ...state,
+    enabled: true,
+    startedAt: new Date().toISOString(),
+  })
 }

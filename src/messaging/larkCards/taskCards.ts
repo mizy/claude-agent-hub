@@ -104,7 +104,8 @@ function buildNodeOverview(nodes: TaskNodeInfo[]): string {
 }
 
 function formatTaskLineLark(item: TaskListItem): string {
-  return `${statusEmoji(item.status)} **${item.shortId}** ${item.title}  ${item.relativeTime}`
+  const title = item.title.replace(/^\d{4}-\d{2}-\d{2}\s*/, '')
+  return `${statusEmoji(item.status)} **${item.shortId}** ${title}  ${item.relativeTime}`
 }
 
 // ── Card builders ──
