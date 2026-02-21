@@ -63,7 +63,7 @@ export function startSelfDrive(): void {
   logger.info('Self-drive started')
 }
 
-/** Stop self-drive mode. Stops scheduler but preserves goals. */
+/** Stop self-drive mode (temporary — daemon restart will resume). */
 export function stopSelfDrive(): void {
   const state = getState()
   if (!state.enabled) {
@@ -80,6 +80,36 @@ export function stopSelfDrive(): void {
   })
 
   logger.info('Self-drive stopped')
+}
+
+/** Permanently disable self-drive. Daemon restart will NOT auto-resume. */
+export function disableSelfDrive(): void {
+  const state = getState()
+  if (state.enabled) {
+    stopScheduler()
+  }
+  saveState({
+    ...state,
+    enabled: false,
+    permanentlyDisabled: true,
+    stoppedAt: new Date().toISOString(),
+  })
+  logger.info('Self-drive permanently disabled')
+}
+
+/** Remove permanent disable flag. Self-drive will auto-start on next daemon restart. */
+export function enableSelfDrive(): void {
+  const state = getState()
+  saveState({
+    ...state,
+    permanentlyDisabled: false,
+  })
+  logger.info('Self-drive enabled (will auto-start on next daemon restart)')
+}
+
+/** Check if self-drive is permanently disabled */
+export function isSelfDrivePermanentlyDisabled(): boolean {
+  return getState().permanentlyDisabled === true
 }
 
 /** Get self-drive status */

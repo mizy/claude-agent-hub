@@ -22,23 +22,28 @@ function computeInitialStability(entry: MemoryEntry): number {
  * Returns the entry unchanged if already migrated (no allocation).
  */
 export function migrateMemoryEntry(entry: MemoryEntry): MemoryEntry {
-  // Fast path: if strength exists, assume fully migrated
-  if (entry.strength !== undefined) return entry
+  // Fast path: all required fields present
+  if (!needsMigration(entry)) return entry
 
   return {
     ...entry,
-    strength: 50,
-    stability: computeInitialStability(entry),
-    lastReinforcedAt: entry.updatedAt ?? entry.createdAt,
-    reinforceCount: 0,
-    decayRate: 1.0,
-    associations: [],
+    strength: entry.strength ?? 50,
+    stability: entry.stability ?? computeInitialStability(entry),
+    lastReinforcedAt: entry.lastReinforcedAt ?? entry.updatedAt ?? entry.createdAt,
+    reinforceCount: entry.reinforceCount ?? 0,
+    decayRate: entry.decayRate ?? 1.0,
+    associations: entry.associations ?? [],
   }
 }
 
 /**
- * Check if a MemoryEntry needs migration (missing new fields).
+ * Check if a MemoryEntry needs migration (missing any required fields).
  */
 export function needsMigration(entry: MemoryEntry): boolean {
-  return entry.strength === undefined
+  return (
+    entry.strength === undefined ||
+    entry.stability === undefined ||
+    entry.decayRate === undefined ||
+    entry.associations === undefined
+  )
 }

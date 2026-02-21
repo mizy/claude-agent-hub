@@ -2,7 +2,9 @@
  * self drive 子命令 — 自驱模式管理
  *
  * cah self drive start   → 启动自驱模式
- * cah self drive stop    → 停止自驱
+ * cah self drive stop    → 临时停止（daemon 重启恢复）
+ * cah self drive disable → 永久禁用（daemon 重启不恢复）
+ * cah self drive enable  → 重新启用（下次 daemon 重启生效）
  * cah self drive status  → 查看自驱状态
  * cah self drive goals   → 查看目标列表
  */
@@ -38,16 +40,50 @@ export function registerSelfDriveCommand(parent: Command) {
 
   drive
     .command('stop')
-    .description('停止自驱模式')
+    .description('临时停止自驱模式（daemon 重启后自动恢复）')
     .action(async () => {
       console.log()
       try {
         const { stopSelfDrive } = await import('../../selfdrive/index.js')
         stopSelfDrive()
-        console.log(chalk.yellow('⏹ 自驱模式已停止'))
-        console.log(chalk.gray('  目标保留，可随时重新启动'))
+        console.log(chalk.yellow('⏹ 自驱模式已临时停止'))
+        console.log(chalk.gray('  daemon 重启后会自动恢复，如需永久停止请用 cah self drive disable'))
       } catch (err) {
         console.log(chalk.red(`停止失败: ${getErrorMessage(err)}`))
+        process.exit(1)
+      }
+      console.log()
+    })
+
+  drive
+    .command('disable')
+    .description('永久禁用自驱模式（daemon 重启不会自动恢复）')
+    .action(async () => {
+      console.log()
+      try {
+        const { disableSelfDrive } = await import('../../selfdrive/index.js')
+        disableSelfDrive()
+        console.log(chalk.red('⛔ 自驱模式已永久禁用'))
+        console.log(chalk.gray('  daemon 重启不会自动恢复，执行 cah self drive enable 可重新启用'))
+      } catch (err) {
+        console.log(chalk.red(`禁用失败: ${getErrorMessage(err)}`))
+        process.exit(1)
+      }
+      console.log()
+    })
+
+  drive
+    .command('enable')
+    .description('启用自驱模式（下次 daemon 重启生效）')
+    .action(async () => {
+      console.log()
+      try {
+        const { enableSelfDrive } = await import('../../selfdrive/index.js')
+        enableSelfDrive()
+        console.log(chalk.green('✓ 自驱模式已启用'))
+        console.log(chalk.gray('  下次 daemon 重启时将自动启动自驱'))
+      } catch (err) {
+        console.log(chalk.red(`启用失败: ${getErrorMessage(err)}`))
         process.exit(1)
       }
       console.log()

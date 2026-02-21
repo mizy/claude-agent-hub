@@ -30,6 +30,9 @@ export {
 export {
   startSelfDrive,
   stopSelfDrive,
+  disableSelfDrive,
+  enableSelfDrive,
+  isSelfDrivePermanentlyDisabled,
   getSelfDriveStatus,
   resumeSelfDriveIfEnabled,
 } from './daemon.js'
