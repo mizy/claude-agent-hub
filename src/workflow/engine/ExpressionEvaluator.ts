@@ -42,6 +42,13 @@ parser.functions.round = Math.round
 parser.functions.min = Math.min
 parser.functions.max = Math.max
 parser.functions.abs = Math.abs
+// String functions (expr-eval doesn't support method calls like .includes())
+parser.functions.includes = (str: unknown, substr: unknown) =>
+  typeof str === 'string' && typeof substr === 'string' && str.includes(substr)
+parser.functions.startsWith = (str: unknown, prefix: unknown) =>
+  typeof str === 'string' && typeof prefix === 'string' && str.startsWith(prefix)
+parser.functions.lower = (str: unknown) => (typeof str === 'string' ? str.toLowerCase() : '')
+parser.functions.upper = (str: unknown) => (typeof str === 'string' ? str.toUpperCase() : '')
 
 /**
  * Preprocess expression: normalize JS-style operators to expr-eval syntax
@@ -58,6 +65,27 @@ export function preprocessExpression(expr: string): string {
   processed = processed.replace(/Math\.max\(/g, 'max(')
   processed = processed.replace(/Math\.abs\(/g, 'abs(')
 
+  // Method calls → function calls: obj.includes('x') → includes(obj, 'x')
+  processed = processed.replace(
+    /(\w[\w.]*?)\.includes\(([^)]+)\)/g,
+    'includes($1, $2)',
+  )
+  processed = processed.replace(
+    /(\w[\w.]*?)\.startsWith\(([^)]+)\)/g,
+    'startsWith($1, $2)',
+  )
+  processed = processed.replace(
+    /(\w[\w.]*?)\.toLowerCase\(\)/g,
+    'lower($1)',
+  )
+  processed = processed.replace(
+    /(\w[\w.]*?)\.toUpperCase\(\)/g,
+    'upper($1)',
+  )
+
+  // Compat: outputs.X.result → outputs.X._raw (node output stored as _raw, not result)
+  processed = processed.replace(/outputs\.(\w+)\.result\b/g, 'outputs.$1._raw')
+
   // Logical operators
   processed = processed.replace(/&&/g, ' and ')
   processed = processed.replace(/\|\|/g, ' or ')
@@ -68,11 +96,29 @@ export function preprocessExpression(expr: string): string {
 }
 
 /**
+ * Make nested object safe for expr-eval: replace undefined/null leaf values with empty string
+ * so that expressions like `outputs.review.result` don't throw on missing fields.
+ */
+function safeOutputs(obj: Record<string, unknown>): Record<string, unknown> {
+  const safe: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    if (value == null) {
+      safe[key] = ''
+    } else if (typeof value === 'object' && !Array.isArray(value)) {
+      safe[key] = safeOutputs(value as Record<string, unknown>)
+    } else {
+      safe[key] = value
+    }
+  }
+  return safe
+}
+
+/**
  * Build evaluation scope from context
  */
 function buildEvalScope(context: EvalContext): Record<string, unknown> {
   const scope: Record<string, unknown> = {
-    outputs: context.outputs ?? {},
+    outputs: safeOutputs((context.outputs as Record<string, unknown>) ?? {}),
     variables: context.variables ?? {},
     loopCount: context.loopCount ?? 0,
     nodeStates: context.nodeStates ?? {},
@@ -120,7 +166,8 @@ export function evaluateCondition(expression: string, context: EvalContext): boo
     const result = evaluateExpression(expression, context)
     logger.debug(`Evaluated "${expression}" = ${result}`)
     return Boolean(result)
-  } catch {
+  } catch (error) {
+    logger.warn(`Condition evaluation failed for "${expression}": ${formatErrorMessage(error)}`)
     return false
   }
 }

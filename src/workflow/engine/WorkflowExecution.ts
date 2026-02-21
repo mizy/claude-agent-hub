@@ -20,11 +20,11 @@ import {
   checkWorkflowCompletion,
 } from './StateManager.js'
 import { evaluateCondition } from './ConditionEvaluator.js'
+import { buildEvalContext } from '../nodeResultProcessor.js'
 import type {
   Workflow,
   WorkflowEdge,
   WorkflowInstance,
-  EvalContext,
   ExecuteNodeResult,
 } from '../types.js'
 
@@ -95,12 +95,8 @@ async function shouldFollowEdge(
 ): Promise<boolean> {
   // 如果有条件表达式，需要求值
   if (edge.condition) {
-    const context: EvalContext = {
-      outputs: instance.outputs,
-      variables: instance.variables,
-      loopCount: instance.loopCounts[edge.id] || 0,
-      nodeStates: instance.nodeStates,
-    }
+    const context = buildEvalContext(instance)
+    context.loopCount = instance.loopCounts[edge.id] || 0
 
     const result = evaluateCondition(edge.condition, context)
     logger.debug(`Edge ${edge.id} condition "${edge.condition}" = ${result}`)
@@ -271,6 +267,33 @@ export async function handleNodeResult(
   if (completion.completed) {
     await completeWorkflowInstance(instanceId)
     return []
+  }
+
+  // 当所有出边条件都为 false 且没有下游节点时，标记节点失败
+  if (nextNodes.length === 0) {
+    const outEdges = workflow.edges.filter(e => e.from === nodeId)
+    if (outEdges.length > 0) {
+      const allEdgesConditional = outEdges.every(e => e.condition)
+      if (allEdgesConditional) {
+        // All outgoing edges have conditions and none matched → fail immediately
+        const conditionSummary = outEdges
+          .map(e => `"${e.condition}"`)
+          .join(', ')
+        logger.warn(
+          `No outgoing edge condition matched for node "${nodeId}". Conditions: [${conditionSummary}]`
+        )
+        await markNodeFailed(
+          instanceId,
+          nodeId,
+          `No outgoing edge condition matched for node "${nodeId}". All conditional edges evaluated to false.`
+        )
+        await failWorkflowInstance(
+          instanceId,
+          `No outgoing edge condition matched for node "${nodeId}". All conditional edges evaluated to false.`
+        )
+        return []
+      }
+    }
   }
 
   return nextNodes

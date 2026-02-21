@@ -116,8 +116,9 @@ describe('evaluateExpression', () => {
 
   it('should access outputs', () => {
     const context = ctx({
-      outputs: { taskA: { result: 42, items: [1, 2, 3] } },
+      outputs: { taskA: { _raw: 42, items: [1, 2, 3] } },
     })
+    // outputs.X.result is aliased to outputs.X._raw by preprocessExpression
     expect(evaluateExpression('outputs.taskA.result', context)).toBe(42)
   })
 
