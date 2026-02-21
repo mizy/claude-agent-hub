@@ -43,10 +43,10 @@ ${conversation}
 ## 提取要求
 请分析对话并提取以下信息：
 
-1. **summary**: 对话摘要（3-5句话，概括讨论主题和结论，不要包含完整对话内容）
-2. **keyDecisions**: 对话中做出的关键决策点（字符串数组，如果没有则为空数组）
+1. **summary**: 对话摘要（3-5句话）。必须包含：讨论了什么问题、尝试了什么方案、最终结论或结果。避免泛泛描述，要有具体的技术细节。
+2. **keyDecisions**: 对话中做出的关键决策（字符串数组）。每个决策要写清楚"选择了X而非Y，因为Z"的形式。如果没有决策则为空数组。
 3. **tone**: 对话基调，只能是以下之一: "technical" | "casual" | "urgent" | "exploratory"
-4. **triggerKeywords**: 触发关键词（5-10个，用于后续检索此对话）
+4. **triggerKeywords**: 触发关键词（5-10个，用于后续检索此对话）。包含具体的技术术语、工具名、模块名等，不要用"讨论"、"修复"等泛词。
 
 ## 输出格式
 只返回 JSON 对象，不要其他内容：
@@ -66,10 +66,15 @@ interface RawEpisodeExtraction {
 }
 
 function parseExtraction(text: string): RawEpisodeExtraction | null {
-  const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) return null
+  // Try to find the last complete JSON object (greedy regex may grab too much)
+  // First try: extract between first { and last }
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start === -1 || end === -1 || end <= start) return null
+
+  const jsonStr = text.slice(start, end + 1)
   try {
-    const parsed = JSON.parse(jsonMatch[0])
+    const parsed = JSON.parse(jsonStr)
     if (typeof parsed.summary !== 'string' || !parsed.summary) return null
     return parsed
   } catch (e) {
@@ -82,6 +87,29 @@ function generateEpisodeId(): string {
   const ts = Date.now()
   const hash = generateShortId().slice(0, 6)
   return `episode-${ts}-${hash}`
+}
+
+/** Check if a recent episode with similar content already exists (dedup) */
+function isDuplicateEpisode(keywords: string[]): boolean {
+  if (keywords.length === 0) return false
+  // Check if any recent episode has high keyword overlap
+  for (const kw of keywords.slice(0, 3)) {
+    const matches = searchEpisodes(kw)
+    for (const match of matches) {
+      const matchKeywords = new Set(match.triggerKeywords.map(k => k.toLowerCase()))
+      const overlapCount = keywords.filter(k => matchKeywords.has(k.toLowerCase())).length
+      const overlapRatio = overlapCount / Math.max(keywords.length, matchKeywords.size)
+      // If >70% keyword overlap with a recent episode (<1h), treat as duplicate
+      if (overlapRatio > 0.7) {
+        const age = Date.now() - new Date(match.timestamp).getTime()
+        if (age < 60 * 60 * 1000) {
+          logger.debug(`Skipping duplicate episode (overlap=${overlapRatio.toFixed(2)} with ${match.id})`)
+          return true
+        }
+      }
+    }
+  }
+  return false
 }
 
 function findPreviousEpisode(
@@ -143,6 +171,11 @@ export async function extractEpisode(params: ExtractEpisodeParams): Promise<Epis
     const keyDecisions = Array.isArray(extraction.keyDecisions)
       ? extraction.keyDecisions.filter((d): d is string => typeof d === 'string')
       : []
+
+    // Dedup: skip if a very similar episode was recently created
+    if (isDuplicateEpisode(triggerKeywords)) {
+      return null
+    }
 
     // Find previous related episode
     const previousEpisode = findPreviousEpisode(conversationId, triggerKeywords)

@@ -63,7 +63,7 @@ export async function retrieveRelevantMemories(
   query: string,
   options?: RetrieveOptions,
 ): Promise<MemoryEntry[]> {
-  const maxResults = options?.maxResults ?? 10
+  const maxResults = Math.min(options?.maxResults ?? 8, 8)
   const projectPath = options?.projectPath
   const queryKeywords = extractKeywords(query)
   if (queryKeywords.length === 0) return []
@@ -90,7 +90,10 @@ export async function retrieveRelevantMemories(
         keywordScore += bestMatch * weight
       }
     }
-    score += (keywordScore / queryKeywords.length) * 2
+    // Normalize: use max of query length and entry keywords length to prevent
+    // short queries from getting inflated scores
+    const normalizer = Math.max(queryKeywords.length, entry.keywords.length, 1)
+    score += (keywordScore / normalizer) * 2
 
     // Project path match bonus
     if (projectPath && entry.projectPath === projectPath) {
@@ -120,16 +123,48 @@ export async function retrieveRelevantMemories(
   // Associative expansion: when direct results are insufficient, spread activation
   let results = directResults
   const config = await loadConfig()
-  if (config.memory.association.enabled && directResults.length < maxResults && directResults.length > 0) {
+  if (config.memory.association.enabled && directResults.length < maxResults) {
     const resultIds = new Set(directResults.map(e => e.id))
     const associated: MemoryEntry[] = []
 
-    for (const seed of directResults.slice(0, 3)) {
-      const spread = await spreadActivation(seed.id, active)
-      for (const { entry } of spread) {
-        if (!resultIds.has(entry.id)) {
+    if (directResults.length > 0) {
+      // Expand from direct results
+      for (const seed of directResults.slice(0, 3)) {
+        const spread = await spreadActivation(seed.id, active)
+        for (const { entry } of spread) {
+          if (!resultIds.has(entry.id)) {
+            resultIds.add(entry.id)
+            associated.push(entry)
+          }
+        }
+      }
+    } else {
+      // Zero direct results: try keyword-based association from all active memories
+      // Find any memory that has at least one matching keyword and use it as seed
+      // Limit scan to avoid O(n²) on large memory stores
+      const scanLimit = Math.min(active.length, 50)
+      for (let i = 0; i < scanLimit; i++) {
+        const entry = active[i]!
+        let hasMatch = false
+        for (const qk of queryKeywords) {
+          if (hasMatch) break
+          for (const ek of entry.keywords) {
+            if (keywordMatch(qk, ek) > 0) {
+              hasMatch = true
+              break
+            }
+          }
+        }
+        if (hasMatch && !resultIds.has(entry.id)) {
           resultIds.add(entry.id)
-          associated.push(entry)
+          const spread = await spreadActivation(entry.id, active)
+          for (const { entry: assocEntry } of spread) {
+            if (!resultIds.has(assocEntry.id)) {
+              resultIds.add(assocEntry.id)
+              associated.push(assocEntry)
+            }
+          }
+          if (associated.length >= maxResults) break
         }
       }
     }
@@ -145,7 +180,7 @@ export async function retrieveRelevantMemories(
       lastAccessedAt: now.toISOString(),
     })
     // Fire-and-forget reinforcement (async but we don't need to wait)
-    reinforceMemory(entry.id, 'access').catch(e => logger.debug(`Memory reinforce failed: ${e}`))
+    reinforceMemory(entry.id, 'access').catch(e => logger.warn(`Memory reinforce failed for ${entry.id}: ${e}`))
   }
 
   return results

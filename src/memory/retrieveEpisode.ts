@@ -10,8 +10,9 @@ import type { Episode, EpisodeIndexEntry } from './types.js'
 
 const logger = createLogger('memory:episode')
 
-// Half-life for time recency scoring (7 days in ms)
-const HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000
+// Half-life for time recency scoring (30 days in ms)
+// 7 days was too aggressive — old episodes became unreachable too quickly
+const HALF_LIFE_MS = 30 * 24 * 60 * 60 * 1000
 
 // Time expression patterns → relative offset in days
 // N天前 is handled separately in parseTimeRange via capture group
@@ -90,7 +91,7 @@ function calcKeywordScore(queryKeywords: string[], triggerKeywords: string[]): n
   return matches / Math.max(queryKeywords.length, triggerLower.length)
 }
 
-/** Time recency score using exponential decay with 7-day half-life */
+/** Time recency score using exponential decay with 30-day half-life */
 function calcTimeRecency(episodeTimestamp: string): number {
   const age = Date.now() - new Date(episodeTimestamp).getTime()
   return Math.exp(-age * Math.LN2 / HALF_LIFE_MS)
@@ -114,7 +115,7 @@ export interface RetrieveEpisodesParams {
  * Retrieve episodes most relevant to a query.
  *
  * Uses three scoring dimensions:
- * - timeRecency (0.3): exponential decay, half-life 7 days
+ * - timeRecency (0.3): exponential decay, half-life 30 days
  * - keywordMatch (0.4): keyword overlap with triggerKeywords
  * - semanticLink (0.3): related memory ID overlap
  *

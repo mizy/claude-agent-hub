@@ -63,7 +63,7 @@ function buildTemporalAssociations(entry: MemoryEntry, allEntries: MemoryEntry[]
       // Weight decreases linearly with time distance
       const weight = 0.3 * (1 - timeDiff / TWENTY_FOUR_HOURS)
       if (weight > 0.05) {
-        associations.push({ targetId: other.id, weight, type: 'keyword' })
+        associations.push({ targetId: other.id, weight, type: 'temporal' })
       }
     }
   }

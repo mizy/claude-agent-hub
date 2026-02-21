@@ -138,16 +138,17 @@ describe('retrieveEpisodes', () => {
   })
 
   it('filters out very low score episodes (no keyword overlap)', () => {
-    // 90 days old + no keyword overlap → time recency alone is very small
+    // 365 days old + no keyword overlap → time recency alone is very small
+    // With 30-day half-life: e^(-365*ln2/30) ≈ 0.00023, score = 0.00023 * 0.3 ≈ 0.00007
     saveEpisode(makeEpisode({
       id: 'ep-no-match',
-      timestamp: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+      timestamp: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(),
       triggerKeywords: ['完全不相关的关键词'],
       relatedMemories: [],
     }))
 
     const results = retrieveEpisodes({ query: 'xyz123 abc456 nevermatches' })
-    // With no keyword overlap, no semantic link, and 90-day old timestamp,
+    // With no keyword overlap, no semantic link, and 365-day old timestamp,
     // score should be below 0.01 threshold
     expect(results.length).toBe(0)
   })

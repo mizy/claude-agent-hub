@@ -65,6 +65,9 @@ export async function reinforceMemory(
   const multiplier = (reinforceConfig as Record<string, number>)[configKey] ?? 1.0
 
   // Update stability (capped at maxStability)
+  // Note: even at maxStability, reinforcement still resets lastReinforcedAt (below),
+  // which effectively restarts the decay clock — so reinforcement is always beneficial.
+  // For task_failure (multiplier < 1), stability decreases but lastReinforcedAt still resets.
   const newStability = Math.min(
     entry.stability! * multiplier,
     forgettingConfig.maxStability,
@@ -77,22 +80,27 @@ export async function reinforceMemory(
   const newDecayRate = computeDecayRate(entry.confidence, newReinforceCount, entry.category)
 
   const now = new Date().toISOString()
+
+  // Build the updated entry first, then compute strength from it
+  // (strength depends on stability, lastReinforcedAt, decayRate — all changing)
+  const updated: MemoryEntry = {
+    ...entry,
+    stability: newStability,
+    reinforceCount: newReinforceCount,
+    lastReinforcedAt: now,
+    decayRate: newDecayRate,
+  }
+  updated.strength = calculateStrength(updated)
+
   updateMemory(entryId, {
-    strength: calculateStrength(entry),
+    strength: updated.strength,
     stability: newStability,
     reinforceCount: newReinforceCount,
     lastReinforcedAt: now,
     decayRate: newDecayRate,
   })
 
-  return {
-    ...entry,
-    strength: calculateStrength(entry),
-    stability: newStability,
-    reinforceCount: newReinforceCount,
-    lastReinforcedAt: now,
-    decayRate: newDecayRate,
-  }
+  return updated
 }
 
 /**

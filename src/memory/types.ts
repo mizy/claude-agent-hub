@@ -4,7 +4,7 @@
 
 export type MemoryCategory = 'pattern' | 'lesson' | 'preference' | 'pitfall' | 'tool'
 
-export type AssociationType = 'keyword' | 'co-task' | 'co-project' | 'semantic'
+export type AssociationType = 'keyword' | 'co-task' | 'co-project' | 'semantic' | 'temporal'
 
 export interface Association {
   targetId: string

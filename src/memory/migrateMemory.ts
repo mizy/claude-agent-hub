@@ -5,14 +5,15 @@
 import type { MemoryEntry } from './types.js'
 
 /**
- * Compute initial stability for legacy entries based on accessCount and confidence.
- * More accessed / higher confidence entries get higher stability (slower decay).
+ * Compute initial stability for legacy entries.
+ * Uses confidence as primary signal. Access count has minimal impact
+ * since it only means "was retrieved", not "was valuable".
  */
 function computeInitialStability(entry: MemoryEntry): number {
-  const base = 24 // 24 hours baseline
-  const accessBonus = Math.min((entry.accessCount ?? 0) * 12, 120) // +12h per access, cap 120h
-  const confidenceBonus = (entry.confidence ?? 0.5) * 48 // high confidence up to +48h
-  return base + accessBonus + confidenceBonus
+  const base = 72 // 72 hours baseline — generous for existing entries surviving migration
+  const confidenceBonus = (entry.confidence ?? 0.5) * 96 // high confidence up to +96h
+  const accessBonus = Math.min((entry.accessCount ?? 0) * 2, 24) // +2h per access, cap 24h (minor)
+  return base + confidenceBonus + accessBonus
 }
 
 /**
