@@ -64,6 +64,20 @@ describe('RetryStrategy', () => {
       expect(result.retryable).toBe(false)
     })
 
+    it('should classify SIGTERM/SIGKILL as permanent (external kill)', () => {
+      expect(classifyError(new Error('Process killed by SIGTERM')).category).toBe('permanent')
+      expect(classifyError(new Error('SIGKILL received')).category).toBe('permanent')
+      expect(classifyError(new Error('Process was killed')).category).toBe('permanent')
+    })
+
+    it('should classify nested session errors as permanent', () => {
+      const result = classifyError(
+        new Error('Claude Code cannot be launched inside another Claude Code session')
+      )
+      expect(result.category).toBe('permanent')
+      expect(result.retryable).toBe(false)
+    })
+
     it('should classify unknown errors as unknown and retryable', () => {
       const result = classifyError(new Error('Something weird happened'))
       expect(result.category).toBe('unknown')

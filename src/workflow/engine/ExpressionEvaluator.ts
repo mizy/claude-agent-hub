@@ -50,11 +50,29 @@ parser.functions.startsWith = (str: unknown, prefix: unknown) =>
 parser.functions.lower = (str: unknown) => (typeof str === 'string' ? str.toLowerCase() : '')
 parser.functions.upper = (str: unknown) => (typeof str === 'string' ? str.toUpperCase() : '')
 
+// expr-eval reserved words that cannot be used as property names after dot notation.
+// These are built-in math/trig function names that the parser treats as special tokens.
+const EXPR_EVAL_RESERVED = new Set([
+  'round', 'floor', 'ceil', 'abs',
+  'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
+  'sqrt', 'log', 'log2', 'log10', 'exp',
+  'trunc', 'sign', 'cbrt', 'expm1', 'log1p',
+  'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh',
+  'random', 'fac', 'length', 'pyt',
+])
+
 /**
  * Preprocess expression: normalize JS-style operators to expr-eval syntax
  */
 export function preprocessExpression(expr: string): string {
   let processed = expr.trim()
+
+  // Escape expr-eval reserved words used as property names (e.g. variables.round → variables.__round)
+  // Only matches dot-access pattern (not function calls like round(...))
+  processed = processed.replace(
+    /\.(\w+)(?!\s*\()/g,
+    (_match, prop: string) => EXPR_EVAL_RESERVED.has(prop) ? `.__${prop}` : `.${prop}`,
+  )
 
   // Bracket notation → dot notation with underscore alias
   // e.g. outputs['verify-consistency']._raw → outputs.verify_consistency._raw
@@ -108,6 +126,19 @@ export function preprocessExpression(expr: string): string {
 }
 
 /**
+ * Add __reserved aliases for expr-eval reserved word keys in an object.
+ * E.g. { round: 0 } → { round: 0, __round: 0 }
+ */
+function addReservedAliases(obj: Record<string, unknown>): Record<string, unknown> {
+  for (const key of Object.keys(obj)) {
+    if (EXPR_EVAL_RESERVED.has(key)) {
+      obj[`__${key}`] = obj[key]
+    }
+  }
+  return obj
+}
+
+/**
  * Make nested object safe for expr-eval: replace undefined/null leaf values with empty string
  * so that expressions like `outputs.review.result` don't throw on missing fields.
  */
@@ -122,7 +153,7 @@ function safeOutputs(obj: Record<string, unknown>): Record<string, unknown> {
       safe[key] = value
     }
   }
-  return safe
+  return addReservedAliases(safe)
 }
 
 /**
@@ -156,12 +187,15 @@ function buildEvalScope(
     ensureReferencedOutputs(outputs, processedExpr)
   }
 
+  const variables = addReservedAliases({ ...(context.variables ?? {}) })
+  const inputs = addReservedAliases({ ...(context.inputs ?? {}) })
+
   const scope: Record<string, unknown> = {
     outputs,
-    variables: context.variables ?? {},
+    variables,
     loopCount: context.loopCount ?? 0,
     nodeStates: context.nodeStates ?? {},
-    inputs: context.inputs ?? {},
+    inputs,
     true: true,
     false: false,
     null: null,

@@ -16,6 +16,7 @@ import { applyImprovements } from './applyImprovements.js'
 import { reviewImprovements } from './reviewImprovement.js'
 import {
   generateEvolutionId,
+  listEvolutions,
   recordEvolution,
   updateEvolution,
 } from './evolutionHistory.js'
@@ -85,6 +86,9 @@ export async function runEvolutionCycle(
   recordEvolution(record)
 
   try {
+    // Load evolution history for dedup
+    const history = listEvolutions()
+
     // When triggered by signal, focus analysis on signal's related tasks
     const signalTaskIds = options?.signal?.taskIds
 
@@ -93,10 +97,15 @@ export async function runEvolutionCycle(
       limit: options?.limit,
       since: options?.since,
       taskIds: signalTaskIds,
+      history,
     })
     record.patterns = analysis.patterns
+    // Record which tasks were analyzed for future dedup
+    record.analyzedTaskIds = analysis.patterns.flatMap(p => p.taskIds)
+      .filter((id, i, arr) => arr.indexOf(id) === i)
     if (analysis.patterns.length > 0) {
-      logger.info(`Found ${analysis.patterns.length} patterns from ${analysis.totalExamined} tasks`)
+      const newCount = analysis.patterns.filter(p => p.isNew).length
+      logger.info(`Found ${analysis.patterns.length} patterns (${newCount} new) from ${analysis.totalExamined} tasks`)
     }
 
     // Step 2: Analyze all task performance (completed + failed)
@@ -119,11 +128,22 @@ export async function runEvolutionCycle(
       return { evolutionId, record }
     }
 
-    // Step 3: Convert patterns to improvements
+    // Early termination: all patterns already known and no new perf patterns
+    const hasNewPatterns = analysis.patterns.some(p => p.isNew)
+    if (!hasNewPatterns && perfResult.patterns.length === 0) {
+      logger.info('All patterns already known, no new performance issues — skipping this cycle')
+      record.status = 'completed'
+      record.completedAt = new Date().toISOString()
+      updateEvolution(evolutionId, record)
+      return { evolutionId, record }
+    }
+
+    // Step 3: Convert patterns to improvements (with history dedup)
     const improvements = patternsToImprovements(
       analysis.patterns,
       analysis.personaBreakdown,
-      perfResult.patterns
+      perfResult.patterns,
+      history
     )
 
     if (improvements.length === 0) {
@@ -201,14 +221,33 @@ export async function runEvolutionCycle(
 function patternsToImprovements(
   patterns: FailurePattern[],
   personaBreakdown: Record<string, { failures: number; topCategory: string }>,
-  performancePatterns?: PerformancePattern[]
+  performancePatterns?: PerformancePattern[],
+  history?: EvolutionRecord[]
 ): Improvement[] {
   const improvements: Improvement[] = []
+
+  // Build set of previously applied improvement descriptions for dedup
+  const appliedDescriptions = new Set<string>()
+  if (history) {
+    for (const evo of history) {
+      for (const imp of evo.improvements) {
+        appliedDescriptions.add(imp.description)
+      }
+    }
+  }
+
+  let skippedCount = 0
 
   // From failure patterns (existing logic)
   for (const pattern of patterns) {
     if (pattern.occurrences < 2) continue
     if (pattern.taskIds.length === 0) continue
+
+    // Skip patterns that already produced applied improvements
+    if (appliedDescriptions.has(pattern.description)) {
+      skippedCount++
+      continue
+    }
 
     const id = `imp-${generateShortId()}`
     const triggerId = pattern.taskIds[0]!
@@ -240,6 +279,12 @@ function patternsToImprovements(
     for (const perf of performancePatterns) {
       if (perf.taskIds.length === 0) continue
 
+      const perfDescription = `[Performance] ${perf.description}`
+      if (appliedDescriptions.has(perfDescription)) {
+        skippedCount++
+        continue
+      }
+
       const id = `imp-${generateShortId()}`
       improvements.push({
         id,
@@ -249,6 +294,10 @@ function patternsToImprovements(
         triggeredBy: perf.taskIds[0]!,
       })
     }
+  }
+
+  if (skippedCount > 0) {
+    logger.info(`Skipped ${skippedCount} duplicate improvements (already applied in previous evolutions)`)
   }
 
   return improvements

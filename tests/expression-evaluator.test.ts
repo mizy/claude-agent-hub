@@ -128,6 +128,38 @@ describe('preprocessExpression', () => {
     expect(result).toContain('not')
     expect(result).toContain('includes(outputs.review._raw')
   })
+
+  // Reserved word escaping (expr-eval treats round/floor/etc as built-in tokens)
+  it('should escape reserved words used as property names', () => {
+    expect(preprocessExpression('variables.round + 1')).toBe('variables.__round + 1')
+    expect(preprocessExpression('variables.floor')).toBe('variables.__floor')
+    expect(preprocessExpression('variables.log')).toBe('variables.__log')
+    expect(preprocessExpression('variables.length')).toBe('variables.__length')
+  })
+
+  it('should NOT escape reserved words when used as function calls', () => {
+    expect(preprocessExpression('round(3.5)')).toBe('round(3.5)')
+    expect(preprocessExpression('floor(x)')).toBe('floor(x)')
+    expect(preprocessExpression('abs(-5)')).toBe('abs(-5)')
+  })
+
+  it('should NOT escape Math.round() — function call pattern', () => {
+    // Math.round(x) should stay as Math.round(x) (later replaced to round(x))
+    const result = preprocessExpression('Math.round(x)')
+    expect(result).toBe('round(x)')
+  })
+
+  it('should handle mixed reserved property and function in same expression', () => {
+    // variables.round is a property → escape; round(x) is a function call → keep
+    const result = preprocessExpression('variables.round + round(3.5)')
+    expect(result).toContain('variables.__round')
+    expect(result).toContain('round(3.5)')
+  })
+
+  it('should not escape non-reserved property names', () => {
+    expect(preprocessExpression('variables.count')).toBe('variables.count')
+    expect(preprocessExpression('outputs.taskA._raw')).toBe('outputs.taskA._raw')
+  })
 })
 
 // ============ evaluateExpression ============
@@ -184,6 +216,19 @@ describe('evaluateExpression', () => {
 
   it('should throw on invalid expression', () => {
     expect(() => evaluateExpression('invalid {{ syntax', emptyContext)).toThrow()
+  })
+
+  // Reserved word property access (e.g. variables.round)
+  it('should access variables with reserved word names (round, floor, log)', () => {
+    const context = ctx({ variables: { round: 3, floor: 1, log: 'info' } })
+    expect(evaluateExpression('variables.round + 1', context)).toBe(4)
+    expect(evaluateExpression('variables.floor', context)).toBe(1)
+  })
+
+  it('should use reserved words as functions AND property names in same expr', () => {
+    const context = ctx({ variables: { round: 3 } })
+    // variables.round is property access (=3), round(2.7) is function call (=3)
+    expect(evaluateExpression('variables.round + round(2.7)', context)).toBe(6)
   })
 
   // Built-in functions
@@ -263,6 +308,13 @@ describe('evaluateCondition', () => {
   it('should coerce truthy/falsy values to boolean', () => {
     expect(evaluateCondition('1', emptyContext)).toBe(true)
     expect(evaluateCondition('0', emptyContext)).toBe(false)
+  })
+
+  it('should evaluate conditions with reserved word variable names', () => {
+    const context = ctx({ variables: { round: 2 } })
+    expect(evaluateCondition('variables.round < 5', context)).toBe(true)
+    expect(evaluateCondition('variables.round == 2', context)).toBe(true)
+    expect(evaluateCondition('variables.round > 10', context)).toBe(false)
   })
 
   it('should handle complex conditions with outputs and variables', () => {

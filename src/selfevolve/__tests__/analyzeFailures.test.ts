@@ -26,6 +26,7 @@ import { getTaskWorkflow, getTaskInstance } from '../../store/TaskWorkflowStore.
 import { classifyFailure } from '../../prompt-optimization/classifyFailure.js'
 import type { Task } from '../../types/task.js'
 import type { Workflow, WorkflowInstance } from '../../types/workflow.js'
+import type { EvolutionRecord } from '../types.js'
 
 function makeTask(id: string, overrides?: Partial<Task>): Task {
   return {
@@ -188,5 +189,132 @@ describe('analyzeTaskPatterns', () => {
     const result = analyzeTaskPatterns()
     expect(result.personaBreakdown['Pragmatist']?.successes).toBe(1)
     expect(result.personaBreakdown['Pragmatist']?.failures).toBe(0)
+  })
+
+  it('marks patterns as isNew=false when matching history fingerprints', () => {
+    const tasks = [makeTask('t1'), makeTask('t2'), makeTask('t3')]
+    vi.mocked(getTasksByStatus).mockImplementation((status: string) => {
+      if (status === 'failed') return tasks
+      return []
+    })
+    vi.mocked(getTaskWorkflow).mockReturnValue({
+      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Pragmatist' } }],
+      edges: [],
+    } as unknown as Workflow)
+    vi.mocked(getTaskInstance).mockReturnValue({ nodeStates: {} } as unknown as WorkflowInstance)
+    vi.mocked(classifyFailure).mockReturnValue({
+      category: 'execution',
+      confidence: 0.8,
+      matchedPatterns: ['timeout'],
+      raw: 'Command timed out',
+    })
+
+    // History has a pattern with same category:description fingerprint
+    const history: EvolutionRecord[] = [
+      {
+        id: 'evo-old',
+        status: 'completed',
+        startedAt: '2025-01-01T00:00:00Z',
+        trigger: 'manual',
+        patterns: [
+          {
+            category: 'workflow',
+            description: 'execution failures (patterns: timeout)',
+            occurrences: 2,
+            taskIds: ['t0'],
+            sampleErrors: [],
+          },
+        ],
+        improvements: [],
+      },
+    ]
+
+    const result = analyzeTaskPatterns({ history })
+    expect(result.patterns.length).toBeGreaterThan(0)
+    const matchedPattern = result.patterns.find(p => p.description.includes('timeout'))
+    expect(matchedPattern).toBeDefined()
+    expect(matchedPattern!.isNew).toBe(false)
+  })
+
+  it('marks patterns as isNew=true when no history matches', () => {
+    const tasks = [makeTask('t1'), makeTask('t2')]
+    vi.mocked(getTasksByStatus).mockImplementation((status: string) => {
+      if (status === 'failed') return tasks
+      return []
+    })
+    vi.mocked(getTaskWorkflow).mockReturnValue({
+      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Pragmatist' } }],
+      edges: [],
+    } as unknown as Workflow)
+    vi.mocked(getTaskInstance).mockReturnValue({ nodeStates: {} } as unknown as WorkflowInstance)
+    vi.mocked(classifyFailure).mockReturnValue({
+      category: 'execution',
+      confidence: 0.8,
+      matchedPatterns: ['timeout'],
+      raw: 'Command timed out',
+    })
+
+    // Empty history — all patterns should be new
+    const result = analyzeTaskPatterns({ history: [] })
+    expect(result.patterns.length).toBeGreaterThan(0)
+    for (const p of result.patterns) {
+      expect(p.isNew).toBe(true)
+    }
+  })
+
+  it('treats all patterns as new when no history provided (backward compat)', () => {
+    const tasks = [makeTask('t1'), makeTask('t2')]
+    vi.mocked(getTasksByStatus).mockImplementation((status: string) => {
+      if (status === 'failed') return tasks
+      return []
+    })
+    vi.mocked(getTaskWorkflow).mockReturnValue({
+      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Pragmatist' } }],
+      edges: [],
+    } as unknown as Workflow)
+    vi.mocked(getTaskInstance).mockReturnValue({ nodeStates: {} } as unknown as WorkflowInstance)
+    vi.mocked(classifyFailure).mockReturnValue({
+      category: 'execution',
+      confidence: 0.8,
+      matchedPatterns: ['timeout'],
+      raw: 'Command timed out',
+    })
+
+    // No history passed at all
+    const result = analyzeTaskPatterns()
+    expect(result.patterns.length).toBeGreaterThan(0)
+    for (const p of result.patterns) {
+      // Without history, fingerprint set is empty, so isNew should be true
+      expect(p.isNew).toBe(true)
+    }
+  })
+
+  it('prioritizes unanalyzed tasks when history has analyzedTaskIds', () => {
+    const tasks = [
+      makeTask('t-old', { createdAt: '2025-06-02T00:00:00Z' }),
+      makeTask('t-new', { createdAt: '2025-06-01T00:00:00Z' }),
+    ]
+    vi.mocked(getTasksByStatus).mockImplementation((status: string) => {
+      if (status === 'failed') return tasks
+      return []
+    })
+    vi.mocked(getTaskWorkflow).mockReturnValue(null)
+    vi.mocked(getTaskInstance).mockReturnValue(null)
+
+    const history: EvolutionRecord[] = [
+      {
+        id: 'evo-old',
+        status: 'completed',
+        startedAt: '2025-01-01T00:00:00Z',
+        trigger: 'manual',
+        patterns: [],
+        improvements: [],
+        analyzedTaskIds: ['t-old'],
+      },
+    ]
+
+    // With limit=1, only the unanalyzed task should be examined
+    const result = analyzeTaskPatterns({ history, limit: 1 })
+    expect(result.totalExamined).toBe(1)
   })
 })

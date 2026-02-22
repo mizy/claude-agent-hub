@@ -15,6 +15,8 @@ export interface FailurePattern {
   occurrences: number
   taskIds: string[]
   sampleErrors: string[]
+  /** Whether this pattern is new (not seen in previous evolution records) */
+  isNew?: boolean
 }
 
 // ============ Performance Analysis ============
@@ -116,6 +118,8 @@ export interface EvolutionRecord {
     improvementId: string
     review: ReviewResult
   }>
+  /** Task IDs analyzed in this evolution cycle (for dedup across cycles) */
+  analyzedTaskIds?: string[]
   /** Signal that triggered this evolution (when trigger === 'signal') */
   signalContext?: {
     type: string

@@ -28,6 +28,7 @@ vi.mock('../evolutionHistory.js', () => ({
   generateEvolutionId: vi.fn().mockReturnValue('evo-test-123'),
   recordEvolution: vi.fn(),
   updateEvolution: vi.fn(),
+  listEvolutions: vi.fn().mockReturnValue([]),
 }))
 vi.mock('../../prompt-optimization/evolutionSelection.js', () => ({
   refreshSuccessPatterns: vi.fn().mockReturnValue(0),
@@ -41,7 +42,7 @@ import { analyzeTaskPatterns } from '../analyzeTaskPatterns.js'
 import { analyzePerformance } from '../analyzePerformance.js'
 import { reviewImprovements } from '../reviewImprovement.js'
 import { applyImprovements } from '../applyImprovements.js'
-import { generateEvolutionId, recordEvolution, updateEvolution } from '../evolutionHistory.js'
+import { generateEvolutionId, recordEvolution, updateEvolution, listEvolutions } from '../evolutionHistory.js'
 import { getTasksByStatus } from '../../store/TaskStore.js'
 import type { FailurePattern, PerformancePattern } from '../types.js'
 
@@ -67,6 +68,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(generateEvolutionId).mockReturnValue('evo-test-123')
     vi.mocked(recordEvolution).mockImplementation(() => {})
     vi.mocked(updateEvolution).mockImplementation(() => {})
+    vi.mocked(listEvolutions).mockReturnValue([])
     vi.mocked(getTasksByStatus).mockReturnValue([])
   })
 
@@ -93,6 +95,7 @@ describe('runEvolutionCycle', () => {
       occurrences: 3,
       taskIds: ['t1', 't2', 't3'],
       sampleErrors: ['Failed to parse JSON'],
+      isNew: true,
     }
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
@@ -164,6 +167,7 @@ describe('runEvolutionCycle', () => {
       occurrences: 1,
       taskIds: ['t1'],
       sampleErrors: ['Rare error'],
+      isNew: true,
     }
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
@@ -183,6 +187,7 @@ describe('runEvolutionCycle', () => {
       occurrences: 5,
       taskIds: ['t1', 't2', 't3', 't4', 't5'],
       sampleErrors: ['Error'],
+      isNew: true,
     }
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 10,
@@ -216,6 +221,7 @@ describe('runEvolutionCycle', () => {
       occurrences: 5,
       taskIds: ['t1', 't2', 't3', 't4', 't5'],
       sampleErrors: ['Error'],
+      isNew: true,
     }
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 10,
@@ -236,6 +242,7 @@ describe('runEvolutionCycle', () => {
       occurrences: 3,
       taskIds: ['t1', 't2', 't3'],
       sampleErrors: ['Error'],
+      isNew: true,
     }
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
@@ -268,5 +275,121 @@ describe('runEvolutionCycle', () => {
   it('uses correct trigger from options', async () => {
     const result = await runEvolutionCycle({ trigger: 'scheduled' })
     expect(result.record.trigger).toBe('scheduled')
+  })
+
+  it('early terminates when all patterns are already known', async () => {
+    const pattern: FailurePattern = {
+      category: 'prompt',
+      description: 'planning failures (patterns: json)',
+      occurrences: 3,
+      taskIds: ['t1', 't2', 't3'],
+      sampleErrors: ['Failed to parse JSON'],
+      isNew: false,
+    }
+    vi.mocked(analyzeTaskPatterns).mockReturnValue({
+      totalExamined: 5,
+      patterns: [pattern],
+      personaBreakdown: {},
+    })
+
+    const result = await runEvolutionCycle()
+    expect(result.record.status).toBe('completed')
+    // Should NOT generate improvements since all patterns are old
+    expect(result.record.improvements).toHaveLength(0)
+    expect(reviewImprovements).not.toHaveBeenCalled()
+    expect(applyImprovements).not.toHaveBeenCalled()
+  })
+
+  it('skips duplicate improvements already applied in history', async () => {
+    const pattern: FailurePattern = {
+      category: 'prompt',
+      description: 'planning failures (patterns: json)',
+      occurrences: 3,
+      taskIds: ['t1', 't2', 't3'],
+      sampleErrors: ['Failed to parse JSON'],
+      isNew: true,
+    }
+    vi.mocked(analyzeTaskPatterns).mockReturnValue({
+      totalExamined: 5,
+      patterns: [pattern],
+      personaBreakdown: { Pragmatist: { failures: 3, successes: 0, topCategory: 'planning' } },
+    })
+    // History already has an improvement with the same description
+    vi.mocked(listEvolutions).mockReturnValue([
+      {
+        id: 'evo-old',
+        status: 'completed',
+        startedAt: '2025-01-01T00:00:00Z',
+        trigger: 'manual',
+        patterns: [],
+        improvements: [
+          {
+            id: 'imp-old',
+            source: 'prompt',
+            description: 'planning failures (patterns: json)',
+            detail: 'Already applied',
+            triggeredBy: 't0',
+          },
+        ],
+      },
+    ])
+
+    const result = await runEvolutionCycle()
+    expect(result.record.status).toBe('completed')
+    // Improvement should be deduped (same description)
+    expect(result.record.improvements).toHaveLength(0)
+  })
+
+  it('records analyzedTaskIds in the evolution record', async () => {
+    const pattern: FailurePattern = {
+      category: 'prompt',
+      description: 'new failure pattern',
+      occurrences: 2,
+      taskIds: ['t1', 't2'],
+      sampleErrors: ['Error'],
+      isNew: true,
+    }
+    vi.mocked(analyzeTaskPatterns).mockReturnValue({
+      totalExamined: 5,
+      patterns: [pattern],
+      personaBreakdown: { Pragmatist: { failures: 2, successes: 0, topCategory: 'prompt' } },
+    })
+    vi.mocked(reviewImprovements).mockImplementation(async (improvements) => {
+      return improvements.map(imp => ({
+        improvementId: imp.id,
+        review: { approved: true, confidence: 0.9, reasoning: 'good' },
+      }))
+    })
+    vi.mocked(applyImprovements).mockResolvedValue([])
+
+    const result = await runEvolutionCycle()
+    expect(result.record.analyzedTaskIds).toBeDefined()
+    expect(result.record.analyzedTaskIds).toContain('t1')
+    expect(result.record.analyzedTaskIds).toContain('t2')
+  })
+
+  it('passes history to analyzeTaskPatterns for dedup', async () => {
+    const historyRecords = [
+      {
+        id: 'evo-old',
+        status: 'completed' as const,
+        startedAt: '2025-01-01T00:00:00Z',
+        trigger: 'manual' as const,
+        patterns: [{ category: 'prompt' as const, description: 'old pattern', occurrences: 2, taskIds: ['t0'], sampleErrors: [] }],
+        improvements: [],
+        analyzedTaskIds: ['t0'],
+      },
+    ]
+    vi.mocked(listEvolutions).mockReturnValue(historyRecords)
+    vi.mocked(analyzeTaskPatterns).mockReturnValue({
+      totalExamined: 0,
+      patterns: [],
+      personaBreakdown: {},
+    })
+
+    await runEvolutionCycle()
+    expect(analyzeTaskPatterns).toHaveBeenCalledWith(
+      expect.objectContaining({ history: historyRecords })
+    )
   })
 })

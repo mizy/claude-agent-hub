@@ -15,7 +15,7 @@ import {
 import { extractFailedNodes } from '../prompt-optimization/analyzeFailure.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
-import type { FailurePattern, ImprovementSource } from './types.js'
+import type { EvolutionRecord, FailurePattern, ImprovementSource } from './types.js'
 
 const logger = createLogger('selfevolve')
 
@@ -28,6 +28,8 @@ interface AnalyzeOptions {
   statuses?: Array<'completed' | 'failed'>
   /** Only analyze these specific task IDs (for signal-triggered evolution) */
   taskIds?: string[]
+  /** Historical evolution records for dedup */
+  history?: EvolutionRecord[]
 }
 
 export interface TaskAnalysisResult {
@@ -106,12 +108,43 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
   tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   tasks = tasks.slice(0, limit)
 
+  // Build set of previously analyzed task IDs (for prioritizing new tasks)
+  const previouslyAnalyzedIds = new Set<string>()
+  if (options?.history) {
+    for (const evo of options.history) {
+      if (evo.analyzedTaskIds) {
+        for (const id of evo.analyzedTaskIds) previouslyAnalyzedIds.add(id)
+      }
+    }
+  }
+
+  // Prioritize tasks not yet analyzed: sort unanalyzed first, then by date
+  if (previouslyAnalyzedIds.size > 0) {
+    tasks.sort((a, b) => {
+      const aNew = previouslyAnalyzedIds.has(a.id) ? 1 : 0
+      const bNew = previouslyAnalyzedIds.has(b.id) ? 1 : 0
+      if (aNew !== bNew) return aNew - bNew // unanalyzed first
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
+    tasks = tasks.slice(0, limit)
+  }
+
   if (tasks.length === 0) {
     logger.info('No tasks found for pattern analysis')
     return { totalExamined: 0, patterns: [], personaBreakdown: {} }
   }
 
-  logger.info(`Analyzing ${tasks.length} tasks for patterns`)
+  // Build fingerprint set from historical patterns for dedup
+  const knownPatternFingerprints = new Set<string>()
+  if (options?.history) {
+    for (const evo of options.history) {
+      for (const p of evo.patterns) {
+        knownPatternFingerprints.add(`${p.category}:${p.description}`)
+      }
+    }
+  }
+
+  logger.info(`Analyzing ${tasks.length} tasks for patterns (${knownPatternFingerprints.size} known pattern fingerprints)`)
 
   const patternMap = new Map<string, FailurePattern>()
   const personaMap = new Map<
@@ -172,10 +205,13 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
     personaMap.set(persona, personaStats)
   }
 
-  // Sort patterns by occurrence
+  // Sort patterns by occurrence and mark isNew
   const patterns = Array.from(patternMap.values()).sort(
     (a, b) => b.occurrences - a.occurrences
   )
+  for (const p of patterns) {
+    p.isNew = !knownPatternFingerprints.has(`${p.category}:${p.description}`)
+  }
 
   // Build persona breakdown
   const personaBreakdown: Record<

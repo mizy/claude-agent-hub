@@ -86,6 +86,22 @@ export function classifyError(error: unknown): ClassifiedError {
     }
   }
 
+  // 进程被外部终止 - 不应重试（SIGTERM/SIGKILL 来自 daemon 停止、任务取消等）
+  if (
+    lowerMessage.includes('sigterm') ||
+    lowerMessage.includes('sigkill') ||
+    lowerMessage.includes('killed') ||
+    lowerMessage.includes('cannot be launched inside another') ||
+    lowerMessage.includes('nested sessions')
+  ) {
+    return {
+      category: 'permanent',
+      message,
+      originalError: error,
+      retryable: false,
+    }
+  }
+
   // 永久性错误 - 不应重试
   if (
     lowerMessage.includes('401') ||
