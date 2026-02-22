@@ -44,16 +44,26 @@ describe('retrieveRelevantMemories', () => {
   })
 
   it('boosts score for matching projectPath', async () => {
-    const id1 = addMemory('lesson about deployment', 'lesson', source, {
-      keywords: ['deployment', 'docker'],
-      confidence: 0.5,
-      projectPath: '/proj-a',
-    }).id
-    addMemory('lesson about deployment config', 'lesson', source, {
-      keywords: ['deployment', 'config'],
-      confidence: 0.5,
-      projectPath: '/proj-b',
-    })
+    const id1 = addMemory(
+      'kubernetes cluster orchestration with docker containers',
+      'lesson',
+      source,
+      {
+        keywords: ['deployment', 'docker'],
+        confidence: 0.5,
+        projectPath: '/proj-a',
+      },
+    ).id
+    addMemory(
+      'nginx reverse proxy configuration and load balancing setup',
+      'lesson',
+      source,
+      {
+        keywords: ['deployment', 'config'],
+        confidence: 0.5,
+        projectPath: '/proj-b',
+      },
+    )
 
     // Both match 'deployment', but proj-a gets project path bonus
     const results = await retrieveRelevantMemories('deployment', { projectPath: '/proj-a' })
@@ -104,8 +114,15 @@ describe('retrieveRelevantMemories', () => {
   })
 
   it('respects maxResults limit', async () => {
+    const topics = [
+      'generics inference',
+      'decorator patterns',
+      'module resolution',
+      'enum alternatives',
+      'mapped utility types',
+    ]
     for (let i = 0; i < 5; i++) {
-      addMemory(`tip ${i} about typescript`, 'lesson', source, {
+      addMemory(`typescript ${topics[i]} detailed explanation and examples`, 'lesson', source, {
         keywords: ['typescript'],
       })
     }

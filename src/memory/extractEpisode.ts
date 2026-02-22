@@ -99,10 +99,10 @@ function isDuplicateEpisode(keywords: string[]): boolean {
       const matchKeywords = new Set(match.triggerKeywords.map(k => k.toLowerCase()))
       const overlapCount = keywords.filter(k => matchKeywords.has(k.toLowerCase())).length
       const overlapRatio = overlapCount / Math.max(keywords.length, matchKeywords.size)
-      // If >70% keyword overlap with a recent episode (<1h), treat as duplicate
-      if (overlapRatio > 0.7) {
+      // If >60% keyword overlap with a recent episode (<24h), treat as duplicate
+      if (overlapRatio > 0.6) {
         const age = Date.now() - new Date(match.timestamp).getTime()
-        if (age < 60 * 60 * 1000) {
+        if (age < 24 * 60 * 60 * 1000) {
           logger.debug(`Skipping duplicate episode (overlap=${overlapRatio.toFixed(2)} with ${match.id})`)
           return true
         }
