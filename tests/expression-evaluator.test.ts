@@ -129,6 +129,20 @@ describe('preprocessExpression', () => {
     expect(result).toContain('includes(outputs.review._raw')
   })
 
+  it('should handle chained .toLowerCase().includes() calls', () => {
+    const result = preprocessExpression(
+      "outputs.review._raw.toLowerCase().includes('approved')"
+    )
+    expect(result).toBe("includes(lower(outputs.review._raw), 'approved')")
+  })
+
+  it('should handle chained .toUpperCase().startsWith() calls', () => {
+    const result = preprocessExpression(
+      "outputs.node._raw.toUpperCase().startsWith('OK')"
+    )
+    expect(result).toBe("startsWith(upper(outputs.node._raw), 'OK')")
+  })
+
   // Reserved word escaping (expr-eval treats round/floor/etc as built-in tokens)
   it('should escape reserved words used as property names', () => {
     expect(preprocessExpression('variables.round + 1')).toBe('variables.__round + 1')
@@ -364,6 +378,25 @@ describe('evaluateCondition with bracket notation', () => {
         context
       )
     ).toBe(true)
+  })
+
+  it('should not throw when referenced output node is missing (ensureReferencedOutputs)', () => {
+    // When a node hasn't produced output yet, evaluateCondition should return false
+    // instead of throwing. ensureReferencedOutputs auto-populates { _raw: '' }.
+    const context = ctx({ outputs: {} })
+    expect(
+      evaluateCondition("outputs.review._raw.includes('APPROVED')", context)
+    ).toBe(false)
+  })
+
+  it('should auto-populate missing node outputs for bracket notation expressions', () => {
+    const context = ctx({ outputs: {} })
+    expect(
+      evaluateCondition(
+        "outputs['verify-consistency']._raw.includes('APPROVED')",
+        context
+      )
+    ).toBe(false)
   })
 })
 

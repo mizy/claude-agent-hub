@@ -277,8 +277,13 @@ export async function handleNodeResult(
       if (allEdgesConditional) {
         // All conditions evaluated to false — use last edge as fallback (else branch)
         const fallbackEdge = outEdges[outEdges.length - 1]!
+        const conditions = outEdges.map(e => e.condition).join(', ')
+        const nodeOutput = updatedInstance.outputs[nodeId]
+        const rawPreview = typeof nodeOutput === 'object' && nodeOutput != null && '_raw' in nodeOutput
+          ? String((nodeOutput as Record<string, unknown>)._raw).slice(0, 200)
+          : typeof nodeOutput === 'string' ? nodeOutput.slice(0, 200) : JSON.stringify(nodeOutput)?.slice(0, 200)
         logger.warn(
-          `No outgoing edge condition matched for node "${nodeId}". Using fallback edge → "${fallbackEdge.to}"`
+          `No outgoing edge condition matched for node "${nodeId}". Conditions: [${conditions}]. Output preview: "${rawPreview}". Using fallback edge → "${fallbackEdge.to}"`
         )
 
         if (fallbackEdge.maxLoops !== undefined) {

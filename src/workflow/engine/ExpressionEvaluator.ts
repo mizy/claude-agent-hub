@@ -95,15 +95,7 @@ export function preprocessExpression(expr: string): string {
   processed = processed.replace(/Math\.max\(/g, 'max(')
   processed = processed.replace(/Math\.abs\(/g, 'abs(')
 
-  // Method calls → function calls: obj.includes('x') → includes(obj, 'x')
-  processed = processed.replace(
-    /(\w[\w.]*?)\.includes\(([^)]+)\)/g,
-    'includes($1, $2)',
-  )
-  processed = processed.replace(
-    /(\w[\w.]*?)\.startsWith\(([^)]+)\)/g,
-    'startsWith($1, $2)',
-  )
+  // Case conversion first (so chained calls like .toLowerCase().includes() work)
   processed = processed.replace(
     /(\w[\w.]*?)\.toLowerCase\(\)/g,
     'lower($1)',
@@ -111,6 +103,17 @@ export function preprocessExpression(expr: string): string {
   processed = processed.replace(
     /(\w[\w.]*?)\.toUpperCase\(\)/g,
     'upper($1)',
+  )
+
+  // Method calls → function calls: obj.includes('x') → includes(obj, 'x')
+  // Also handles function results: lower(x).includes('y') → includes(lower(x), 'y')
+  processed = processed.replace(
+    /((?:\w+\([^)]*\))|\w[\w.]*?)\.includes\(([^)]+)\)/g,
+    'includes($1, $2)',
+  )
+  processed = processed.replace(
+    /((?:\w+\([^)]*\))|\w[\w.]*?)\.startsWith\(([^)]+)\)/g,
+    'startsWith($1, $2)',
   )
 
   // Compat: outputs.X.result → outputs.X._raw (node output stored as _raw, not result)
@@ -142,13 +145,16 @@ function addReservedAliases(obj: Record<string, unknown>): Record<string, unknow
  * Make nested object safe for expr-eval: replace undefined/null leaf values with empty string
  * so that expressions like `outputs.review.result` don't throw on missing fields.
  */
-function safeOutputs(obj: Record<string, unknown>): Record<string, unknown> {
+function safeOutputs(obj: Record<string, unknown>, depth = 0): Record<string, unknown> {
   const safe: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(obj)) {
     if (value == null) {
       safe[key] = ''
+    } else if (typeof value === 'string' && depth === 0) {
+      // Wrap bare string node outputs with _raw so conditions like outputs.node._raw work
+      safe[key] = addReservedAliases({ _raw: value })
     } else if (typeof value === 'object' && !Array.isArray(value)) {
-      safe[key] = safeOutputs(value as Record<string, unknown>)
+      safe[key] = safeOutputs(value as Record<string, unknown>, depth + 1)
     } else {
       safe[key] = value
     }
@@ -217,7 +223,7 @@ export function evaluateExpression(expression: string, context: EvalContext): un
   const processed = preprocessExpression(expression)
   try {
     const expr = parser.parse(processed)
-    const scope = buildEvalScope(context)
+    const scope = buildEvalScope(context, processed)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return expr.evaluate(scope as any)

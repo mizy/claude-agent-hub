@@ -10,8 +10,10 @@ import { getErrorMessage } from '../../shared/assertError.js'
 import { handleGet, handleLogs, handleStop, handleResume, handleList, handlePause } from './commandHandler.js'
 import { handleApproval } from './approvalHandler.js'
 import { resumePausedTask } from '../../task/index.js'
-import { readOutputSummary } from '../../output/index.js'
+import { readFile } from 'fs/promises'
+import { getResultFilePath } from '../../store/paths.js'
 import { buildCard, mdElement, noteElement } from '../larkCards/cardElements.js'
+import { normalizeLarkMarkdown } from '../larkCardWrapper.js'
 import type { MessengerAdapter, ParsedApproval, CardActionPayload } from './types.js'
 import { parseCardActionPayload } from './types.js'
 
@@ -209,24 +211,54 @@ async function handleTaskMsgPrompt(
   await messenger.reply(chatId, `💬 请使用以下命令向任务发送消息:\n\n/msg ${taskId.slice(0, 12)} <你的消息>`)
 }
 
+const RESULT_PAGE_CHARS = 3000
+
 async function handleTaskViewResult(
   chatId: string,
   taskId: string,
   messenger: MessengerAdapter
 ): Promise<void> {
-  const summary = await readOutputSummary(taskId)
-
-  if (!summary) {
+  let content: string
+  try {
+    content = await readFile(getResultFilePath(taskId), 'utf-8')
+  } catch {
     await messenger.reply(chatId, '📄 暂无输出结果')
     return
   }
 
-  const shortId = taskId.replace(/^task-/, '').slice(0, 8)
-  const elements = [
-    mdElement(summary),
-    noteElement(`任务 ID: ${taskId}`),
-  ]
+  if (!content.trim()) {
+    await messenger.reply(chatId, '📄 暂无输出结果')
+    return
+  }
 
-  const card = buildCard(`📄 结果摘要 ${shortId}`, 'blue', elements)
-  await messenger.replyCard?.(chatId, card)
+  const normalized = normalizeLarkMarkdown(content)
+  const shortId = taskId.replace(/^task-/, '').slice(0, 8)
+
+  // Split into pages if content exceeds card limit
+  const pages: string[] = []
+  let remaining = normalized
+  while (remaining.length > 0) {
+    if (remaining.length <= RESULT_PAGE_CHARS) {
+      pages.push(remaining)
+      break
+    }
+    // Try to split at a newline boundary
+    let cutAt = remaining.lastIndexOf('\n', RESULT_PAGE_CHARS)
+    if (cutAt < RESULT_PAGE_CHARS / 2) cutAt = RESULT_PAGE_CHARS
+    pages.push(remaining.slice(0, cutAt))
+    remaining = remaining.slice(cutAt).trimStart()
+  }
+
+  for (let i = 0; i < pages.length; i++) {
+    const title =
+      pages.length === 1
+        ? `📄 执行结果 ${shortId}`
+        : `📄 执行结果 ${shortId} (${i + 1}/${pages.length})`
+    const elements = [mdElement(pages[i]!)]
+    if (i === pages.length - 1) {
+      elements.push(noteElement(`任务 ID: ${taskId}`))
+    }
+    const card = buildCard(title, 'blue', elements)
+    await messenger.replyCard?.(chatId, card)
+  }
 }

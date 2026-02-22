@@ -19,7 +19,6 @@ import type { NodeJobData } from '../types.js'
 const logger = createLogger('workflow-queue')
 
 const MAX_JOB_ATTEMPTS = 3
-const AUTO_CLEANUP_THRESHOLD = 50 // Auto-cleanup when completed+failed exceeds this
 
 // ============ Core Queue Operations ============
 
@@ -129,29 +128,18 @@ export function getNextJob(instanceId?: string): Job | null {
 }
 
 /**
- * Mark job as completed (auto-cleans old jobs when threshold exceeded)
+ * Mark job as completed and remove it from queue.
+ * Completed jobs serve no purpose in the queue — authoritative state lives in instance.json.
  */
 export function completeJob(jobId: string): void {
   withLock(() => {
     const queueData = getQueueData()
-    const job = queueData.jobs.find(j => j.id === jobId)
-
-    if (job) {
-      job.status = 'completed'
-      job.completedAt = new Date().toISOString()
-
-      // Auto-cleanup: remove oldest completed/failed jobs beyond threshold
-      const doneJobs = queueData.jobs.filter(j => j.status === 'completed' || j.status === 'failed')
-      if (doneJobs.length > AUTO_CLEANUP_THRESHOLD) {
-        doneJobs.sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
-        const toRemove = new Set(doneJobs.slice(AUTO_CLEANUP_THRESHOLD).map(j => j.id))
-        const before = queueData.jobs.length
-        queueData.jobs = queueData.jobs.filter(j => !toRemove.has(j.id))
-        logger.debug(`Auto-cleaned ${before - queueData.jobs.length} old jobs (threshold: ${AUTO_CLEANUP_THRESHOLD})`)
-      }
-
-      saveQueueData(queueData)
+    const before = queueData.jobs.length
+    queueData.jobs = queueData.jobs.filter(j => j.id !== jobId)
+    if (queueData.jobs.length < before) {
+      logger.debug(`Removed completed job ${jobId} from queue`)
     }
+    saveQueueData(queueData)
   })
 }
 
@@ -176,19 +164,9 @@ export function failJob(jobId: string, error: string): void {
 
       logger.debug(`Job ${jobId} will retry after ${backoffDelay}ms`)
     } else {
-      job.status = 'failed'
-      job.completedAt = new Date().toISOString()
-      job.error = error
-
-      // Auto-cleanup: same logic as completeJob()
-      const doneJobs = queueData.jobs.filter(j => j.status === 'completed' || j.status === 'failed')
-      if (doneJobs.length > AUTO_CLEANUP_THRESHOLD) {
-        doneJobs.sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
-        const toRemove = new Set(doneJobs.slice(AUTO_CLEANUP_THRESHOLD).map(j => j.id))
-        const before = queueData.jobs.length
-        queueData.jobs = queueData.jobs.filter(j => !toRemove.has(j.id))
-        logger.debug(`Auto-cleaned ${before - queueData.jobs.length} old jobs (threshold: ${AUTO_CLEANUP_THRESHOLD})`)
-      }
+      // Max retries exhausted — remove from queue (state tracked in instance.json)
+      queueData.jobs = queueData.jobs.filter(j => j.id !== jobId)
+      logger.debug(`Removed failed job ${jobId} from queue after ${job.attempts + 1} attempts: ${error}`)
     }
 
     saveQueueData(queueData)
@@ -196,32 +174,17 @@ export function failJob(jobId: string, error: string): void {
 }
 
 /**
- * Mark job as permanently failed (no retry)
+ * Mark job as permanently failed — removes it from queue (no retry)
  */
 export function markJobFailed(jobId: string, error: string): void {
   withLock(() => {
     const queueData = getQueueData()
-    const job = queueData.jobs.find(j => j.id === jobId)
-
-    if (job) {
-      job.status = 'failed'
-      job.completedAt = new Date().toISOString()
-      job.error = error
-
-      // Auto-cleanup: same logic as completeJob()
-      const doneJobs = queueData.jobs.filter(j => j.status === 'completed' || j.status === 'failed')
-      if (doneJobs.length > AUTO_CLEANUP_THRESHOLD) {
-        doneJobs.sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''))
-        const toRemove = new Set(doneJobs.slice(AUTO_CLEANUP_THRESHOLD).map(j => j.id))
-        const before = queueData.jobs.length
-        queueData.jobs = queueData.jobs.filter(j => !toRemove.has(j.id))
-        logger.debug(`Auto-cleaned ${before - queueData.jobs.length} old jobs (threshold: ${AUTO_CLEANUP_THRESHOLD})`)
-      }
-
-      saveQueueData(queueData)
+    const before = queueData.jobs.length
+    queueData.jobs = queueData.jobs.filter(j => j.id !== jobId)
+    if (queueData.jobs.length < before) {
+      logger.debug(`Removed permanently failed job ${jobId}: ${error}`)
     }
-
-    logger.debug(`Job ${jobId} marked as failed (no retry)`)
+    saveQueueData(queueData)
   })
 }
 
