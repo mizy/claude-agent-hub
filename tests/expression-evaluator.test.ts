@@ -95,6 +95,39 @@ describe('preprocessExpression', () => {
     expect(result).toContain('or')
     expect(result).toContain('not')
   })
+
+  // Bracket notation support (fixes workflow dead-end failures with hyphenated node IDs)
+  it('should convert single-quote bracket notation to dot with underscore', () => {
+    expect(preprocessExpression("outputs['verify-consistency']._raw")).toBe(
+      'outputs.verify_consistency._raw'
+    )
+  })
+
+  it('should convert double-quote bracket notation to dot with underscore', () => {
+    expect(preprocessExpression('outputs["review-signal-detector"]._raw')).toBe(
+      'outputs.review_signal_detector._raw'
+    )
+  })
+
+  it('should handle bracket notation without hyphens', () => {
+    expect(preprocessExpression("outputs['review']._raw")).toBe('outputs.review._raw')
+  })
+
+  it('should handle bracket notation with includes() method call', () => {
+    const result = preprocessExpression(
+      "outputs['verify-consistency']._raw.includes('APPROVED')"
+    )
+    expect(result).toContain('includes(outputs.verify_consistency._raw')
+    expect(result).toContain("'APPROVED'")
+  })
+
+  it('should handle negated bracket notation expression', () => {
+    const result = preprocessExpression(
+      "!outputs['review']._raw.includes('APPROVED')"
+    )
+    expect(result).toContain('not')
+    expect(result).toContain('includes(outputs.review._raw')
+  })
 })
 
 // ============ evaluateExpression ============
@@ -241,6 +274,41 @@ describe('evaluateCondition', () => {
     expect(
       evaluateCondition(
         'outputs.check.passed == true && loopCount < variables.maxRetries',
+        context
+      )
+    ).toBe(true)
+  })
+})
+
+// ============ bracket notation with evaluateCondition (integration) ============
+
+describe('evaluateCondition with bracket notation', () => {
+  it('should evaluate bracket-notation expression for APPROVED output', () => {
+    const context = ctx({
+      outputs: {
+        // createHyphenAliases creates verify_consistency from verify-consistency
+        'verify-consistency': { _raw: 'APPROVED — all checks passed' },
+        verify_consistency: { _raw: 'APPROVED — all checks passed' },
+      },
+    })
+    expect(
+      evaluateCondition(
+        "outputs['verify-consistency']._raw.includes('APPROVED')",
+        context
+      )
+    ).toBe(true)
+  })
+
+  it('should evaluate bracket-notation expression for REJECTED output', () => {
+    const context = ctx({
+      outputs: {
+        'review-code': { _raw: 'REJECTED — needs fixes' },
+        review_code: { _raw: 'REJECTED — needs fixes' },
+      },
+    })
+    expect(
+      evaluateCondition(
+        "!outputs['review-code']._raw.includes('APPROVED')",
         context
       )
     ).toBe(true)

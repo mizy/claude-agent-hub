@@ -8,63 +8,79 @@
 
 ```bash
 # 任务（必须在目标项目目录下运行，cwd 用于同项目冲突检测和自动串行）
-cah "任务描述"           # 创建并执行任务
+cah "任务描述"           # 创建并执行任务（-p priority, -a agent, -b backend, -m model）
 cah "任务描述" -F        # 前台运行（可看日志）
 cah "任务描述" --no-run  # 仅创建不执行
-cah list                 # 查看任务列表（快捷方式）
+cah list                 # 查看任务列表（快捷方式，支持 -s/-a/--source/--no-progress/-w/-i）
+cah logs <id>            # 查看任务日志（快捷方式，支持 -f/-n）
+cah run                  # 手动执行队列中下一个 pending 任务
+cah init                 # 初始化项目配置（-f 强制覆盖）
 cah task list            # 查看任务列表
-cah task logs <id> -f    # 实时查看任务日志
-cah task resume <id>     # 恢复中断的任务
-cah task pause <id>      # 暂停运行中的任务
+cah task add             # 创建任务（-t title, -d desc, -p priority, -a agent）
+cah task show <id>       # 任务详情（--json, --verbose）
+cah task logs <id> -f    # 实时查看任务日志（-n/--tail, --head）
+cah task stats <id>      # 执行统计（-t timeline, -r report, --markdown, --json）
+cah task resume <id>     # 恢复中断的任务（-a all）
+cah task pause <id>      # 暂停运行中的任务（-r reason）
 cah task stop <id>       # 停止/取消任务
+cah task delete <id>     # 删除任务
+cah task clear           # 批量清理（-s status, -a all）
 cah task msg <id> <msg>  # 向运行中任务发送消息
-cah task inject-node <id> <prompt>  # 动态注入节点
+cah task inject-node <id> <prompt>  # 动态注入节点（--persona name）
 cah task complete <id>   # 完成任务（审核通过）
-cah task reject <id>     # 驳回任务
-cah task trace <id>      # 查看执行追踪（调用树/耗时/错误链）
-cah task snapshot <id>   # 查看任务执行快照
+cah task reject <id>     # 驳回任务（-r reason）
+cah task trace <id>      # 查看执行追踪（--slow [ms], --errors, --cost, --export）
+cah task snapshot <id>   # 查看任务执行快照（--json）
 
 # 守护进程
 cah start                # 启动守护进程（前台，自动检测飞书/Telegram）
 cah start -D             # 后台运行（fork 子进程）
 cah stop                 # 停止守护进程
-cah restart              # 重启守护进程
+cah restart              # 重启守护进程（默认后台，-D）
 cah status               # 查看运行状态
 
 # 报告 & 工具
-cah report trend         # 趋势分析报告
-cah report live          # 实时状态监控
-cah dashboard            # 启动 Workflow 可视化面板
+cah report work          # 工作报告（-a agent, -d days, -o output）
+cah report trend         # 趋势分析报告（-d days, -p period, --json）
+cah report live          # 实时状态监控（--json, -w watch, -i interval）
+cah dashboard            # 启动 Workflow 可视化面板（-p port, --open, -D）
 cah agent list           # 查看可用 Agent
+cah agent show <name>    # 查看 Agent 详情
 
 # 记忆
-cah memory list          # 查看记忆列表
-cah memory add <content> # 手动添加记忆
+cah memory list          # 查看记忆列表（-c category, --project）
+cah memory add <content> # 手动添加记忆（-c category）
 cah memory search <query># 搜索记忆
+cah memory delete <id>   # 删除记忆
 cah memory health        # 记忆健康状态
 cah memory fading        # 即将消退的记忆
 cah memory reinforce <id># 强化记忆
 cah memory associations <id>  # 查看关联
-cah memory episodes      # 情景记忆列表
-cah memory recall <query># 回忆对话
-cah memory cleanup       # 遗忘清理
+cah memory episodes      # 情景记忆列表（-l limit）
+cah memory recall <query># 回忆对话（-l limit）
+cah memory link <episodeId> <memoryId>  # 关联情景与语义记忆
+cah memory cleanup       # 遗忘清理（--dry-run）
 
 # 提示词
 cah prompt versions <p>  # 查看人格提示词版本
 cah prompt rollback <p> <vid>  # 回滚提示词版本
 cah prompt diff <p> <v1> <v2>  # 对比版本内容
-cah prompt test <p>      # 启动 A/B 测试
+cah prompt test <p>      # 启动 A/B 测试（-s min-samples）
 cah prompt evaluate <id> # 评估测试结果
+cah prompt extract       # 提取成功模式（-l limit）
 
 # 自管理
 cah self check           # 健康检查（= cah selfcheck）
 cah self check --auto-fix # 自动修复并验证
+cah self check --repair  # 为无法自动修复的问题创建修复任务
 cah self evolve          # 运行一轮自我进化
-cah self evolve analyze  # 分析失败任务模式
+cah self evolve analyze  # 分析失败任务模式（-n limit）
 cah self evolve validate <id> # 验证进化效果
-cah self evolve history  # 查看进化历史
+cah self evolve history  # 查看进化历史（-n limit）
 cah self drive start     # 启动自驱模式
-cah self drive stop      # 停止自驱
+cah self drive stop      # 停止自驱（daemon 重启会恢复）
+cah self drive disable   # 永久禁用（daemon 重启不恢复）
+cah self drive enable    # 重新启用
 cah self drive status    # 查看自驱状态
 cah self drive goals     # 查看自驱目标
 cah self status          # 综合状态（健康+进化+自驱）
@@ -72,66 +88,81 @@ cah self status          # 综合状态（健康+进化+自驱）
 # 后端 & 系统
 cah backend list         # 列出可用后端
 cah backend current      # 当前后端
-cah selfcheck            # 系统自检（快捷方式）
+cah selfcheck            # 系统自检（快捷方式，--fix/--auto-fix/--repair）
 ```
 
 ## 分层架构
 
 ```
 CLI (cli/)  ─────────────────────────── 表现层：命令行、输出格式化
-  ├── Server (server/)                   HTTP 可视化面板
-  ├── Report (report/)                   报告生成、趋势分析
-  └── Messaging (messaging/)              IM 交互层：飞书/Telegram（命令/对话/通知/卡片）
+  ├── Server (server/)                   HTTP 可视化面板（dashboard）
+  ├── Report (report/)                   报告生成、趋势分析、退化检测
+  └── Messaging (messaging/)             IM 交互层：飞书 WSClient+卡片 / Telegram
         │
-Task (task/)  ───────────────────────── 业务层：任务生命周期（含暂停/恢复/注入/消息）
-  ├── Scheduler (scheduler/)             守护进程、队列、Worker
-  ├── Workflow (workflow/)               AI 工作流引擎、节点执行
+Task (task/)  ───────────────────────── 业务层：任务生命周期（创建/执行/暂停/恢复/消息/注入）
+  ├── Scheduler (scheduler/)             守护进程、事件总线、队列、Worker
+  ├── Workflow (workflow/)               AI 工作流引擎（生成/执行/状态/队列/Worker）
   │     └── engine/ parser/ queue/       子模块
-  ├── Analysis (analysis/)               项目分析、历史学习
-  └── Output (output/)                   结果保存、标题生成
+  ├── Analysis (analysis/)               项目分析、历史学习、分类、时间预估
+  ├── Output (output/)                   结果保存、标题生成
+  ├── SelfCheck (selfcheck/)             7 项健康检查、自动修复、修复任务生成
+  ├── SelfEvolve (selfevolve/)           失败分析→改进→验证→历史、信号检测
+  └── SelfDrive (selfdrive/)             目标管理、调度器、daemon 集成、自驱状态
         │
-Backend (backend/)  ─────────────────── 集成层：后端抽象（CLI + OpenAI API）
-Persona (persona/)                       AI 人格定义
+Backend (backend/)  ─────────────────── 集成层：后端抽象（claude-code/opencode/iflow/codebuddy/openai）
+Memory (memory/)                         记忆系统（语义/情景/遗忘/关联/检索）
+Persona (persona/)                       AI 人格定义与加载
 Prompts (prompts/)                       提示词模板
-Memory (memory/)                         任务记忆：学习、检索、注入
-PromptOptimization (prompt-optimization/) 提示词自进化：失败分析、版本管理
-SelfEvolve (selfevolve/)                 自进化引擎：失败分析→改进→验证→历史
-SelfDrive (selfdrive/)                   自驱引擎：目标管理、调度、daemon 集成
+PromptOptimization (prompt-optimization/) 提示词自进化（失败分析/版本/A-B测试）
+Config (config/)                         YAML 配置加载、Schema 校验
         │
-Store (store/)  ─────────────────────── 持久层：文件存储、Trace（OTLP 兼容）
-Config (config/)                         配置加载
-Shared (shared/)                         基础设施（Result/AppError/logger）
-Types (types/)                           类型定义
+Store (store/)  ─────────────────────── 持久层：GenericFileStore + 各专用 Store
+        │
+Shared (shared/)  ───────────────────── 基础设施：Result<T,E>、AppError、日志、ID、时间、文本
+Types (types/)                           共享类型定义
 ```
 
-## @entry 模块索引
+## @entry 模块索引（26 个）
 
 | 模块 | 入口 | 核心能力 |
 |------|------|----------|
-| CLI | `cli/index.ts` | 命令行主入口、子命令（task/start/stop/restart/status/report/dashboard/memory/prompt） |
-| Backend | `backend/index.ts` | CLI 后端抽象层（claude-code/opencode/iflow/codebuddy/openai-compatible） |
-| Task | `task/index.ts` | 创建、执行（进度条/ETA/统计）、查询、恢复、暂停/恢复、消息、节点注入 |
-| Workflow | `workflow/index.ts` | AI 生成工作流、节点执行（Persona）、状态管理、重试 |
-| Store | `store/index.ts` | GenericFileStore 通用文件存储、TaskStore/WorkflowStore/TraceStore/PromptVersionStore |
-| Analysis | `analysis/index.ts` | 项目上下文分析、历史学习、任务分类、时间预估 |
-| Report | `report/index.ts` | 趋势分析、实时摘要、执行对比（退化检测） |
-| Persona | `persona/index.ts` | AI 人格定义、加载 |
-| Scheduler | `scheduler/index.ts` | 任务队列、Worker、守护进程、PID 锁 |
-| Messaging | `messaging/index.ts` | 平台无关 handlers（命令/审批/对话）+ 飞书(卡片交互、按钮回调)/Telegram 适配层 |
-| Memory | `memory/index.ts` | 任务记忆提取、检索（相关性评分）、格式化注入 |
-| PromptOptimization | `prompt-optimization/index.ts` | 失败分析、提示词改进生成、版本管理与回滚 |
-| Config | `config/index.ts` | YAML 配置加载、Schema 校验、项目初始化 |
-| Shared | `shared/index.ts` | Result<T,E>、AppError、日志、ID 生成、格式化 |
-| Output | `output/index.ts` | 任务输出保存、标题生成 |
-| Server | `server/index.ts` | HTTP server、Workflow 可视化面板 |
-| Prompts | `prompts/index.ts` | 任务执行/对话提示词模板 |
-| SelfEvolve | `selfevolve/index.ts` | 失败分析、改进应用、进化验证、历史记录、进化周期编排 |
-| SelfDrive | `selfdrive/index.ts` | 目标管理、调度器、daemon 集成、自驱状态持久化 |
-| Types | `types/index.ts` | 类型定义（task, workflow, persona, output, trace, promptVersion） |
+| CLI | `cli/index.ts` | 命令行主入口 |
+| CLI/Self | `cli/commands/self.ts` | self 命令组 |
+| Task | `task/index.ts` | 任务 CRUD + 生命周期 |
+| Task/Execute | `task/executeTask.ts` | 任务执行编排 |
+| Workflow | `workflow/index.ts` | 工作流公共 API |
+| Workflow/Engine | `workflow/engine/WorkflowEngine.ts` | 工作流引擎 |
+| Backend | `backend/index.ts` | 后端调用 + 注册 |
+| Store | `store/index.ts` | 存储公共 API |
+| Store/Message | `store/TaskMessageStore.ts` | 任务消息队列 |
+| Memory | `memory/index.ts` | 记忆系统 |
+| Shared | `shared/index.ts` | 基础设施 |
+| Scheduler | `scheduler/index.ts` | 守护进程 + 队列 |
+| Messaging | `messaging/index.ts` | IM 交互 |
+| Analysis | `analysis/index.ts` | 项目分析 |
+| Report | `report/index.ts` | 报告生成 |
+| Persona | `persona/index.ts` | 人格定义 |
+| SelfCheck | `selfcheck/index.ts` | 健康检查 |
+| SelfEvolve | `selfevolve/index.ts` | 自进化引擎 |
+| SelfEvolve/Signal | `selfevolve/signalDetector.ts` | 信号检测 |
+| SelfDrive | `selfdrive/index.ts` | 自驱引擎 |
+| Config | `config/index.ts` | 配置管理 |
+| Types | `types/index.ts` | 类型定义 |
+| Prompts | `prompts/index.ts` | 提示词模板 |
+| Output | `output/index.ts` | 输出管理 |
+| Server | `server/index.ts` | HTTP 面板 |
+| PromptOptimization | `prompt-optimization/index.ts` | 提示词优化 |
 
 ## 任务执行流程
 
-`cah "描述"` → 创建 task → 分析项目上下文 → 学习历史 → AI 生成 workflow → NodeWorker 执行节点(Persona) → 调用 Backend → 结果写入 instance.json
+```
+cah "描述" → createTask(含 cwd) → analyzeProjectContext → learnFromHistory
+  → retrieveRelevantMemories → AI generateWorkflow → startWorkflow
+  → NodeWorker 并发执行节点(Persona) → invokeBackend → saveWorkflowOutput
+  → emitWorkflowCompleted → updateTask(completed/failed)
+```
+
+恢复流程：`cah task resume <id>` → recoverWorkflowInstance → 有 failed 节点则重试，全 pending 则重启
 
 ## 数据结构
 
@@ -140,39 +171,54 @@ Types (types/)                           类型定义
 ```
 .cah-data/
 ├── tasks/task-{id}/
-│   ├── task.json       # 元数据（id, title, status, priority）
+│   ├── task.json       # 元数据（id, title, status, priority, cwd, source）
 │   ├── workflow.json   # 工作流定义（节点、边、变量）
 │   ├── instance.json   # 唯一执行状态源（节点状态、输出、变量）
-│   ├── stats.json      # 聚合统计（从 instance 派生）
-│   ├── timeline.json   # 事件时间线（含 instanceId）
-│   ├── process.json    # 后台进程信息
+│   ├── process.json    # 后台进程信息（PID）
 │   ├── messages.json   # 任务交互消息队列
-│   ├── logs/           # execution.log + events.jsonl
+│   ├── stats.json      # 聚合统计（从 instance 派生）
+│   ├── timeline.json   # 事件时间线
+│   ├── logs/
+│   │   ├── execution.log       # 主执行日志
+│   │   ├── conversation.log    # 对话日志
+│   │   ├── events.jsonl        # JSONL 事件流
+│   │   └── conversation.jsonl  # JSONL 对话流
 │   ├── outputs/        # result.md
 │   └── traces/         # trace-{traceId}.jsonl（OTLP 兼容 Span 数据）
-├── memory/             # 记忆条目
+├── memory/             # 语义记忆条目
+├── episodes/           # 情景记忆
 ├── prompt-versions/    # 提示词版本历史
 ├── queue.json          # 任务队列
-└── runner.lock         # 队列 Runner 锁
+├── runner.lock         # 队列 Runner 锁
+├── runner.log          # Runner 日志
+├── meta.json           # 元数据
+└── index.json          # 任务索引
 ```
 
 ## 开发
 
 ```bash
-pnpm run dev          # 开发模式（tsx watch）
-pnpm run build        # 构建（tsup）
-pnpm run lint         # Lint
-pnpm run lint:fix     # Lint 自动修复
-pnpm run typecheck    # 类型检查（tsc --noEmit）
-pnpm test             # 测试（vitest）
-pnpm run format       # 格式化（prettier）
-pnpm run format:check # 格式检查
+pnpm run dev            # 开发模式（tsx watch）
+pnpm run dev:dashboard  # 面板开发模式
+pnpm run build          # 构建（tsup + dashboard）
+pnpm run build:types    # 仅构建类型声明
+pnpm run build:dashboard # 构建面板
+pnpm run build:binary   # 构建独立二进制（SEA）
+pnpm run lint           # Lint
+pnpm run lint:fix       # Lint 自动修复
+pnpm run typecheck      # 类型检查（tsc --noEmit）
+pnpm test               # 测试（vitest）
+pnpm run test:watch     # 测试监控模式
+pnpm run format         # 格式化（prettier）
+pnpm run format:check   # 格式检查
+pnpm run clean          # 清理构建产物
 ```
 
 ## 架构模式
 
 ### 事件驱动解耦（task → messaging）
-- task 层通过 `shared/events/taskEvents.ts` 的 `taskEventBus` 发射事件（如 `task:completed`），messaging 层订阅处理
+- `taskEventBus`（`shared/events/taskEvents.ts`）：task 层发射事件（如 `task:completed`），messaging 层订阅处理
+- `workflowEvents`：工作流内部事件（NodeStarted/Completed/Failed, WorkflowStarted/Completed/Failed/Progress）
 - 注册点：`messaging/registerTaskEventListeners.ts`，在 daemon 启动、子进程启动、CLI 入口三处调用
 - 目的：打断 task ↔ messaging 循环依赖，task 模块不直接 import messaging
 

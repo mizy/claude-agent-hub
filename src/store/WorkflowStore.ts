@@ -272,7 +272,7 @@ export function resetNodeState(instanceId: string, nodeId: string): void {
     startedAt: undefined,
     completedAt: undefined,
     error: undefined,
-    // 保留 attempts 计数
+    attempts: 0, // Reset attempts — loop reentry is not a retry
   })
 }
 

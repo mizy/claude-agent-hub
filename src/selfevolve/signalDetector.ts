@@ -6,10 +6,13 @@
  * Lightweight, synchronous, no AI calls.
  */
 
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { getTasksByStatus } from '../store/TaskStore.js'
 import { getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { getLatestEvolution } from './evolutionHistory.js'
 import { createLogger } from '../shared/logger.js'
+import { DATA_DIR } from '../store/paths.js'
 import type { Task } from '../types/task.js'
 import type { NodeState } from '../types/workflow.js'
 
@@ -39,23 +42,45 @@ export interface DetectSignalOptions {
   windowSize?: number
 }
 
-// ============ Cooldown ============
+// ============ Cooldown (persisted to file) ============
 
-const cooldownMap = new Map<SignalType, Date>()
 const COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24h
+const COOLDOWN_FILE = join(DATA_DIR, 'signal-cooldowns.json')
+
+type CooldownData = Record<string, string> // SignalType → ISO timestamp
+
+function loadCooldowns(): CooldownData {
+  try {
+    return JSON.parse(readFileSync(COOLDOWN_FILE, 'utf-8')) as CooldownData
+  } catch {
+    return {}
+  }
+}
+
+function saveCooldowns(data: CooldownData): void {
+  try {
+    mkdirSync(DATA_DIR, { recursive: true })
+    writeFileSync(COOLDOWN_FILE, JSON.stringify(data, null, 2))
+  } catch (err) {
+    logger.debug(`Failed to save cooldowns: ${err}`)
+  }
+}
 
 export function resetSignalCooldowns(): void {
-  cooldownMap.clear()
+  saveCooldowns({})
 }
 
 function isOnCooldown(type: SignalType): boolean {
-  const lastFired = cooldownMap.get(type)
+  const data = loadCooldowns()
+  const lastFired = data[type]
   if (!lastFired) return false
-  return Date.now() - lastFired.getTime() < COOLDOWN_MS
+  return Date.now() - new Date(lastFired).getTime() < COOLDOWN_MS
 }
 
 function markFired(type: SignalType): void {
-  cooldownMap.set(type, new Date())
+  const data = loadCooldowns()
+  data[type] = new Date().toISOString()
+  saveCooldowns(data)
 }
 
 // ============ Helpers ============
@@ -66,6 +91,13 @@ interface FailedNodeInfo {
   error: string
 }
 
+// Errors from external kills (SIGTERM, daemon restart) — not actionable signals
+const EXTERNAL_KILL_ERRORS = ['unknown error', 'unknown error (check logs for details)']
+
+function isExternalKillError(error: string): boolean {
+  return EXTERNAL_KILL_ERRORS.includes(error.toLowerCase().trim())
+}
+
 function collectFailedNodes(tasks: Task[]): FailedNodeInfo[] {
   const results: FailedNodeInfo[] = []
   for (const task of tasks) {
@@ -73,7 +105,7 @@ function collectFailedNodes(tasks: Task[]): FailedNodeInfo[] {
     if (!instance?.nodeStates) continue
     for (const [nodeId, state] of Object.entries(instance.nodeStates)) {
       const ns = state as NodeState
-      if (ns.status === 'failed' && ns.error) {
+      if (ns.status === 'failed' && ns.error && !isExternalKillError(ns.error)) {
         results.push({ taskId: task.id, nodeId, error: ns.error })
       }
     }
@@ -103,7 +135,7 @@ function detectExprEvalFailure(failedNodes: FailedNodeInfo[]): SignalEvent | nul
 }
 
 function detectWorkflowDeadEnd(failedNodes: FailedNodeInfo[]): SignalEvent | null {
-  const keywords = ['dead end', 'no matching', 'all conditions false']
+  const keywords = ['dead end', 'no matching', 'no outgoing edge', 'all conditional edges']
   const matches = failedNodes.filter(n => matchesAny(n.error, keywords))
   if (matches.length < 3) return null
   const taskIds = [...new Set(matches.map(m => m.taskId))]

@@ -269,29 +269,29 @@ export async function handleNodeResult(
     return []
   }
 
-  // 当所有出边条件都为 false 且没有下游节点时，标记节点失败
+  // 当所有出边条件都为 false 且没有下游节点时，使用最后一条边作为 fallback
   if (nextNodes.length === 0) {
     const outEdges = workflow.edges.filter(e => e.from === nodeId)
     if (outEdges.length > 0) {
       const allEdgesConditional = outEdges.every(e => e.condition)
       if (allEdgesConditional) {
-        // All outgoing edges have conditions and none matched → fail immediately
-        const conditionSummary = outEdges
-          .map(e => `"${e.condition}"`)
-          .join(', ')
+        // All conditions evaluated to false — use last edge as fallback (else branch)
+        const fallbackEdge = outEdges[outEdges.length - 1]!
         logger.warn(
-          `No outgoing edge condition matched for node "${nodeId}". Conditions: [${conditionSummary}]`
+          `No outgoing edge condition matched for node "${nodeId}". Using fallback edge → "${fallbackEdge.to}"`
         )
-        await markNodeFailed(
-          instanceId,
-          nodeId,
-          `No outgoing edge condition matched for node "${nodeId}". All conditional edges evaluated to false.`
-        )
-        await failWorkflowInstance(
-          instanceId,
-          `No outgoing edge condition matched for node "${nodeId}". All conditional edges evaluated to false.`
-        )
-        return []
+
+        if (fallbackEdge.maxLoops !== undefined) {
+          const currentLoops = updatedInstance.loopCounts[fallbackEdge.id] || 0
+          if (currentLoops >= fallbackEdge.maxLoops) {
+            logger.debug(`Fallback edge ${fallbackEdge.id} reached max loops (${fallbackEdge.maxLoops}), completing workflow`)
+            return []
+          }
+          incrementLoopCount(instanceId, fallbackEdge.id)
+          resetNodeState(instanceId, fallbackEdge.to)
+        }
+
+        return [fallbackEdge.to]
       }
     }
   }

@@ -99,8 +99,8 @@ export interface EvolutionRecord {
   status: EvolutionStatus
   startedAt: string
   completedAt?: string
-  /** What triggered this evolution (manual, scheduled, threshold) */
-  trigger: 'manual' | 'scheduled' | 'threshold'
+  /** What triggered this evolution (manual, scheduled, threshold, signal) */
+  trigger: 'manual' | 'scheduled' | 'threshold' | 'signal'
   /** Failure patterns found during analysis */
   patterns: FailurePattern[]
   /** Improvements applied */
@@ -116,6 +116,13 @@ export interface EvolutionRecord {
     improvementId: string
     review: ReviewResult
   }>
+  /** Signal that triggered this evolution (when trigger === 'signal') */
+  signalContext?: {
+    type: string
+    pattern: string
+    severity: string
+    taskIds: string[]
+  }
 }
 
 // ============ Validation ============

@@ -2,92 +2,60 @@
 
 ## 概览
 
-Claude Agent Hub 是一个自举式 AI 任务执行系统。通过 Workflow 引擎自动分析、拆解和执行开发任务，支持多种 CLI 后端（claude-code/opencode/iflow/codebuddy/openai-compatible）和复杂的控制流（条件、循环、并行、定时、人工审批等）。内置 Memory 学习系统（含遗忘引擎、关联引擎、情景记忆）、Prompt 优化（含 A/B 测试）、分布式 Tracing 和任务交互（暂停/恢复/注入）能力。
+Claude Agent Hub 是一个自举式 AI 任务执行系统，目标是从工具进化为有生命力的自驱智能体。通过 Workflow 引擎自动分析、拆解和执行开发任务，支持多种 CLI 后端（claude-code/opencode/iflow/codebuddy/openai-compatible）和复杂的控制流（条件、循环、并行、定时、人工审批等）。内置 Memory 学习系统（含遗忘引擎、关联引擎、情景记忆）、Prompt 优化（含 A/B 测试）、分布式 Tracing、任务交互（暂停/恢复/注入）、SelfCheck 健康检查、SelfEvolve 自进化引擎和 SelfDrive 自驱引擎。
 
 ## 系统架构
 
+与 CLAUDE.md 一致的 5 层分层架构：
+
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                CLI Layer                                     │
-│                         src/cli/index.ts (@entry)                           │
-│                                                                              │
-│   cah "任务"    cah task list    cah report trend    cah start              │
-│   cah memory    cah prompt       cah trace           cah dashboard          │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Task Execution Layer                                 │
-│                                                                              │
-│  ┌──────────────┐  ┌───────────────────┐  ┌─────────────────────────────┐  │
-│  │  createTask  │  │  executeTask      │  │  pauseTask / resumeTask     │  │
-│  │  任务创建     │  │  任务执行(前台/后台) │  │  暂停/恢复/注入节点         │  │
-│  └──────────────┘  └───────────────────┘  └─────────────────────────────┘  │
-│                                                                              │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  Analysis: 项目上下文分析、历史学习、任务分类、时间预估                │   │
-│  │  Memory: 跨任务经验记忆、检索、学习                                    │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            Workflow Engine                                   │
-│                                                                              │
-│  ┌───────────────┐  ┌───────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ WorkflowStore │  │ StateManager  │  │  NodeWorker  │  │WorkflowQueue │  │
-│  │ 存储 workflow  │  │ 状态流转管理   │  │ 节点执行器    │  │ 任务队列     │  │
-│  └───────────────┘  └───────────────┘  └──────────────┘  └──────────────┘  │
-│                                                                              │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │  generateWorkflow: AI 生成工作流                                        │  │
-│  │  executeNode: 执行节点(使用 Persona) + Tracing Spans                   │  │
-│  │  控制流: delay | schedule | loop | foreach | switch | assign | script  │  │
-│  │  HumanApprovalQueue: 人工审批队列                                       │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             Backend Layer                                    │
-│                        CLI 后端抽象层 (@entry)                                │
-│                                                                              │
-│  ┌────────────────────────────────────────────────────────────────────┐    │
-│  │  Adapters:                                                          │    │
-│  │  - claudeCodeBackend (claude-code CLI)                              │    │
-│  │  - opencodeBackend (opencode CLI)                                   │    │
-│  │  - iflowBackend (iflow CLI)                                         │    │
-│  │  - codebuddyBackend (codebuddy CLI)                                 │    │
-│  │  - openaiCompatibleBackend (OpenAI API 兼容)                        │    │
-│  │                                                                     │    │
-│  │  invokeBackend(options) → Result<InvokeResult, InvokeError>         │    │
-│  │  自动 Prompt 组装(persona + mode) + Slot 管理 + Span 创建            │    │
-│  └────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       Storage & Infrastructure Layer                         │
-│                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  Store: TaskStore, WorkflowStore, MemoryStore, TraceStore,          │   │
-│  │         PromptVersionStore, TaskMessageStore, ExecutionStatsStore    │   │
-│  │  Report: 趋势分析、实时监控、执行对比、退化检测                         │   │
-│  │  Messaging: 飞书(WS+卡片) + Telegram(长轮询) — 双向对话终端          │   │
-│  │                                                                      │   │
-│  │  .cah-data/tasks/task-{id}/                                         │   │
-│  │    ├── task.json          # 任务元数据                               │   │
-│  │    ├── workflow.json      # 工作流定义                               │   │
-│  │    ├── instance.json      # 唯一执行状态源                            │   │
-│  │    ├── stats.json         # 聚合统计(从 instance 派生)                │   │
-│  │    ├── timeline.json      # 事件时间线                               │   │
-│  │    ├── process.json       # 后台进程信息                             │   │
-│  │    ├── messages.json      # 任务交互消息队列                          │   │
-│  │    ├── logs/              # execution.log + events.jsonl            │   │
-│  │    ├── outputs/           # result.md                               │   │
-│  │    └── traces/            # trace-{traceId}.jsonl（OTLP 兼容 Span）  │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─ 表现层 ──────────────────────────────────────────────────────────────────┐
+│  cli/          命令行主入口、子命令          (@entry: cli/index.ts)         │
+│  server/       HTTP 可视化面板（dashboard）   (@entry: server/index.ts)     │
+│  report/       报告生成、趋势分析、退化检测   (@entry: report/index.ts)     │
+│  messaging/    IM 交互（飞书 WSClient+卡片 / Telegram）                    │
+├─ 业务层 ──────────────────────────────────────────────────────────────────┤
+│  task/         任务生命周期（创建/执行/暂停/恢复/消息/注入）               │
+│  workflow/     AI 工作流引擎（生成/执行/状态/队列/Worker）                 │
+│  scheduler/    守护进程、事件总线、队列、Worker                            │
+│  analysis/     项目上下文分析、历史学习、分类、时间预估                    │
+│  output/       任务输出保存、标题生成                                      │
+│  selfcheck/    7 项健康检查、自动修复、修复任务生成                        │
+│  selfevolve/   失败分析→改进→验证→历史、信号检测                          │
+│  selfdrive/    目标管理、调度器、daemon 集成、自驱状态                     │
+├─ 集成层 ──────────────────────────────────────────────────────────────────┤
+│  backend/      后端抽象（claude-code/opencode/iflow/codebuddy/openai）    │
+│  memory/       记忆系统（语义/情景/遗忘/关联/检索）                       │
+│  persona/      AI 人格定义与加载                                          │
+│  prompts/      提示词模板                                                 │
+│  prompt-optimization/  提示词自进化（失败分析/版本/A-B测试）              │
+│  config/       YAML 配置加载、Schema 校验                                 │
+├─ 持久层 ──────────────────────────────────────────────────────────────────┤
+│  store/        GenericFileStore + 各专用 Store                            │
+├─ 基础设施 ────────────────────────────────────────────────────────────────┤
+│  shared/       Result<T,E>、AppError、日志、ID、时间、文本、事件总线       │
+│  types/        共享类型定义                                               │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### 数据存储结构
+
+```
+.cah-data/tasks/task-{id}/
+  ├── task.json          # 任务元数据（id, title, status, priority, cwd, source）
+  ├── workflow.json      # 工作流定义（节点、边、变量）
+  ├── instance.json      # 唯一执行状态源（节点状态、输出、变量）
+  ├── stats.json         # 聚合统计（从 instance 派生）
+  ├── timeline.json      # 事件时间线
+  ├── process.json       # 后台进程信息（PID）
+  ├── messages.json      # 任务交互消息队列
+  ├── logs/
+  │   ├── execution.log       # 主执行日志
+  │   ├── conversation.log    # 对话日志
+  │   ├── events.jsonl        # JSONL 事件流
+  │   └── conversation.jsonl  # JSONL 对话流
+  ├── outputs/           # result.md
+  └── traces/            # trace-{traceId}.jsonl（OTLP 兼容 Span）
 ```
 
 ## 目录结构
@@ -111,7 +79,10 @@ src/
 │       ├── trace.ts           # Tracing 查看
 │       ├── init.ts            # 项目初始化
 │       ├── backend.ts         # Backend 管理
-│       └── selfcheck.ts       # 系统自检
+│       ├── self.ts            # self 统一命令入口（check/evolve/drive/status）
+│       ├── selfcheck.ts       # 系统自检（快捷方式）
+│       ├── selfEvolve.ts      # 进化子命令（analyze/validate/history）
+│       └── selfDrive.ts       # 自驱子命令（start/stop/status/goals/disable/enable）
 │
 ├── backend/                    # CLI 后端抽象层
 │   ├── index.ts               # @entry: invokeBackend(), resolveBackend()
@@ -274,8 +245,11 @@ src/
 │       ├── taskCommands.ts    # 任务命令
 │       ├── queryCommands.ts   # 查询命令
 │       ├── systemCommands.ts  # 系统命令
+│       ├── selfCommands.ts    # self 相关命令
 │       ├── larkCardActions.ts # 飞书卡片按钮回调
 │       ├── conversationLog.ts # 对话日志
+│       ├── chatMemoryExtractor.ts # 对话记忆提取
+│       ├── episodeExtractor.ts # 情景记忆提取
 │       ├── imageExtractor.ts  # 图片提取
 │       ├── resolveTaskId.ts   # 任务 ID 解析
 │       ├── constants.ts
@@ -312,17 +286,52 @@ src/
 │       ├── store/
 │       └── styles/
 │
+├── selfcheck/                  # 健康检查
+│   ├── index.ts               # @entry
+│   ├── types.ts               # 检查类型定义
+│   └── checks/                # 7 项健康检查
+│       ├── dataIntegrity.ts
+│       ├── processHealth.ts
+│       ├── envIsolation.ts
+│       ├── versionConsistency.ts
+│       ├── queueHealth.ts
+│       ├── configValidity.ts
+│       └── backendAvailability.ts
+│
+├── selfevolve/                 # 自进化引擎
+│   ├── index.ts               # @entry
+│   ├── signalDetector.ts      # @entry 信号检测器（异常模式检测）
+│   ├── analyzeTaskPatterns.ts # 任务模式分析
+│   ├── analyzeFailures.ts     # 失败分析
+│   ├── analyzePerformance.ts  # 性能分析
+│   ├── runEvolution.ts        # 执行进化周期
+│   ├── applyImprovements.ts   # 应用改进
+│   ├── reviewImprovement.ts   # 审查改进
+│   ├── validateEvolution.ts   # 验证进化效果
+│   ├── evolutionHistory.ts    # 进化历史
+│   └── types.ts               # 进化类型定义
+│
+├── selfdrive/                  # 自驱引擎
+│   ├── index.ts               # @entry
+│   ├── goals.ts               # 目标管理（3 种内置目标）
+│   ├── scheduler.ts           # 自驱调度器
+│   └── daemon.ts              # Daemon 集成
+│
 ├── shared/                     # 公共基础设施
 │   ├── index.ts               # @entry
 │   ├── result.ts              # Result<T, E> 类型
 │   ├── error.ts               # AppError
+│   ├── assertError.ts         # isError/getErrorMessage/ensureError
 │   ├── logger.ts              # 日志
 │   ├── formatTime.ts          # 时间格式化
 │   ├── formatErrorMessage.ts  # 错误格式化
 │   ├── generateId.ts          # ID 生成
 │   ├── truncateText.ts        # 文本截断工具
 │   ├── toInvokeError.ts       # 统一错误转换
-│   └── levenshtein.ts         # 编辑距离
+│   ├── levenshtein.ts         # 编辑距离
+│   ├── readClaudeConfig.ts    # 读取 CLAUDE.md 配置
+│   └── events/                # 事件系统
+│       └── taskEvents.ts      # 任务事件总线（task ↔ messaging 解耦）
 │
 ├── config/                     # 配置系统
 │   ├── index.ts               # @entry
@@ -686,13 +695,17 @@ pending ──► ready ──► running ──► done
 - [x] 同项目冲突检测（cwd 自动串行）
 - [x] 孤儿任务自动恢复
 
-- [x] Selfcheck 框架（自诊断 + 自动修复）
+- [x] Selfcheck 框架（7 项检查 + 自动修复 + 修复任务生成）
 - [x] 任务审核流程（complete/reject）
+- [x] SelfEvolve 进化引擎（失败分析 → 改进 → 验证 → 历史 + 信号检测器）
+- [x] SelfDrive 自驱引擎（3 种内置目标 + 调度器 + daemon 集成 + 永久禁用/启用）
+- [x] 事件驱动解耦（taskEventBus + workflowEvents，task ↔ messaging 解耦）
 
 ## 扩展方向
 
-- [ ] Selfcheck 自愈循环（定时自动执行）
-- [ ] Workflow 模板库
+- [ ] Selfcheck 自愈循环（定时自动执行 + cron 挂载）
+- [ ] Workflow 模板库（成功策略自动提取）
 - [ ] 分布式执行
-- [ ] 自适应调度（根据负载调整轮询频率）
+- [ ] Multi-Agent 协作（专业化 Agent 团队、任务分发、冲突检测）
 - [ ] 能力边界追踪（按任务类型统计成功率）
+- [ ] 跨项目知识迁移

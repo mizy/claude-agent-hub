@@ -61,6 +61,19 @@ export {
   getLatestEvolution,
 } from './evolutionHistory.js'
 
+// ============ Signal Detection ============
+
+export {
+  detectSignals,
+  resetSignalCooldowns,
+} from './signalDetector.js'
+export type {
+  SignalType,
+  SignalSeverity,
+  SignalEvent,
+  DetectSignalOptions,
+} from './signalDetector.js'
+
 // ============ Orchestration ============
 
 export { runEvolutionCycle } from './runEvolution.js'

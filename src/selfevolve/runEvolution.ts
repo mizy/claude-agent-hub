@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { generateShortId } from '../shared/generateId.js'
 import { refreshSuccessPatterns } from '../prompt-optimization/evolutionSelection.js'
 import { getTasksByStatus } from '../store/TaskStore.js'
@@ -19,18 +20,21 @@ import {
   updateEvolution,
 } from './evolutionHistory.js'
 import type { EvolutionRecord, Improvement, FailurePattern, PerformancePattern } from './types.js'
+import type { SignalEvent } from './signalDetector.js'
 
 const logger = createLogger('selfevolve')
 
 interface RunEvolutionOptions {
   /** What triggered this evolution */
-  trigger?: 'manual' | 'scheduled' | 'threshold'
+  trigger?: 'manual' | 'scheduled' | 'threshold' | 'signal'
   /** Max failures to analyze */
   limit?: number
   /** Only analyze failures since this date */
   since?: Date
   /** Skip applying improvements (dry-run) */
   dryRun?: boolean
+  /** Signal that triggered this evolution (when trigger === 'signal') */
+  signal?: SignalEvent
 }
 
 interface EvolutionCycleResult {
@@ -69,14 +73,26 @@ export async function runEvolutionCycle(
     trigger,
     patterns: [],
     improvements: [],
+    ...(options?.signal && {
+      signalContext: {
+        type: options.signal.type,
+        pattern: options.signal.pattern,
+        severity: options.signal.severity,
+        taskIds: options.signal.taskIds,
+      },
+    }),
   }
   recordEvolution(record)
 
   try {
+    // When triggered by signal, focus analysis on signal's related tasks
+    const signalTaskIds = options?.signal?.taskIds
+
     // Step 1: Analyze task patterns (failures + optimization opportunities from completed tasks)
     const analysis = analyzeTaskPatterns({
       limit: options?.limit,
       since: options?.since,
+      taskIds: signalTaskIds,
     })
     record.patterns = analysis.patterns
     if (analysis.patterns.length > 0) {
@@ -84,10 +100,13 @@ export async function runEvolutionCycle(
     }
 
     // Step 2: Analyze all task performance (completed + failed)
-    const perfResult = analyzePerformance({
-      limit: options?.limit,
-      since: options?.since,
-    })
+    // Skip broad performance analysis for signal-triggered evolution (focus on signal's root cause)
+    const perfResult = signalTaskIds
+      ? { totalExamined: 0, avgDurationMs: 0, avgCostUsd: 0, successRate: 0, patterns: [], nodeHotspots: [] }
+      : analyzePerformance({
+          limit: options?.limit,
+          since: options?.since,
+        })
     record.performanceAnalysis = perfResult
     logger.info(`Performance analysis: ${perfResult.totalExamined} tasks examined, ${perfResult.patterns.length} patterns found`)
 
@@ -159,7 +178,7 @@ export async function runEvolutionCycle(
     record.status = 'completed'
     record.completedAt = new Date().toISOString()
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
+    const msg = getErrorMessage(e)
     logger.error(`Evolution cycle ${evolutionId} failed: ${msg}`)
     record.status = 'failed'
     record.error = msg

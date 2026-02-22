@@ -155,6 +155,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
      ]
    }}
    \`\`\`
+   注意：节点输出通过 \`outputs.nodeId._raw\` 访问原始文本，不要用 \`outputs.nodeId.result\`（result 字段不存在）
 
 5. **assign** - 变量赋值节点
    \`\`\`json
@@ -201,7 +202,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 \`\`\`json
 {
   "from": "review", "to": "fix",
-  "condition": "outputs.review.approved == false"
+  "condition": "!outputs.review._raw.includes('APPROVED')"
 }
 \`\`\`
 - **condition**：表达式为 true 时走这条边，为 false 时跳过
@@ -272,9 +273,9 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 ## 表达式语法
 
 在条件和脚本中可以使用：
-- \`outputs.nodeId.xxx\` - 访问节点输出（结构化字段）
-- \`outputs.nodeId._raw\` - 节点的原始文本输出（注意：节点输出结构为 \`{ _raw: '原始文本', ... }\`，条件表达式应使用 \`_raw\` 字段）
+- \`outputs.nodeId._raw\` - 节点的原始文本输出（⚠️ 这是最常用的访问方式，节点输出结构为 \`{ _raw: '原始文本' }\`）
 - \`outputs.nodeId._raw.includes('xxx')\` - 检查输出是否包含关键字（自动转为函数调用）
+- ⚠️ 错误用法：\`outputs.nodeId.result\` — result 字段不存在，请始终使用 \`_raw\`
 - \`startsWith(str, prefix)\` - 检查字符串开头
 - \`lower(str)\` / \`upper(str)\` - 大小写转换
 - \`variables.xxx\` - 访问变量
@@ -307,6 +308,12 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 4. **忽略并行执行机会**
    - 独立的验证任务（如不同模块的测试）可以并行执行
    - 使用 edges 定义多个从同一节点出发的边实现并行
+
+5. **条件边表达式错误**
+   - 反例：\`outputs.review.result.includes('APPROVED')\` — result 字段不存在
+   - 正例：\`outputs.review._raw.includes('APPROVED')\` — 始终用 _raw 访问原始输出
+   - 反例：\`outputs['my-node']._raw\` — 带连字符的 ID 需要用下划线
+   - 正例：\`outputs.my_node._raw\` — 带连字符的节点 ID 自动有下划线别名
 
 现在请生成 JSON Workflow：
 `,

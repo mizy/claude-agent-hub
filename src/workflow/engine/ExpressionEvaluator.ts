@@ -56,6 +56,18 @@ parser.functions.upper = (str: unknown) => (typeof str === 'string' ? str.toUppe
 export function preprocessExpression(expr: string): string {
   let processed = expr.trim()
 
+  // Bracket notation → dot notation with underscore alias
+  // e.g. outputs['verify-consistency']._raw → outputs.verify_consistency._raw
+  // Works because buildEvalContext creates hyphen→underscore aliases via createHyphenAliases
+  processed = processed.replace(
+    /(\w+)\['([^']+)'\]/g,
+    (_match, obj, key: string) => `${obj}.${key.replace(/-/g, '_')}`,
+  )
+  processed = processed.replace(
+    /(\w+)\["([^"]+)"\]/g,
+    (_match, obj, key: string) => `${obj}.${key.replace(/-/g, '_')}`,
+  )
+
   // JS global method calls → built-in functions
   processed = processed.replace(/Date\.now\(\)/g, 'now()')
   processed = processed.replace(/Math\.floor\(/g, 'floor(')
@@ -114,11 +126,38 @@ function safeOutputs(obj: Record<string, unknown>): Record<string, unknown> {
 }
 
 /**
+ * Pre-populate missing node IDs in outputs with { _raw: '' } so expr-eval
+ * doesn't throw when accessing `outputs.nodeId._raw` for a node that hasn't
+ * produced output yet. Extracts referenced IDs from the preprocessed expression.
+ */
+function ensureReferencedOutputs(
+  outputs: Record<string, unknown>,
+  processedExpr: string
+): Record<string, unknown> {
+  const refs = processedExpr.matchAll(/outputs\.(\w+)/g)
+  for (const match of refs) {
+    const nodeId = match[1]!
+    if (!(nodeId in outputs)) {
+      outputs[nodeId] = { _raw: '' }
+    }
+  }
+  return outputs
+}
+
+/**
  * Build evaluation scope from context
  */
-function buildEvalScope(context: EvalContext): Record<string, unknown> {
+function buildEvalScope(
+  context: EvalContext,
+  processedExpr?: string
+): Record<string, unknown> {
+  const outputs = safeOutputs((context.outputs as Record<string, unknown>) ?? {})
+  if (processedExpr) {
+    ensureReferencedOutputs(outputs, processedExpr)
+  }
+
   const scope: Record<string, unknown> = {
-    outputs: safeOutputs((context.outputs as Record<string, unknown>) ?? {}),
+    outputs,
     variables: context.variables ?? {},
     loopCount: context.loopCount ?? 0,
     nodeStates: context.nodeStates ?? {},
@@ -141,15 +180,16 @@ function buildEvalScope(context: EvalContext): Record<string, unknown> {
  * Evaluate an expression and return the result
  */
 export function evaluateExpression(expression: string, context: EvalContext): unknown {
+  const processed = preprocessExpression(expression)
   try {
-    const processed = preprocessExpression(expression)
     const expr = parser.parse(processed)
     const scope = buildEvalScope(context)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return expr.evaluate(scope as any)
   } catch (error) {
-    logger.error(`Failed to evaluate expression: "${expression}"`, error)
+    const extra = processed !== expression ? ` (preprocessed: "${processed}")` : ''
+    logger.error(`Failed to evaluate expression: "${expression}"${extra}`, error)
     throw error
   }
 }

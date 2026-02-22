@@ -11,11 +11,16 @@ import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
 import { spawnTaskRunner } from '../task/spawnTask.js'
 import { getAllTasks } from '../store/TaskStore.js'
 import { listEnabledGoals, markGoalRun, type DriveGoal } from './goals.js'
+import { detectSignals, type SignalEvent } from '../selfevolve/signalDetector.js'
 
 const logger = createLogger('selfdrive')
 
 // Active timers keyed by goal ID
 const activeTimers = new Map<string, ReturnType<typeof setInterval>>()
+
+// Signal detection timer (separate from goal timers)
+let signalDetectionTimer: ReturnType<typeof setInterval> | null = null
+const SIGNAL_DETECTION_INTERVAL_MS = 2 * 60 * 60 * 1000 // 2 hours
 
 // ============ Schedule Parsing ============
 
@@ -121,6 +126,63 @@ async function executeGoal(goal: DriveGoal): Promise<void> {
   }
 }
 
+// ============ Signal Detection ============
+
+/** Run signal detection and trigger evolution for critical/warning signals */
+async function runSignalDetection(): Promise<void> {
+  try {
+    const signals = detectSignals()
+    const actionable = signals.filter(s => s.severity === 'critical' || s.severity === 'warning')
+
+    if (actionable.length === 0) return
+
+    logger.info(`Signal detection found ${actionable.length} actionable signal(s)`)
+
+    // Check if there's already a signal-triggered evolution running
+    if (hasRunningSelfdriveTask('signal-evolve')) {
+      logger.info('Skipping signal-triggered evolution: one already running')
+      return
+    }
+
+    // Pick highest severity signal (critical > warning)
+    const signal = actionable.find(s => s.severity === 'critical') ?? actionable[0]!
+    const label = `${signal.type} x${signal.count}`
+
+    logger.info(`Triggering signal evolution: ${label}`)
+
+    // Create a focused evolution task
+    const task = createTaskWithFolder({
+      title: `[信号触发] ${label}`,
+      description: buildSignalEvolutionPrompt(signal),
+      source: 'selfdrive',
+      metadata: { goalType: 'signal-evolve', signalType: signal.type },
+    })
+
+    logger.info(`Created signal-triggered evolution task: ${task.id}`)
+    spawnTaskRunner()
+  } catch (error) {
+    logger.error(`Signal detection failed: ${getErrorMessage(error)}`)
+  }
+}
+
+function buildSignalEvolutionPrompt(signal: SignalEvent): string {
+  return `执行一轮针对性自进化，聚焦于检测到的异常信号。
+
+## 触发信号
+- 类型: ${signal.type}
+- 严重程度: ${signal.severity}
+- 出现次数: ${signal.count}
+- 模式: ${signal.pattern}
+- 相关任务: ${signal.taskIds.join(', ')}
+
+## 要求
+1. 只分析上述相关任务的失败模式，不做全局扫描
+2. 定位根因并生成针对性改进方案（1-2 个即可）
+3. 只实施低风险改进，排除涉及数据结构变更的修改
+4. 改进后运行 typecheck 验证
+5. 记录进化历史，标明触发来源为信号检测`
+}
+
 // ============ Scheduler Control ============
 
 /** Check if a goal is due for execution based on schedule and lastRunAt */
@@ -160,6 +222,22 @@ export function startScheduler(): void {
     timer.unref()
     activeTimers.set(goal.id, timer)
   }
+
+  // Start signal detection: run once after 30s, then every 2 hours
+  const initialDelay = setTimeout(() => {
+    runSignalDetection().catch(err =>
+      logger.error(`Initial signal detection error: ${getErrorMessage(err)}`)
+    )
+  }, 30_000)
+  initialDelay.unref()
+
+  signalDetectionTimer = setInterval(() => {
+    runSignalDetection().catch(err =>
+      logger.error(`Signal detection error: ${getErrorMessage(err)}`)
+    )
+  }, SIGNAL_DETECTION_INTERVAL_MS)
+  signalDetectionTimer.unref()
+  logger.info('Signal detection scheduled (first run in 30s, then every 2h)')
 }
 
 /** Stop all scheduled goals */
@@ -169,6 +247,12 @@ export function stopScheduler(): void {
     logger.debug(`Stopped goal timer: ${id}`)
   }
   activeTimers.clear()
+
+  if (signalDetectionTimer) {
+    clearInterval(signalDetectionTimer)
+    signalDetectionTimer = null
+    logger.debug('Stopped signal detection timer')
+  }
 }
 
 /** Get scheduler status */

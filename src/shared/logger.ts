@@ -119,9 +119,15 @@ export function stripAnsi(str: string): string {
   return str.replace(ANSI_REGEX, '')
 }
 
-/** ISO 8601 时间戳 */
+/** ISO 8601 时间戳（本地时区，带时区偏移） */
 export function formatISOTimestamp(): string {
-  return new Date().toISOString()
+  const now = new Date()
+  const offset = -now.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  const pad = (n: number) => String(Math.abs(n)).padStart(2, '0')
+  const offsetStr = `${sign}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+  return local.toISOString().replace('Z', offsetStr)
 }
 
 /** 格式化文件日志行（无颜色） */

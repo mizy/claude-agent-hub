@@ -26,6 +26,8 @@ interface AnalyzeOptions {
   since?: Date
   /** Which statuses to include (default: completed + failed) */
   statuses?: Array<'completed' | 'failed'>
+  /** Only analyze these specific task IDs (for signal-triggered evolution) */
+  taskIds?: string[]
 }
 
 export interface TaskAnalysisResult {
@@ -84,8 +86,14 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
     allTasks.push(...getTasksByStatus(status))
   }
 
-  // Filter by date
+  // Filter by specific task IDs (for signal-triggered evolution)
   let tasks = allTasks
+  if (options?.taskIds && options.taskIds.length > 0) {
+    const idSet = new Set(options.taskIds)
+    tasks = tasks.filter(t => idSet.has(t.id))
+  }
+
+  // Filter by date
   if (since) {
     const sinceMs = since.getTime()
     tasks = tasks.filter(t => {
