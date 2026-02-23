@@ -149,12 +149,22 @@ function safeOutputs(obj: Record<string, unknown>, depth = 0): Record<string, un
   const safe: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(obj)) {
     if (value == null) {
-      safe[key] = ''
-    } else if (typeof value === 'string' && depth === 0) {
-      // Wrap bare string node outputs with _raw so conditions like outputs.node._raw work
-      safe[key] = addReservedAliases({ _raw: value })
+      // At depth 0, wrap with _raw so outputs.node._raw still works
+      safe[key] = depth === 0 ? addReservedAliases({ _raw: '' }) : ''
     } else if (typeof value === 'object' && !Array.isArray(value)) {
-      safe[key] = safeOutputs(value as Record<string, unknown>, depth + 1)
+      const nested = safeOutputs(value as Record<string, unknown>, depth + 1)
+      // At depth 0, ensure _raw exists even for object outputs (e.g. structured output missing _raw)
+      if (depth === 0 && !('_raw' in nested)) {
+        nested._raw = ''
+      }
+      safe[key] = nested
+    } else if (Array.isArray(value)) {
+      // Arrays are structured data — keep as-is for len() etc.
+      safe[key] = value
+    } else if (depth === 0) {
+      // Wrap scalar values (string, number, boolean) with _raw at depth 0
+      // so conditions like outputs.node._raw always work
+      safe[key] = addReservedAliases({ _raw: typeof value === 'string' ? value : String(value) })
     } else {
       safe[key] = value
     }

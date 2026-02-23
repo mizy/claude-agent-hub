@@ -26,6 +26,12 @@ npm-debug.log*
 # Test coverage
 coverage/
 
+# Playwright
+.playwright-mcp/
+playwright-report/
+test-results/
+playwright/.cache/
+
 # Test reports and outputs
 tests/reports/
 tests/*.md

@@ -120,11 +120,11 @@ export function createCodebuddyBackend(): BackendAdapter {
 
     async checkAvailable(): Promise<boolean> {
       try {
-        await execa('codebuddy', ['--version'])
+        await execa('codebuddy', ['--version'], { timeout: 5000 })
         return true
       } catch {
         try {
-          await execa('cbc', ['--version'])
+          await execa('cbc', ['--version'], { timeout: 5000 })
           return true
         } catch (e) {
           logger.debug(`codebuddy/cbc not available: ${getErrorMessage(e)}`)

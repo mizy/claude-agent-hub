@@ -48,11 +48,6 @@ import type { Result } from '../shared/result.js'
 
 const logger = createLogger('backend')
 
-function truncate(text: string, maxLen: number): string {
-  const oneLine = text.replace(/\n/g, ' ').trim()
-  return oneLine.length <= maxLen ? oneLine : oneLine.slice(0, maxLen) + '...'
-}
-
 /**
  * 调用当前配置的 CLI 后端
  * 自动处理：限流、prompt 组装（persona + mode）、日志
@@ -84,7 +79,7 @@ export async function invokeBackend(
       `${options.sessionId ? ` [复用会话 ${options.sessionId.slice(0, 8)}]` : ''}` +
       ` [slots: ${slots.active}/${slots.max}]`
   )
-  logger.debug(`Prompt: ${truncate(fullPrompt, 100)}`)
+  logger.debug(`Prompt prepared: ${fullPrompt.length} chars`)
 
   // Check if already aborted before waiting for a slot
   if (options.signal?.aborted) {

@@ -126,13 +126,13 @@ export function createClaudeCodeBackend(): BackendAdapter {
         }
 
         const durationMs = Date.now() - startTime
-        logger.info(
+        logger.debug(
           `[perf] spawn: ${perf.spawn}ms, first-stdout: ${perf.firstStdout}ms, first-delta: ${perf.firstDelta}ms, total: ${durationMs}ms`
         )
         const parsed = parseClaudeOutput(rawOutput)
 
         if (mcpImagePaths.length > 0) {
-          logger.info(`Extracted ${mcpImagePaths.length} MCP image(s): ${mcpImagePaths.join(', ')}`)
+          logger.debug(`Extracted ${mcpImagePaths.length} MCP image(s): ${mcpImagePaths.join(', ')}`)
         }
 
         logger.info(
@@ -160,7 +160,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
       try {
         const env = { ...process.env }
         delete env.CLAUDECODE
-        await execa('claude', ['--version'], { env })
+        await execa('claude', ['--version'], { env, timeout: 5000 })
         return true
       } catch (e) {
         logger.debug(`claude not available: ${getErrorMessage(e)}`)
@@ -295,7 +295,7 @@ function saveBase64Image(data: string, mediaType?: string): string {
   const ext = mediaType?.includes('png') ? 'png' : mediaType?.includes('gif') ? 'gif' : 'png'
   const filePath = join(tmpdir(), `cah-mcp-screenshot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`)
   writeFileSync(filePath, Buffer.from(data, 'base64'))
-  logger.info(`Saved MCP image to ${filePath}`)
+  logger.debug(`Saved MCP image to ${filePath}`)
   return filePath
 }
 

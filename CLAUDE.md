@@ -2,7 +2,7 @@
 
 自举式 AI 任务系统 — 用自己来开发自己，目标是从工具进化为有生命力的自驱智能体。
 
-> 愿景详见 [VISION.md](./VISION.md) | 核心 DNA：自举优先、渐进自治(selfcheck)、本地优先
+> 愿景详见 [VISION.md](./VISION.md) | 核心 DNA：自举优先、渐进自治、本地优先
 
 ## 核心命令
 
@@ -70,9 +70,8 @@ cah prompt evaluate <id> # 评估测试结果
 cah prompt extract       # 提取成功模式（-l limit）
 
 # 自管理
-cah self check           # 健康检查（= cah selfcheck）
-cah self check --auto-fix # 自动修复并验证
-cah self check --repair  # 为无法自动修复的问题创建修复任务
+cah self check           # 信号检测（stale daemon、corrupt data 等）
+cah self check --auto-fix # 检测并自动修复
 cah self evolve          # 运行一轮自我进化
 cah self evolve analyze  # 分析失败任务模式（-n limit）
 cah self evolve validate <id> # 验证进化效果
@@ -88,7 +87,6 @@ cah self status          # 综合状态（健康+进化+自驱）
 # 后端 & 系统
 cah backend list         # 列出可用后端
 cah backend current      # 当前后端
-cah selfcheck            # 系统自检（快捷方式，--fix/--auto-fix/--repair）
 ```
 
 ## 分层架构
@@ -105,8 +103,7 @@ Task (task/)  ──────────────────────
   │     └── engine/ parser/ queue/       子模块
   ├── Analysis (analysis/)               项目分析、历史学习、分类、时间预估
   ├── Output (output/)                   结果保存、标题生成
-  ├── SelfCheck (selfcheck/)             7 项健康检查、自动修复、修复任务生成
-  ├── SelfEvolve (selfevolve/)           失败分析→改进→验证→历史、信号检测
+  ├── SelfEvolve (selfevolve/)           失败分析→改进→验证→历史、信号检测、健康检查+自动修复
   └── SelfDrive (selfdrive/)             目标管理、调度器、daemon 集成、自驱状态
         │
 Backend (backend/)  ─────────────────── 集成层：后端抽象（claude-code/opencode/iflow/codebuddy/openai）
@@ -142,7 +139,6 @@ Types (types/)                           共享类型定义
 | Analysis | `analysis/index.ts` | 项目分析 |
 | Report | `report/index.ts` | 报告生成 |
 | Persona | `persona/index.ts` | 人格定义 |
-| SelfCheck | `selfcheck/index.ts` | 健康检查 |
 | SelfEvolve | `selfevolve/index.ts` | 自进化引擎 |
 | SelfEvolve/Signal | `selfevolve/signalDetector.ts` | 信号检测 |
 | SelfDrive | `selfdrive/index.ts` | 自驱引擎 |

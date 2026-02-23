@@ -74,6 +74,48 @@ export type {
   DetectSignalOptions,
 } from './signalDetector.js'
 
+// ============ Auto Repair ============
+
+export { tryAutoRepair } from './autoRepair.js'
+
+// ============ Context Detection ============
+
+export { resolveEvolveContext } from './resolveEvolveContext.js'
+export type { EvolveContext } from './resolveEvolveContext.js'
+
+// ============ Health Check (replaces selfcheck) ============
+
+import { detectSignals as _detectSignals } from './signalDetector.js'
+import { tryAutoRepair as _tryAutoRepair } from './autoRepair.js'
+import type { SignalEvent as _SignalEvent } from './signalDetector.js'
+
+export interface HealthCheckResult {
+  signals: _SignalEvent[]
+  repairs: { signal: _SignalEvent; result: string }[]
+  healthy: boolean
+}
+
+/** Run signal detection + auto repair. Replaces the former runSelfcheck(). */
+export async function runHealthCheck(options?: { autoFix?: boolean }): Promise<HealthCheckResult> {
+  const signals = _detectSignals()
+  const repairs: { signal: _SignalEvent; result: string }[] = []
+
+  if (options?.autoFix) {
+    for (const signal of signals) {
+      const result = await _tryAutoRepair(signal)
+      if (result) {
+        repairs.push({ signal, result })
+      }
+    }
+  }
+
+  return {
+    signals,
+    repairs,
+    healthy: signals.length === 0,
+  }
+}
+
 // ============ Orchestration ============
 
 export { runEvolutionCycle } from './runEvolution.js'

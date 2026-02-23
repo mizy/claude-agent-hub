@@ -96,7 +96,7 @@ export function createIflowBackend(): BackendAdapter {
 
     async checkAvailable(): Promise<boolean> {
       try {
-        await execa('iflow', ['--version'])
+        await execa('iflow', ['--version'], { timeout: 5000 })
         return true
       } catch (e) {
         logger.debug(`iflow not available: ${getErrorMessage(e)}`)

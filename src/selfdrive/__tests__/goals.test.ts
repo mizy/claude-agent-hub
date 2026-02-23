@@ -29,13 +29,13 @@ describe('goals', () => {
     it('creates a goal with generated ID', () => {
       const goal = addGoal({
         description: 'Test goal',
-        type: 'health-check',
+        type: 'evolve',
         priority: 'high',
         schedule: '30m',
       })
       expect(goal.id).toMatch(/^goal-/)
       expect(goal.description).toBe('Test goal')
-      expect(goal.type).toBe('health-check')
+      expect(goal.type).toBe('evolve')
       expect(goal.enabled).toBe(true)
       expect(goal.createdAt).toBeTruthy()
     })
@@ -65,7 +65,7 @@ describe('goals', () => {
     })
 
     it('lists all goals', () => {
-      addGoal({ description: 'A', type: 'health-check', priority: 'high', schedule: '30m' })
+      addGoal({ description: 'A', type: 'evolve', priority: 'high', schedule: '30m' })
       addGoal({ description: 'B', type: 'evolve', priority: 'medium', schedule: '1h' })
       const all = listGoals()
       expect(all).toHaveLength(2)
@@ -74,7 +74,7 @@ describe('goals', () => {
 
   describe('updateGoal', () => {
     it('updates goal fields', () => {
-      const goal = addGoal({ description: 'Original', type: 'health-check', priority: 'high', schedule: '30m' })
+      const goal = addGoal({ description: 'Original', type: 'evolve', priority: 'high', schedule: '30m' })
       const updated = updateGoal(goal.id, { priority: 'low', enabled: false })
       expect(updated).not.toBeNull()
       expect(updated!.priority).toBe('low')
@@ -98,7 +98,7 @@ describe('goals', () => {
 
   describe('listEnabledGoals', () => {
     it('only returns enabled goals', () => {
-      addGoal({ description: 'Enabled', type: 'health-check', priority: 'high', schedule: '30m', enabled: true })
+      addGoal({ description: 'Enabled', type: 'evolve', priority: 'high', schedule: '30m', enabled: true })
       addGoal({ description: 'Disabled', type: 'cleanup', priority: 'low', schedule: '6h', enabled: false })
       const enabled = listEnabledGoals()
       expect(enabled).toHaveLength(1)
@@ -110,11 +110,12 @@ describe('goals', () => {
     it('creates built-in goals on first call', () => {
       ensureBuiltinGoals()
       const goals = listGoals()
-      expect(goals.length).toBeGreaterThanOrEqual(3)
+      expect(goals.length).toBeGreaterThanOrEqual(4)
       const types = goals.map(g => g.type)
-      expect(types).toContain('health-check')
       expect(types).toContain('evolve')
       expect(types).toContain('cleanup')
+      expect(types).toContain('evolve-conversation')
+      expect(types).toContain('evolve-feature')
     })
 
     it('is idempotent — does not duplicate on second call', () => {
@@ -127,7 +128,7 @@ describe('goals', () => {
 
   describe('markGoalRun', () => {
     it('updates lastRunAt and lastResult', () => {
-      const goal = addGoal({ description: 'Run me', type: 'health-check', priority: 'high', schedule: '30m' })
+      const goal = addGoal({ description: 'Run me', type: 'evolve', priority: 'high', schedule: '30m' })
       markGoalRun(goal.id, 'success')
       const updated = getGoal(goal.id)
       expect(updated!.lastRunAt).toBeTruthy()

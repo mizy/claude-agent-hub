@@ -3,6 +3,9 @@
  *
  * Simple setInterval-based scheduler that executes goals by creating tasks.
  * Runs inside the daemon process — no separate process needed.
+ *
+ * Goal dimensions: evolve, cleanup, evolve-conversation, evolve-feature.
+ * Prompts are context-aware — CAH project vs external project generate different prompts.
  */
 
 import { createLogger } from '../shared/logger.js'
@@ -12,6 +15,7 @@ import { spawnTaskRunner } from '../task/spawnTask.js'
 import { getAllTasks } from '../store/TaskStore.js'
 import { listEnabledGoals, markGoalRun, type DriveGoal } from './goals.js'
 import { detectSignals, type SignalEvent } from '../selfevolve/signalDetector.js'
+import { resolveEvolveContext, type EvolveContext } from '../selfevolve/resolveEvolveContext.js'
 
 const logger = createLogger('selfdrive')
 
@@ -44,13 +48,13 @@ function parseScheduleMs(schedule: string): number | null {
 // ============ Goal → Task Mapping ============
 
 const GOAL_TASK_DESCRIPTIONS: Record<string, string> = {
-  'health-check': '[自驱] 健康检查',
   'evolve': '[自驱] 全局自进化',
   'cleanup': '[自驱] 遗忘清理',
+  'evolve-conversation': '[自驱] 对话体验自进化',
+  'evolve-feature': '[自驱] 系统功能自进化',
 }
 
-const GOAL_TASK_PROMPTS: Record<string, string> = {
-  'health-check': '执行系统健康检查（selfcheck），检查所有健康指标。如果发现问题，尝试自动修复可修复的项目，并为无法自动修复的问题生成修复任务。',
+const STATIC_PROMPTS: Record<string, string> = {
   'evolve': `执行一轮全局自进化周期：系统中的任何模块都可能成为改进对象，不限于任务模块。
 
 分析范围：
@@ -72,6 +76,86 @@ const GOAL_TASK_PROMPTS: Record<string, string> = {
 
 生成改进方案并应用，记录进化历史。`,
   'cleanup': '执行数据清理：清理过期日志、孤儿文件、过时的记忆条目等。',
+}
+
+/** Get goal prompt with context awareness — CAH vs external project */
+function getGoalPrompt(goalType: string, ctx: EvolveContext): string | undefined {
+  // Static prompts (not context-aware)
+  if (STATIC_PROMPTS[goalType]) return STATIC_PROMPTS[goalType]
+
+  const projectLabel = ctx.projectName ? `项目 ${ctx.projectName}` : '当前项目'
+
+  switch (goalType) {
+    case 'evolve-conversation':
+      return ctx.isCAH
+        ? `分析 CAH 系统的对话体验质量并生成改进方案。
+
+分析范围：
+- 扫描最近任务的 conversation.jsonl / conversation.log，关注 AI 回复质量
+- 检查回复是否冗长、偏题、格式不佳（如 markdown 在飞书卡片中不兼容）
+- 分析用户追问模式 — 连续追问同一话题暗示首次回答不满意
+- 检查各 persona 提示词的实际效果，与期望行为对比
+- 关注飞书/Telegram 交互中的体验问题
+
+改进方向：
+- 优化 persona 提示词（更精准的角色定义、更好的回复格式指引）
+- 改进 chat 回复风格（简洁度、准确度、格式适配）
+- 调整交互流程中的摩擦点
+
+约束：每轮最多改进 2 个提示词，改进后必须运行 typecheck 验证。`
+        : `分析${projectLabel}的任务对话日志，优化 AI 协作体验。
+
+分析范围：
+- 扫描最近任务的 conversation.jsonl / conversation.log
+- 关注 AI 回复是否准确完成了任务要求
+- 分析任务成功率，识别回复质量与任务成功的关联
+- 检查 workflow 生成策略是否适配该项目的特点
+
+改进方向：
+- 优化针对该项目的 workflow 生成策略
+- 调整项目相关的 prompt 模板
+- 改进任务描述到 workflow 的映射质量
+
+约束：每轮最多 2 个改进，只实施低风险修改。`
+
+    case 'evolve-feature':
+      return ctx.isCAH
+        ? `分析 CAH 系统的功能缺口，规划功能增强。
+
+分析范围：
+- 分析 CLI 命令使用频率和模式（从任务日志中提取 cah 命令调用）
+- 识别用户经常手动重复的操作，评估自动化价值
+- 检查 CLAUDE.md 中提到但尚未实现的功能
+- 从任务描述中提取高频需求模式
+- 审查最近的 GitHub issues 或 TODO 注释
+
+改进方向：
+- 识别 1-2 个高价值、低风险的功能增强点
+- 生成具体的实现方案（包含文件变更清单）
+- 优先选择可以在单个 workflow 内完成的小型增强
+
+约束：
+- 只选择低风险改进，排除核心引擎和数据结构变更
+- 工作流节点数不超过 5 个
+- 实施后运行 typecheck 和相关测试验证`
+        : `分析${projectLabel}的任务模式，建议自动化改进。
+
+分析范围：
+- 分析该项目最近的任务描述和执行结果
+- 识别重复出现的任务类型（可能适合模板化）
+- 检查项目配置（.claude-agent-hub.yaml）中的优化空间
+- 评估是否有手动操作可以通过 CAH 自动化
+
+改进方向：
+- 建议项目专属的任务模板
+- 优化项目特定的 workflow 生成策略
+- 提出配置调优建议
+
+约束：每轮最多 2 个建议，只实施低风险修改。`
+
+    default:
+      return undefined
+  }
 }
 
 // ============ Conflict Detection ============
@@ -105,7 +189,8 @@ async function executeGoal(goal: DriveGoal): Promise<void> {
   }
 
   try {
-    const prompt = GOAL_TASK_PROMPTS[goal.type] ?? description
+    const ctx = resolveEvolveContext()
+    const prompt = getGoalPrompt(goal.type, ctx) ?? description
     const task = createTaskWithFolder({
       title: description,
       description: prompt,

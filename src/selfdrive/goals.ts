@@ -12,7 +12,7 @@ import { generateShortId } from '../shared/generateId.js'
 
 // ============ Types ============
 
-export type GoalType = 'health-check' | 'evolve' | 'cleanup'
+export type GoalType = 'evolve' | 'cleanup' | 'evolve-conversation' | 'evolve-feature'
 
 export interface DriveGoal {
   id: string
@@ -85,17 +85,10 @@ export function listEnabledGoals(): DriveGoal[] {
 
 const BUILTIN_GOALS: Omit<DriveGoal, 'id' | 'createdAt'>[] = [
   {
-    description: 'Periodic health check via selfcheck',
-    type: 'health-check',
-    priority: 'high',
-    schedule: '4h',
-    enabled: true,
-  },
-  {
     description: 'Periodic self-evolution cycle',
     type: 'evolve',
     priority: 'medium',
-    schedule: '8h',
+    schedule: '24h',
     enabled: true,
   },
   {
@@ -104,6 +97,20 @@ const BUILTIN_GOALS: Omit<DriveGoal, 'id' | 'createdAt'>[] = [
     priority: 'low',
     schedule: '6h',
     enabled: false,
+  },
+  {
+    description: 'Periodic conversation experience evolution',
+    type: 'evolve-conversation',
+    priority: 'medium',
+    schedule: '12h',
+    enabled: true,
+  },
+  {
+    description: 'Periodic feature gap analysis and enhancement planning',
+    type: 'evolve-feature',
+    priority: 'low',
+    schedule: '1d',
+    enabled: true,
   },
 ]
 

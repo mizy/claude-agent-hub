@@ -6,13 +6,15 @@
  * Lightweight, synchronous, no AI calls.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { execSync } from 'node:child_process'
 import { getTasksByStatus } from '../store/TaskStore.js'
 import { getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { getLatestEvolution } from './evolutionHistory.js'
 import { createLogger } from '../shared/logger.js'
-import { DATA_DIR } from '../store/paths.js'
+import { DATA_DIR, TASKS_DIR, FILE_NAMES } from '../store/paths.js'
+import { getPidLock, isProcessRunning } from '../scheduler/pidLock.js'
 import type { Task } from '../types/task.js'
 import type { NodeState } from '../types/workflow.js'
 
@@ -26,6 +28,8 @@ export type SignalType =
   | 'node_timeout'
   | 'backend_error'
   | 'stable_success_plateau'
+  | 'stale_daemon'
+  | 'corrupt_task_data'
 
 export type SignalSeverity = 'critical' | 'warning' | 'info'
 
@@ -201,6 +205,100 @@ function detectStableSuccessPlateau(tasks: Task[]): SignalEvent | null {
   }
 }
 
+// ============ Infrastructure Detectors ============
+
+function getProcessStartTime(pid: number): Date | null {
+  try {
+    const output = execSync(`ps -o lstart= -p ${pid}`, { encoding: 'utf-8', timeout: 3000 }).trim()
+    if (!output) return null
+    const date = new Date(output)
+    return isNaN(date.getTime()) ? null : date
+  } catch {
+    return null
+  }
+}
+
+/** Detect daemon running stale code (started before latest build) */
+function detectStaleDaemon(): SignalEvent | null {
+  const distPath = join(process.cwd(), 'dist', 'cli', 'index.js')
+  if (!existsSync(distPath)) return null
+
+  const buildTime = statSync(distPath).mtime
+
+  const daemonLock = getPidLock('daemon')
+  if (!daemonLock) return null
+  if (!isProcessRunning(daemonLock.pid)) return null
+
+  const startTime = getProcessStartTime(daemonLock.pid)
+  const effectiveStartTime = startTime || new Date(daemonLock.startedAt)
+
+  if (effectiveStartTime >= buildTime) return null
+
+  return {
+    type: 'stale_daemon',
+    count: 1,
+    taskIds: [],
+    pattern: `Daemon started at ${effectiveStartTime.toISOString()} but code built at ${buildTime.toISOString()} — running stale code`,
+    severity: 'warning',
+  }
+}
+
+function tryParseJson(filePath: string): boolean {
+  try {
+    JSON.parse(readFileSync(filePath, 'utf-8'))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Detect corrupt JSON files in task directories */
+function detectCorruptTaskData(): SignalEvent | null {
+  if (!existsSync(TASKS_DIR)) return null
+
+  let taskDirs: string[]
+  try {
+    taskDirs = readdirSync(TASKS_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory() && d.name.startsWith('task-'))
+      .map(d => d.name)
+  } catch {
+    return null
+  }
+
+  const corruptFiles: string[] = []
+  const REQUIRED_FILES = [FILE_NAMES.TASK, FILE_NAMES.WORKFLOW, FILE_NAMES.INSTANCE] as const
+
+  for (const dir of taskDirs) {
+    const taskDir = join(TASKS_DIR, dir)
+    if (!existsSync(join(taskDir, FILE_NAMES.TASK))) continue
+
+    // Skip cancelled tasks
+    try {
+      const taskData = JSON.parse(readFileSync(join(taskDir, FILE_NAMES.TASK), 'utf-8'))
+      if (taskData.status === 'cancelled') continue
+    } catch {
+      // task.json itself is corrupt — will be caught below
+    }
+
+    for (const file of REQUIRED_FILES) {
+      const filePath = join(taskDir, file)
+      if (existsSync(filePath) && !tryParseJson(filePath)) {
+        corruptFiles.push(`${dir}/${file}`)
+      }
+    }
+  }
+
+  if (corruptFiles.length === 0) return null
+
+  return {
+    type: 'corrupt_task_data',
+    count: corruptFiles.length,
+    taskIds: [],
+    pattern: `${corruptFiles.length} corrupt JSON file(s): ${corruptFiles.slice(0, 5).join(', ')}`,
+    severity: 'critical',
+  }
+}
+
 // ============ Main ============
 
 /** Detect anomaly signals from recent tasks */
@@ -232,6 +330,8 @@ export function detectSignals(options?: DetectSignalOptions): SignalEvent[] {
     detectNodeTimeout(failedNodes),
     detectBackendError(failedNodes),
     detectStableSuccessPlateau(tasks),
+    detectStaleDaemon(),
+    detectCorruptTaskData(),
   ]
 
   // Filter nulls and apply cooldown

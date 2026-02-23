@@ -125,25 +125,28 @@ describe('sessionManager', () => {
       expect(getSession('chat-1')).toBeDefined()
     })
 
-    it('should reset session when turns exceed maxTurns', () => {
+    it('should mark session for reset when turns exceed maxTurns (deferred to next chat turn)', () => {
       configureSession({ timeoutMinutes: 60, maxTurns: 3, maxEstimatedTokens: 999_999, maxSessions: 200 })
       setSession('chat-1', 'sess-1')
       incrementTurn('chat-1', 10, 10)
       incrementTurn('chat-1', 10, 10)
       incrementTurn('chat-1', 10, 10)
       // After 3 turns, turnCount=3 which is not > 3
-      expect(getSession('chat-1')).toBeDefined()
+      expect(shouldResetSession('chat-1')).toBe(false)
       incrementTurn('chat-1', 10, 10)
-      // After 4 turns, turnCount=4 > 3, session deleted
-      expect(getSession('chat-1')).toBeUndefined()
+      // After 4 turns, turnCount=4 > 3, session marked for reset (not deleted yet)
+      expect(getSession('chat-1')).toBeDefined()
+      expect(shouldResetSession('chat-1')).toBe(true)
     })
 
-    it('should reset session when tokens exceed maxEstimatedTokens', () => {
+    it('should mark session for reset when tokens exceed maxEstimatedTokens (deferred to next chat turn)', () => {
       configureSession({ timeoutMinutes: 60, maxTurns: 999, maxEstimatedTokens: 100, maxSessions: 200 })
       setSession('chat-1', 'sess-1')
       // Each char ≈ 1/3 token, so 300 chars input + 300 chars output ≈ 200 tokens > 100
       incrementTurn('chat-1', 300, 300)
-      expect(getSession('chat-1')).toBeUndefined()
+      // Session still exists but marked for reset
+      expect(getSession('chat-1')).toBeDefined()
+      expect(shouldResetSession('chat-1')).toBe(true)
     })
 
     it('should be no-op for non-existent session', () => {

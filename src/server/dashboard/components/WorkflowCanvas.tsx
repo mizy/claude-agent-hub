@@ -10,17 +10,46 @@ const START_X = 50, START_Y = 50, MIN_SCALE = 0.1, MAX_SCALE = 5, DRAG_THRESHOLD
 
 interface NodePos { x: number; y: number; width: number; height: number; isLoopBody?: boolean; loopId?: string }
 
-function layoutNodes(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
+// Detect back-edges via DFS to avoid breaking topological layout with cycles
+function findBackEdges(nodeIds: string[], adjFull: Record<string, string[]>): Set<string> {
+  const backEdges = new Set<string>()
+  const WHITE = 0, GRAY = 1, BLACK = 2
+  const color: Record<string, number> = {}
+  nodeIds.forEach(id => { color[id] = WHITE })
+  function dfs(u: string) {
+    color[u] = GRAY
+    for (const v of (adjFull[u] || [])) {
+      if (color[v] === GRAY) backEdges.add(`${u}->${v}`)
+      else if (color[v] === WHITE) dfs(v)
+    }
+    color[u] = BLACK
+  }
+  nodeIds.forEach(id => { if (color[id] === WHITE) dfs(id) })
+  return backEdges
+}
+
+function layoutNodes(nodes: WorkflowNode[], edges: WorkflowEdge[]): { pos: Record<string, NodePos>; backEdges: Set<string> } {
   const pos: Record<string, NodePos> = {}
   const loopMap = new Map<string, string[]>()
   nodes.forEach(n => { if (n.type === 'loop' && n.config?.bodyNodes) loopMap.set(n.id, n.config.bodyNodes) })
   const bodySet = new Set<string>()
   loopMap.forEach(b => b.forEach(id => bodySet.add(id)))
   const main = nodes.filter(n => !bodySet.has(n.id))
+
+  // Build full adjacency to detect back-edges
+  const adjFull: Record<string, string[]> = {}
+  main.forEach(n => { adjFull[n.id] = [] })
+  edges.forEach(e => {
+    if (!bodySet.has(e.from) && !bodySet.has(e.to) && adjFull[e.from])
+      adjFull[e.from].push(e.to)
+  })
+  const backEdges = findBackEdges(main.map(n => n.id), adjFull)
+
+  // Topological layout using only forward edges (exclude back-edges)
   const deg: Record<string, number> = {}, adj: Record<string, string[]> = {}
   main.forEach(n => { deg[n.id] = 0; adj[n.id] = [] })
   edges.forEach(e => {
-    if (!bodySet.has(e.from) && !bodySet.has(e.to)) {
+    if (!bodySet.has(e.from) && !bodySet.has(e.to) && !backEdges.has(`${e.from}->${e.to}`)) {
       if (adj[e.from]) adj[e.from].push(e.to)
       if (deg[e.to] !== undefined) deg[e.to]++
     }
@@ -46,7 +75,7 @@ function layoutNodes(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
     const lp = pos[lid]; if (!lp) return; const by = maxY + Y_GAP * 2
     body.forEach((id, i) => { pos[id] = { x: lp.x + i * (NODE_W + X_GAP / 2), y: by, width: NODE_W, height: NODE_H, isLoopBody: true, loopId: lid } })
   })
-  return pos
+  return { pos, backEdges }
 }
 
 function fmtDur(ms: number) { return ms < 1000 ? `${ms}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${(ms / 60000).toFixed(1)}m` }
@@ -80,6 +109,7 @@ export function WorkflowCanvas() {
   const pan = useRef({ x: 0, y: 0 })
   const scale = useRef(1)
   const nodePos = useRef<Record<string, NodePos>>({})
+  const backEdgesRef = useRef<Set<string>>(new Set())
   const drag = useRef({ on: false, sx: 0, sy: 0, lx: 0, ly: 0, moved: false })
   const anim = useRef<number | null>(null)
   const touch = useRef({ dist: 0, mx: 0, my: 0, on: false, lx: 0, ly: 0, sx: 0, sy: 0, moved: false })
@@ -100,8 +130,23 @@ export function WorkflowCanvas() {
     const lm = new Map<string, string[]>()
     nodes.forEach(n => { if (n.type === 'loop' && n.config?.bodyNodes) lm.set(n.id, n.config.bodyNodes) })
 
+    const backEdges = backEdgesRef.current
     ctx.strokeStyle = '#475569'; ctx.lineWidth = 2
-    edges.forEach(e => { const f = p[e.from], t = p[e.to]; if (f && t) arrow(ctx, f.x + f.width, f.y + f.height / 2, t.x, t.y + t.height / 2) })
+    edges.forEach(e => {
+      const f = p[e.from], t = p[e.to]; if (!f || !t) return
+      if (backEdges.has(`${e.from}->${e.to}`)) {
+        // Draw back-edge as a curved arc below nodes (amber dashed)
+        ctx.strokeStyle = '#f59e0b'; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5
+        const sx = f.x + f.width / 2, sy = f.y + f.height
+        const ex = t.x + t.width / 2, ey = t.y + t.height
+        const cy = Math.max(sy, ey) + 55
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo((sx + ex) / 2, cy, ex, ey); ctx.stroke()
+        arrowHead(ctx, ex, ey, -Math.PI / 2)
+        ctx.setLineDash([]); ctx.strokeStyle = '#475569'; ctx.lineWidth = 2
+      } else {
+        arrow(ctx, f.x + f.width, f.y + f.height / 2, t.x, t.y + t.height / 2)
+      }
+    })
 
     lm.forEach((body, lid) => {
       const lp = p[lid]; if (!lp || !body.length) return
@@ -189,7 +234,9 @@ export function WorkflowCanvas() {
     const key = taskData.workflow.nodes.map(n => n.id).join(',') + '|' + (taskData.workflow.edges || []).map(e => e.from + '-' + e.to).join(',')
     const structureChanged = key !== prevWorkflowKey.current
     prevWorkflowKey.current = key
-    nodePos.current = layoutNodes(taskData.workflow.nodes, taskData.workflow.edges)
+    const { pos, backEdges } = layoutNodes(taskData.workflow.nodes, taskData.workflow.edges)
+    nodePos.current = pos
+    backEdgesRef.current = backEdges
     draw()
     if (structureChanged) requestAnimationFrame(() => fitView())
   }, [taskData?.workflow, draw, fitView])

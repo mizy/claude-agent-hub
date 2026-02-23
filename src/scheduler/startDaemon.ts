@@ -22,11 +22,11 @@ import {
 } from '../messaging/index.js'
 import { destroyChatHandler, loadSessions, configureSession } from '../messaging/index.js'
 import { acquirePidLock, releasePidLock, isServiceRunning } from './pidLock.js'
-import { runSelfcheck, runFixes, generateRepairTask } from '../selfcheck/index.js'
-import type { SelfcheckReport } from '../selfcheck/index.js'
+import { detectSignals, tryAutoRepair } from '../selfevolve/index.js'
 import { runEvolutionCycle } from '../prompt-optimization/index.js'
 import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
-import { resumeSelfDriveIfEnabled, stopSelfDrive } from '../selfdrive/index.js'
+import { resumeSelfDriveIfEnabled, stopSelfDrive, isSelfDrivePermanentlyDisabled } from '../selfdrive/index.js'
+import { resolveEvolveContext } from '../selfevolve/resolveEvolveContext.js'
 import { createLogger } from '../shared/logger.js'
 
 const logger = createLogger('daemon')
@@ -94,6 +94,7 @@ async function spawnDetached(): Promise<void> {
 
   // 确保数据目录存在
   mkdirSync(DATA_DIR, { recursive: true })
+  mkdirSync(join(DATA_DIR, 'logs'), { recursive: true })
 
   // Log rotation: rename existing logs to .old before creating new ones
   const logFile = join(DATA_DIR, 'daemon.log')
@@ -150,62 +151,6 @@ function getEntryArgs(): string[] {
   return [script]
 }
 
-/** Handle selfcheck failure: auto-fix fixable issues, generate repair tasks, and notify */
-async function handleSelfcheckFailure(report: SelfcheckReport): Promise<void> {
-  // Try auto-fix for fixable failures
-  const fixableChecks = report.checks.filter(c => c.status === 'fail' && c.fixable && c.fix)
-  if (fixableChecks.length > 0) {
-    logger.info(`Attempting auto-fix for ${fixableChecks.length} fixable issue(s)`)
-    const fixes = await runFixes(report)
-    for (const fix of fixes) {
-      logger.info(`Fixed: ${fix}`)
-    }
-  }
-
-  // Generate repair task for unfixable failures (self-healing loop)
-  const repairResult = await generateRepairTask(report)
-  if (repairResult) {
-    logger.info(`Created repair task: ${repairResult.taskId}`)
-  }
-
-  // Send notification for failures
-  const failedChecks = report.checks.filter(c => c.status === 'fail')
-  const lines = [
-    `⚠️ 健康检查异常 (${report.totalScore}/100)`,
-    '',
-    ...failedChecks.map(c => {
-      const diagnosis = c.diagnosis ? ` — ${c.diagnosis.rootCause}` : ''
-      return `✗ ${c.name} (${c.score}/100)${diagnosis}`
-    }),
-  ]
-
-  try {
-    const { getNotifyConfig } = await import('../config/index.js')
-    const notifyConfig = await getNotifyConfig()
-
-    // Lark notification
-    const { getDefaultLarkChatId } = await import('../messaging/larkWsClient.js')
-    const larkChatId = notifyConfig?.lark?.chatId || getDefaultLarkChatId()
-    if (larkChatId) {
-      const { sendLarkMessageViaApi } = await import('../messaging/sendLarkNotify.js')
-      await sendLarkMessageViaApi(larkChatId, lines.join('\n'))
-    }
-
-    // Telegram notification
-    const { getDefaultChatId: getDefaultTelegramChatId } = await import('../messaging/telegramClient.js')
-    const tg = notifyConfig?.telegram
-    if (tg?.botToken) {
-      const tgChatId = tg.chatId || getDefaultTelegramChatId()
-      if (tgChatId) {
-        const { sendTelegramTextMessage } = await import('../messaging/sendTelegramNotify.js')
-        await sendTelegramTextMessage(lines.join('\n'), tgChatId)
-      }
-    }
-  } catch (error) {
-    logger.warn(`Failed to send selfcheck failure notification: ${error}`)
-  }
-}
-
 /** 实际运行守护进程（前台阻塞） */
 async function runDaemon(): Promise<void> {
   // Remove CLAUDECODE env var early — daemon may be started from a Claude Code session,
@@ -257,21 +202,26 @@ async function runDaemon(): Promise<void> {
   })
   scheduledJobs.push(job)
 
-  // Periodic selfcheck — every 30 minutes
-  const selfcheckJob = cron.schedule('*/30 * * * *', async () => {
+  // Periodic signal detection + auto repair — every 30 minutes
+  const signalJob = cron.schedule('*/30 * * * *', async () => {
     try {
-      const report = await runSelfcheck()
-      if (report.hasFailed) {
-        logger.warn(`Selfcheck failed (score: ${report.totalScore}/100)`)
-        await handleSelfcheckFailure(report)
-      } else {
-        logger.debug(`Selfcheck passed (score: ${report.totalScore}/100)`)
+      const signals = detectSignals()
+      if (signals.length === 0) {
+        logger.debug('Signal detection: no issues found')
+        return
+      }
+      logger.info(`Signal detection found ${signals.length} signal(s): ${signals.map(s => s.type).join(', ')}`)
+      for (const signal of signals) {
+        const result = await tryAutoRepair(signal)
+        if (result) {
+          logger.info(`Auto-repair [${signal.type}]: ${result}`)
+        }
       }
     } catch (error) {
-      logger.error(`Selfcheck cron error: ${error}`)
+      logger.error(`Signal detection cron error: ${error}`)
     }
   })
-  scheduledJobs.push(selfcheckJob)
+  scheduledJobs.push(signalJob)
 
   // Periodic evolution cycle — every hour, run evolution for all personas
   const evolutionJob = cron.schedule('0 * * * *', () => {
@@ -320,6 +270,23 @@ async function runDaemon(): Promise<void> {
 
   store.setDaemonPid(process.pid)
   startSleepPrevention()
+
+  // Auto-activate self-evolution when daemon starts in CAH project directory
+  const evolveCtx = resolveEvolveContext()
+  if (evolveCtx.isCAH) {
+    if (isSelfDrivePermanentlyDisabled()) {
+      console.log(chalk.yellow('  ⚠ 检测到 CAH 项目目录，但自驱已被永久禁用'))
+      console.log(chalk.gray('    使用 cah self drive enable 重新启用'))
+    } else {
+      // Ensure new builtin goals (evolve-conversation, evolve-feature) are registered
+      const { ensureBuiltinGoals, listEnabledGoals } = await import('../selfdrive/goals.js')
+      ensureBuiltinGoals()
+      const goals = listEnabledGoals()
+      const dimensions = goals.map(g => g.type).join(', ')
+      console.log(chalk.green(`  ✓ 自进化已激活（${goals.length} 个维度: ${dimensions}）`))
+    }
+  }
+
   resumeSelfDriveIfEnabled()
   console.log(chalk.green(`✓ 守护进程运行中 (PID: ${process.pid})`))
   console.log(chalk.gray('  Ctrl+C 停止'))

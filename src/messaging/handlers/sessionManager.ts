@@ -201,18 +201,15 @@ export function shouldResetSession(chatId: string): boolean {
   return session.turnCount > sessionConfig.maxTurns || session.estimatedTokens > sessionConfig.maxEstimatedTokens
 }
 
-/** Increment turn count and accumulate estimated tokens after a chat round */
+/** Increment turn count and accumulate estimated tokens after a chat round.
+ * Does NOT delete the session here — shouldResetSession() will trigger reset
+ * at the start of the next chat turn, allowing chatHandler to notify the user. */
 export function incrementTurn(chatId: string, inputLen: number, outputLen: number): void {
   const session = sessions.get(chatId)
   if (!session) return
   session.turnCount++
   session.estimatedTokens += estimateTokens(inputLen) + estimateTokens(outputLen)
   session.lastActiveAt = Date.now()
-
-  if (shouldResetSession(chatId)) {
-    logger.info(`Session reset for chat ${chatId.slice(0, 8)}: turns=${session.turnCount}, tokens≈${session.estimatedTokens}`)
-    sessions.delete(chatId)
-  }
   schedulePersist()
 }
 

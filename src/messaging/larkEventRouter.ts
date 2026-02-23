@@ -17,6 +17,7 @@ import { buildWelcomeCard } from './buildLarkCard.js'
 import { buildMarkdownCard } from './larkCardWrapper.js'
 import { routeMessage } from './handlers/messageRouter.js'
 import { dispatchCardAction } from './handlers/larkCardActions.js'
+import { logUserMessage } from './conversationLogger.js'
 import type { LarkCard } from './buildLarkCard.js'
 import type { MessengerAdapter, ClientContext } from './handlers/types.js'
 
@@ -175,7 +176,7 @@ export async function downloadLarkImage(
       return null
     }
 
-    logger.info(`Downloaded image: ${imageKey} → ${filePath} (${(fileSize / 1024).toFixed(0)}KB)`)
+    logger.debug(`Downloaded image: ${imageKey} → ${filePath} (${(fileSize / 1024).toFixed(0)}KB)`)
     return filePath
   } catch (error) {
     logger.error(`Failed to download image ${imageKey}: ${formatErrorMessage(error)}`)
@@ -278,7 +279,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
           }),
           'editCard'
         )
-        logger.debug(`→ editCard response: ${JSON.stringify(res).slice(0, 200)}`)
+        logger.debug(`→ editCard response: code=${res?.code}`)
       } catch (error) {
         const msg = formatErrorMessage(error)
         if (msg.includes('NOT a card') || msg.includes('not a card')) {
@@ -343,9 +344,9 @@ export async function handleLarkMessage(
     onChatIdDiscovered(chatId)
   }
 
-  const preview = text.length > 60 ? text.slice(0, 57) + '...' : text
   const imgSuffix = images?.length ? ` +${images.length} image(s)` : ''
-  logger.info(`← [${isGroup ? 'group' : 'dm'}] ${preview}${imgSuffix}`)
+  logger.info(`← [${isGroup ? 'group' : 'dm'}]${imgSuffix}`)
+  logUserMessage('lark', chatId, text || (images?.length ? '[图片消息]' : ''))
 
   await routeMessage({
     chatId,
@@ -394,6 +395,58 @@ export async function handleP2pChatCreate(
   }
 }
 
+// ── Post (rich text) content parser ──
+
+interface PostElement {
+  tag?: string
+  text?: string
+  image_key?: string
+  href?: string
+}
+
+/** Extract plain text and image keys from a Lark post (rich text) message content */
+function parsePostContent(content: Record<string, unknown>): { text: string; imageKeys: string[] } {
+  const texts: string[] = []
+  const imageKeys: string[] = []
+
+  // Post content can be:
+  // 1. Locale-wrapped: { zh_cn: { title: "", content: [[...]] } }
+  // 2. Flat: { title: "", content: [[...]] }
+  let postBody: PostElement[][] | undefined
+
+  // Try flat structure first (content at top level)
+  if (Array.isArray(content.content)) {
+    postBody = content.content as PostElement[][]
+  } else {
+    // Try locale-wrapped structure
+    const locales = Object.values(content) as Array<{ content?: PostElement[][] }>
+    postBody = locales.find(l => l && typeof l === 'object' && !Array.isArray(l) && Array.isArray(l.content))?.content
+  }
+
+  if (!postBody || !Array.isArray(postBody)) {
+    logger.debug(`parsePostContent: no content array found, keys=${JSON.stringify(Object.keys(content))}`)
+    return { text: '', imageKeys: [] }
+  }
+
+  for (const paragraph of postBody) {
+    if (!Array.isArray(paragraph)) continue
+    for (const el of paragraph) {
+      if (el.tag === 'text' && el.text) {
+        texts.push(el.text)
+      } else if (el.tag === 'img' && el.image_key) {
+        imageKeys.push(el.image_key)
+      } else if (el.tag === 'a' && el.text) {
+        // Hyperlink elements also carry text
+        texts.push(el.text)
+      }
+    }
+  }
+
+  const result = { text: texts.join(' ').trim(), imageKeys }
+  logger.debug(`parsePostContent: extracted ${texts.length} text(s), ${imageKeys.length} image(s)`)
+  return result
+}
+
 // ── Message event processor (called from WS client) ──
 
 export async function processMessageEvent(
@@ -407,7 +460,10 @@ export async function processMessageEvent(
   if (!message) return
 
   const msgType = message.message_type
-  if (msgType !== 'text' && msgType !== 'image') return
+  if (msgType !== 'text' && msgType !== 'image' && msgType !== 'post') {
+    logger.debug(`Unsupported message type: ${msgType}`)
+    return
+  }
 
   const messageId = message.message_id
   if (messageId && isDuplicateMessage(messageId)) {
@@ -416,7 +472,7 @@ export async function processMessageEvent(
   }
 
   if (isStaleMessage(message.create_time)) {
-    logger.info(`Stale message ignored (created before daemon start): ${messageId}`)
+    logger.debug(`Stale message ignored (created before daemon start): ${messageId}`)
     return
   }
 
@@ -424,7 +480,7 @@ export async function processMessageEvent(
   try {
     content = JSON.parse(message.content || '{}')
   } catch {
-    logger.debug(`Malformed message content: ${(message.content || '').slice(0, 100)}`)
+    logger.debug(`Malformed message content (${(message.content || '').length} chars)`)
     return
   }
 
@@ -434,6 +490,22 @@ export async function processMessageEvent(
 
   const handleMsg = (cId: string, txt: string, grp: boolean, mention: boolean, imgs?: string[]) =>
     handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs)
+
+  // Rich text (post) message — extract text and images, process as combined message
+  if (msgType === 'post') {
+    if (isGroup && !hasMention) return
+    logger.debug(`Post message content keys: ${JSON.stringify(Object.keys(content))}, raw: ${JSON.stringify(content).slice(0, 500)}`)
+    const { text: postText, imageKeys } = parsePostContent(content)
+    const images: string[] = []
+    if (messageId) {
+      for (const key of imageKeys) {
+        const path = await downloadLarkImage(larkClient, messageId, key)
+        if (path) images.push(path)
+      }
+    }
+    await handleMsg(chatId, postText, isGroup, hasMention, images.length > 0 ? images : undefined)
+    return
+  }
 
   if (msgType === 'image') {
     if (isGroup && !hasMention) return

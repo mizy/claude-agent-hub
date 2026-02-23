@@ -97,7 +97,7 @@ export async function handleMsg(args: string): Promise<CommandResult> {
     }
 
     const msg = addTaskMessage(task.id, message, 'lark')
-    logger.info(`→ msg sent to ${task.id.slice(0, 20)}: ${truncateText(message, 40)}`)
+    logger.debug(`→ msg sent to ${task.id.slice(0, 20)}: ${truncateText(message, 40)}`)
     return { text: `✅ 消息已发送到任务 \`${task.id.slice(0, 20)}\`\nMessage ID: ${msg.id.slice(0, 8)}` }
   })
 }

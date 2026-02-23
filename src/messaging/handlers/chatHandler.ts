@@ -10,6 +10,7 @@ import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { buildClientPrompt } from '../../prompts/chatPrompts.js'
 import { logConversation, getRecentConversations } from './conversationLog.js'
+import { logAIResponse, logConversationEvent } from '../conversationLogger.js'
 import { getSession, setSession, clearSession, enqueueChat, destroySessions, getModelOverride, getBackendOverride, shouldResetSession, incrementTurn } from './sessionManager.js'
 import { createStreamHandler, sendFinalResponse } from './streamingHandler.js'
 import { sendDetectedImages } from './imageExtractor.js'
@@ -235,10 +236,20 @@ async function handleChatInternal(
   const { model: inlineModel, actualText: textAfterModel } = parseInlineModel(actualText || mentionCleaned)
   const effectiveText = textAfterModel || actualText || mentionCleaned
 
+  // Early return for empty messages (avoid wasting API calls)
+  if (!effectiveText && !options?.images?.length) {
+    logger.info(`⊘ empty message skipped [${chatId.slice(0, 8)}]`)
+    return
+  }
+
   // Auto-reset session if turn/token limits exceeded
-  if (shouldResetSession(chatId)) {
+  const sessionWasReset = shouldResetSession(chatId)
+  if (sessionWasReset) {
     clearSession(chatId)
     logger.info(`♻️ session auto-reset [${chatId.slice(0, 8)}]`)
+    logConversationEvent('会话自动重置', `chatId: ${chatId.slice(0, 8)}`)
+    // Notify user so they know context was lost
+    messenger.reply(chatId, '♻️ 对话轮次已满，自动开启新会话').catch(e => logger.debug(`reset notify failed: ${getErrorMessage(e)}`))
   }
 
   const session = getSession(chatId)
@@ -247,7 +258,10 @@ async function handleChatInternal(
   // Backend priority: inline message directive > session /backend override > config default
   const sessionBackend = getBackendOverride(chatId)
   const backendOverride = inlineBackend ?? sessionBackend
-  logger.info(`💬 chat ${sessionId ? 'continue' : 'new'} [${chatId.slice(0, 8)}]${backendOverride ? ` [backend: ${backendOverride}]` : ''}`)
+  logger.info(`💬 chat ${sessionId ? 'continue' : 'new'} [${chatId.slice(0, 8)}]`)
+  if (!sessionId) {
+    logConversationEvent('新会话开始', `chatId: ${chatId.slice(0, 8)}${backendOverride ? `, backend: ${backendOverride}` : ''}`)
+  }
 
   // Record backend switch as a user preference memory
   if (inlineBackend && effectiveText) {
@@ -259,7 +273,7 @@ async function handleChatInternal(
         { type: 'chat', chatId },
         { keywords: ['backend', inlineBackend, 'preference'], confidence: 0.7 },
       )
-      logger.info(`记录 backend 偏好: ${inlineBackend} [${chatId.slice(0, 8)}]`)
+      logger.debug(`记录 backend 偏好: ${inlineBackend} [${chatId.slice(0, 8)}]`)
     } catch (e) {
       logger.debug(`Failed to record backend preference: ${getErrorMessage(e)}`)
     }
@@ -289,7 +303,8 @@ async function handleChatInternal(
   const currentBackend = backendOverride ?? undefined
   const backendChanged = !!(sessionId && sessionCreatedBy !== currentBackend)
   if (backendChanged) {
-    logger.info(`🔄 session backend changed (${sessionCreatedBy ?? 'default'} → ${currentBackend ?? 'default'}), starting new session`)
+    logger.info(`🔄 session backend changed, starting new session`)
+    logConversationEvent('后端切换', `${sessionCreatedBy ?? 'default'} → ${currentBackend ?? 'default'}`)
     // Flush episode on backend switch so the conversation boundary is captured
     flushEpisode(chatId)
   }
@@ -425,7 +440,7 @@ async function handleChatInternal(
     const durationMs = Date.now() - bench.start
     logger.info(`→ reply ${response.length} chars (${(durationMs / 1000).toFixed(1)}s)`)
 
-    // Log AI reply (with cost, model, and backend for aggregation)
+    // Log AI reply (JSONL for aggregation + human-readable conversation log)
     logConversation({
       ts: new Date().toISOString(),
       dir: 'out',
@@ -438,6 +453,7 @@ async function handleChatInternal(
       model,
       backendType: backendOverride,
     })
+    logAIResponse(response, durationMs)
 
     // Update session (track which backend created it for cross-backend detection)
     if (newSessionId) {
@@ -468,7 +484,7 @@ async function handleChatInternal(
         model,
         backend: backendOverride,
       })
-      logger.info(`\n${benchStr}`)
+      logger.debug(`\n${benchStr}`)
       await messenger.reply(chatId, benchStr).catch(e => {
         logger.debug(`benchmark reply failed: ${getErrorMessage(e)}`)
       })
@@ -484,9 +500,9 @@ async function handleChatInternal(
             continue
           }
           const imageData = readFileSync(imgPath)
-          logger.info(`Sending MCP image (${imageData.length} bytes): ${imgPath}`)
+          logger.debug(`Sending MCP image (${imageData.length} bytes): ${imgPath}`)
           await messenger.replyImage(chatId, imageData, imgPath)
-          logger.info(`✓ MCP image sent: ${imgPath}`)
+          logger.debug(`✓ MCP image sent: ${imgPath}`)
         } catch (e) {
           logger.error(`✗ Failed to send MCP image ${imgPath}: ${getErrorMessage(e)}`)
         }

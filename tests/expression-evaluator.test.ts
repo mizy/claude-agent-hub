@@ -398,6 +398,26 @@ describe('evaluateCondition with bracket notation', () => {
       )
     ).toBe(false)
   })
+
+  it('should handle null/undefined node outputs with _raw wrapper', () => {
+    // When a node output is null or undefined (e.g. control nodes),
+    // safeOutputs should still wrap it with { _raw: '' } at depth 0
+    const context = ctx({ outputs: { review: null } })
+    expect(
+      evaluateCondition("outputs.review._raw.includes('APPROVED')", context)
+    ).toBe(false)
+    // Should not throw, and _raw should be accessible as empty string
+    expect(
+      evaluateCondition("!outputs.review._raw.includes('APPROVED')", context)
+    ).toBe(true)
+  })
+
+  it('should handle undefined node outputs with _raw wrapper', () => {
+    const context = ctx({ outputs: { review: undefined } })
+    expect(
+      evaluateCondition("outputs.review._raw.includes('APPROVED')", context)
+    ).toBe(false)
+  })
 })
 
 // ============ validateExpression ============

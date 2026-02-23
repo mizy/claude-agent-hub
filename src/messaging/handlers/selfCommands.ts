@@ -3,7 +3,6 @@
  */
 
 import { getErrorMessage } from '../../shared/assertError.js'
-import { runSelfcheck } from '../../selfcheck/index.js'
 import { getAllTasks } from '../../store/TaskStore.js'
 import {
   buildCard,
@@ -51,31 +50,46 @@ export async function handleSelf(args: string): Promise<CommandResult> {
 
 async function handleSelfCheck(): Promise<CommandResult> {
   try {
-    const report = await runSelfcheck()
+    const { runHealthCheck } = await import('../../selfevolve/index.js')
+    const result = await runHealthCheck({ autoFix: true })
 
-    const checkLines = report.checks.map(c => {
-      const icon = c.status === 'pass' ? '✅' : c.status === 'fail' ? '❌' : '⚠️'
-      return `${icon} ${c.name}`
+    if (result.signals.length === 0) {
+      return {
+        text: '🔍 信号检测\n\n✅ 未检测到异常信号',
+        larkCard: buildCard('🔍 信号检测', 'green', [
+          mdElement('✅ 未检测到异常信号'),
+        ]),
+      }
+    }
+
+    const SEVERITY_ICON: Record<string, string> = {
+      critical: '❌',
+      warning: '⚠️',
+      info: 'ℹ️',
+    }
+
+    const signalLines = result.signals.map(s => {
+      const icon = SEVERITY_ICON[s.severity] ?? '?'
+      return `${icon} **${s.type}** (${s.severity})`
     })
 
-    const scoreColor = report.totalScore >= 80 ? 'green' : report.totalScore >= 60 ? 'orange' : 'red'
+    const elements = [mdElement(signalLines.join('\n'))]
 
-    const elements = [
-      mdElement(checkLines.join('\n')),
-      hrElement(),
-      mdElement(`**健康评分**: <font color="${scoreColor}">${report.totalScore}/100</font>`),
-    ]
-
-    if (report.hasFailed) {
-      elements.push(noteElement('💡 使用 cah self check --auto-fix 自动修复'))
+    if (result.repairs.length > 0) {
+      elements.push(hrElement())
+      const repairLines = result.repairs.map(r => `✅ [${r.signal.type}] ${r.result}`)
+      elements.push(mdElement(`**自动修复**\n${repairLines.join('\n')}`))
     }
+
+    const hasCritical = result.signals.some(s => s.severity === 'critical')
+    const headerColor = hasCritical ? 'red' : 'orange'
 
     return {
-      text: `🏥 健康检查\n\n${checkLines.join('\n')}\n\n评分: ${report.totalScore}/100`,
-      larkCard: buildCard('🏥 健康检查', report.totalScore >= 80 ? 'green' : 'red', elements),
+      text: `🔍 信号检测\n\n${signalLines.join('\n')}`,
+      larkCard: buildCard('🔍 信号检测', headerColor, elements),
     }
   } catch (err) {
-    return { text: `❌ 健康检查失败: ${getErrorMessage(err)}` }
+    return { text: `❌ 信号检测失败: ${getErrorMessage(err)}` }
   }
 }
 
@@ -325,13 +339,19 @@ async function handleSelfDrive(args: string): Promise<CommandResult> {
 async function handleSelfStatus(): Promise<CommandResult> {
   const lines: string[] = ['🤖 Self 综合状态', '']
 
-  // 1. Health
+  // 1. Signal detection
   try {
-    const report = await runSelfcheck()
-    const scoreIcon = report.totalScore >= 80 ? '✅' : report.totalScore >= 60 ? '⚠️' : '❌'
-    lines.push(`**健康**: ${scoreIcon} ${report.totalScore}/100`)
+    const { detectSignals } = await import('../../selfevolve/index.js')
+    const signals = detectSignals()
+    if (signals.length === 0) {
+      lines.push('**健康**: ✅ 无异常信号')
+    } else {
+      const critical = signals.filter(s => s.severity === 'critical').length
+      const icon = critical > 0 ? '❌' : '⚠️'
+      lines.push(`**健康**: ${icon} ${signals.length} 个信号`)
+    }
   } catch {
-    lines.push('**健康**: ❓ 检查失败')
+    lines.push('**健康**: ❓ 检测失败')
   }
 
   // 2. Evolution

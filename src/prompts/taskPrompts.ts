@@ -213,9 +213,10 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 对于需要质量保证的任务（功能开发、重构、复杂修改），推荐使用 review-fix 循环：
 
 1. **开发节点**（Pragmatist persona）完成代码实现
-2. **review 节点**（Reviewer persona）独立评审，输出中必须包含关键字 APPROVED 或 REJECTED
-3. 通过条件边判断：APPROVED → 继续后续节点；REJECTED → 回到修复节点
+2. **review 节点**（Reviewer persona）独立评审，输出中必须包含关键字 APPROVED、NEEDS_CHANGES 或 REJECTED
+3. 通过条件边判断：APPROVED → 继续后续节点；NEEDS_CHANGES/REJECTED → 回到修复节点
 4. 修复节点到 review 节点的边设置 maxLoops=3，防止无限循环
+5. **重要**：review APPROVED 后的下游节点（如 verify）必须直接连接 review 的出边，不能只从 fix 出。fix 节点只负责回到 review 重审
 
 示例：
 \`\`\`json
@@ -223,19 +224,25 @@ Return ONLY the title text, nothing else. Use the same language as the content (
   "nodes": [
     { "id": "start", "type": "start", "name": "开始" },
     { "id": "implement", "type": "task", "name": "实现功能", "task": { "agent": "Pragmatist", "prompt": "实现 xxx 功能，完成后运行 typecheck 确认无误" } },
-    { "id": "review", "type": "task", "name": "代码评审", "task": { "agent": "Reviewer", "prompt": "评审上一节点的代码变更。检查逻辑正确性、边界处理、代码风格。\\n\\n评审结果必须以 APPROVED 或 REJECTED 开头。如果 REJECTED，说明具体问题和修复建议。" } },
+    { "id": "review", "type": "task", "name": "代码评审", "task": { "agent": "Reviewer", "prompt": "严格评审上一节点的代码变更。按 Reviewer persona 的审查清单逐项检查（正确性、代码质量、架构、错误处理、性能、安全），每项给出 ✓/✗/⚠️。\\n\\n最终给出评审结论：APPROVED（零🔴问题）、NEEDS_CHANGES（有🔴必须修复项）或 REJECTED（架构性问题需重写）。按 🔴/🟡/🟢 分级列出所有问题。" } },
     { "id": "fix", "type": "task", "name": "修复问题", "task": { "agent": "Pragmatist", "prompt": "根据评审意见修复代码问题，修复后运行验证确认" } },
+    { "id": "verify", "type": "task", "name": "构建验证", "task": { "agent": "Tester", "prompt": "运行 typecheck、lint、build、test 确认无回归" } },
     { "id": "end", "type": "end", "name": "结束" }
   ],
   "edges": [
     { "from": "start", "to": "implement" },
     { "from": "implement", "to": "review" },
-    { "from": "review", "to": "end", "condition": "outputs.review._raw.includes('APPROVED')" },
+    { "from": "review", "to": "verify", "condition": "outputs.review._raw.includes('APPROVED')" },
     { "from": "review", "to": "fix", "condition": "!outputs.review._raw.includes('APPROVED')" },
-    { "from": "fix", "to": "review", "maxLoops": 3 }
+    { "from": "fix", "to": "review", "maxLoops": 3 },
+    { "from": "verify", "to": "end" }
   ]
 }
 \`\`\`
+
+**注意**：fix 节点的唯一出边是回到 review，不需要通往 end 或 verify。当 maxLoops 耗尽时引擎会自动结束 workflow。review → verify/end 的路径保证了 APPROVED 后能正常退出。
+
+**条件边容错**：当一个节点的所有条件边都求值为 false 时，引擎自动使用**最后一条边**作为 fallback。因此请将否定条件边（如 \`!includes(...)\` → fix）放在最后，这样 fallback 会安全地走到 fix 而非意外走到 verify。
 
 **何时使用 review-fix 循环：**
 - 核心功能开发（逻辑复杂，容易出错）
@@ -288,8 +295,9 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 1. 每个节点必须有唯一的 id
 2. edges 定义节点之间的连接关系
 3. 条件边使用 condition 属性，循环边使用 maxLoops 属性
-4. review 节点的 prompt 必须要求输出以 APPROVED 或 REJECTED 开头，以便条件边判断
+4. review 节点的 prompt 必须要求输出包含 APPROVED、NEEDS_CHANGES 或 REJECTED，以便条件边判断
 5. 只输出 JSON，不要有其他文字
+6. **可达性**：从 start 出发，沿非循环边必须能到达 end。review-fix 循环中，退出循环的路径在 review 节点（APPROVED → 下游），而非 fix 节点。fix 节点只负责回 review 重审
 
 ## 常见失败模式（请规避）
 
@@ -309,11 +317,13 @@ Return ONLY the title text, nothing else. Use the same language as the content (
    - 独立的验证任务（如不同模块的测试）可以并行执行
    - 使用 edges 定义多个从同一节点出发的边实现并行
 
-5. **条件边表达式错误**
-   - 反例：\`outputs.review.result.includes('APPROVED')\` — result 字段不存在
-   - 正例：\`outputs.review._raw.includes('APPROVED')\` — 始终用 _raw 访问原始输出
-   - 反例：\`outputs['my-node']._raw\` — 带连字符的 ID 需要用下划线
-   - 正例：\`outputs.my_node._raw\` — 带连字符的节点 ID 自动有下划线别名
+5. **条件边表达式错误**（参见上方「表达式语法」节）
+   - 正例：\`outputs.review._raw.includes('APPROVED')\`；连字符节点用下划线 \`outputs.my_node._raw\`
+
+6. **review 条件边顺序错误**
+   - 引擎在所有条件为 false 时使用最后一条边作为 fallback（else 分支）
+   - 正例：先 APPROVED→verify，后 !APPROVED→fix（fallback 安全走 fix）
+   - 反例：先 !APPROVED→fix，后 APPROVED→verify（fallback 错误走 verify）
 
 现在请生成 JSON Workflow：
 `,

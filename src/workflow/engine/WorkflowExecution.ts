@@ -299,6 +299,12 @@ export async function handleNodeResult(
         return [fallbackEdge.to]
       }
     }
+
+    // All out edges exhausted (e.g. maxLoops depleted on loop-back edge) — dead end.
+    // Complete the workflow to avoid it hanging forever with no enqueued nodes.
+    logger.warn(`Node "${nodeId}" has no reachable downstream nodes (all edges exhausted), completing workflow`)
+    await completeWorkflowInstance(instanceId)
+    return []
   }
 
   return nextNodes

@@ -27,7 +27,6 @@ import { registerMemoryCommands } from './commands/memory.js'
 import { registerPromptCommands } from './commands/prompt.js'
 import { registerDashboardCommand } from './commands/server.js'
 import { registerBackendCommands } from './commands/backend.js'
-import { registerSelfcheckCommand } from './commands/selfcheck.js'
 import { registerSelfCommand } from './commands/self.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
@@ -96,7 +95,6 @@ const KNOWN_COMMANDS = [
   'memory',
   'prompt',
   'backend',
-  'selfcheck',
   'self',
 ]
 
@@ -283,7 +281,6 @@ registerMemoryCommands(program)
 registerPromptCommands(program)
 registerDashboardCommand(program)
 registerBackendCommands(program)
-registerSelfcheckCommand(program)
 registerSelfCommand(program)
 
 // cah list - 查看任务列表的快捷命令

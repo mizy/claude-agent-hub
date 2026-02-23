@@ -92,7 +92,7 @@ export function createOpencodeBackend(): BackendAdapter {
 
     async checkAvailable(): Promise<boolean> {
       try {
-        await execa('opencode', ['--version'])
+        await execa('opencode', ['--version'], { timeout: 5000 })
         return true
       } catch (e) {
         logger.debug(`opencode not available: ${getErrorMessage(e)}`)
