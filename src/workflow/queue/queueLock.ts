@@ -7,6 +7,9 @@ import { existsSync, unlinkSync, writeFileSync, statSync } from 'fs'
 import { readJson, writeJson, ensureDir } from '../../store/readWriteJson.js'
 import { QUEUE_FILE, DATA_DIR } from '../../store/paths.js'
 import type { NodeJobData } from '../types.js'
+import { createLogger } from '../../shared/logger.js'
+
+const logger = createLogger('queue-lock')
 
 const LOCK_TIMEOUT_MS = 30_000
 const LOCK_RETRY_COUNT = 10
@@ -54,7 +57,8 @@ function acquireLock(): boolean {
     writeFileSync(LOCK_FILE, process.pid.toString(), { flag: 'wx' })
     lockAcquired = true
     return true
-  } catch {
+  } catch (e) {
+    logger.error('Failed to acquire queue lock:', e)
     return false
   }
 }
@@ -67,8 +71,8 @@ export function releaseLock(): void {
       unlinkSync(LOCK_FILE)
     }
     lockAcquired = false
-  } catch {
-    // ignore
+  } catch (e) {
+    logger.error('Failed to release queue lock:', e)
   }
 }
 
