@@ -38,6 +38,7 @@ const DEFAULT_MAX_LENGTH = 4096
 const activeControllers = new Map<string, AbortController>()
 
 // Backends that understand Claude model names (opus/sonnet/haiku)
+// CodeBuddy has its own model registry — passing Claude model names causes 400 errors
 const CLAUDE_MODEL_BACKENDS = new Set(['claude-code'])
 
 /** Check if a backend supports Claude model names for auto-selection */
@@ -402,13 +403,10 @@ async function handleChatInternal(
   }
 
   // Model selection: inline keyword > session /model override > auto (haiku→sonnet→opus)
-  // Only apply auto model selection for Claude backends; non-Claude backends ignore Claude model names
+  // Only apply Claude model names to backends that understand them; others use their config model
   const modelOverride = inlineModel ?? getModelOverride(chatId)
   const isClaudeBackend = isClaudeModelBackend(backendOverride)
-  const model =
-    isClaudeBackend || modelOverride
-      ? selectModel(effectiveText, { hasImages, modelOverride })
-      : undefined
+  const model = isClaudeBackend ? selectModel(effectiveText, { hasImages, modelOverride }) : undefined
   bench.promptReady = Date.now()
 
   // Setup streaming with shared ref for placeholderId
