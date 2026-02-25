@@ -115,6 +115,32 @@ describe('sessionManager', () => {
       expect(getModelOverride('chat-1')).toBe('opus')
       expect(getBackendOverride('chat-1')).toBe('iflow')
     })
+
+    it('should preserve turn counters when resuming same session', () => {
+      setSession('chat-1', 'sess-1')
+      incrementTurn('chat-1', 100, 200)
+      incrementTurn('chat-1', 100, 200)
+      const before = getSession('chat-1')!
+      expect(before.turnCount).toBe(2)
+
+      // Re-set with same sessionId (happens on every chat turn in chatHandler)
+      setSession('chat-1', 'sess-1')
+      const after = getSession('chat-1')!
+      expect(after.turnCount).toBe(2)
+      expect(after.estimatedTokens).toBe(before.estimatedTokens)
+    })
+
+    it('should reset turn counters when session ID changes', () => {
+      setSession('chat-1', 'sess-1')
+      incrementTurn('chat-1', 100, 200)
+      incrementTurn('chat-1', 100, 200)
+      expect(getSession('chat-1')!.turnCount).toBe(2)
+
+      // New session ID (e.g. backend switch or manual reset)
+      setSession('chat-1', 'sess-2')
+      expect(getSession('chat-1')!.turnCount).toBe(0)
+      expect(getSession('chat-1')!.estimatedTokens).toBe(0)
+    })
   })
 
   describe('turn counting and session reset', () => {

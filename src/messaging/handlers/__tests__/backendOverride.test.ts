@@ -30,7 +30,10 @@ vi.mock('../../../prompts/chatPrompts.js', () => ({
 // Mock config
 vi.mock('../../../config/loadConfig.js', () => ({
   loadConfig: vi.fn(async () => ({
-    backend: { chat: { mcpServers: [] } },
+    backends: {
+      default: { type: 'claude-code', chat: { mcpServers: [] } },
+    },
+    defaultBackend: 'default',
     memory: { chatMemory: { enabled: false, maxMemories: 5 } },
   })),
 }))

@@ -27,8 +27,20 @@ import { sendDetectedImages } from './imageExtractor.js'
 import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
 import { trackEpisodeTurn, destroyEpisodeTrackers, flushEpisode } from './episodeExtractor.js'
 import { retrieveAllMemoryContext, addMemory } from '../../memory/index.js'
-import { getRegisteredBackends } from '../../backend/resolveBackend.js'
 import type { MessengerAdapter, ClientContext } from './types.js'
+
+// Re-export extracted modules for backward compatibility
+export { parseInlineModel } from './selectModel.js'
+export { toggleBenchmark, isBenchmarkEnabled } from './chatBenchmark.js'
+export { parseBackendOverride } from './parseBackendOverride.js'
+
+import { isClaudeModelBackend, selectModel, parseInlineModel } from './selectModel.js'
+import {
+  createBenchmark,
+  formatBenchmark,
+  isBenchmarkEnabled,
+} from './chatBenchmark.js'
+import { parseBackendOverride } from './parseBackendOverride.js'
 
 const logger = createLogger('chat-handler')
 
@@ -36,115 +48,6 @@ const DEFAULT_MAX_LENGTH = 4096
 
 // Per-chatId AbortController for interrupting active AI calls
 const activeControllers = new Map<string, AbortController>()
-
-// Backends that understand Claude model names (opus/sonnet/haiku)
-// CodeBuddy has its own model registry — passing Claude model names causes 400 errors
-const CLAUDE_MODEL_BACKENDS = new Set(['claude-code'])
-
-/** Check if a backend supports Claude model names for auto-selection */
-function isClaudeModelBackend(backendType?: string): boolean {
-  if (!backendType) return false
-  return CLAUDE_MODEL_BACKENDS.has(backendType)
-}
-
-// ── Model Selection ──
-
-/** Parse inline model keyword from message start (e.g. "@opus question" or "opus 帮我看看") */
-export function parseInlineModel(text: string): { model?: string; actualText: string } {
-  const pattern = /^@?(opus|sonnet|haiku)(?:\s|$)/i
-  const match = text.match(pattern)
-  if (!match) return { actualText: text }
-  const model = match[1]!.toLowerCase()
-  const actualText = text.slice(match[0].length).trim()
-  return { model, actualText }
-}
-
-/** Keywords that signal deep reasoning requiring opus */
-const OPUS_KEYWORDS =
-  /(?:重构|refactor|架构|architect|迁移|migrate|设计|design|审查|review|分析|analyze|debug|调试|思考|think|深入|详细|detailed|复杂|complex|解释|explain|优化|optimize|比较|对比|compare|总结|summarize|推理|reason|elaborate)/i
-
-/** Keywords for simple queries that haiku can handle */
-const HAIKU_PATTERNS =
-  /^(?:(?:你好|hi|hello|ping|status|状态|帮助|help|谢谢|thanks|ok|好的|收到|嗯)[!！？?。.]*|\/\w+.*)$/i
-
-/** Pick model: override → haiku (trivial) → sonnet (default) → opus (complex) */
-function selectModel(text: string, ctx: { hasImages?: boolean; modelOverride?: string }): string {
-  if (ctx.modelOverride) return ctx.modelOverride
-  if (ctx.hasImages) return 'opus'
-  if (HAIKU_PATTERNS.test(text.trim())) return 'haiku'
-  if (text.length > 150 || OPUS_KEYWORDS.test(text)) return 'opus'
-  return 'sonnet'
-}
-
-// ── Benchmark ──
-
-interface BenchmarkTiming {
-  start: number
-  promptReady: number
-  parallelStart: number
-  firstChunk: number
-  backendDone: number
-  responseSent: number
-}
-
-function createBenchmark(): BenchmarkTiming {
-  const now = Date.now()
-  return {
-    start: now,
-    promptReady: 0,
-    parallelStart: 0,
-    firstChunk: 0,
-    backendDone: 0,
-    responseSent: 0,
-  }
-}
-
-function formatBenchmark(
-  t: BenchmarkTiming,
-  extra?: {
-    slotWaitMs?: number
-    apiMs?: number
-    costUsd?: number
-    model?: string
-    backend?: string
-  }
-): string {
-  const total = t.responseSent - t.start
-  const prep = t.promptReady - t.start
-  const parallel = t.parallelStart - t.promptReady
-  const ttfc = t.firstChunk ? t.firstChunk - t.parallelStart : 0
-  const inference = t.backendDone - t.parallelStart
-  const send = t.responseSent - t.backendDone
-
-  const modelLabel = extra?.model ? ` [${extra.model}]` : ''
-  const backendLabel = extra?.backend ? ` (${extra.backend})` : ''
-  const lines = [
-    `**Benchmark** (${(total / 1000).toFixed(1)}s total)${modelLabel}${backendLabel}`,
-    `- 准备阶段: ${prep}ms`,
-    `- 并行启动: ${parallel}ms` + (extra?.slotWaitMs ? ` (含排队 ${extra.slotWaitMs}ms)` : ''),
-    `- 首 chunk: ${ttfc}ms` + (ttfc > 0 ? '' : ' (无流式)'),
-    `- 后端推理: ${(inference / 1000).toFixed(1)}s` +
-      (extra?.apiMs ? ` (API: ${(extra.apiMs / 1000).toFixed(1)}s)` : ''),
-    `- 发送回复: ${send}ms`,
-  ]
-  if (extra?.costUsd !== undefined) {
-    lines.push(`- 费用: $${extra.costUsd.toFixed(4)}`)
-  }
-  return lines.join('\n')
-}
-
-let benchmarkEnabled = false
-
-/** Toggle benchmark mode on/off */
-export function toggleBenchmark(): boolean {
-  benchmarkEnabled = !benchmarkEnabled
-  return benchmarkEnabled
-}
-
-/** Check if benchmark is enabled */
-export function isBenchmarkEnabled(): boolean {
-  return benchmarkEnabled
-}
 
 // ── Public API ──
 
@@ -213,41 +116,79 @@ export function destroyChatHandler(): void {
   destroySessions()
 }
 
-// ── Internal ──
+// ── Helpers ──
 
-// Cached backend override regex (invalidated when backend list changes)
-let cachedBackendPattern: RegExp | null = null
-let cachedBackendList: string | null = null
-
-/** Parse backend override from message text (e.g. "@iflow question" or "/use opencode\nquestion") */
-export async function parseBackendOverride(
-  text: string
-): Promise<{ backend?: string; actualText: string }> {
-  const registeredBackends = getRegisteredBackends()
-
-  // Also include named backends from config (e.g. "local" -> type:"claude-code")
-  const config = await loadConfig()
-  const namedBackends = Object.keys(config.backends || {})
-
-  const allBackends = [...new Set([...registeredBackends, ...namedBackends])]
-  const backendListKey = allBackends.join(',')
-
-  // Reuse cached regex if backend list hasn't changed
-  if (backendListKey !== cachedBackendList) {
-    cachedBackendPattern = new RegExp(
-      `^[@/](?:backend:|use\\s+)?(${allBackends.join('|')})(?:\\s|\\n)`,
-      's'
-    )
-    cachedBackendList = backendListKey
+/** Notify user that their request was interrupted by a newer message */
+async function notifyInterrupted(
+  chatId: string,
+  placeholderId: string | null,
+  messenger: MessengerAdapter
+): Promise<void> {
+  if (placeholderId) {
+    await messenger
+      .editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...')
+      .catch(e => logger.debug(`Edit placeholder failed: ${e}`))
   }
-
-  const match = text.match(cachedBackendPattern!)
-  if (!match) return { actualText: text }
-
-  const backend = match[1]
-  const actualText = text.slice(match[0].length).trim()
-  return { backend, actualText }
 }
+
+/** Send error message to user — edit placeholder if available, otherwise reply */
+async function sendErrorToUser(
+  chatId: string,
+  placeholderId: string | null,
+  messenger: MessengerAdapter,
+  msg: string
+): Promise<void> {
+  const errorMsg = `❌ ${msg}`
+  if (placeholderId) {
+    await messenger.editMessage(chatId, placeholderId, errorMsg).catch(e => {
+      logger.debug(`error edit failed: ${getErrorMessage(e)}`)
+    })
+  } else {
+    await messenger.reply(chatId, errorMsg)
+  }
+}
+
+/** Send MCP-generated images (e.g. screenshots) to user */
+async function sendMcpImages(
+  chatId: string,
+  mcpImagePaths: string[],
+  messenger: MessengerAdapter
+): Promise<void> {
+  if (mcpImagePaths.length === 0 || !messenger.replyImage) return
+  const { readFileSync, existsSync } = await import('fs')
+  for (const imgPath of mcpImagePaths) {
+    try {
+      if (!existsSync(imgPath)) {
+        logger.warn(`MCP image not found: ${imgPath}`)
+        continue
+      }
+      const imageData = readFileSync(imgPath)
+      logger.debug(`Sending MCP image (${imageData.length} bytes): ${imgPath}`)
+      await messenger.replyImage(chatId, imageData, imgPath)
+      logger.debug(`✓ MCP image sent: ${imgPath}`)
+    } catch (e) {
+      logger.error(`✗ Failed to send MCP image ${imgPath}: ${getErrorMessage(e)}`)
+    }
+  }
+}
+
+/** Record inline backend switch as user preference memory */
+function recordBackendPreference(chatId: string, backend: string, text: string): void {
+  try {
+    const topic = text.length > 50 ? text.slice(0, 47) + '...' : text
+    addMemory(
+      `用户在讨论 "${topic}" 时选择使用 ${backend} backend`,
+      'preference',
+      { type: 'chat', chatId },
+      { keywords: ['backend', backend, 'preference'], confidence: 0.7 }
+    )
+    logger.debug(`记录 backend 偏好: ${backend} [${chatId.slice(0, 8)}]`)
+  } catch (e) {
+    logger.debug(`Failed to record backend preference: ${getErrorMessage(e)}`)
+  }
+}
+
+// ── Internal ──
 
 async function handleChatInternal(
   chatId: string,
@@ -308,18 +249,7 @@ async function handleChatInternal(
 
   // Record backend switch as a user preference memory
   if (inlineBackend && effectiveText) {
-    try {
-      const topic = effectiveText.length > 50 ? effectiveText.slice(0, 47) + '...' : effectiveText
-      addMemory(
-        `用户在讨论 "${topic}" 时选择使用 ${inlineBackend} backend`,
-        'preference',
-        { type: 'chat', chatId },
-        { keywords: ['backend', inlineBackend, 'preference'], confidence: 0.7 }
-      )
-      logger.debug(`记录 backend 偏好: ${inlineBackend} [${chatId.slice(0, 8)}]`)
-    } catch (e) {
-      logger.debug(`Failed to record backend preference: ${getErrorMessage(e)}`)
-    }
+    recordBackendPreference(chatId, inlineBackend, effectiveText)
   }
 
   // Log user message
@@ -341,17 +271,14 @@ async function handleChatInternal(
   const clientPrefix = options?.client ? buildClientPrompt(options.client) + '\n\n' : ''
   const images = options?.images
 
-  // Detect backend change early — needed for history injection decision
-  const sessionCreatedBy = session?.sessionBackendType
+  // Detect backend change — needed for history injection and session reuse decisions
   const currentBackend = backendOverride ?? 'default'
-  // Backend changed if the stored backend type differs from current
-  const backendChanged = !!(sessionId && sessionCreatedBy !== currentBackend)
+  // Normalize: undefined/missing sessionBackendType means 'default' (backward compat with old sessions)
+  const previousBackend = session?.sessionBackendType ?? 'default'
+  const backendChanged = !!(sessionId && previousBackend !== currentBackend)
   if (backendChanged) {
     logger.info(`🔄 session backend changed, starting new session`)
-    logConversationEvent(
-      '后端切换',
-      `${sessionCreatedBy ?? 'default'} → ${currentBackend ?? 'default'}`
-    )
+    logConversationEvent('后端切换', `${previousBackend} → ${currentBackend}`)
     // Flush episode on backend switch so the conversation boundary is captured
     flushEpisode(chatId)
   }
@@ -373,10 +300,7 @@ async function handleChatInternal(
     }
   }
 
-  // Retrieve relevant memories for context injection
-  // Only inject when starting a new session — continuing an existing session already has full
-  // conversation history in the backend (via sessionId), so injecting memories would be redundant
-  // and potentially cause confusion (same info appears twice: once in memory, once in history).
+  // Retrieve relevant memories (only for new sessions — existing sessions have full history)
   let memoryContext = ''
   if (effectiveText && willStartNewSession) {
     try {
@@ -402,11 +326,20 @@ async function handleChatInternal(
     prompt = prompt ? `${prompt}\n\n${imagePart}` : imagePart
   }
 
-  // Model selection: inline keyword > session /model override > auto (haiku→sonnet→opus)
-  // Only apply Claude model names to backends that understand them; others use their config model
+  // Model: inline keyword > session override > auto; only auto-select for Claude-compatible backends
   const modelOverride = inlineModel ?? getModelOverride(chatId)
-  const isClaudeBackend = isClaudeModelBackend(backendOverride)
-  const model = isClaudeBackend ? selectModel(effectiveText, { hasImages, modelOverride }) : undefined
+  // Resolve actual backend type: config named backend → its type, else treat as type name directly
+  const resolvedBackendType = backendOverride
+    ? config.backends[backendOverride]?.type ?? backendOverride
+    : config.backends[config.defaultBackend]?.type ?? 'claude-code'
+  const isClaudeBackend = isClaudeModelBackend(resolvedBackendType)
+  // Explicit model override (inline keyword or /model command) is always passed through;
+  // auto-selection (selectModel) only applies to Claude-compatible backends
+  const model = modelOverride
+    ? modelOverride
+    : isClaudeBackend
+      ? selectModel(effectiveText, { hasImages })
+      : undefined
   bench.promptReady = Date.now()
 
   // Setup streaming with shared ref for placeholderId
@@ -423,8 +356,7 @@ async function handleChatInternal(
   // Auto-stop streaming when aborted
   signal.addEventListener('abort', () => stopStreaming(), { once: true })
 
-  // Parallel: send placeholder + start backend call
-  // Placeholder ID is injected as soon as it resolves (before backend finishes)
+  // Send placeholder (parallel with backend call)
   const placeholder = hasImages ? '🖼️ 已收到图片，分析中...' : '🤔 思考中...'
   const placeholderPromise = messenger
     .sendAndGetId(chatId, placeholder)
@@ -443,11 +375,7 @@ async function handleChatInternal(
 
   bench.parallelStart = Date.now()
 
-  // Long-running warning disabled: placeholder icon already indicates progress
-  const clearLongRunningTimers = () => {}
-
   try {
-    // Don't reuse session across different backends (session IDs are backend-specific)
     const effectiveSessionId = inlineBackend || backendChanged ? undefined : sessionId
     const [, result] = await Promise.all([
       placeholderPromise,
@@ -464,7 +392,6 @@ async function handleChatInternal(
         signal,
       }),
     ])
-    clearLongRunningTimers()
     bench.backendDone = Date.now()
 
     // Clean up controller reference (this turn is done)
@@ -473,24 +400,13 @@ async function handleChatInternal(
     }
 
     if (!result.ok) {
-      // If cancelled by a new message, silently stop — new handler will take over
       if (result.error.type === 'cancelled') {
         logger.info(`🛑 AI call cancelled [${chatId.slice(0, 8)}], new message takes over`)
         stopStreaming()
-        // Edit placeholder to indicate interruption (if it was sent)
-        if (placeholderId) {
-          await messenger
-            .editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...')
-            .catch(e => logger.debug(`Edit placeholder failed: ${e}`))
-        }
+        await notifyInterrupted(chatId, placeholderId, messenger)
         return
       }
-      const errorMsg = `❌ AI 调用失败: ${result.error.message}`
-      if (placeholderId) {
-        await messenger.editMessage(chatId, placeholderId, errorMsg)
-      } else {
-        await messenger.reply(chatId, errorMsg)
-      }
+      await sendErrorToUser(chatId, placeholderId, messenger, `AI 调用失败: ${result.error.message}`)
       return
     }
 
@@ -536,7 +452,7 @@ async function handleChatInternal(
     bench.responseSent = Date.now()
 
     // Benchmark (log + send to user) only when enabled
-    if (benchmarkEnabled) {
+    if (isBenchmarkEnabled()) {
       const benchStr = formatBenchmark(bench, {
         slotWaitMs: result.value.slotWaitMs,
         apiMs: result.value.durationApiMs,
@@ -551,35 +467,14 @@ async function handleChatInternal(
     }
 
     // Send MCP-generated images (e.g. screenshots) directly via backend result
-    if (mcpImagePaths.length > 0 && messenger.replyImage) {
-      const { readFileSync, existsSync } = await import('fs')
-      for (const imgPath of mcpImagePaths) {
-        try {
-          if (!existsSync(imgPath)) {
-            logger.warn(`MCP image not found: ${imgPath}`)
-            continue
-          }
-          const imageData = readFileSync(imgPath)
-          logger.debug(`Sending MCP image (${imageData.length} bytes): ${imgPath}`)
-          await messenger.replyImage(chatId, imageData, imgPath)
-          logger.debug(`✓ MCP image sent: ${imgPath}`)
-        } catch (e) {
-          logger.error(`✗ Failed to send MCP image ${imgPath}: ${getErrorMessage(e)}`)
-        }
-      }
-    }
+    await sendMcpImages(chatId, mcpImagePaths, messenger)
 
     // Detect and send images from response text (e.g. file paths mentioned by AI)
     await sendDetectedImages(chatId, response, messenger)
 
-    // Fire-and-forget: extract memories from conversation periodically (only when extraction enabled)
+    // Extract memories from conversation periodically
     if (config.memory.chatMemory.enabled) {
-      const keywordTriggered = triggerChatMemoryExtraction(
-        chatId,
-        effectiveText,
-        response,
-        platform
-      )
+      const keywordTriggered = triggerChatMemoryExtraction(chatId, effectiveText, response, platform)
       if (keywordTriggered) {
         await messenger
           .reply(chatId, '💾 已记录到记忆中')
@@ -590,7 +485,6 @@ async function handleChatInternal(
     // Track conversation turn for episodic memory (idle timeout + explicit end detection)
     trackEpisodeTurn(chatId, effectiveText, response, platform)
   } catch (error) {
-    clearLongRunningTimers()
     // Clean up controller reference on error
     if (activeControllers.get(chatId) === abortController) {
       activeControllers.delete(chatId)
@@ -600,23 +494,12 @@ async function handleChatInternal(
     if (signal.aborted) {
       logger.info(`🛑 AI call aborted [${chatId.slice(0, 8)}]`)
       stopStreaming()
-      if (placeholderId) {
-        await messenger
-          .editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...')
-          .catch(e => logger.debug(`Edit placeholder failed: ${e}`))
-      }
+      await notifyInterrupted(chatId, placeholderId, messenger)
       return
     }
 
     const msg = formatErrorMessage(error)
     logger.error(`chat error [${chatId.slice(0, 8)}]: ${msg}`)
-    const errorMsg = `❌ 处理失败: ${msg}`
-    if (placeholderId) {
-      await messenger.editMessage(chatId, placeholderId, errorMsg).catch(e => {
-        logger.debug(`error edit failed: ${getErrorMessage(e)}`)
-      })
-    } else {
-      await messenger.reply(chatId, errorMsg)
-    }
+    await sendErrorToUser(chatId, placeholderId, messenger, `处理失败: ${msg}`)
   }
 }

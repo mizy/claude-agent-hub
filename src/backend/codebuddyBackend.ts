@@ -14,29 +14,9 @@ import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
+import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
 
 const logger = createLogger('codebuddy')
-
-interface CodebuddyJsonOutput {
-  type: string
-  subtype?: string
-  is_error?: boolean
-  duration_ms?: number
-  duration_api_ms?: number
-  result: string
-  session_id?: string
-  total_cost_usd?: number
-}
-
-/** Validate parsed JSON has the expected shape */
-function isCodebuddyJsonOutput(data: unknown): data is CodebuddyJsonOutput {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'result' in data &&
-    typeof (data as Record<string, unknown>).result === 'string'
-  )
-}
 
 interface StreamJsonEvent {
   type: string
@@ -182,47 +162,7 @@ function buildArgs(
   return args
 }
 
-function parseOutput(raw: string): {
-  response: string
-  sessionId: string
-  durationApiMs?: number
-  costUsd?: number
-} {
-  // 尝试单行 JSON
-  try {
-    const parsed = JSON.parse(raw)
-    if (isCodebuddyJsonOutput(parsed)) {
-      return {
-        response: parsed.result,
-        sessionId: parsed.session_id ?? '',
-        durationApiMs: parsed.duration_api_ms,
-        costUsd: parsed.total_cost_usd,
-      }
-    }
-  } catch {
-    // 可能是多行 JSON
-  }
-
-  // 多行 JSON，找 type=result
-  const lines = raw.split('\n').filter(l => l.trim())
-  for (const line of lines) {
-    try {
-      const parsed = JSON.parse(line)
-      if (isCodebuddyJsonOutput(parsed) && parsed.type === 'result') {
-        return {
-          response: parsed.result,
-          sessionId: parsed.session_id ?? '',
-          durationApiMs: parsed.duration_api_ms,
-          costUsd: parsed.total_cost_usd,
-        }
-      }
-    } catch {
-      // 继续
-    }
-  }
-
-  return { response: raw.trim(), sessionId: '' }
-}
+const parseOutput = parseClaudeCompatOutput
 
 async function streamOutput(
   subprocess: ResultPromise,

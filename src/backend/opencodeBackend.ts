@@ -11,6 +11,7 @@ import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
+import { collectStderr } from './processHelpers.js'
 
 const logger = createLogger('opencode')
 
@@ -64,10 +65,10 @@ export function createOpencodeBackend(): BackendAdapter {
         }
 
         const durationMs = Date.now() - startTime
-        const parsed = parseOutput(rawOutput, stream)
+        const parsed = parseOutput(rawOutput)
 
         if (!parsed.response && stderrOutput) {
-          const stderrParsed = parseOutput(stderrOutput, stream)
+          const stderrParsed = parseOutput(stderrOutput)
           if (stderrParsed.response) {
             logger.warn(`opencode returned error via stderr: ${stderrParsed.response.slice(0, 200)}`)
             return err({ type: 'process', message: stderrParsed.response })
@@ -107,11 +108,13 @@ export function createOpencodeBackend(): BackendAdapter {
 function buildArgs(
   prompt: string,
   model?: string,
-  stream?: boolean,
+  _stream?: boolean,
   sessionId?: string
 ): string[] {
   // opencode v1.x: opencode run "prompt" -m provider/model --format json
   // Note: opencode has no --yes flag (unlike claude-code)
+  // Always use JSON format — plain text output mixes ANSI codes, tool output,
+  // and multiple assistant turns, causing duplicate/garbled replies
   const args: string[] = ['run', prompt]
 
   if (sessionId) {
@@ -123,46 +126,34 @@ function buildArgs(
     args.push('-m', model.includes('/') ? model : `opencode/${model}`)
   }
 
-  if (!stream) {
-    args.push('--format', 'json')
-  }
+  args.push('--format', 'json')
 
   return args
 }
 
-/** 解析 opencode 输出 */
-function parseOutput(raw: string, stream: boolean): { response: string; sessionId: string } {
-  let response = raw.trim()
+/** 解析 opencode JSON 输出（提取最终 assistant 文本 + sessionId） */
+function parseOutput(raw: string): { response: string; sessionId: string } {
+  let response = ''
   let sessionId = ''
 
-  if (!stream) {
-    // JSON 模式：尝试提取最终结果
-    const events = raw.split('\n').filter(l => l.trim())
-    // 找最后一个有 text 内容的事件
-    for (const line of events.reverse()) {
-      try {
-        const event = JSON.parse(line)
-        if (event.text || event.content || event.result) {
-          response = event.text || event.content || event.result
-        }
-        if (event.session_id || event.sessionId) {
-          sessionId = event.session_id || event.sessionId
-        }
-      } catch {
-        // skip non-JSON lines
+  const lines = raw.split('\n').filter(l => l.trim())
+  for (const line of lines) {
+    try {
+      const event = JSON.parse(line)
+      // Extract sessionID from any event that has it
+      if (event.sessionID || event.session_id || event.sessionId) {
+        sessionId = event.sessionID || event.session_id || event.sessionId
       }
+      // Extract text content — take the last one (final assistant response)
+      if (event.text || event.content || event.result) {
+        response = event.text || event.content || event.result
+      }
+    } catch {
+      // skip non-JSON lines
     }
   }
 
-  return { response, sessionId }
-}
-
-/** Collect stderr output from subprocess (non-blocking, for error detection) */
-function collectStderr(subprocess: ResultPromise, onDone: (text: string) => void): void {
-  if (!subprocess.stderr) return
-  const chunks: string[] = []
-  subprocess.stderr.on('data', (chunk: Buffer) => { chunks.push(chunk.toString()) })
-  subprocess.stderr.on('end', () => { onDone(chunks.join('')) })
+  return { response: response || raw.trim(), sessionId }
 }
 
 async function streamOutput(
@@ -170,15 +161,37 @@ async function streamOutput(
   onChunk?: (chunk: string) => void
 ): Promise<string> {
   const chunks: string[] = []
+  let buffer = ''
 
   if (subprocess.stdout) {
     for await (const chunk of subprocess.stdout) {
       const text = chunk.toString()
       chunks.push(text)
-      if (onChunk) {
-        onChunk(text)
-      } else {
-        process.stdout.write(text)
+      buffer += text
+
+      // Parse complete JSON lines and extract assistant text
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const event = JSON.parse(line)
+          // Only forward text/content/result fields as AI response
+          const content = event.text || event.content || event.result
+          if (content) {
+            if (onChunk) {
+              onChunk(content)
+            } else {
+              process.stdout.write(content)
+            }
+          }
+        } catch {
+          // Non-JSON line — only show in CLI
+          if (!onChunk) {
+            process.stdout.write(line + '\n')
+          }
+        }
       }
     }
   }

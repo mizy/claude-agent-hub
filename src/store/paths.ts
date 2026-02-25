@@ -5,8 +5,7 @@
  *
  * 数据目录优先级（与 bin/cah.js 保持一致）：
  * 1. 环境变量 CAH_DATA_DIR
- * 2. 当前目录的 .cah-data（如果存在）
- * 3. 用户 home 目录的 .cah-data
+ * 2. 用户 home 目录的 ~/.cah-data
  *
  * 导出结构:
  * - 核心常量: DATA_DIR, TASKS_DIR, QUEUE_FILE, RUNNER_LOCK_FILE
@@ -15,7 +14,6 @@
  */
 
 import { join } from 'path'
-import { existsSync } from 'fs'
 import { homedir } from 'os'
 
 // ============ 数据目录配置 ============
@@ -30,13 +28,7 @@ function getDataDir(): string {
     return envDir.startsWith('/') ? envDir : join(process.cwd(), envDir)
   }
 
-  // 2. 当前目录的 .cah-data（如果存在）
-  const localDataDir = join(process.cwd(), DEFAULT_DATA_DIR_NAME)
-  if (existsSync(localDataDir)) {
-    return localDataDir
-  }
-
-  // 3. 默认使用用户 home 目录下的 .cah-data
+  // 2. 默认使用用户 home 目录下的 ~/.cah-data
   return join(homedir(), DEFAULT_DATA_DIR_NAME)
 }
 

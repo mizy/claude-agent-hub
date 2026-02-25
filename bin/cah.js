@@ -7,14 +7,12 @@
  * 数据目录优先级（从高到低）：
  * 1. 命令行参数 -d / --data-dir
  * 2. 环境变量 CAH_DATA_DIR
- * 3. 当前目录下的 .cah-data/
- * 4. 用户主目录 ~/.cah-data/
+ * 3. 用户主目录 ~/.cah-data/
  */
 
 import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { existsSync } from 'fs'
 import { homedir } from 'os'
 
 // 展开路径中的 ~ 为用户主目录
@@ -47,20 +45,8 @@ function resolveDataDir() {
       : resolve(process.env.CAH_DATA_DIR)
   }
 
-  // 3. 当前目录下的 .cah-data/
-  const cwdDataDir = join(process.cwd(), '.cah-data')
-  if (existsSync(cwdDataDir)) {
-    return cwdDataDir
-  }
-
-  // 4. 用户主目录 ~/.cah-data/
-  const homeDataDir = join(homedir(), '.cah-data')
-  if (existsSync(homeDataDir)) {
-    return homeDataDir
-  }
-
-  // 默认：当前目录（会在需要时创建）
-  return cwdDataDir
+  // 3. 用户主目录 ~/.cah-data/（默认）
+  return join(homedir(), '.cah-data')
 }
 
 // 设置环境变量供后续模块使用

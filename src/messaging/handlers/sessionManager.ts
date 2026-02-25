@@ -139,13 +139,16 @@ export function getSession(chatId: string): ChatSession | undefined {
 /** Update or create session, starts cleanup timer, persists to disk */
 export function setSession(chatId: string, sessionId: string, backendType?: string): void {
   const existing = sessions.get(chatId)
+  // Preserve turn/token counters when continuing the same session (same sessionId)
+  // Only reset when creating a genuinely new session
+  const isSameSession = existing && existing.sessionId === sessionId
   // Use 'default' as explicit marker when no backendType is provided
   // This allows proper backend change detection (undefined vs 'default' vs 'codebuddy')
   sessions.set(chatId, {
     sessionId,
     lastActiveAt: Date.now(),
-    turnCount: 0,
-    estimatedTokens: 0,
+    turnCount: isSameSession ? existing.turnCount : 0,
+    estimatedTokens: isSameSession ? existing.estimatedTokens : 0,
     modelOverride: existing?.modelOverride,
     backendOverride: existing?.backendOverride,
     sessionBackendType: backendType ?? 'default',

@@ -12,6 +12,7 @@ import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
+import { collectStderr } from './processHelpers.js'
 
 const logger = createLogger('iflow')
 
@@ -158,14 +159,6 @@ function parseOutput(raw: string): { response: string; sessionId: string } {
   const response = execInfoMatch ? raw.slice(0, execInfoMatch.index).trim() : raw.trim()
 
   return { response, sessionId }
-}
-
-/** Collect stderr output from subprocess (non-blocking, for error detection) */
-function collectStderr(subprocess: ResultPromise, onDone: (text: string) => void): void {
-  if (!subprocess.stderr) return
-  const chunks: string[] = []
-  subprocess.stderr.on('data', (chunk: Buffer) => { chunks.push(chunk.toString()) })
-  subprocess.stderr.on('end', () => { onDone(chunks.join('')) })
 }
 
 async function streamOutput(

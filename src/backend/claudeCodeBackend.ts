@@ -15,31 +15,9 @@ import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
+import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
 
 const logger = createLogger('claude-code')
-
-// ============ Claude JSON 输出格式 ============
-
-interface ClaudeJsonOutput {
-  type: string
-  subtype: string
-  is_error: boolean
-  duration_ms: number
-  duration_api_ms: number
-  result: string
-  session_id: string
-  total_cost_usd: number
-}
-
-/** Validate parsed JSON has the expected shape */
-function isClaudeJsonOutput(data: unknown): data is ClaudeJsonOutput {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'result' in data &&
-    typeof (data as Record<string, unknown>).result === 'string'
-  )
-}
 
 interface StreamContentBlock {
   type: string
@@ -244,51 +222,7 @@ function buildMcpConfigJson(serverNames: string[]): string {
   }
 }
 
-function parseClaudeOutput(raw: string): {
-  response: string
-  sessionId: string
-  durationApiMs?: number
-  costUsd?: number
-} {
-  // 尝试解析为单行 JSON
-  try {
-    const parsed = JSON.parse(raw)
-    if (isClaudeJsonOutput(parsed)) {
-      return {
-        response: parsed.result,
-        sessionId: parsed.session_id ?? '',
-        durationApiMs: parsed.duration_api_ms,
-        costUsd: parsed.total_cost_usd,
-      }
-    }
-  } catch {
-    // 可能是多行 JSON (stream-json 格式)
-  }
-
-  // 尝试解析多行 JSON，找到 type=result 的行
-  const lines = raw.split('\n').filter(line => line.trim())
-  for (const line of lines) {
-    try {
-      const parsed = JSON.parse(line)
-      if (isClaudeJsonOutput(parsed) && parsed.type === 'result') {
-        return {
-          response: parsed.result,
-          sessionId: parsed.session_id ?? '',
-          durationApiMs: parsed.duration_api_ms,
-          costUsd: parsed.total_cost_usd,
-        }
-      }
-    } catch {
-      // 继续尝试下一行
-    }
-  }
-
-  // 都解析失败，返回原始文本
-  return {
-    response: raw,
-    sessionId: '',
-  }
-}
+const parseClaudeOutput = parseClaudeCompatOutput
 
 /** Save base64-encoded image data to a temp file and return the path */
 function saveBase64Image(data: string, mediaType?: string): string {
