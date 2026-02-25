@@ -138,9 +138,14 @@ export function registerSelfDriveCommand(parent: Command) {
       console.log()
     })
 
-  drive
+  // goals subcommand group
+  const goalsCmd = drive
     .command('goals')
     .description('查看/管理自驱目标')
+
+  goalsCmd
+    .command('list', { isDefault: true })
+    .description('列出所有自驱目标')
     .action(async () => {
       console.log()
       console.log(chalk.bold('🎯 自驱目标'))
@@ -171,6 +176,73 @@ export function registerSelfDriveCommand(parent: Command) {
         console.log(chalk.red(`查询失败: ${getErrorMessage(err)}`))
       }
 
+      console.log()
+    })
+
+  goalsCmd
+    .command('enable')
+    .description('启用指定目标')
+    .argument('<id>', '目标 ID')
+    .action(async (id: string) => {
+      console.log()
+      try {
+        const { enableGoal } = await import('../../selfdrive/index.js')
+        const goal = enableGoal(id)
+        if (!goal) {
+          console.log(chalk.red(`目标不存在: ${id}`))
+          process.exit(1)
+          return
+        }
+        console.log(chalk.green(`✓ 已启用目标: ${goal.type} — ${goal.description}`))
+      } catch (err) {
+        console.log(chalk.red(`操作失败: ${getErrorMessage(err)}`))
+        process.exit(1)
+      }
+      console.log()
+    })
+
+  goalsCmd
+    .command('disable')
+    .description('禁用指定目标')
+    .argument('<id>', '目标 ID')
+    .action(async (id: string) => {
+      console.log()
+      try {
+        const { disableGoal } = await import('../../selfdrive/index.js')
+        const goal = disableGoal(id)
+        if (!goal) {
+          console.log(chalk.red(`目标不存在: ${id}`))
+          process.exit(1)
+          return
+        }
+        console.log(chalk.yellow(`⏹ 已禁用目标: ${goal.type} — ${goal.description}`))
+      } catch (err) {
+        console.log(chalk.red(`操作失败: ${getErrorMessage(err)}`))
+        process.exit(1)
+      }
+      console.log()
+    })
+
+  goalsCmd
+    .command('set-schedule')
+    .description('修改目标的调度间隔')
+    .argument('<id>', '目标 ID')
+    .argument('<schedule>', '调度间隔 (如 30m, 1h, 6h, 1d)')
+    .action(async (id: string, schedule: string) => {
+      console.log()
+      try {
+        const { updateGoalSchedule } = await import('../../selfdrive/index.js')
+        const goal = updateGoalSchedule(id, schedule)
+        if (!goal) {
+          console.log(chalk.red(`目标不存在: ${id}`))
+          process.exit(1)
+          return
+        }
+        console.log(chalk.green(`✓ 已更新目标调度: ${goal.type} → ${schedule}`))
+      } catch (err) {
+        console.log(chalk.red(`操作失败: ${getErrorMessage(err)}`))
+        process.exit(1)
+      }
       console.log()
     })
 }

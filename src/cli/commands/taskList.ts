@@ -12,12 +12,16 @@ export function registerTaskListCommands(task: Command) {
     .option('-s, --status <status>', '按状态筛选')
     .option('-a, --agent <agent>', '按 Agent 筛选')
     .option('--source <source>', '按来源筛选 (如 selfdrive)')
+    .option('--cwd <path>', '按项目目录筛选')
+    .option('--project', '只显示当前目录的任务')
     .option('--no-progress', '隐藏进度显示')
     .option('-w, --watch', '持续更新模式')
     .option('-i, --interval <ms>', '更新间隔 (毫秒)', '2000')
     .action(async options => {
+      const cwd = options.cwd ?? (options.project ? process.cwd() : undefined)
       await listTasks({
         ...options,
+        cwd,
         interval: parseInt(options.interval, 10),
       })
     })

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 vi.mock('../goals.js', () => ({
   listEnabledGoals: vi.fn().mockReturnValue([]),
   markGoalRun: vi.fn(),
+  ensureBuiltinGoals: vi.fn(),
 }))
 
 // Mock heavy dependencies that scheduler calls

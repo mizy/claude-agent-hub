@@ -4,7 +4,7 @@
  * Simple setInterval-based scheduler that executes goals by creating tasks.
  * Runs inside the daemon process — no separate process needed.
  *
- * Goal dimensions: evolve, cleanup, evolve-conversation, evolve-feature.
+ * Goal dimensions: evolve (unified), cleanup. (evolve-conversation/evolve-feature deprecated, merged into evolve)
  * Prompts are context-aware — CAH project vs external project generate different prompts.
  */
 
@@ -13,7 +13,7 @@ import { getErrorMessage } from '../shared/assertError.js'
 import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
 import { spawnTaskRunner } from '../task/spawnTask.js'
 import { getAllTasks } from '../store/TaskStore.js'
-import { listEnabledGoals, markGoalRun, type DriveGoal } from './goals.js'
+import { ensureBuiltinGoals, listEnabledGoals, markGoalRun, type DriveGoal } from './goals.js'
 import { detectSignals, type SignalEvent } from '../selfevolve/signalDetector.js'
 import { resolveEvolveContext, type EvolveContext } from '../selfevolve/resolveEvolveContext.js'
 
@@ -55,24 +55,39 @@ const GOAL_TASK_DESCRIPTIONS: Record<string, string> = {
 }
 
 const STATIC_PROMPTS: Record<string, string> = {
-  'evolve': `执行一轮全局自进化周期：系统中的任何模块都可能成为改进对象，不限于任务模块。
+  'evolve': `执行一轮全局自进化周期：系统中的任何模块都可能成为改进对象。
 
-分析范围：
+分析范围（三个维度，选最有价值的方向）：
+
+**1. 系统质量**
 - 查看最近运行过的所有任务（成功和失败），从执行日志、耗时、节点输出中提取信号
-- 审查各模块的实际运行效果：workflow 引擎、persona 提示词、memory 检索、scheduling 策略、CLI 交互体验、通知消息格式等
-- 识别重复出现的摩擦点、低效模式、可以自动化的手动操作
+- 审查各模块运行效果：workflow 引擎、memory 检索、scheduling 策略、错误处理等
+- 识别重复出现的摩擦点、低效模式
+
+**2. 对话与交互体验**
+- 扫描最近任务的 conversation.jsonl / conversation.log，关注 AI 回复质量
+- 检查回复是否冗长、偏题、格式不佳（如飞书 markdown 兼容性）
+- 分析用户追问模式（连续追问暗示首次回答不满意）
+- 检查各 persona 提示词的实际效果
+
+**3. 功能缺口**
+- 识别用户频繁手动重复的操作，评估自动化价值
+- 检查高频需求模式，发现系统缺少的能力
+- 优先选择可在单个 workflow 内完成的小型增强
 
 改进目标可以是：
-- 提示词优化（persona、workflow 生成、记忆提取等）
+- 提示词优化（persona、workflow 生成、记忆提取、chat 回复格式等）
 - 代码逻辑改进（错误处理、性能、健壮性）
 - 配置调整（调度频率、阈值、超时等）
-- 新能力补全（发现系统缺少某个功能）
+- 新能力补全
 
 重要约束：
 - 每轮只选择 2-3 个最高价值的改进，不要贪多
 - 只实施低风险改进，排除涉及数据结构变更或核心引擎流程的修改
-- 工作流节点数不要超过 5 个（含 start/end），保持简单
 - 改进后必须运行 typecheck 验证，确保不引入回归
+- 工作流必须简单：推荐 3 个节点（start → analyze-and-implement → end），最多 4 个节点（加一个 verify）
+- 不要使用 review-fix 循环模式 — 自进化任务本身就是自检，不需要额外的审查循环
+- 不要使用条件边 — 每个节点只有一个无条件出边，线性执行即可
 
 生成改进方案并应用，记录进化历史。`,
   'cleanup': '执行数据清理：清理过期日志、孤儿文件、过时的记忆条目等。',
@@ -282,6 +297,9 @@ function isDue(goal: DriveGoal): boolean {
 /** Start scheduling all enabled goals */
 export function startScheduler(): void {
   stopScheduler()
+
+  // Ensure deprecated goals are disabled before reading enabled list
+  ensureBuiltinGoals()
 
   const goals = listEnabledGoals()
   logger.info(`Starting self-drive scheduler with ${goals.length} enabled goal(s)`)

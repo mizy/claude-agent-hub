@@ -103,18 +103,22 @@ const BUILTIN_GOALS: Omit<DriveGoal, 'id' | 'createdAt'>[] = [
     type: 'evolve-conversation',
     priority: 'medium',
     schedule: '12h',
-    enabled: true,
+    enabled: false,
   },
   {
     description: 'Periodic feature gap analysis and enhancement planning',
     type: 'evolve-feature',
     priority: 'low',
     schedule: '1d',
-    enabled: true,
+    enabled: false,
   },
 ]
 
-/** Ensure built-in goals exist. Idempotent — skips if goals of each type already present. */
+// Goal types that have been merged into 'evolve' — force-disable if they exist
+const DEPRECATED_GOAL_TYPES: GoalType[] = ['evolve-conversation', 'evolve-feature']
+
+/** Ensure built-in goals exist. Idempotent — skips if goals of each type already present.
+ *  Also force-disables deprecated goal types that have been merged into 'evolve'. */
 export function ensureBuiltinGoals(): void {
   const existing = listGoals()
   const existingTypes = new Set(existing.map(g => g.type))
@@ -130,6 +134,27 @@ export function ensureBuiltinGoals(): void {
       })
     }
   }
+
+  // Disable deprecated goals that were merged into 'evolve'
+  for (const goal of existing) {
+    if (DEPRECATED_GOAL_TYPES.includes(goal.type) && goal.enabled) {
+      updateGoal(goal.id, { enabled: false })
+    }
+  }
+}
+
+// ============ Goal management helpers ============
+
+export function enableGoal(id: string): DriveGoal | null {
+  return updateGoal(id, { enabled: true })
+}
+
+export function disableGoal(id: string): DriveGoal | null {
+  return updateGoal(id, { enabled: false })
+}
+
+export function updateGoalSchedule(id: string, schedule: string): DriveGoal | null {
+  return updateGoal(id, { schedule })
 }
 
 /** Mark a goal as just executed */

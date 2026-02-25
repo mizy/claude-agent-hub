@@ -15,6 +15,9 @@ export {
   listEnabledGoals,
   ensureBuiltinGoals,
   markGoalRun,
+  enableGoal,
+  disableGoal,
+  updateGoalSchedule,
   type DriveGoal,
   type GoalType,
 } from './goals.js'

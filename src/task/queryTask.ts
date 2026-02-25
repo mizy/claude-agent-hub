@@ -23,6 +23,7 @@ export interface ListOptions {
   status?: string
   agent?: string
   source?: string
+  cwd?: string
   progress?: boolean
   watch?: boolean
   interval?: number
@@ -41,6 +42,11 @@ function getFilteredTasks(options: ListOptions): Task[] {
 
   if (options.source) {
     tasks = tasks.filter(t => t.source === options.source)
+  }
+
+  if (options.cwd) {
+    const filterCwd = options.cwd
+    tasks = tasks.filter(t => t.cwd === filterCwd)
   }
 
   return tasks

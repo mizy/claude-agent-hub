@@ -204,18 +204,34 @@ export function extractJson(response: string): JsonWorkflowInput {
     return tryParseJson(trimmed)
   }
 
-  // 尝试找到第一个 { 开始的 JSON
+  // 尝试找到第一个 { 开始的 JSON（string-aware brace matching）
   const jsonStart = response.indexOf('{')
   if (jsonStart !== -1) {
-    // 找到匹配的 }
     let depth = 0
     let jsonEnd = jsonStart
+    let inString = false
+    let escape = false
     for (let i = jsonStart; i < response.length; i++) {
-      if (response[i] === '{') depth++
-      if (response[i] === '}') depth--
-      if (depth === 0) {
-        jsonEnd = i + 1
-        break
+      const ch = response[i]
+      if (escape) {
+        escape = false
+        continue
+      }
+      if (ch === '\\' && inString) {
+        escape = true
+        continue
+      }
+      if (ch === '"') {
+        inString = !inString
+        continue
+      }
+      if (!inString) {
+        if (ch === '{') depth++
+        if (ch === '}') depth--
+        if (depth === 0) {
+          jsonEnd = i + 1
+          break
+        }
       }
     }
     return tryParseJson(response.slice(jsonStart, jsonEnd))
