@@ -75,7 +75,11 @@ export function createStreamHandler(
   return {
     onChunk,
     getAccumulated: () => accumulated,
-    stop: () => { stopped = true },
+    stop: async () => {
+      stopped = true
+      // Wait for all pending edits to complete
+      await editChain
+    },
   }
 }
 

@@ -18,17 +18,14 @@ export function registerBackendCommands(program: Command) {
 
       const config = await loadConfig()
       const registered = getRegisteredBackends()
-      const defaultConfig = config.backend
-      const namedBackends = config.backends ?? {}
+      const namedBackends = config.backends
       const defaultBackendName = config.defaultBackend
 
-      success('已注册的 backend:')
+      success('已注册的 backend 类型:')
       console.log()
 
       for (const name of registered) {
-        const isDefault =
-          (!defaultBackendName && name === defaultConfig.type) ||
-          (defaultBackendName && namedBackends[defaultBackendName]?.type === name)
+        const isDefault = namedBackends[defaultBackendName]?.type === name
         const marker = isDefault ? chalk.green(' (默认)') : ''
         console.log(`  ${chalk.bold(name)}${marker}`)
       }

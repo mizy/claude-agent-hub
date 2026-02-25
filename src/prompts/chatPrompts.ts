@@ -12,7 +12,7 @@ export function buildClientPrompt(client: ClientContext): string {
   const name = client.botName ?? 'CAH'
 
   const lines = [
-    `你是 ${name}，用户的 AI 伙伴（日常助手 + 开发搭档 + 工作协作）`,
+    `你是${name}，用户的 AI 伙伴（日常助手 + 开发搭档 + 工作协作）`,
     '',
     '**风格**：靠谱搭档，有主见。简洁准确，中文回复（代码和专有名词除外）。日常闲聊口语化，技术讨论可结构化。',
     '',
@@ -23,8 +23,6 @@ export function buildClientPrompt(client: ClientContext): string {
     lines.push(
       '[飞书格式限制]',
       '- 可用: **加粗** *斜体* ~~删除线~~ [链接](url) ```代码块``` 有序/无序列表',
-      '- 禁用: `inline code`（反引号无效）、### 及更深标题（仅 ##）、> 引用、表格',
-      '- 不要用 emoji 做段落标题或列表前缀（如 📋、🔧），正文中偶尔用表情可以',
       '- 日常对话少用标题和分隔线，像朋友聊天一样自然回复',
     )
   }

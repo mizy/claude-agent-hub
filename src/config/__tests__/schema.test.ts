@@ -30,13 +30,16 @@ describe('configSchema', () => {
       agents: [{ name: 'test-agent', persona: 'Architect', role: 'developer' }],
       tasks: { default_priority: 'high', max_retries: 5, timeout: '1h' },
       git: { base_branch: 'develop', branch_prefix: 'feat/', auto_push: true },
-      backend: { type: 'opencode', model: 'gpt-4' },
+      backends: {
+        default: { type: 'opencode', model: 'gpt-4' },
+      },
+      defaultBackend: 'default',
     }
     const result = configSchema.parse(input)
     expect(result.agents).toHaveLength(1)
     expect(result.agents[0]!.name).toBe('test-agent')
     expect(result.tasks.default_priority).toBe('high')
-    expect(result.backend?.type).toBe('opencode')
+    expect(result.backends[result.defaultBackend].type).toBe('opencode')
   })
 
   it('should reject invalid priority', () => {
@@ -48,7 +51,9 @@ describe('configSchema', () => {
 
   it('should reject invalid backend type', () => {
     const result = configSchema.safeParse({
-      backend: { type: 'unknown-backend' },
+      backends: {
+        default: { type: 'unknown-backend' },
+      },
     })
     expect(result.success).toBe(false)
   })

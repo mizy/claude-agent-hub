@@ -11,7 +11,7 @@
  * - claude-code: Claude Code CLI (默认)
  * - opencode: OpenCode CLI (75+ 模型，含免费 Zen 模型)
  * - iflow: iflow-cli (Qwen3-Coder, DeepSeek 等免费模型)
- * - openai: OpenAI 兼容 API (LM Studio, Ollama, vLLM 等)
+ * - codebuddy: Codebuddy CLI
  */
 
 export type {
@@ -33,7 +33,6 @@ export {
 export { resolveBackendConfig } from './backendConfig.js'
 
 export { buildPrompt } from './promptBuilder.js'
-export { createOpenAICompatibleBackend } from './openaiCompatibleBackend.js'
 
 import { resolveBackend } from './resolveBackend.js'
 import { resolveBackendConfig } from './backendConfig.js'
@@ -83,7 +82,10 @@ export async function invokeBackend(
 
   // Check if already aborted before waiting for a slot
   if (options.signal?.aborted) {
-    return { ok: false, error: { type: 'cancelled', message: 'Aborted before slot acquisition' } } as Result<InvokeResult, InvokeError>
+    return {
+      ok: false,
+      error: { type: 'cancelled', message: 'Aborted before slot acquisition' },
+    } as Result<InvokeResult, InvokeError>
   }
 
   const slotStart = Date.now()
@@ -93,7 +95,10 @@ export async function invokeBackend(
   // Check if aborted while waiting for slot
   if (options.signal?.aborted) {
     releaseSlot()
-    return { ok: false, error: { type: 'cancelled', message: 'Aborted during slot wait' } } as Result<InvokeResult, InvokeError>
+    return {
+      ok: false,
+      error: { type: 'cancelled', message: 'Aborted during slot wait' },
+    } as Result<InvokeResult, InvokeError>
   }
   if (slotWaitMs > 50) {
     logger.info(`Slot wait: ${slotWaitMs}ms`)
@@ -124,9 +129,14 @@ export async function invokeBackend(
 
     // End LLM span with result data
     if (llmSpan && traceCtx) {
-      const finished = endSpan(llmSpan, result.ok ? undefined : {
-        error: { message: result.error.message },
-      })
+      const finished = endSpan(
+        llmSpan,
+        result.ok
+          ? undefined
+          : {
+              error: { message: result.error.message },
+            }
+      )
       if (result.ok) {
         finished.attributes['llm.response_length'] = result.value.response.length
         finished.attributes['llm.duration_api_ms'] = result.value.durationApiMs

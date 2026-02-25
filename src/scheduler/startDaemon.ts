@@ -243,7 +243,10 @@ async function runDaemon(): Promise<void> {
   scheduledJobs.push(evolutionJob)
 
   // Configure and restore chat sessions from disk before starting notification platforms
-  configureSession(config.backend.chat.session)
+  const defaultBackendConfig = config.backends[config.defaultBackend]
+  if (defaultBackendConfig?.chat?.session) {
+    configureSession(defaultBackendConfig.chat.session)
+  }
   loadSessions()
 
   // 根据配置自动启动通知平台

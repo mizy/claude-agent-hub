@@ -11,7 +11,6 @@ import { createClaudeCodeBackend } from './claudeCodeBackend.js'
 import { createOpencodeBackend } from './opencodeBackend.js'
 import { createIflowBackend } from './iflowBackend.js'
 import { createCodebuddyBackend } from './codebuddyBackend.js'
-import { createOpenAICompatibleBackend } from './openaiCompatibleBackend.js'
 
 /** 后端工厂注册表 */
 const BACKEND_REGISTRY: Record<string, () => BackendAdapter> = {
@@ -19,7 +18,6 @@ const BACKEND_REGISTRY: Record<string, () => BackendAdapter> = {
   opencode: createOpencodeBackend,
   iflow: createIflowBackend,
   codebuddy: createCodebuddyBackend,
-  openai: createOpenAICompatibleBackend,
 }
 
 /** 按 backend name 缓存实例 (name = backendType or 'default') */
@@ -28,15 +26,15 @@ const backendCache = new Map<string, BackendAdapter>()
 /**
  * 从配置或指定类型解析后端
  *
- * 优先级：backendType 参数 > config.defaultBackend > config.backend.type
+ * 优先级：backendType 参数 > config.defaultBackend
  */
 export async function resolveBackend(backendType?: string): Promise<BackendAdapter> {
   const config = await loadConfig()
 
-  // Determine which backend type to use
-  const namedBackends = config.backends ?? {}
+  // Determine which backend to use
+  const namedBackends = config.backends
   let resolvedType: string
-  let backendName: string | undefined
+  let backendName: string
 
   if (backendType && backendType !== 'default') {
     // Check named backends first, then treat as registry key
@@ -45,41 +43,32 @@ export async function resolveBackend(backendType?: string): Promise<BackendAdapt
       backendName = backendType
     } else {
       resolvedType = backendType
+      backendName = backendType
     }
-  } else if (config.defaultBackend && namedBackends[config.defaultBackend]) {
-    resolvedType = namedBackends[config.defaultBackend]!.type
-    backendName = config.defaultBackend
   } else {
-    resolvedType = config.backend.type
+    // Use defaultBackend
+    backendName = config.defaultBackend
+    if (!namedBackends[backendName]) {
+      throw new Error(`defaultBackend "${backendName}" not found in backends config`)
+    }
+    resolvedType = namedBackends[backendName]!.type
   }
 
-  // Cache key: use backendName if named backend, else resolvedType
-  const cacheKey = backendName ?? resolvedType
+  // Cache key: use backendName
+  const cacheKey = backendName
 
   // Return cached instance if available
   if (backendCache.has(cacheKey)) {
     return backendCache.get(cacheKey)!
   }
 
-  // Auto-route to openai-compatible backend when openaiCompatible is configured
-  // This allows any backend type (e.g. opencode) to switch to API mode
-  const backendConfig = backendName
-    ? (config.backends ?? {})[backendName]
-    : config.backend
-  const useOpenAI = resolvedType !== 'openai' && backendConfig?.openaiCompatible != null
-
-  const effectiveType = useOpenAI ? 'openai' : resolvedType
-
-  const factory = BACKEND_REGISTRY[effectiveType]
+  const factory = BACKEND_REGISTRY[resolvedType]
   if (!factory) {
     const available = Object.keys(BACKEND_REGISTRY).join(', ')
     throw new Error(`未知后端: ${resolvedType}，可用: ${available}`)
   }
 
-  // For openai backend (explicit or auto-routed), pass backendName so it can resolve correct config
-  const backend = effectiveType === 'openai'
-    ? (factory as (name?: string) => BackendAdapter)(backendName)
-    : factory()
+  const backend = factory()
 
   backendCache.set(cacheKey, backend)
   return backend
@@ -88,7 +77,7 @@ export async function resolveBackend(backendType?: string): Promise<BackendAdapt
 /**
  * 根据任务配置解析后端
  *
- * 优先级：task.backend > config.defaultBackend > config.backend.type
+ * 优先级：task.backend > config.defaultBackend
  */
 export async function resolveBackendForTask(task: Task): Promise<BackendAdapter> {
   return resolveBackend(task.backend)

@@ -32,11 +32,12 @@ export async function getLarkConfig(): Promise<LarkConfig | undefined> {
 /** Get effective backend config, respecting defaultBackend and named backends */
 export async function getBackendConfig(): Promise<BackendConfig> {
   const config = await loadConfig()
-  const namedBackends = config.backends ?? {}
-  if (config.defaultBackend && namedBackends[config.defaultBackend]) {
-    return namedBackends[config.defaultBackend]!
+  const namedBackends = config.backends
+  const defaultName = config.defaultBackend
+  if (namedBackends[defaultName]) {
+    return namedBackends[defaultName]!
   }
-  return config.backend
+  throw new Error(`defaultBackend "${defaultName}" not found in backends config`)
 }
 
 /** Get task config (always has defaults) */

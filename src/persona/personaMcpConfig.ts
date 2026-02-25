@@ -6,6 +6,7 @@
 /** MCP 服务器名称 (与用户 claude 配置中的名称对应) */
 export type McpServerName =
   | 'puppeteer' // 浏览器自动化
+  | 'browseruse' // BrowserUse MCP (更先进的浏览器自动化)
   | 'mcp-atlassian' // Jira/Confluence
   | 'codeup-git' // 阿里云 Codeup
 
@@ -24,10 +25,10 @@ export const PERSONA_MCP_CONFIG: Record<string, McpServerName[]> = {
   Perfectionist: [],
 
   // 探索者：需要浏览器探索
-  Explorer: ['puppeteer'],
+  Explorer: ['browseruse'],
 
   // 测试专家：需要浏览器测试、Jira 跟踪 bug
-  Tester: ['puppeteer', 'mcp-atlassian'],
+  Tester: ['browseruse', 'mcp-atlassian'],
 
   // 代码审查
   Reviewer: [],

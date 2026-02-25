@@ -114,7 +114,12 @@ function deepMergeConfig(
   for (const key of Object.keys(override)) {
     const val = override[key]
     if (val !== undefined && val !== null) {
-      if (typeof val === 'object' && !Array.isArray(val) && typeof result[key] === 'object' && !Array.isArray(result[key])) {
+      if (
+        typeof val === 'object' &&
+        !Array.isArray(val) &&
+        typeof result[key] === 'object' &&
+        !Array.isArray(result[key])
+      ) {
         result[key] = deepMergeConfig(
           result[key] as Record<string, unknown>,
           val as Record<string, unknown>
@@ -168,16 +173,34 @@ export function applyEnvOverrides(config: Config): Config {
     config = { ...config, notify: { ...config.notify, telegram } }
   }
 
-  // Backend
+  // Backend: 环境变量覆盖默认 backend 配置
   if (env.CAH_BACKEND_TYPE || env.CAH_BACKEND_MODEL) {
-    const backend: BackendConfig = { ...config.backend }
+    const defaultBackendName = config.defaultBackend
+    const backends = { ...config.backends }
+    const defaultBackend: BackendConfig = backends[defaultBackendName]
+      ? { ...backends[defaultBackendName] }
+      : {
+          type: 'claude-code',
+          model: 'opus',
+          enableAgentTeams: false,
+          chat: {
+            mcpServers: [],
+            session: {
+              timeoutMinutes: 60,
+              maxTurns: 10,
+              maxEstimatedTokens: 50000,
+              maxSessions: 200,
+            },
+          },
+        }
     if (env.CAH_BACKEND_TYPE) {
-      backend.type = env.CAH_BACKEND_TYPE as BackendConfig['type']
+      defaultBackend.type = env.CAH_BACKEND_TYPE as BackendConfig['type']
     }
     if (env.CAH_BACKEND_MODEL) {
-      backend.model = env.CAH_BACKEND_MODEL
+      defaultBackend.model = env.CAH_BACKEND_MODEL
     }
-    config = { ...config, backend }
+    backends[defaultBackendName] = defaultBackend
+    config = { ...config, backends }
   }
 
   return config
@@ -252,12 +275,23 @@ export function getDefaultConfig(): Config {
       branch_prefix: 'agent/',
       auto_push: false,
     },
-    backend: {
-      type: 'claude-code',
-      model: 'opus',
-      enableAgentTeams: false,
-      chat: { mcpServers: [], session: { timeoutMinutes: 60, maxTurns: 10, maxEstimatedTokens: 50_000, maxSessions: 200 } },
+    backends: {
+      default: {
+        type: 'claude-code',
+        model: 'opus',
+        enableAgentTeams: false,
+        chat: {
+          mcpServers: [],
+          session: {
+            timeoutMinutes: 60,
+            maxTurns: 10,
+            maxEstimatedTokens: 50_000,
+            maxSessions: 200,
+          },
+        },
+      },
     },
+    defaultBackend: 'default',
     memory: {
       forgetting: {
         enabled: true,

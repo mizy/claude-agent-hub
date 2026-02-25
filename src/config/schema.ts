@@ -42,24 +42,9 @@ export const chatConfigSchema = z.object({
   session: sessionConfigSchema.default({}),
 })
 
-export const openaiCompatibleConfigSchema = z.object({
-  /** API base URL, e.g. 'http://localhost:1234/v1' */
-  baseURL: z.string(),
-  /** API key (optional, local services usually don't need one) */
-  apiKey: z.string().optional(),
-  /** Default model name */
-  defaultModel: z.string().optional(),
-  /** Max context length (tokens), default 4096 */
-  maxContextLength: z.number().optional().default(4096),
-  /** Inject Claude config (CLAUDE.md, memory) as system prompt, default true */
-  useClaudeConfig: z.boolean().optional().default(true),
-  /** Include skills in system prompt, default true */
-  includeSkills: z.boolean().optional().default(true),
-})
-
 export const backendConfigSchema = z.object({
-  /** 后端类型: claude-code | opencode | iflow | codebuddy | openai */
-  type: z.enum(['claude-code', 'opencode', 'iflow', 'codebuddy', 'openai']).default('claude-code'),
+  /** 后端类型: claude-code | opencode | iflow | codebuddy */
+  type: z.enum(['claude-code', 'opencode', 'iflow', 'codebuddy']).default('claude-code'),
   /** 模型名（含义因后端而异） */
   model: z.string().default('opus'),
   /** 最大 token 数（部分后端支持） */
@@ -68,8 +53,6 @@ export const backendConfigSchema = z.object({
   enableAgentTeams: z.boolean().optional().default(false),
   /** 对话模式配置 */
   chat: chatConfigSchema.default({}),
-  /** OpenAI 兼容后端配置（type 为 'openai' 时必需；其他 type 配置此字段时自动切换为 API 模式） */
-  openaiCompatible: openaiCompatibleConfigSchema.optional(),
 })
 
 export const larkConfigSchema = z.object({
@@ -143,12 +126,10 @@ export const configSchema = z.object({
   agents: z.array(agentConfigSchema).default([]),
   tasks: taskConfigSchema.default({}),
   git: gitConfigSchema.default({}),
-  /** CLI 后端设置（默认 backend） */
-  backend: backendConfigSchema.default({}),
-  /** 命名 backend 配置映射，允许定义多个 backend 供任务级切换 */
-  backends: z.record(z.string(), backendConfigSchema).optional(),
-  /** 默认使用的命名 backend（覆盖 backend 字段） */
-  defaultBackend: z.string().optional(),
+  /** 命名 backend 配置映射，至少需要定义一个 */
+  backends: z.record(z.string(), backendConfigSchema).default({}),
+  /** 默认使用的 backend 名称，指向 backends 中的 key */
+  defaultBackend: z.string().default('default'),
   notify: notifyConfigSchema.optional(),
   daemon: daemonConfigSchema.optional(),
   memory: memoryConfigSchema.default({}),
@@ -160,7 +141,6 @@ export type GitConfig = z.infer<typeof gitConfigSchema>
 export type BackendConfig = z.infer<typeof backendConfigSchema>
 export type SessionConfig = z.infer<typeof sessionConfigSchema>
 export type ChatConfig = z.infer<typeof chatConfigSchema>
-export type OpenAICompatibleConfig = z.infer<typeof openaiCompatibleConfigSchema>
 export type LarkConfig = z.infer<typeof larkConfigSchema>
 export type TelegramConfig = z.infer<typeof telegramConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>
