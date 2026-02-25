@@ -173,8 +173,8 @@ export function applyEnvOverrides(config: Config): Config {
     config = { ...config, notify: { ...config.notify, telegram } }
   }
 
-  // Backend: 环境变量覆盖默认 backend 配置
-  if (env.CAH_BACKEND_TYPE || env.CAH_BACKEND_MODEL) {
+  // Backend: ensure defaultBackend exists, then apply env overrides
+  if (env.CAH_BACKEND_TYPE || env.CAH_BACKEND_MODEL || !config.backends[config.defaultBackend]) {
     const defaultBackendName = config.defaultBackend
     const backends = { ...config.backends }
     const defaultBackend: BackendConfig = backends[defaultBackendName]
