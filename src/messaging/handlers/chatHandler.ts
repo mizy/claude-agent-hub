@@ -28,11 +28,12 @@ const DEFAULT_MAX_LENGTH = 4096
 const activeControllers = new Map<string, AbortController>()
 
 // Backends that understand Claude model names (opus/sonnet/haiku)
-const CLAUDE_MODEL_BACKENDS = new Set(['claude-code', 'codebuddy'])
+const CLAUDE_MODEL_BACKENDS = new Set(['claude-code'])
 
 /** Check if a backend supports Claude model names for auto-selection */
 function isClaudeModelBackend(backendType?: string): boolean {
-  return !backendType || CLAUDE_MODEL_BACKENDS.has(backendType)
+  if (!backendType) return false
+  return CLAUDE_MODEL_BACKENDS.has(backendType)
 }
 
 // ── Model Selection ──

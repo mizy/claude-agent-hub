@@ -27,7 +27,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build:binary": "bash scripts/build-sea.sh",
-    "build:dashboard": "cd src/server/dashboard && pnpm run build",
+    "build:dashboard": "cd src/server/dashboard && pnpm install && pnpm run build",
     "dev:dashboard": "cd src/server/dashboard && pnpm run dev",
     "clean": "rm -rf dist dist-sea",
     "prepublishOnly": "npm run build && npm run build:types"
