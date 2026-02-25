@@ -39,7 +39,7 @@ describe('configSchema', () => {
     expect(result.agents).toHaveLength(1)
     expect(result.agents[0]!.name).toBe('test-agent')
     expect(result.tasks.default_priority).toBe('high')
-    expect(result.backends[result.defaultBackend].type).toBe('opencode')
+    expect(result.backends[result.defaultBackend]!.type).toBe('opencode')
   })
 
   it('should reject invalid priority', () => {

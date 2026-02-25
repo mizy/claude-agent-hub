@@ -41,8 +41,8 @@ describe('getDefaultConfig', () => {
     expect(config.tasks.default_priority).toBe('medium')
     expect(config.tasks.max_retries).toBe(3)
     expect(config.git.base_branch).toBe('main')
-    expect(config.backends[config.defaultBackend].type).toBe('claude-code')
-    expect(config.backends[config.defaultBackend].model).toBe('opus')
+    expect(config.backends[config.defaultBackend]!.type).toBe('claude-code')
+    expect(config.backends[config.defaultBackend]!.model).toBe('opus')
   })
 })
 
@@ -73,7 +73,7 @@ backends:
     expect(config.tasks.max_retries).toBe(5)
     expect(config.git.base_branch).toBe('develop')
     expect(config.git.auto_push).toBe(true)
-    expect(config.backends[config.defaultBackend].type).toBe('opencode')
+    expect(config.backends[config.defaultBackend]!.type).toBe('opencode')
   })
 
   it('should always have backend defaults even without backend in YAML', async () => {
@@ -86,9 +86,9 @@ tasks:
     )
 
     const config = await loadConfig({ cwd: TEST_DIR })
-    expect(config.backends[config.defaultBackend].type).toBe('claude-code')
-    expect(config.backends[config.defaultBackend].model).toBe('opus')
-    expect(config.backends[config.defaultBackend].enableAgentTeams).toBe(false)
+    expect(config.backends[config.defaultBackend]!.type).toBe('claude-code')
+    expect(config.backends[config.defaultBackend]!.model).toBe('opus')
+    expect(config.backends[config.defaultBackend]!.enableAgentTeams).toBe(false)
   })
 
   it('should cache loaded config', async () => {
@@ -139,8 +139,8 @@ backends:
     )
 
     const config = await loadConfig({ cwd: TEST_DIR })
-    expect(config.backends[config.defaultBackend].type).toBe('opencode')
-    expect(config.backends[config.defaultBackend].model).toBe('gpt-4')
+    expect(config.backends[config.defaultBackend]!.type).toBe('opencode')
+    expect(config.backends[config.defaultBackend]!.model).toBe('gpt-4')
   })
 
   it('should not throw when stopConfigWatch called multiple times', () => {
@@ -221,31 +221,35 @@ describe('applyEnvOverrides', () => {
     process.env.CAH_BACKEND_TYPE = 'opencode'
     process.env.CAH_BACKEND_MODEL = 'gpt-4'
     const config = applyEnvOverrides(getDefaultConfig())
-    expect(config.backends[config.defaultBackend].type).toBe('opencode')
-    expect(config.backends[config.defaultBackend].model).toBe('gpt-4')
+    expect(config.backends[config.defaultBackend]!.type).toBe('opencode')
+    expect(config.backends[config.defaultBackend]!.model).toBe('gpt-4')
   })
 
   it('should not override when env vars are not set', () => {
     const original = getDefaultConfig()
     const config = applyEnvOverrides(getDefaultConfig())
-    expect(config.backends[config.defaultBackend].type).toBe(original.backends[original.defaultBackend].type)
-    expect(config.backends[config.defaultBackend].model).toBe(original.backends[original.defaultBackend].model)
+    expect(config.backends[config.defaultBackend]!.type).toBe(
+      original.backends[original.defaultBackend]!.type
+    )
+    expect(config.backends[config.defaultBackend]!.model).toBe(
+      original.backends[original.defaultBackend]!.model
+    )
     expect(config.notify).toBeUndefined()
   })
 
   it('should prioritize env vars over file config', () => {
     process.env.CAH_BACKEND_MODEL = 'env-model'
     const base = getDefaultConfig()
-    base.backends[base.defaultBackend].model = 'file-model'
+    base.backends[base.defaultBackend]!.model = 'file-model'
     const config = applyEnvOverrides(base)
-    expect(config.backends[config.defaultBackend].model).toBe('env-model')
+    expect(config.backends[config.defaultBackend]!.model).toBe('env-model')
   })
 
   it('should integrate with loadConfig (env overrides applied)', async () => {
     process.env.CAH_BACKEND_MODEL = 'sonnet'
     clearConfigCache()
     const config = await loadConfig({ cwd: TEST_DIR })
-    expect(config.backends[config.defaultBackend].model).toBe('sonnet')
+    expect(config.backends[config.defaultBackend]!.model).toBe('sonnet')
   })
 })
 
@@ -300,10 +304,10 @@ notify:
 
   it('backend always has valid defaults', async () => {
     const config = await loadConfig({ cwd: TEST_DIR })
-    expect(config.backends[config.defaultBackend].type).toBe('claude-code')
-    expect(config.backends[config.defaultBackend].model).toBe('opus')
-    expect(config.backends[config.defaultBackend].enableAgentTeams).toBe(false)
-    expect(config.backends[config.defaultBackend].chat.mcpServers).toEqual([])
+    expect(config.backends[config.defaultBackend]!.type).toBe('claude-code')
+    expect(config.backends[config.defaultBackend]!.model).toBe('opus')
+    expect(config.backends[config.defaultBackend]!.enableAgentTeams).toBe(false)
+    expect(config.backends[config.defaultBackend]!.chat.mcpServers).toEqual([])
   })
 
   it('backend returns file values when configured', async () => {
@@ -317,8 +321,8 @@ backends:
 `
     )
     const config = await loadConfig({ cwd: TEST_DIR })
-    expect(config.backends[config.defaultBackend].type).toBe('opencode')
-    expect(config.backends[config.defaultBackend].model).toBe('gpt-4')
+    expect(config.backends[config.defaultBackend]!.type).toBe('opencode')
+    expect(config.backends[config.defaultBackend]!.model).toBe('gpt-4')
   })
 
   it('tasks always has valid defaults', async () => {
