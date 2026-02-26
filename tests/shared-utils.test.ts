@@ -123,12 +123,16 @@ describe('formatTime utilities', () => {
       expect(intervalToCron('1d')).toBe('0 0 */1 * *')
     })
 
-    it('should throw on invalid format', () => {
-      expect(() => intervalToCron('invalid')).toThrow('Invalid interval format')
+    it('should return fallback on invalid format', () => {
+      expect(intervalToCron('invalid')).toBe('*/5 * * * *')
     })
 
-    it('should throw on seconds (not supported for cron)', () => {
-      expect(() => intervalToCron('30s')).toThrow('Invalid interval format')
+    it('should return fallback on seconds (not supported for cron)', () => {
+      expect(intervalToCron('30s')).toBe('*/5 * * * *')
+    })
+
+    it('should use custom fallback when provided', () => {
+      expect(intervalToCron('invalid', '0 * * * *')).toBe('0 * * * *')
     })
   })
 })

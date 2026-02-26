@@ -1,7 +1,9 @@
 /**
  * Lark event routing — message processing, image buffering, card action dispatch
  *
- * Separated from larkWsClient to isolate event handling logic from WS connection management.
+ * Delegates to:
+ * - larkMessageDedup.ts — dedup + stale message filtering
+ * - larkAdapter.ts — MessengerAdapter factory
  */
 
 import { statSync } from 'fs'
@@ -12,34 +14,24 @@ import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import { getLarkConfig } from '../config/index.js'
-import { sendApprovalResultNotification, uploadLarkImage, sendLarkImage } from './sendLarkNotify.js'
+import { sendApprovalResultNotification } from './sendLarkNotify.js'
 import { buildWelcomeCard } from './buildLarkCard.js'
-import { buildMarkdownCard } from './larkCardWrapper.js'
 import { routeMessage } from './handlers/messageRouter.js'
 import { dispatchCardAction } from './handlers/larkCardActions.js'
 import { logUserMessage } from './conversationLogger.js'
-import type { LarkCard } from './buildLarkCard.js'
+import { isDuplicateMessage, isDuplicateContent, isStaleMessage } from './larkMessageDedup.js'
 import type { MessengerAdapter, ClientContext } from './handlers/types.js'
 
-const logger = createLogger('lark-ws')
+// Re-export for external consumers
+export { createLarkAdapter } from './larkAdapter.js'
+export {
+  isDuplicateMessage,
+  isDuplicateContent,
+  isStaleMessage,
+  markDaemonStarted,
+} from './larkMessageDedup.js'
 
-/** Simple retry for transient Lark API failures (network, TLS disconnect) */
-async function withRetry<T>(fn: () => Promise<T>, label: string, maxRetries = 1): Promise<T> {
-  let lastError: unknown
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn()
-    } catch (error) {
-      lastError = error
-      if (attempt < maxRetries) {
-        const delay = 500 * (attempt + 1)
-        logger.debug(`${label} attempt ${attempt + 1} failed, retrying in ${delay}ms...`)
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-    }
-  }
-  throw lastError
-}
+const logger = createLogger('lark-ws')
 
 // ── Event types ──
 
@@ -71,90 +63,6 @@ export interface LarkP2pChatCreateEvent {
   chat_id?: string
 }
 
-interface LarkSdkResponse {
-  data?: { message_id?: string }
-}
-
-// ── Message dedup ──
-
-const DEDUP_TTL_MS = 60_000
-const DEDUP_MAX_SIZE = 200
-const recentMessageIds = new Map<string, number>()
-
-export function isDuplicateMessage(messageId: string): boolean {
-  if (!messageId) return false
-  if (recentMessageIds.has(messageId)) return true
-
-  // Evict expired entries when approaching capacity
-  if (recentMessageIds.size >= DEDUP_MAX_SIZE) {
-    const now = Date.now()
-    for (const [id, ts] of recentMessageIds) {
-      if (now - ts > DEDUP_TTL_MS) recentMessageIds.delete(id)
-    }
-    // If still full after eviction, drop oldest half (Map iterates in insertion order)
-    if (recentMessageIds.size >= DEDUP_MAX_SIZE) {
-      const dropCount = Math.floor(DEDUP_MAX_SIZE / 2)
-      let i = 0
-      for (const id of recentMessageIds.keys()) {
-        if (i++ >= dropCount) break
-        recentMessageIds.delete(id)
-      }
-    }
-  }
-
-  recentMessageIds.set(messageId, Date.now())
-  return false
-}
-
-// Content-based dedup: catches WS reconnection replays with different message_ids
-const CONTENT_DEDUP_TTL_MS = 120_000
-const recentContentHashes = new Map<string, number>()
-
-/** Check if same chatId+content was seen recently (WS reconnect redelivery) */
-export function isDuplicateContent(chatId: string, content: string): boolean {
-  const key = `${chatId}:${simpleHash(content)}`
-  const now = Date.now()
-  const prev = recentContentHashes.get(key)
-  if (prev && now - prev < CONTENT_DEDUP_TTL_MS) {
-    return true
-  }
-
-  // Evict expired entries
-  if (recentContentHashes.size >= DEDUP_MAX_SIZE) {
-    for (const [k, ts] of recentContentHashes) {
-      if (now - ts > CONTENT_DEDUP_TTL_MS) recentContentHashes.delete(k)
-    }
-  }
-
-  recentContentHashes.set(key, now)
-  return false
-}
-
-/** Simple string hash (FNV-1a 32-bit) */
-function simpleHash(s: string): number {
-  let h = 0x811c9dc5
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = (h * 0x01000193) >>> 0
-  }
-  return h
-}
-
-// ── Stale message filtering ──
-
-let daemonStartedAt = Date.now()
-
-export function markDaemonStarted(): void {
-  daemonStartedAt = Date.now()
-}
-
-export function isStaleMessage(createTime?: string): boolean {
-  if (!createTime) return false
-  const msgTs = Number(createTime)
-  if (Number.isNaN(msgTs)) return false
-  return msgTs < daemonStartedAt - 3000
-}
-
 // ── Image buffering ──
 
 const IMAGE_BUFFER_DELAY_MS = 10_000
@@ -173,7 +81,13 @@ const pendingImageBuffer = new Map<string, PendingImage>()
 async function flushPendingImages(
   chatId: string,
   text: string,
-  handleMessage: (chatId: string, text: string, isGroup: boolean, hasMention: boolean, images?: string[]) => Promise<void>
+  handleMessage: (
+    chatId: string,
+    text: string,
+    isGroup: boolean,
+    hasMention: boolean,
+    images?: string[]
+  ) => Promise<void>
 ): Promise<void> {
   const pending = pendingImageBuffer.get(chatId)
   if (!pending) return
@@ -182,7 +96,9 @@ async function flushPendingImages(
   try {
     await handleMessage(chatId, text, pending.isGroup, pending.hasMention, pending.images)
   } catch (error) {
-    logger.error(`Failed to handle message with images for chat ${chatId}: ${getErrorMessage(error)}`)
+    logger.error(
+      `Failed to handle message with images for chat ${chatId}: ${getErrorMessage(error)}`
+    )
   }
 }
 
@@ -198,7 +114,9 @@ export async function downloadLarkImage(
     })
     const fileData = res as unknown as { writeFile(path: string): Promise<void> }
     if (typeof fileData?.writeFile !== 'function') {
-      logger.error(`Unexpected messageResource response: ${JSON.stringify(res).slice(0, 200)}`)
+      logger.error(
+        `Unexpected messageResource response: ${JSON.stringify(res).slice(0, 200)}`
+      )
       return null
     }
     const filePath = join(tmpdir(), `lark-img-${Date.now()}-${imageKey.slice(-8)}.png`)
@@ -206,129 +124,19 @@ export async function downloadLarkImage(
 
     const fileSize = statSync(filePath).size
     if (fileSize > MAX_IMAGE_BYTES) {
-      logger.warn(`Image too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB > ${MAX_IMAGE_BYTES / 1024 / 1024}MB`)
+      logger.warn(
+        `Image too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB > ${MAX_IMAGE_BYTES / 1024 / 1024}MB`
+      )
       return null
     }
 
-    logger.debug(`Downloaded image: ${imageKey} → ${filePath} (${(fileSize / 1024).toFixed(0)}KB)`)
+    logger.debug(
+      `Downloaded image: ${imageKey} → ${filePath} (${(fileSize / 1024).toFixed(0)}KB)`
+    )
     return filePath
   } catch (error) {
     logger.error(`Failed to download image ${imageKey}: ${formatErrorMessage(error)}`)
     return null
-  }
-}
-
-// ── MessengerAdapter factory ──
-
-export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
-  return {
-    async reply(chatId, text) {
-      try {
-        await withRetry(
-          () => larkClient.im.v1.message.create({
-            params: { receive_id_type: 'chat_id' },
-            data: {
-              receive_id: chatId,
-              content: buildMarkdownCard(text),
-              msg_type: 'interactive',
-            },
-          }),
-          'reply'
-        )
-      } catch (error) {
-        logger.error(`→ reply failed: ${formatErrorMessage(error)}`)
-      }
-    },
-    async sendAndGetId(chatId, text) {
-      try {
-        const res = await withRetry(
-          () => larkClient.im.v1.message.create({
-            params: { receive_id_type: 'chat_id' },
-            data: {
-              receive_id: chatId,
-              content: buildMarkdownCard(text),
-              msg_type: 'interactive',
-            },
-          }),
-          'sendAndGetId'
-        )
-        return (res as LarkSdkResponse)?.data?.message_id ?? null
-      } catch (error) {
-        logger.error(`→ send failed: ${formatErrorMessage(error)}`)
-        return null
-      }
-    },
-    async editMessage(chatId, messageId, text) {
-      if (!messageId) return
-      try {
-        await withRetry(
-          () => larkClient.im.v1.message.patch({
-            path: { message_id: messageId },
-            data: {
-              content: buildMarkdownCard(text),
-            },
-          }),
-          'editMessage'
-        )
-      } catch (error) {
-        const msg = formatErrorMessage(error)
-        if (msg.includes('NOT a card') || msg.includes('not a card')) {
-          logger.warn(`→ edit failed (not a card), falling back to reply: ${messageId}`)
-          await this.reply(chatId, text)
-        } else if (msg.includes('400')) {
-          // 400 is common during streaming (message deleted, content unchanged, etc.)
-          logger.debug(`→ edit skipped (400): ${messageId}`)
-        } else {
-          logger.error(`→ edit failed: ${msg}`)
-        }
-      }
-    },
-    async replyCard(chatId: string, card: LarkCard) {
-      try {
-        await withRetry(
-          () => larkClient.im.v1.message.create({
-            params: { receive_id_type: 'chat_id' },
-            data: {
-              receive_id: chatId,
-              content: JSON.stringify(card),
-              msg_type: 'interactive',
-            },
-          }),
-          'replyCard'
-        )
-      } catch (error) {
-        logger.error(`→ card send failed: ${formatErrorMessage(error)}`)
-      }
-    },
-    async editCard(chatId: string, messageId: string, card: LarkCard) {
-      if (!messageId) return
-      try {
-        logger.debug(`→ editCard called for msgId=${messageId}`)
-        const res = await withRetry(
-          () => larkClient.im.v1.message.patch({
-            path: { message_id: messageId },
-            data: {
-              content: JSON.stringify(card),
-            },
-          }),
-          'editCard'
-        )
-        logger.debug(`→ editCard response: code=${res?.code}`)
-      } catch (error) {
-        const msg = formatErrorMessage(error)
-        if (msg.includes('NOT a card') || msg.includes('not a card')) {
-          logger.warn(`→ editCard failed (not a card), falling back to replyCard: ${messageId}`)
-          await this.replyCard!(chatId, card)
-        } else {
-          logger.error(`→ editCard failed: ${msg}`)
-        }
-      }
-    },
-    async replyImage(chatId: string, imageData: Buffer) {
-      const imageKey = await uploadLarkImage(larkClient, imageData)
-      if (!imageKey) return
-      await sendLarkImage(larkClient, chatId, imageKey)
-    },
   }
 }
 
@@ -397,7 +205,6 @@ export async function handleCardAction(
   data: LarkCardActionEvent,
   adapter: MessengerAdapter
 ): Promise<unknown> {
-  // Lark SDK v2 events put these under `context`; fall back to top-level for compat
   const chatId = data?.context?.open_chat_id ?? data?.open_chat_id
   const messageId = data?.context?.open_message_id ?? data?.open_message_id
   const value = data?.action?.value
@@ -438,27 +245,26 @@ interface PostElement {
   href?: string
 }
 
-/** Extract plain text and image keys from a Lark post (rich text) message content */
-function parsePostContent(content: Record<string, unknown>): { text: string; imageKeys: string[] } {
+function parsePostContent(
+  content: Record<string, unknown>
+): { text: string; imageKeys: string[] } {
   const texts: string[] = []
   const imageKeys: string[] = []
 
-  // Post content can be:
-  // 1. Locale-wrapped: { zh_cn: { title: "", content: [[...]] } }
-  // 2. Flat: { title: "", content: [[...]] }
   let postBody: PostElement[][] | undefined
-
-  // Try flat structure first (content at top level)
   if (Array.isArray(content.content)) {
     postBody = content.content as PostElement[][]
   } else {
-    // Try locale-wrapped structure
     const locales = Object.values(content) as Array<{ content?: PostElement[][] }>
-    postBody = locales.find(l => l && typeof l === 'object' && !Array.isArray(l) && Array.isArray(l.content))?.content
+    postBody = locales.find(
+      l => l && typeof l === 'object' && !Array.isArray(l) && Array.isArray(l.content)
+    )?.content
   }
 
   if (!postBody || !Array.isArray(postBody)) {
-    logger.debug(`parsePostContent: no content array found, keys=${JSON.stringify(Object.keys(content))}`)
+    logger.debug(
+      `parsePostContent: no content array found, keys=${JSON.stringify(Object.keys(content))}`
+    )
     return { text: '', imageKeys: [] }
   }
 
@@ -470,14 +276,15 @@ function parsePostContent(content: Record<string, unknown>): { text: string; ima
       } else if (el.tag === 'img' && el.image_key) {
         imageKeys.push(el.image_key)
       } else if (el.tag === 'a' && el.text) {
-        // Hyperlink elements also carry text
         texts.push(el.text)
       }
     }
   }
 
   const result = { text: texts.join(' ').trim(), imageKeys }
-  logger.debug(`parsePostContent: extracted ${texts.length} text(s), ${imageKeys.length} image(s)`)
+  logger.debug(
+    `parsePostContent: extracted ${texts.length} text(s), ${imageKeys.length} image(s)`
+  )
   return result
 }
 
@@ -520,23 +327,31 @@ export async function processMessageEvent(
 
   const chatId = message.chat_id || ''
 
-  // Content-based dedup: catches WS reconnection replays with different message_ids
   const rawContent = message.content || ''
   if (chatId && isDuplicateContent(chatId, rawContent)) {
-    logger.info(`Duplicate content ignored (WS replay): chatId=${chatId.slice(0, 12)} msgId=${messageId}`)
+    logger.info(
+      `Duplicate content ignored (WS replay): chatId=${chatId.slice(0, 12)} msgId=${messageId}`
+    )
     return
   }
 
   const hasMention = !!(message.mentions && message.mentions.length > 0)
   const isGroup = message.chat_type === 'group'
 
-  const handleMsg = (cId: string, txt: string, grp: boolean, mention: boolean, imgs?: string[]) =>
-    handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs)
+  const handleMsg = (
+    cId: string,
+    txt: string,
+    grp: boolean,
+    mention: boolean,
+    imgs?: string[]
+  ) => handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs)
 
-  // Rich text (post) message — extract text and images, process as combined message
+  // Rich text (post) message
   if (msgType === 'post') {
     if (isGroup && !hasMention) return
-    logger.debug(`Post message content keys: ${JSON.stringify(Object.keys(content))}, raw: ${JSON.stringify(content).slice(0, 500)}`)
+    logger.debug(
+      `Post message content keys: ${JSON.stringify(Object.keys(content))}, raw: ${JSON.stringify(content).slice(0, 500)}`
+    )
     const { text: postText, imageKeys } = parsePostContent(content)
     const images: string[] = []
     if (messageId) {
@@ -578,9 +393,17 @@ export async function processMessageEvent(
           logger.error(`Failed to flush pending images on timeout: ${getErrorMessage(e)}`)
         })
       }, IMAGE_BUFFER_DELAY_MS)
-      pendingImageBuffer.set(chatId, { chatId, images: [imagePath], isGroup, hasMention, timer })
+      pendingImageBuffer.set(chatId, {
+        chatId,
+        images: [imagePath],
+        isGroup,
+        hasMention,
+        timer,
+      })
     }
-    logger.debug(`Image buffered for chat ${chatId}, waiting ${IMAGE_BUFFER_DELAY_MS}ms for text`)
+    logger.debug(
+      `Image buffered for chat ${chatId}, waiting ${IMAGE_BUFFER_DELAY_MS}ms for text`
+    )
     return
   }
 

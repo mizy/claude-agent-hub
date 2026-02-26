@@ -3,20 +3,16 @@
  *
  * 默认前台运行（阻塞），接收 Ctrl+C 优雅退出
  * --detach 模式 fork 子进程后台运行
+ *
+ * Delegates to:
+ * - daemonJobs.ts — cron job definitions (polling, signals, evolution, recovery)
+ * - sleepPrevention.ts — macOS caffeinate integration
  */
 
-import cron from 'node-cron'
 import chalk from 'chalk'
-import { spawn, type ChildProcess } from 'child_process'
+import { spawn } from 'child_process'
 import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
-import { executeTask } from '../task/executeTask.js'
-import { pollPendingTask } from '../task/queryTask.js'
-import { withProcessTracking } from '../task/processTracking.js'
-import { getTasksByStatus, updateTask } from '../store/TaskStore.js'
-import { getTaskInstance, saveTaskInstance } from '../store/TaskWorkflowStore.js'
-import { updateInstanceVariables } from '../store/WorkflowStore.js'
-import { resumeTask } from '../task/resumeTask.js'
 import {
   startLarkWsClient,
   stopLarkWsClient,
@@ -26,46 +22,14 @@ import {
 } from '../messaging/index.js'
 import { destroyChatHandler, loadSessions, configureSession } from '../messaging/index.js'
 import { acquirePidLock, releasePidLock, isServiceRunning } from './pidLock.js'
-import { detectSignals, tryAutoRepair } from '../selfevolve/index.js'
-import { runEvolutionCycle } from '../prompt-optimization/index.js'
-import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
 import { resumeSelfDriveIfEnabled, stopSelfDrive, isSelfDrivePermanentlyDisabled } from '../selfdrive/index.js'
 import { resolveEvolveContext } from '../selfevolve/resolveEvolveContext.js'
-import { createLogger } from '../shared/logger.js'
-
-const logger = createLogger('daemon')
+import { intervalToCron } from '../shared/formatTime.js'
+import { registerDaemonJobs, stopAllJobs } from './daemonJobs.js'
+import { startSleepPrevention, stopSleepPrevention } from './sleepPrevention.js'
 
 interface DaemonOptions {
   detach?: boolean
-}
-
-let scheduledJobs: cron.ScheduledTask[] = []
-let caffeinateProcess: ChildProcess | null = null
-
-/** 启动 caffeinate 防止 macOS 睡眠 (-i idle 仅阻止系统空闲睡眠，允许显示器息屏) */
-function startSleepPrevention(): void {
-  if (process.platform !== 'darwin') return
-
-  try {
-    caffeinateProcess = spawn('caffeinate', ['-i', '-w', String(process.pid)], {
-      detached: true,
-      stdio: 'ignore',
-    })
-    caffeinateProcess.unref()
-    console.log(chalk.green('  ✓ 防睡眠已启用 (caffeinate -i)'))
-    console.log(chalk.gray('  ℹ 允许显示器自动息屏，后台进程继续运行'))
-    console.log(chalk.gray('  ℹ 合盖会自动睡眠（正常行为）'))
-  } catch {
-    console.warn(chalk.yellow('  ⚠ 防睡眠启动失败'))
-  }
-}
-
-/** 停止 caffeinate */
-function stopSleepPrevention(): void {
-  if (caffeinateProcess) {
-    caffeinateProcess.kill()
-    caffeinateProcess = null
-  }
 }
 
 /**
@@ -190,102 +154,8 @@ async function runDaemon(): Promise<void> {
   console.log(chalk.green('启动守护进程...'))
   console.log(chalk.gray(`  轮询间隔: ${pollInterval}`))
 
-  // 任务轮询
-  const job = cron.schedule(cronExpr, async () => {
-    try {
-      const task = await pollPendingTask()
-      if (!task) return
-      console.log(chalk.blue(`[${new Date().toLocaleTimeString()}] 执行任务: ${task.title}`))
-
-      await withProcessTracking(task.id, () =>
-        executeTask(task, { concurrency: 1, useConsole: false })
-      )
-    } catch (error) {
-      console.error(chalk.red(`执行出错:`), error)
-    }
-  })
-  scheduledJobs.push(job)
-
-  // Periodic signal detection + auto repair — every 30 minutes
-  const signalJob = cron.schedule('*/30 * * * *', async () => {
-    try {
-      const signals = detectSignals()
-      if (signals.length === 0) {
-        logger.debug('Signal detection: no issues found')
-        return
-      }
-      logger.info(`Signal detection found ${signals.length} signal(s): ${signals.map(s => s.type).join(', ')}`)
-      for (const signal of signals) {
-        const result = await tryAutoRepair(signal)
-        if (result) {
-          logger.info(`Auto-repair [${signal.type}]: ${result}`)
-        }
-      }
-    } catch (error) {
-      logger.error(`Signal detection cron error: ${error}`)
-    }
-  })
-  scheduledJobs.push(signalJob)
-
-  // Periodic evolution cycle — every hour, run evolution for all personas
-  const evolutionJob = cron.schedule('0 * * * *', () => {
-    try {
-      for (const persona of Object.values(BUILTIN_PERSONAS)) {
-        const report = runEvolutionCycle(persona.name)
-        if (report.activeVersion) {
-          logger.debug(
-            `Evolution [${persona.name}]: active=v${report.activeVersion.version} ` +
-              `(${(report.activeVersion.successRate * 100).toFixed(0)}% success, ${report.activeVersion.totalTasks} tasks), ` +
-              `candidates=${report.candidateVersions}, trend=${report.failureTrend}`
-          )
-        }
-      }
-    } catch (error) {
-      logger.debug(`Evolution cron error: ${error}`)
-    }
-  })
-  scheduledJobs.push(evolutionJob)
-
-  // Recover waiting tasks whose resumeAt has passed (crash recovery) — every minute
-  const waitingRecoveryJob = cron.schedule('* * * * *', () => {
-    try {
-      const waitingTasks = getTasksByStatus('waiting')
-      for (const task of waitingTasks) {
-        const instance = getTaskInstance(task.id)
-        if (!instance) continue
-        const resumeAt = instance.variables?._scheduleWaitResumeAt
-        if (typeof resumeAt !== 'string') continue
-        const resumeTime = new Date(resumeAt).getTime()
-        if (Date.now() >= resumeTime) {
-          logger.info(`Recovering waiting task ${task.id} (resumeAt=${resumeAt} has passed)`)
-          // Reset the schedule-wait node from "running" to "pending" so
-          // recoverWorkflowInstance can properly re-execute it on resume.
-          const waitNodeId = instance.variables?._scheduleWaitNodeId as string | undefined
-          const waitNodeStatus = waitNodeId ? instance.nodeStates[waitNodeId]?.status : undefined
-          if (waitNodeId && (waitNodeStatus === 'running' || waitNodeStatus === 'waiting')) {
-            instance.nodeStates[waitNodeId] = {
-              ...instance.nodeStates[waitNodeId],
-              status: 'pending',
-              attempts: instance.nodeStates[waitNodeId]!.attempts ?? 0,
-              startedAt: undefined,
-              completedAt: undefined,
-            }
-            saveTaskInstance(task.id, instance)
-          }
-          // Clear wait markers and restore task to developing before resume
-          updateInstanceVariables(instance.id, {
-            _scheduleWaitResumeAt: null,
-            _scheduleWaitNodeId: null,
-          })
-          updateTask(task.id, { status: 'developing' })
-          resumeTask(task.id)
-        }
-      }
-    } catch (error) {
-      logger.debug(`Waiting task recovery error: ${error}`)
-    }
-  })
-  scheduledJobs.push(waitingRecoveryJob)
+  // Register all cron jobs
+  registerDaemonJobs(cronExpr)
 
   // Configure and restore chat sessions from disk before starting notification platforms
   const defaultBackendConfig = config.backends[config.defaultBackend]
@@ -390,33 +260,4 @@ async function runDaemon(): Promise<void> {
       .finally(() => process.exit(1))
     setTimeout(() => process.exit(1), 3000)
   })
-}
-
-function intervalToCron(interval: string): string {
-  const match = interval.match(/^(\d+)(m|h|d)$/)
-  if (!match) return '*/5 * * * *'
-
-  const num = match[1]
-  const unit = match[2]
-  if (!num) return '*/5 * * * *'
-
-  const n = parseInt(num, 10)
-
-  switch (unit) {
-    case 'm':
-      return `*/${n} * * * *`
-    case 'h':
-      return `0 */${n} * * *`
-    case 'd':
-      return `0 0 */${n} * *`
-    default:
-      return '*/5 * * * *'
-  }
-}
-
-function stopAllJobs() {
-  for (const job of scheduledJobs) {
-    job.stop()
-  }
-  scheduledJobs = []
 }

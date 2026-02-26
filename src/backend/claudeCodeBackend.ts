@@ -16,7 +16,7 @@ import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
-import { createOutputGuard } from './outputGuard.js'
+import { collectStream } from './collectStream.js'
 
 const logger = createLogger('claude-code')
 
@@ -275,105 +275,59 @@ async function streamOutput(
   startTime?: number,
   perf?: { spawn: number; firstStdout: number; firstDelta: number }
 ): Promise<{ rawOutput: string; extractedImagePaths: string[] }> {
-  const chunks: string[] = []
   const extractedImagePaths: string[] = []
-  // Track tool_use IDs from MCP tools (name starts with "mcp__") in assistant events.
-  // Only images from these tool results should be sent back (e.g. playwright screenshots).
-  // Built-in tool results (Read, Bash, etc.) are excluded to avoid echoing user images.
+  // Track MCP tool_use IDs — only images from MCP tool results are sent back
   const mcpToolUseIds = new Set<string>()
-  const guard = createOutputGuard()
-  let buffer = ''
 
-  if (subprocess.stdout) {
-    for await (const chunk of subprocess.stdout) {
-      const text = chunk.toString()
+  const rawOutput = await collectStream(subprocess, {
+    onChunk,
+    perf,
+    startTime,
+    processLine(line, cb) {
+      try {
+        const event = JSON.parse(line) as StreamJsonEvent
 
-      // Record first stdout arrival
-      if (perf && startTime && perf.firstStdout === 0) {
-        perf.firstStdout = Date.now() - startTime
-      }
-
-      if (guard.push(text)) {
-        chunks.push(text)
-      }
-
-      buffer += text
-
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-
-        try {
-          const event = JSON.parse(line) as StreamJsonEvent
-
-          // Incremental text deltas (--include-partial-messages)
-          if (
-            event.type === 'stream_event' &&
-            event.event?.type === 'content_block_delta' &&
-            event.event.delta?.type === 'text_delta' &&
-            event.event.delta.text
-          ) {
-            // Record first delta (first token from API)
-            if (perf && startTime && perf.firstDelta === 0) {
-              perf.firstDelta = Date.now() - startTime
-            }
-            if (onChunk) {
-              onChunk(event.event.delta.text)
-            } else {
-              process.stdout.write(chalk.dim(event.event.delta.text))
-            }
-          } else if (event.type === 'assistant' && event.message?.content) {
-            // Track MCP tool_use IDs for image extraction filtering
-            for (const block of event.message.content) {
-              if (block.type === 'tool_use' && block.id && block.name?.startsWith('mcp__')) {
-                mcpToolUseIds.add(block.id)
-              }
-            }
-            // Complete assistant turn — only show in CLI when no streaming callback
-            if (!onChunk) {
-              let assistantText = ''
-              for (const block of event.message.content) {
-                if (block.type === 'text' && block.text) {
-                  assistantText += block.text
-                }
-              }
-              if (assistantText) {
-                process.stdout.write(chalk.dim(assistantText + '\n'))
-              }
-            }
-          } else if (event.type === 'user') {
-            // Extract base64 images only from MCP tool results (e.g. playwright screenshots)
-            const imgPaths = extractImagesFromEvent(event, mcpToolUseIds)
-            extractedImagePaths.push(...imgPaths)
-
-            // Tool output (build logs, test output etc.) — only show in CLI, never send to Lark
-            if (event.tool_use_result) {
-              const toolOutput =
-                (event.tool_use_result.stdout ?? '') + (event.tool_use_result.stderr ?? '')
-              if (toolOutput && !onChunk) {
-                process.stdout.write(chalk.dim(toolOutput + '\n'))
-              }
+        // Incremental text deltas (--include-partial-messages)
+        if (
+          event.type === 'stream_event' &&
+          event.event?.type === 'content_block_delta' &&
+          event.event.delta?.type === 'text_delta' &&
+          event.event.delta.text
+        ) {
+          if (perf && startTime && perf.firstDelta === 0) {
+            perf.firstDelta = Date.now() - startTime
+          }
+          if (cb) cb(event.event.delta.text)
+          else process.stdout.write(chalk.dim(event.event.delta.text))
+        } else if (event.type === 'assistant' && event.message?.content) {
+          for (const block of event.message.content) {
+            if (block.type === 'tool_use' && block.id && block.name?.startsWith('mcp__')) {
+              mcpToolUseIds.add(block.id)
             }
           }
-        } catch {
-          // Non-JSON lines — only show in CLI terminal
-          if (!onChunk) {
-            process.stdout.write(chalk.dim(line + '\n'))
+          if (!cb) {
+            let assistantText = ''
+            for (const block of event.message.content) {
+              if (block.type === 'text' && block.text) assistantText += block.text
+            }
+            if (assistantText) process.stdout.write(chalk.dim(assistantText + '\n'))
+          }
+        } else if (event.type === 'user') {
+          const imgPaths = extractImagesFromEvent(event, mcpToolUseIds)
+          extractedImagePaths.push(...imgPaths)
+
+          if (event.tool_use_result) {
+            const toolOutput =
+              (event.tool_use_result.stdout ?? '') + (event.tool_use_result.stderr ?? '')
+            if (toolOutput && !cb) process.stdout.write(chalk.dim(toolOutput + '\n'))
           }
         }
+      } catch {
+        if (!cb) process.stdout.write(chalk.dim(line + '\n'))
       }
-    }
-  }
+    },
+  })
 
-  await subprocess
-
-  const output = chunks.join('')
-  const result = guard.truncated
-    ? output + `\n\n[OUTPUT TRUNCATED: exceeded 100MB limit, ${(guard.totalBytes / 1024 / 1024).toFixed(1)}MB total]`
-    : output
-
-  return { rawOutput: result, extractedImagePaths }
+  return { rawOutput, extractedImagePaths }
 }
 

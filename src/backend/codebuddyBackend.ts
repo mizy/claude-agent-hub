@@ -15,7 +15,7 @@ import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
-import { createOutputGuard } from './outputGuard.js'
+import { collectStream } from './collectStream.js'
 
 const logger = createLogger('codebuddy')
 
@@ -172,60 +172,34 @@ async function streamOutput(
   subprocess: ResultPromise,
   onChunk?: (chunk: string) => void
 ): Promise<string> {
-  const chunks: string[] = []
-  const guard = createOutputGuard()
-  let buffer = ''
+  return collectStream(subprocess, {
+    onChunk,
+    processLine(line, cb) {
+      try {
+        const event = JSON.parse(line) as StreamJsonEvent
 
-  if (subprocess.stdout) {
-    for await (const chunk of subprocess.stdout) {
-      const text = chunk.toString()
-      if (guard.push(text)) {
-        chunks.push(text)
-      }
-      buffer += text
-
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const event = JSON.parse(line) as StreamJsonEvent
-
-          // Only forward assistant text as AI response (for Lark/streaming)
-          if (event.type === 'assistant' && event.message?.content) {
-            let assistantText = ''
-            for (const block of event.message.content) {
-              if (block.type === 'text' && block.text) {
-                assistantText += block.text
-              }
-            }
-            if (assistantText) {
-              if (onChunk) {
-                onChunk(assistantText + '\n')
-              } else {
-                process.stdout.write(chalk.dim(assistantText + '\n'))
-              }
-            }
-          } else if (event.type === 'user' && event.tool_use_result) {
-            // Tool output — only show in CLI, never send to Lark
-            const toolOutput =
-              (event.tool_use_result.stdout ?? '') + (event.tool_use_result.stderr ?? '')
-            if (toolOutput && !onChunk) {
-              process.stdout.write(chalk.dim(toolOutput + '\n'))
+        if (event.type === 'assistant' && event.message?.content) {
+          let assistantText = ''
+          for (const block of event.message.content) {
+            if (block.type === 'text' && block.text) {
+              assistantText += block.text
             }
           }
-        } catch {
-          // Non-JSON lines — only show in CLI terminal
-          if (!onChunk) {
-            process.stdout.write(chalk.dim(line + '\n'))
+          if (assistantText) {
+            if (cb) cb(assistantText + '\n')
+            else process.stdout.write(chalk.dim(assistantText + '\n'))
+          }
+        } else if (event.type === 'user' && event.tool_use_result) {
+          const toolOutput =
+            (event.tool_use_result.stdout ?? '') + (event.tool_use_result.stderr ?? '')
+          if (toolOutput && !cb) {
+            process.stdout.write(chalk.dim(toolOutput + '\n'))
           }
         }
+      } catch {
+        if (!cb) process.stdout.write(chalk.dim(line + '\n'))
       }
-    }
-  }
-
-  await subprocess
-  return chunks.join('')
+    },
+  })
 }
 

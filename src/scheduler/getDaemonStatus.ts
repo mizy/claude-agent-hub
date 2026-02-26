@@ -5,6 +5,7 @@ import { getAllTasks } from '../store/TaskStore.js'
 import { isServiceRunning, type PidLockInfo } from './pidLock.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { DATA_DIR, TASKS_DIR } from '../store/paths.js'
+import { formatDuration } from '../shared/formatTime.js'
 import type { Task } from '../types/task.js'
 import {
   isRunningStatus,
@@ -220,12 +221,6 @@ function printRecentActivity(tasks: Task[]): void {
 
 // ============ Helpers ============
 
-function formatDuration(ms: number): string {
-  const hours = Math.floor(ms / 3600000)
-  const minutes = Math.floor((ms % 3600000) / 60000)
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
-}
 
 function formatTimeAgo(date: Date): string {
   const diff = Date.now() - date.getTime()

@@ -56,9 +56,9 @@ export function parseInterval(interval: string): number {
 }
 
 // 将间隔转换为 cron 表达式
-export function intervalToCron(interval: string): string {
+export function intervalToCron(interval: string, fallback = '*/5 * * * *'): string {
   const match = interval.match(/^(\d+)([mhd])$/)
-  if (!match) throw new Error(`Invalid interval format: ${interval}`)
+  if (!match) return fallback
 
   const value = parseInt(match[1]!, 10)
   const unit = match[2]!
@@ -71,6 +71,6 @@ export function intervalToCron(interval: string): string {
     case 'd':
       return `0 0 */${value} * *`
     default:
-      throw new Error(`Unsupported interval unit: ${unit}`)
+      return fallback
   }
 }

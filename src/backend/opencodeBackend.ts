@@ -12,7 +12,7 @@ import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { collectStderr } from './processHelpers.js'
-import { createOutputGuard } from './outputGuard.js'
+import { collectStream } from './collectStream.js'
 
 const logger = createLogger('opencode')
 
@@ -132,6 +132,24 @@ function buildArgs(
   return args
 }
 
+/** Extract text content from an opencode JSON event (supports both old and new format) */
+function extractEventText(event: Record<string, unknown>): string | undefined {
+  // New format: { type: "text", part: { text: "..." } }
+  if (event.type === 'text' && event.part && typeof event.part === 'object') {
+    const part = event.part as Record<string, unknown>
+    if (typeof part.text === 'string') return part.text
+  }
+  // Old format: { text: "..." } or { content: "..." } or { result: "..." }
+  const text = event.text || event.content || event.result
+  return typeof text === 'string' ? text : undefined
+}
+
+/** Extract sessionID from an opencode JSON event */
+function extractSessionId(event: Record<string, unknown>): string | undefined {
+  const id = event.sessionID || event.session_id || event.sessionId
+  return typeof id === 'string' ? id : undefined
+}
+
 /** 解析 opencode JSON 输出（提取最终 assistant 文本 + sessionId） */
 function parseOutput(raw: string): { response: string; sessionId: string } {
   let response = ''
@@ -141,14 +159,10 @@ function parseOutput(raw: string): { response: string; sessionId: string } {
   for (const line of lines) {
     try {
       const event = JSON.parse(line)
-      // Extract sessionID from any event that has it
-      if (event.sessionID || event.session_id || event.sessionId) {
-        sessionId = event.sessionID || event.session_id || event.sessionId
-      }
-      // Extract text content — take the last one (final assistant response)
-      if (event.text || event.content || event.result) {
-        response = event.text || event.content || event.result
-      }
+      const sid = extractSessionId(event)
+      if (sid) sessionId = sid
+      const text = extractEventText(event)
+      if (text) response = text
     } catch (e) {
       logger.debug(`Skipping non-JSON line: ${getErrorMessage(e)}`)
     }
@@ -161,46 +175,21 @@ async function streamOutput(
   subprocess: ResultPromise,
   onChunk?: (chunk: string) => void
 ): Promise<string> {
-  const chunks: string[] = []
-  const guard = createOutputGuard()
-  let buffer = ''
-
-  if (subprocess.stdout) {
-    for await (const chunk of subprocess.stdout) {
-      const text = chunk.toString()
-      if (guard.push(text)) {
-        chunks.push(text)
-      }
-      buffer += text
-
-      // Parse complete JSON lines and extract assistant text
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const event = JSON.parse(line)
-          // Only forward text/content/result fields as AI response
-          const content = event.text || event.content || event.result
-          if (content) {
-            if (onChunk) {
-              onChunk(content)
-            } else {
-              process.stdout.write(content)
-            }
-          }
-        } catch (e) {
-          logger.debug(`Non-JSON stream line: ${getErrorMessage(e)}`)
-          if (!onChunk) {
-            process.stdout.write(line + '\n')
-          }
+  return collectStream(subprocess, {
+    onChunk,
+    processLine(line, cb) {
+      try {
+        const event = JSON.parse(line)
+        const content = extractEventText(event)
+        if (content) {
+          if (cb) cb(content)
+          else process.stdout.write(content)
         }
+      } catch (e) {
+        logger.debug(`Non-JSON stream line: ${getErrorMessage(e)}`)
+        if (!cb) process.stdout.write(line + '\n')
       }
-    }
-  }
-
-  await subprocess
-  return chunks.join('')
+    },
+  })
 }
 

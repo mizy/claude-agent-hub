@@ -13,7 +13,7 @@ import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { collectStderr } from './processHelpers.js'
-import { createOutputGuard } from './outputGuard.js'
+import { collectStream } from './collectStream.js'
 
 const logger = createLogger('iflow')
 
@@ -166,24 +166,7 @@ async function streamOutput(
   subprocess: ResultPromise,
   onChunk?: (chunk: string) => void
 ): Promise<string> {
-  const chunks: string[] = []
-  const guard = createOutputGuard()
-
-  if (subprocess.stdout) {
-    for await (const chunk of subprocess.stdout) {
-      const text = chunk.toString()
-      if (guard.push(text)) {
-        chunks.push(text)
-      }
-      if (onChunk) {
-        onChunk(text)
-      } else {
-        process.stdout.write(text)
-      }
-    }
-  }
-
-  await subprocess
-  return chunks.join('')
+  // iflow outputs plain text — no JSON parsing needed, raw passthrough
+  return collectStream(subprocess, { onChunk })
 }
 

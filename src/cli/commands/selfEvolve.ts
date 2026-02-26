@@ -10,12 +10,7 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
 import { getErrorMessage } from '../../shared/assertError.js'
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  return `${(ms / 60000).toFixed(1)}min`
-}
+import { formatDuration } from '../../shared/formatTime.js'
 
 export function registerSelfEvolveCommand(parent: Command) {
   const evolve = parent
