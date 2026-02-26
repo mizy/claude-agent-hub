@@ -16,6 +16,7 @@ export function registerTaskCreateCommands(task: Command) {
     .option('-a, --assignee <agent>', '指定 Agent')
     .option('-b, --backend <type>', '指定 backend（如 claude-code, opencode, iflow）')
     .option('-m, --model <model>', '指定模型')
+    .option('-S, --schedule <cron>', '定时执行（cron 表达式，如 "0 9 * * *"）')
     .action(async options => {
       const task = await createTask(options)
       success('任务创建成功')

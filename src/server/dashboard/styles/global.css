@@ -94,6 +94,7 @@ body {
 .status-paused { background: #78350f; }
 .status-cancelled { background: #475569; }
 .status-reviewing { background: #854d0e; }
+.status-waiting { background: #1d4ed8; }
 
 .new-task-btn {
   padding: 6px 12px; border-radius: 6px; font-size: 12px;

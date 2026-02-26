@@ -4,6 +4,7 @@
  * 创建任务并生成任务文件夹，不执行
  */
 
+import { CronExpressionParser } from 'cron-parser'
 import { createLogger } from '../shared/logger.js'
 import { generateTaskId, createTaskFolder, saveTask } from '../store/TaskStore.js'
 import { parseTaskPriority } from '../types/task.js'
@@ -24,6 +25,15 @@ export interface CreateTaskOptions {
   metadata?: Record<string, string>
   /** Override cwd (defaults to process.cwd()) */
   cwd?: string
+  /** Cron expression for schedule-wait + loop-back workflow */
+  schedule?: string
+}
+
+/**
+ * Validate cron expression syntax
+ */
+function validateCron(cron: string): void {
+  CronExpressionParser.parse(cron)
 }
 
 /**
@@ -35,6 +45,11 @@ export function createTaskWithFolder(options: CreateTaskOptions): Task {
   const priority = parseTaskPriority(options.priority)
 
   const title = options.title ?? truncateText(options.description, 50)
+
+  // Validate cron expression if provided
+  if (options.schedule) {
+    validateCron(options.schedule)
+  }
 
   // Generate timestamp-based ID
   const taskId = generateTaskId(title)
@@ -52,11 +67,12 @@ export function createTaskWithFolder(options: CreateTaskOptions): Task {
     assignee: options.assignee,
     backend: options.backend,
     model: options.model,
-    source: options.source,
+    source: options.schedule ? 'scheduled' : options.source,
     metadata: options.metadata,
     cwd: options.cwd ?? process.cwd(),
     createdAt: new Date().toISOString(),
     retryCount: 0,
+    ...(options.schedule && { scheduleCron: options.schedule }),
   }
 
   // Save task to folder

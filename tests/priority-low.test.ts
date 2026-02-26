@@ -32,7 +32,7 @@ describe('Low Priority Task Tests', () => {
       testTaskId = task.id
 
       expect(task).toBeDefined()
-      expect(task.id).toMatch(/^[a-f0-9-]+$/)
+      expect(task.id).toMatch(/^task-\d{8}-\d{6}-[a-z0-9]+$/)
       expect(task.title).toBe('Low优先级测试任务')
       expect(task.priority).toBe('low')
       expect(task.status).toBe('pending')

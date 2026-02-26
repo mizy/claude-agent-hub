@@ -172,6 +172,9 @@ export function validateJsonWorkflow(input: unknown): { valid: boolean; errors: 
       if (type === 'foreach' && !node.foreach) {
         errors.push(`Foreach node "${node.id}" missing "foreach" config`)
       }
+      if (type === 'schedule-wait' && !node.scheduleWait) {
+        errors.push(`Schedule-wait node "${node.id}" missing "scheduleWait" config`)
+      }
     }
   }
 
@@ -243,10 +246,59 @@ export function extractJson(response: string): JsonWorkflowInput {
 function tryParseJson(text: string): JsonWorkflowInput {
   try {
     return JSON.parse(text) as JsonWorkflowInput
-  } catch (e) {
+  } catch (firstError) {
+    // Attempt auto-repair for common AI JSON generation mistakes
+    const repaired = repairJson(text)
+    if (repaired !== text) {
+      try {
+        logger.info('JSON parse failed, attempting auto-repair...')
+        const result = JSON.parse(repaired) as JsonWorkflowInput
+        logger.info('JSON auto-repair succeeded')
+        return result
+      } catch {
+        // repair didn't help, fall through to original error
+      }
+    }
     const preview = text.length > 100 ? text.slice(0, 100) + '...' : text
     throw new Error(
-      `Invalid JSON in AI response: ${getErrorMessage(e)}\n${preview}`
+      `Invalid JSON in AI response: ${getErrorMessage(firstError)}\n${preview}`
     )
   }
+}
+
+/** Fix common AI-generated JSON issues: trailing commas, unescaped control chars in strings */
+function repairJson(text: string): string {
+  let result = text
+  // Remove trailing commas before } or ]
+  result = result.replace(/,\s*([\]}])/g, '$1')
+  // Fix unescaped newlines/tabs inside JSON string values
+  // Walk through and fix control chars only inside quoted strings
+  const chars: string[] = []
+  let inStr = false
+  let esc = false
+  for (let i = 0; i < result.length; i++) {
+    const ch = result[i]!
+    if (esc) {
+      chars.push(ch)
+      esc = false
+      continue
+    }
+    if (ch === '\\' && inStr) {
+      chars.push(ch)
+      esc = true
+      continue
+    }
+    if (ch === '"') {
+      inStr = !inStr
+      chars.push(ch)
+      continue
+    }
+    if (inStr) {
+      if (ch === '\n') { chars.push('\\n'); continue }
+      if (ch === '\r') { chars.push('\\r'); continue }
+      if (ch === '\t') { chars.push('\\t'); continue }
+    }
+    chars.push(ch)
+  }
+  return chars.join('')
 }

@@ -70,7 +70,7 @@ const NODE_STATUS_EMOJI: Record<string, string> = {
   pending: '⏳',
   ready: '🔵',
   running: '🔄',
-  waiting: '⏸️',
+  waiting: '⏳',
   done: '✅',
   failed: '❌',
   skipped: '⏭️',

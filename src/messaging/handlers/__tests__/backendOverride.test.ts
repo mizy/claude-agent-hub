@@ -25,6 +25,8 @@ vi.mock('../conversationLog.js', () => ({
 // Mock prompts
 vi.mock('../../../prompts/chatPrompts.js', () => ({
   buildClientPrompt: vi.fn(() => '[client context]'),
+  wrapMemoryContext: (s: string) => s || '',
+  wrapHistoryContext: (s: string) => s || '',
 }))
 
 // Mock config

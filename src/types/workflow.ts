@@ -23,6 +23,7 @@ export type NodeType =
   | 'assign'
   | 'script'
   | 'foreach'
+  | 'schedule-wait'
 export type NodeStatus = 'pending' | 'ready' | 'running' | 'waiting' | 'done' | 'failed' | 'skipped'
 export type WorkflowStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
 
@@ -83,6 +84,7 @@ export interface WorkflowNode {
   assign?: AssignConfig
   script?: ScriptConfig
   foreach?: ForeachConfig
+  scheduleWait?: ScheduleWaitConfig
 
   // 通用选项
   timeout?: number // 超时（毫秒）
@@ -202,6 +204,14 @@ export interface ForeachConfig {
   maxIterations?: number // 最大迭代次数
   mode?: 'sequential' | 'parallel' // 执行模式
   maxParallel?: number // 最大并行数 (parallel 模式)
+}
+
+/**
+ * 定时等待节点 - 配合 loop-back edge 实现周期性执行
+ */
+export interface ScheduleWaitConfig {
+  cron: string // cron 表达式 (e.g., "*/5 * * * *")
+  timezone?: string // 时区 (e.g., "Asia/Shanghai")
 }
 
 export interface WorkflowEdge {

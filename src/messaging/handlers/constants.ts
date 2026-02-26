@@ -15,6 +15,7 @@ export const STATUS_EMOJI: Record<string, string> = {
   completed: '✅',
   failed: '❌',
   cancelled: '🚫',
+  waiting: '⏳',
 }
 
 export function statusEmoji(status: string): string {

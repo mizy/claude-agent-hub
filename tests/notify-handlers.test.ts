@@ -33,6 +33,8 @@ vi.mock('../src/messaging/handlers/conversationLog.js', () => ({
 // Mock chat prompts
 vi.mock('../src/prompts/chatPrompts.js', () => ({
   buildClientPrompt: vi.fn(() => ''),
+  wrapMemoryContext: (s: string) => s || '',
+  wrapHistoryContext: (s: string) => s || '',
 }))
 
 // ── Helper: create mock adapter ──

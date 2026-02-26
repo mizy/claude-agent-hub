@@ -38,7 +38,7 @@ export {
   createWorker,
 } from './createWorker.js'
 
-// 守护进程（原有）
+// 守护进程
 export { startDaemon } from './startDaemon.js'
 export { stopDaemon } from './stopDaemon.js'
 export { restartDaemon } from './restartDaemon.js'

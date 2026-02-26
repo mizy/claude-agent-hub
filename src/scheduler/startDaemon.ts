@@ -13,6 +13,10 @@ import { loadConfig } from '../config/loadConfig.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
 import { withProcessTracking } from '../task/processTracking.js'
+import { getTasksByStatus, updateTask } from '../store/TaskStore.js'
+import { getTaskInstance, saveTaskInstance } from '../store/TaskWorkflowStore.js'
+import { updateInstanceVariables } from '../store/WorkflowStore.js'
+import { resumeTask } from '../task/resumeTask.js'
 import {
   startLarkWsClient,
   stopLarkWsClient,
@@ -241,6 +245,47 @@ async function runDaemon(): Promise<void> {
     }
   })
   scheduledJobs.push(evolutionJob)
+
+  // Recover waiting tasks whose resumeAt has passed (crash recovery) — every minute
+  const waitingRecoveryJob = cron.schedule('* * * * *', () => {
+    try {
+      const waitingTasks = getTasksByStatus('waiting')
+      for (const task of waitingTasks) {
+        const instance = getTaskInstance(task.id)
+        if (!instance) continue
+        const resumeAt = instance.variables?._scheduleWaitResumeAt
+        if (typeof resumeAt !== 'string') continue
+        const resumeTime = new Date(resumeAt).getTime()
+        if (Date.now() >= resumeTime) {
+          logger.info(`Recovering waiting task ${task.id} (resumeAt=${resumeAt} has passed)`)
+          // Reset the schedule-wait node from "running" to "pending" so
+          // recoverWorkflowInstance can properly re-execute it on resume.
+          const waitNodeId = instance.variables?._scheduleWaitNodeId as string | undefined
+          const waitNodeStatus = waitNodeId ? instance.nodeStates[waitNodeId]?.status : undefined
+          if (waitNodeId && (waitNodeStatus === 'running' || waitNodeStatus === 'waiting')) {
+            instance.nodeStates[waitNodeId] = {
+              ...instance.nodeStates[waitNodeId],
+              status: 'pending',
+              attempts: instance.nodeStates[waitNodeId]!.attempts ?? 0,
+              startedAt: undefined,
+              completedAt: undefined,
+            }
+            saveTaskInstance(task.id, instance)
+          }
+          // Clear wait markers and restore task to developing before resume
+          updateInstanceVariables(instance.id, {
+            _scheduleWaitResumeAt: null,
+            _scheduleWaitNodeId: null,
+          })
+          updateTask(task.id, { status: 'developing' })
+          resumeTask(task.id)
+        }
+      }
+    } catch (error) {
+      logger.debug(`Waiting task recovery error: ${error}`)
+    }
+  })
+  scheduledJobs.push(waitingRecoveryJob)
 
   // Configure and restore chat sessions from disk before starting notification platforms
   const defaultBackendConfig = config.backends[config.defaultBackend]

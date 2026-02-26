@@ -20,7 +20,14 @@ function NodeOutputMarkdown({ output }: { output: unknown }) {
   const [html, setHtml] = useState('')
   useEffect(() => {
     const text = extractNodeOutputText(output)
-    marked.parse(text).then(setHtml).catch(() => setHtml(text))
+    try {
+      const result = marked.parse(text)
+      if (result instanceof Promise) {
+        result.then(setHtml).catch(() => setHtml(text))
+      } else {
+        setHtml(result)
+      }
+    } catch { setHtml(text) }
   }, [output])
   if (!html) return <div className="output-box">Loading...</div>
   return <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />

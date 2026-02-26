@@ -79,11 +79,13 @@ export function resolveImagePath(filePath: string): string | null {
 export async function sendDetectedImages(
   chatId: string,
   response: string,
-  messenger: MessengerAdapter
+  messenger: MessengerAdapter,
+  excludePaths?: string[]
 ): Promise<void> {
   if (!messenger.replyImage) return
 
-  const imagePaths = extractImagePaths(response)
+  const excludeSet = new Set(excludePaths ?? [])
+  const imagePaths = extractImagePaths(response).filter(p => !excludeSet.has(p))
   if (imagePaths.length > 0) {
     logger.info(`Detected ${imagePaths.length} image(s) in response`)
   }

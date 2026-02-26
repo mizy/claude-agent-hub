@@ -36,6 +36,7 @@ export {
   isStoppableStatus,
   isPausedStatus,
   isPausableStatus,
+  isWaitingStatus,
 } from './taskStatus.js'
 
 // Workflow types

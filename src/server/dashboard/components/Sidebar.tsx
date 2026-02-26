@@ -10,13 +10,14 @@ function ActionButtons({ task }: { task: Task }) {
   const setShowMessageModal = useStore((s) => s.setShowMessageModal)
   const s = task.status
   const isRunning = ['developing', 'planning', 'reviewing'].includes(s)
+  const isStoppable = isRunning || s === 'waiting'
 
   return (
     <div className="task-actions">
       {isRunning && (
         <button className="action-btn warning" onClick={(e) => { e.stopPropagation(); pauseTask(task.id) }}>Pause</button>
       )}
-      {isRunning && (
+      {isStoppable && (
         <button className="action-btn warning" onClick={(e) => { e.stopPropagation(); stopTask(task.id) }}>Stop</button>
       )}
       {['failed', 'cancelled', 'paused'].includes(s) && (

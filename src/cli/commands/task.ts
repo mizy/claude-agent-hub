@@ -16,7 +16,7 @@ import { registerTaskLifecycleCommands } from './taskLifecycle.js'
 import { registerTraceCommand } from './trace.js'
 
 export function registerTaskCommands(program: Command) {
-  const task = program.command('task').description('任务管理命令')
+  const task = program.command('task').description('任务管理命令').enablePositionalOptions()
 
   registerTaskCreateCommands(task)
   registerTaskListCommands(task)

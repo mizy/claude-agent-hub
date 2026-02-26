@@ -10,7 +10,7 @@ import {
   isProcessRunning,
 } from '../store/TaskStore.js'
 import { getTaskInstance } from '../store/TaskWorkflowStore.js'
-import { updateInstanceStatus } from '../store/WorkflowStore.js'
+import { updateInstanceStatus, updateInstanceVariables } from '../store/WorkflowStore.js'
 import { appendExecutionLog, appendJsonlLog } from '../store/TaskLogStore.js'
 import { createLogger } from '../shared/logger.js'
 import { getActiveNodes } from '../workflow/index.js'
@@ -70,6 +70,13 @@ export function stopTask(id: string): StopTaskResult {
   // Also update instance status to keep them in sync
   if (instance) {
     updateInstanceStatus(instance.id, 'cancelled')
+    // Clear schedule-wait markers so daemon won't try to resume a cancelled task
+    if (instance.variables?._scheduleWaitResumeAt) {
+      updateInstanceVariables(instance.id, {
+        _scheduleWaitResumeAt: null,
+        _scheduleWaitNodeId: null,
+      })
+    }
   }
   logger.info(`Stopped task: ${task.id}`)
 

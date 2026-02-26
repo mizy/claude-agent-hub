@@ -328,7 +328,9 @@ export function WorkflowCanvas() {
       )}
       <div className="canvas-container" ref={contRef}>
         {!taskData && <div className="no-selection">Select a task to view workflow</div>}
-        {taskData && !hasWf && <div className="no-selection">No workflow generated yet</div>}
+        {taskData && !hasWf ? (
+          <div className="no-selection">No workflow generated yet</div>
+        ) : null}
         <canvas ref={canvasRef} style={{ display: hasWf ? 'block' : 'none', position: 'absolute', top: 0, left: 0 }} />
         <div ref={tipRef} className="node-tooltip" style={{ display: 'none' }} />
       </div>

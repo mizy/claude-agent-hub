@@ -93,6 +93,7 @@ export function renderTaskList(tasks: Task[], showProgress: boolean): void {
     completed: chalk.green,
     failed: chalk.red,
     cancelled: chalk.gray,
+    waiting: chalk.yellow,
   }
 
   const priorityColors: Record<string, (s: string) => string> = {
@@ -187,6 +188,7 @@ function formatStatus(status: string): string {
     reviewing: chalk.cyan,
     completed: chalk.green,
     failed: chalk.red,
+    waiting: chalk.yellow,
   }
   return (colors[status] || chalk.white)(status)
 }

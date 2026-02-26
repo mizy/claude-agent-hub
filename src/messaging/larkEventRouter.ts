@@ -106,6 +106,40 @@ export function isDuplicateMessage(messageId: string): boolean {
   return false
 }
 
+// Content-based dedup: catches WS reconnection replays with different message_ids
+const CONTENT_DEDUP_TTL_MS = 120_000
+const recentContentHashes = new Map<string, number>()
+
+/** Check if same chatId+content was seen recently (WS reconnect redelivery) */
+export function isDuplicateContent(chatId: string, content: string): boolean {
+  const key = `${chatId}:${simpleHash(content)}`
+  const now = Date.now()
+  const prev = recentContentHashes.get(key)
+  if (prev && now - prev < CONTENT_DEDUP_TTL_MS) {
+    return true
+  }
+
+  // Evict expired entries
+  if (recentContentHashes.size >= DEDUP_MAX_SIZE) {
+    for (const [k, ts] of recentContentHashes) {
+      if (now - ts > CONTENT_DEDUP_TTL_MS) recentContentHashes.delete(k)
+    }
+  }
+
+  recentContentHashes.set(key, now)
+  return false
+}
+
+/** Simple string hash (FNV-1a 32-bit) */
+function simpleHash(s: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = (h * 0x01000193) >>> 0
+  }
+  return h
+}
+
 // ── Stale message filtering ──
 
 let daemonStartedAt = Date.now()
@@ -485,6 +519,14 @@ export async function processMessageEvent(
   }
 
   const chatId = message.chat_id || ''
+
+  // Content-based dedup: catches WS reconnection replays with different message_ids
+  const rawContent = message.content || ''
+  if (chatId && isDuplicateContent(chatId, rawContent)) {
+    logger.info(`Duplicate content ignored (WS replay): chatId=${chatId.slice(0, 12)} msgId=${messageId}`)
+    return
+  }
+
   const hasMention = !!(message.mentions && message.mentions.length > 0)
   const isGroup = message.chat_type === 'group'
 

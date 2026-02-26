@@ -21,6 +21,8 @@ vi.mock('../conversationLog.js', () => ({
 // Mock prompts
 vi.mock('../../../prompts/chatPrompts.js', () => ({
   buildClientPrompt: vi.fn(() => '[client context]'),
+  wrapMemoryContext: (s: string) => s || '',
+  wrapHistoryContext: (s: string) => s || '',
 }))
 
 function createMockMessenger(): MessengerAdapter {
@@ -95,7 +97,7 @@ describe('chatHandler — image handling', () => {
     // Should include the Read tool instruction
     expect(mockInvokeBackend).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.stringContaining('Read 工具查看这张图片'),
+        prompt: expect.stringContaining('Read 工具查看后回复'),
       })
     )
   })

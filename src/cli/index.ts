@@ -53,6 +53,7 @@ const OPTIONS_WITH_VALUE = new Set([
   '-t', '--task',
   '-b', '--backend',
   '-m', '--model',
+  '-S', '--schedule',
 ])
 
 /**
@@ -107,11 +108,13 @@ program
   .name('cah')
   .description('Claude Agent Hub - AI 团队协作系统')
   .version('0.1.0')
+  .enablePositionalOptions()
   .argument('[input]', '任务描述')
   .option('-p, --priority <priority>', '优先级 (low/medium/high)', 'medium')
   .option('-a, --agent <agent>', '指定执行的 Agent')
   .option('-b, --backend <type>', '指定 backend（如 claude-code, opencode, iflow, codebuddy）')
   .option('-m, --model <model>', '指定模型')
+  .option('-S, --schedule <cron>', '定时执行（cron 表达式，如 "0 9 * * *"）')
   .option('-F, --foreground', '前台执行（默认后台运行）')
   .option('--no-run', '仅创建任务，不执行')
   .option('-v, --verbose', '显示详细日志 (debug 级别)')
@@ -161,6 +164,7 @@ async function handleTaskDescription(
     agent?: string
     backend?: string
     model?: string
+    schedule?: string
     run?: boolean
     foreground?: boolean
     verbose?: boolean
@@ -173,13 +177,24 @@ async function handleTaskDescription(
     }
 
     // 1. 创建任务（只保存元数据，不执行）
-    const task = createTaskWithFolder({
-      description,
-      priority: options.priority,
-      assignee: options.agent,
-      backend: options.backend,
-      model: options.model,
-    })
+    let task
+    try {
+      task = createTaskWithFolder({
+        description,
+        priority: options.priority,
+        assignee: options.agent,
+        backend: options.backend,
+        model: options.model,
+        schedule: options.schedule,
+      })
+    } catch (e) {
+      if (options.schedule) {
+        error(`Invalid cron expression: "${options.schedule}"`)
+        console.log('  Examples: "0 9 * * *" (daily 9am), "*/30 * * * *" (every 30min), "0 0 * * 1" (weekly Monday)')
+        return
+      }
+      throw e
+    }
 
     const displayTitle = truncateText(task.title, 50)
 

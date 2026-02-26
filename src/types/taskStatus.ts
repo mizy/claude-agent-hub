@@ -16,6 +16,7 @@ const ACTIVE_STATUSES: readonly TaskStatus[] = [
   'developing',
   'paused',
   'reviewing',
+  'waiting',
 ] as const
 
 /** 终结状态（已结束的任务） */
@@ -28,6 +29,7 @@ const STOPPABLE_STATUSES: readonly TaskStatus[] = [
   'developing',
   'paused',
   'reviewing',
+  'waiting',
 ] as const
 
 /** 可暂停的状态（只有 developing 可以暂停） */
@@ -108,4 +110,11 @@ export function isPausedStatus(status: TaskStatus): boolean {
  */
 export function isPausableStatus(status: TaskStatus): boolean {
   return (PAUSABLE_STATUSES as readonly string[]).includes(status)
+}
+
+/**
+ * 判断任务是否处于等待状态（workflow 自循环等待中）
+ */
+export function isWaitingStatus(status: TaskStatus): boolean {
+  return status === 'waiting'
 }

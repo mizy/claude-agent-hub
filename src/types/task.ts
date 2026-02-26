@@ -10,6 +10,7 @@ export type TaskStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'waiting'
 
 const VALID_PRIORITIES: readonly string[] = ['low', 'medium', 'high']
 const VALID_STATUSES: readonly string[] = [
@@ -21,6 +22,7 @@ const VALID_STATUSES: readonly string[] = [
   'completed',
   'failed',
   'cancelled',
+  'waiting',
 ]
 
 /** Parse and validate a TaskPriority string, returns 'medium' as fallback */
@@ -54,7 +56,9 @@ export interface Task {
   lastRejectReason?: string
   /** Error message when task status is 'failed' */
   error?: string
-  /** Task source: 'manual' (default) | 'selfdrive' | 'repair' | etc. */
+  /** Cron expression for schedule-wait + loop-back workflow mode */
+  scheduleCron?: string
+  /** Task source: 'manual' (default) | 'selfdrive' | 'repair' | 'scheduled' | etc. */
   source?: string
   /** Arbitrary metadata for task identification (e.g. goalId for selfdrive tasks) */
   metadata?: Record<string, string>
@@ -84,4 +88,6 @@ export interface CreateTaskOptions {
   model?: string
   /** Task source identifier */
   source?: string
+  /** Cron expression for schedule-wait + loop-back workflow */
+  schedule?: string
 }

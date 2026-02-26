@@ -1,24 +1,19 @@
-import { getStore } from '../store/index.js'
-import { parseTaskPriority } from '../types/task.js'
+import { createTaskWithFolder } from './createTaskWithFolder.js'
 import type { Task, CreateTaskOptions } from '../types/task.js'
 
-export async function createTask(options: CreateTaskOptions): Promise<Task> {
-  const store = getStore()
-
-  const task: Task = {
-    id: crypto.randomUUID(),
-    title: options.title,
+/**
+ * Create a task (delegates to createTaskWithFolder for consistent ID generation and folder structure)
+ * Kept async for backward compatibility with existing callers.
+ */
+export function createTask(options: CreateTaskOptions): Task {
+  return createTaskWithFolder({
     description: options.description || '',
-    priority: parseTaskPriority(options.priority),
-    status: 'pending',
+    title: options.title,
+    priority: options.priority,
     assignee: options.assignee,
     backend: options.backend,
     model: options.model,
-    createdAt: new Date().toISOString(),
-    retryCount: 0,
-  }
-
-  store.saveTask(task)
-
-  return task
+    source: options.source,
+    schedule: options.schedule,
+  })
 }

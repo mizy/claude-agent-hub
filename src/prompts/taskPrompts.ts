@@ -139,7 +139,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
 1. **task** - 执行任务节点
    \`\`\`json
-   { "id": "唯一ID", "type": "task", "name": "节点名称", "task": { "agent": "auto", "prompt": "任务描述" } }
+   { "id": "唯一ID", "type": "task", "name": "节点名称", "task": { "persona": "auto", "prompt": "任务描述" } }
    \`\`\`
 
 2. **delay** - 延迟节点
@@ -204,6 +204,13 @@ Return ONLY the title text, nothing else. Use the same language as the content (
    }}
    \`\`\`
 
+9. **schedule-wait** - 定时等待节点（用于周期性循环任务）
+   \`\`\`json
+   { "id": "唯一ID", "type": "schedule-wait", "name": "等待下次执行", "scheduleWait": { "cron": "*/5 * * * *" } }
+   \`\`\`
+   cron 为标准 5 字段 cron 表达式。配合 loop-back edge 实现周期性执行。
+   最小等待时间 30 秒，防止意外死循环。执行时任务状态变为 waiting，不占用 worker。
+
 ## 条件边与循环边
 
 边（edge）支持 condition 和 maxLoops 属性，用于实现条件分支和循环：
@@ -232,10 +239,10 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 {
   "nodes": [
     { "id": "start", "type": "start", "name": "开始" },
-    { "id": "implement", "type": "task", "name": "实现功能", "task": { "agent": "Pragmatist", "prompt": "实现 xxx 功能，完成后运行 typecheck 确认无误" } },
-    { "id": "review", "type": "task", "name": "代码评审", "task": { "agent": "Reviewer", "prompt": "严格评审上一节点的代码变更。按 Reviewer persona 的审查清单逐项检查（正确性、代码质量、架构、错误处理、性能、安全），每项给出 ✓/✗/⚠️。\\n\\n最终给出评审结论：APPROVED（零🔴问题）、NEEDS_CHANGES（有🔴必须修复项）或 REJECTED（架构性问题需重写）。按 🔴/🟡/🟢 分级列出所有问题。" } },
-    { "id": "fix", "type": "task", "name": "修复问题", "task": { "agent": "Pragmatist", "prompt": "根据评审意见修复代码问题，修复后运行验证确认" } },
-    { "id": "verify", "type": "task", "name": "构建验证", "task": { "agent": "Tester", "prompt": "运行 typecheck、lint、build、test 确认无回归" } },
+    { "id": "implement", "type": "task", "name": "实现功能", "task": { "persona": "Pragmatist", "prompt": "实现 xxx 功能，完成后运行 typecheck 确认无误" } },
+    { "id": "review", "type": "task", "name": "代码评审", "task": { "persona": "Reviewer", "prompt": "严格评审上一节点的代码变更。按 Reviewer persona 的审查清单逐项检查（正确性、代码质量、架构、错误处理、性能、安全），每项给出 ✓/✗/⚠️。\\n\\n最终给出评审结论：APPROVED（零🔴问题）、NEEDS_CHANGES（有🔴必须修复项）或 REJECTED（架构性问题需重写）。按 🔴/🟡/🟢 分级列出所有问题。" } },
+    { "id": "fix", "type": "task", "name": "修复问题", "task": { "persona": "Pragmatist", "prompt": "根据评审意见修复代码问题，修复后运行验证确认" } },
+    { "id": "verify", "type": "task", "name": "构建验证", "task": { "persona": "Tester", "prompt": "运行 typecheck、lint、build、test 确认无回归。全部通过时输出 BUILD_PASSED，否则输出 BUILD_FAILED 并列出失败项。" } },
     { "id": "end", "type": "end", "name": "结束" }
   ],
   "edges": [
@@ -244,14 +251,17 @@ Return ONLY the title text, nothing else. Use the same language as the content (
     { "from": "review", "to": "verify", "condition": "outputs.review._raw.includes('APPROVED')" },
     { "from": "review", "to": "fix", "condition": "!outputs.review._raw.includes('APPROVED')" },
     { "from": "fix", "to": "review", "maxLoops": 3 },
-    { "from": "verify", "to": "end" }
+    { "from": "verify", "to": "end", "condition": "outputs.verify._raw.includes('BUILD_PASSED')" },
+    { "from": "verify", "to": "fix", "condition": "!outputs.verify._raw.includes('BUILD_PASSED')", "maxLoops": 2 }
   ]
 }
 \`\`\`
 
 **注意**：fix 节点的唯一出边是回到 review，不需要通往 end 或 verify。当 maxLoops 耗尽时引擎会自动结束 workflow。review → verify/end 的路径保证了 APPROVED 后能正常退出。
 
-**条件边容错**：当一个节点的所有条件边都求值为 false 时，引擎自动使用**最后一条边**作为 fallback。因此请将否定条件边（如 \`!includes(...)\` → fix）放在最后，这样 fallback 会安全地走到 fix 而非意外走到 verify。
+**verify 节点也需要条件边**：verify 节点必须通过 BUILD_PASSED/BUILD_FAILED 关键字判断构建结果。verify → end 需要条件 BUILD_PASSED，verify → fix 需要条件 !BUILD_PASSED 作为 fallback。如果 verify → end 是无条件边，构建失败也会直接结束 workflow，导致 verify 形同虚设。常见错误：verify 节点缺少条件边会导致 'No outgoing edge condition matched' 或验证失败被静默忽略。
+
+**条件边容错**：当一个节点的所有条件边都求值为 false 时，引擎自动使用**最后一条边**作为 fallback。因此请将否定条件边（如 \`!includes(...)\` → fix）放在最后，这样 fallback 会安全地走到 fix 而非意外走到 verify/end。
 
 **何时使用 review-fix 循环：**
 - 核心功能开发（逻辑复杂，容易出错）
@@ -261,6 +271,27 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 **何时不需要：**
 - 简单的配置修改、文档更新、Git 提交
 - 2-3 个节点的简单任务
+
+### 定时循环模式（schedule-wait + loop-back edge）
+
+对于需要周期性执行的任务（如定时检查、监控、轮询），使用 schedule-wait 节点配合 loop-back edge：
+
+\`\`\`json
+{
+  "nodes": [
+    { "id": "start", "type": "start", "name": "开始" },
+    { "id": "check", "type": "task", "name": "执行检查", "task": { "persona": "Pragmatist", "prompt": "执行检查任务..." } },
+    { "id": "wait", "type": "schedule-wait", "name": "等待下次执行", "scheduleWait": { "cron": "*/30 * * * *" } },
+    { "id": "end", "type": "end", "name": "结束" }
+  ],
+  "edges": [
+    { "from": "start", "to": "check" },
+    { "from": "check", "to": "wait" },
+    { "from": "wait", "to": "check", "maxLoops": 100 },
+    { "from": "check", "to": "end", "condition": "outputs.check._raw.includes('DONE')" }
+  ]
+}
+\`\`\`
 
 ## 输出格式
 

@@ -205,10 +205,12 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
 
   // 提取 JSON 内容
   logger.info('解析 JSON Workflow...')
-  const jsonContent = extractJson(invokeResult.response)
-  if (!jsonContent) {
-    // JSON 提取失败 - 可能是简单问答，AI 直接给出了答案
-    logger.info('AI 直接返回了答案，创建简单回答 workflow')
+  let jsonContent
+  try {
+    jsonContent = extractJson(invokeResult.response)
+  } catch (extractError) {
+    // JSON 提取/解析失败 - 可能是简单问答，AI 直接给出了答案
+    logger.info(`JSON 提取失败 (${getErrorMessage(extractError)})，创建简单回答 workflow`)
     return createDirectAnswerWorkflow(task, invokeResult.response, claudeSessionId)
   }
   logger.debug(`提取到 JSON 对象`)

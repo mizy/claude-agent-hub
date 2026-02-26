@@ -28,6 +28,8 @@ vi.mock('../conversationLog.js', () => ({
 // Mock prompts
 vi.mock('../../../prompts/chatPrompts.js', () => ({
   buildClientPrompt: vi.fn(() => '[client]'),
+  wrapMemoryContext: (s: string) => s || '',
+  wrapHistoryContext: (s: string) => s || '',
 }))
 
 // Mock session manager

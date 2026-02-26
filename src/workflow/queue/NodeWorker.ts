@@ -225,6 +225,15 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
         return
       }
 
+      // Special handling for schedule-wait nodes
+      if (result.error === 'WAITING_FOR_SCHEDULE') {
+        logger.info(`Node ${nodeId} waiting for scheduled time`)
+        markJobWaiting(jobId)
+        await markNodeWaiting(instanceId, nodeId)
+        // Don't retry — daemon's waitingRecoveryJob will resume when time arrives
+        return
+      }
+
       // Special handling for autoWait pause
       if (result.error === 'AUTO_WAIT_PAUSED') {
         logger.info(`Node ${nodeId} triggered autoWait pause, job stays waiting`)

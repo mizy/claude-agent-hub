@@ -30,6 +30,9 @@ import type {
 
 const logger = createLogger('workflow-execution')
 
+/** Default max loops for loop-back edges without explicit maxLoops */
+const DEFAULT_MAX_LOOPS = 5
+
 // ============ 节点调度 ============
 
 /**
@@ -60,22 +63,24 @@ export async function getNextNodes(
     const shouldFollow = await shouldFollowEdge(edge, instance, workflow)
 
     if (shouldFollow) {
-      // 处理循环边
-      if (edge.maxLoops !== undefined) {
+      // 处理循环边（有 maxLoops 属性的边，或从拓扑序靠后指向靠前的 loop-back 边）
+      const isLoopBackEdge = edge.maxLoops !== undefined || isTopologicalLoopBack(edge, workflow)
+      if (isLoopBackEdge) {
+        const maxLoops = edge.maxLoops ?? DEFAULT_MAX_LOOPS
         const currentLoops = instance.loopCounts[edge.id] || 0
 
-        if (currentLoops >= edge.maxLoops) {
-          logger.debug(`Edge ${edge.id} reached max loops (${edge.maxLoops})`)
+        if (currentLoops >= maxLoops) {
+          logger.debug(`Edge ${edge.id} reached max loops (${maxLoops})`)
           continue
         }
 
         // 增加循环计数
         incrementLoopCount(instanceId, edge.id)
 
-        // 重置目标节点状态
-        resetNodeState(instanceId, edge.to)
+        // 重置目标节点及其下游节点（到当前节点之前）
+        resetLoopPath(instanceId, edge.to, currentNodeId, workflow)
 
-        logger.debug(`Loop edge ${edge.id}: count ${currentLoops + 1}/${edge.maxLoops}`)
+        logger.debug(`Loop edge ${edge.id}: count ${currentLoops + 1}/${maxLoops}`)
       }
 
       nextNodes.push(edge.to)
@@ -286,14 +291,16 @@ export async function handleNodeResult(
           `No outgoing edge condition matched for node "${nodeId}". Conditions: [${conditions}]. Output preview: "${rawPreview}". Using fallback edge → "${fallbackEdge.to}"`
         )
 
-        if (fallbackEdge.maxLoops !== undefined) {
+        const isFallbackLoopBack = fallbackEdge.maxLoops !== undefined || isTopologicalLoopBack(fallbackEdge, workflow)
+        if (isFallbackLoopBack) {
+          const maxLoops = fallbackEdge.maxLoops ?? DEFAULT_MAX_LOOPS
           const currentLoops = updatedInstance.loopCounts[fallbackEdge.id] || 0
-          if (currentLoops >= fallbackEdge.maxLoops) {
-            logger.debug(`Fallback edge ${fallbackEdge.id} reached max loops (${fallbackEdge.maxLoops}), completing workflow`)
+          if (currentLoops >= maxLoops) {
+            logger.debug(`Fallback edge ${fallbackEdge.id} reached max loops (${maxLoops}), completing workflow`)
             return []
           }
           incrementLoopCount(instanceId, fallbackEdge.id)
-          resetNodeState(instanceId, fallbackEdge.to)
+          resetLoopPath(instanceId, fallbackEdge.to, nodeId, workflow)
         }
 
         return [fallbackEdge.to]
@@ -383,6 +390,63 @@ function routeLoopBodyNode(
   }
 
   return null
+}
+
+// ============ Loop-back edge 辅助函数 ============
+
+/**
+ * 判断边是否为拓扑序上的 loop-back（从后续节点指向前置节点）
+ * 通过简单的 BFS 从 edge.to 出发，看能否沿正向边到达 edge.from
+ */
+function isTopologicalLoopBack(edge: WorkflowEdge, workflow: Workflow): boolean {
+  const visited = new Set<string>()
+  const queue = [edge.to]
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!
+    if (nodeId === edge.from) return true
+    if (visited.has(nodeId)) continue
+    visited.add(nodeId)
+
+    // 沿正向边遍历（不走有 maxLoops 的已知 loop-back 边）
+    for (const e of workflow.edges) {
+      if (e.from === nodeId && e.maxLoops === undefined) {
+        queue.push(e.to)
+      }
+    }
+  }
+
+  return false
+}
+
+/**
+ * 重置从 startNodeId 到 stopBeforeNodeId 之间所有节点的状态
+ * 用于 loop-back edge 触发时，重置整个循环路径
+ */
+function resetLoopPath(
+  instanceId: string,
+  startNodeId: string,
+  stopBeforeNodeId: string,
+  workflow: Workflow
+): void {
+  const visited = new Set<string>()
+  const queue = [startNodeId]
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!
+    if (nodeId === stopBeforeNodeId) continue // 不重置触发 loop-back 的当前节点
+    if (visited.has(nodeId)) continue
+    visited.add(nodeId)
+
+    resetNodeState(instanceId, nodeId)
+
+    // 沿正向边继续重置下游
+    for (const edge of workflow.edges) {
+      if (edge.from === nodeId && edge.maxLoops === undefined) {
+        queue.push(edge.to)
+      }
+    }
+  }
 }
 
 // ============ 循环辅助函数 ============

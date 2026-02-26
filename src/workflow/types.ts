@@ -25,6 +25,7 @@ export type {
   AssignConfig,
   ScriptConfig,
   ForeachConfig,
+  ScheduleWaitConfig,
   NodeJobData,
   NodeJobResult,
   EvalContext,

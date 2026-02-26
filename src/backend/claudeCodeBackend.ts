@@ -22,7 +22,10 @@ const logger = createLogger('claude-code')
 
 interface StreamContentBlock {
   type: string
+  id?: string // tool_use ID
+  name?: string // tool name (e.g. "Read", "mcp__playwright__browser_take_screenshot")
   text?: string
+  tool_use_id?: string // for tool_result blocks, references the tool_use ID
   source?: { type: string; media_type?: string; data?: string }
   content?: StreamContentBlock[] // tool_result blocks nest content inside
 }
@@ -234,28 +237,35 @@ function saveBase64Image(data: string, mediaType?: string): string {
   return filePath
 }
 
-/** Extract base64 image content blocks from a user/tool_result event */
-function extractImagesFromEvent(event: StreamJsonEvent): string[] {
+/** Extract base64 image content blocks from a user/tool_result event.
+ *  Skips tool_result blocks whose tool_use_id is NOT from an MCP tool
+ *  (e.g. built-in Read tool reading user images should not be echoed back). */
+function extractImagesFromEvent(event: StreamJsonEvent, mcpToolUseIds: Set<string>): string[] {
   if (event.type !== 'user' || !event.message?.content) return []
   const paths: string[] = []
 
-  function extractFromBlocks(blocks: StreamContentBlock[]) {
+  function extractFromBlocks(blocks: StreamContentBlock[], insideMcpResult: boolean) {
     for (const block of blocks) {
       if (block.type === 'image' && block.source?.type === 'base64' && block.source.data) {
-        try {
-          paths.push(saveBase64Image(block.source.data, block.source.media_type))
-        } catch (e) {
-          logger.debug(`Failed to save base64 image: ${getErrorMessage(e)}`)
+        // Only extract images from MCP tool results (e.g. playwright screenshots),
+        // not from built-in Read tool results (which would echo user images back)
+        if (insideMcpResult) {
+          try {
+            paths.push(saveBase64Image(block.source.data, block.source.media_type))
+          } catch (e) {
+            logger.debug(`Failed to save base64 image: ${getErrorMessage(e)}`)
+          }
         }
       }
       // tool_result blocks nest their content inside a content array
       if (block.type === 'tool_result' && block.content) {
-        extractFromBlocks(block.content)
+        const isMcp = !!(block.tool_use_id && mcpToolUseIds.has(block.tool_use_id))
+        extractFromBlocks(block.content, isMcp)
       }
     }
   }
 
-  extractFromBlocks(event.message.content)
+  extractFromBlocks(event.message.content, false)
   return paths
 }
 
@@ -267,6 +277,10 @@ async function streamOutput(
 ): Promise<{ rawOutput: string; extractedImagePaths: string[] }> {
   const chunks: string[] = []
   const extractedImagePaths: string[] = []
+  // Track tool_use IDs from MCP tools (name starts with "mcp__") in assistant events.
+  // Only images from these tool results should be sent back (e.g. playwright screenshots).
+  // Built-in tool results (Read, Bash, etc.) are excluded to avoid echoing user images.
+  const mcpToolUseIds = new Set<string>()
   const guard = createOutputGuard()
   let buffer = ''
 
@@ -311,6 +325,12 @@ async function streamOutput(
               process.stdout.write(chalk.dim(event.event.delta.text))
             }
           } else if (event.type === 'assistant' && event.message?.content) {
+            // Track MCP tool_use IDs for image extraction filtering
+            for (const block of event.message.content) {
+              if (block.type === 'tool_use' && block.id && block.name?.startsWith('mcp__')) {
+                mcpToolUseIds.add(block.id)
+              }
+            }
             // Complete assistant turn — only show in CLI when no streaming callback
             if (!onChunk) {
               let assistantText = ''
@@ -324,8 +344,8 @@ async function streamOutput(
               }
             }
           } else if (event.type === 'user') {
-            // Extract base64 images from MCP tool results (e.g. browsermcp screenshots)
-            const imgPaths = extractImagesFromEvent(event)
+            // Extract base64 images only from MCP tool results (e.g. playwright screenshots)
+            const imgPaths = extractImagesFromEvent(event, mcpToolUseIds)
             extractedImagePaths.push(...imgPaths)
 
             // Tool output (build logs, test output etc.) — only show in CLI, never send to Lark

@@ -9,6 +9,7 @@ import { appendConversation, appendExecutionLog } from '../store/TaskLogStore.js
 import { getUnconsumedMessages, markMessagesConsumed } from '../store/TaskMessageStore.js'
 import { personaNeedsMcp } from '../persona/personaMcpConfig.js'
 import { updateInstanceVariables } from '../store/WorkflowStore.js'
+import { getTask, updateTask } from '../store/TaskStore.js'
 import { createChildSpan, endSpan } from '../store/createSpan.js'
 import { appendSpan } from '../store/TraceStore.js'
 import { createLogger } from '../shared/logger.js'
@@ -18,6 +19,7 @@ import { getLarkConfig, getBackendConfig } from '../config/index.js'
 import {
   executeDelayNode,
   executeScheduleNode,
+  executeScheduleWaitNode,
   executeSwitchNode,
   executeAssignNode,
   executeScriptNode,
@@ -181,6 +183,33 @@ export async function executeNodeByType(
           bodyNodes: result.bodyNodes,
           mode: result.mode,
         },
+      }
+    }
+
+    case 'schedule-wait': {
+      const result = executeScheduleWaitNode(node, instance)
+      if (!result.success) {
+        return { success: false, error: result.error }
+      }
+      // Persist resumeAt to instance variables so daemon can recover and resume.
+      // taskId is injected into instance.variables at workflow start (see startWorkflow).
+      const swTaskId = instance.variables?.taskId as string | undefined
+      if (swTaskId) {
+        await updateInstanceVariables(instance.id, {
+          _scheduleWaitResumeAt: result.resumeAt,
+          _scheduleWaitNodeId: node.id,
+        })
+        const task = getTask(swTaskId)
+        if (task && task.status === 'developing') {
+          updateTask(swTaskId, { status: 'waiting' })
+        }
+      }
+      // Return WAITING_FOR_SCHEDULE so NodeWorker marks this node as waiting
+      // without blocking the worker. The daemon's waitingRecoveryJob (every minute)
+      // will resume the task when resumeAt has passed.
+      return {
+        success: false,
+        error: 'WAITING_FOR_SCHEDULE',
       }
     }
 

@@ -101,6 +101,61 @@ export function calculateNextCronTime(cron: string, timezone?: string): Date | n
   }
 }
 
+// ============ Schedule-Wait Node ============
+
+/** Minimum wait time to prevent accidental tight loops */
+const MIN_SCHEDULE_WAIT_MS = 30_000
+
+export interface ScheduleWaitResult {
+  success: boolean
+  waitMs: number
+  waitStartedAt?: string
+  resumeAt?: string
+  cron?: string
+  error?: string
+}
+
+export function executeScheduleWaitNode(
+  node: WorkflowNode,
+  _instance: WorkflowInstance
+): ScheduleWaitResult {
+  const config = node.scheduleWait
+  if (!config) {
+    return { success: false, waitMs: 0, error: 'ScheduleWait config missing' }
+  }
+
+  const nextTime = calculateNextCronTime(config.cron, config.timezone)
+  if (!nextTime) {
+    return { success: false, waitMs: 0, error: `Invalid cron expression: ${config.cron}` }
+  }
+
+  const now = Date.now()
+  let waitMs = nextTime.getTime() - now
+
+  // Enforce minimum delay to prevent tight loops
+  if (waitMs < MIN_SCHEDULE_WAIT_MS) {
+    logger.warn(
+      `Schedule-wait node ${node.id}: calculated wait ${waitMs}ms < minimum ${MIN_SCHEDULE_WAIT_MS}ms, enforcing minimum`
+    )
+    waitMs = MIN_SCHEDULE_WAIT_MS
+  }
+
+  const waitStartedAt = new Date().toISOString()
+  const resumeAt = new Date(now + waitMs).toISOString()
+
+  logger.info(
+    `Schedule-wait node ${node.id}: cron="${config.cron}", waiting ${Math.round(waitMs / 1000)}s until ${resumeAt}`
+  )
+
+  return {
+    success: true,
+    waitMs,
+    waitStartedAt,
+    resumeAt,
+    cron: config.cron,
+  }
+}
+
 // ============ Switch Node ============
 
 export interface SwitchResult {

@@ -29,7 +29,7 @@ describe('Medium 优先级任务测试', () => {
     })
 
     taskId = createdTask.id
-    expect(taskId).toMatch(/^[a-f0-9-]+$/)
+    expect(taskId).toMatch(/^task-\d{8}-\d{6}-[a-z0-9]+$/)
     expect(createdTask.priority).toBe('medium')
   })
 
