@@ -13,6 +13,7 @@ import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { collectStderr } from './processHelpers.js'
+import { createOutputGuard } from './outputGuard.js'
 
 const logger = createLogger('iflow')
 
@@ -150,8 +151,8 @@ function parseOutput(raw: string): { response: string; sessionId: string } {
     try {
       const info = JSON.parse(execInfoMatch[1]!)
       sessionId = info['session-id'] ?? ''
-    } catch {
-      // ignore
+    } catch (e) {
+      logger.debug(`Failed to parse Execution Info JSON: ${getErrorMessage(e)}`)
     }
   }
 
@@ -166,11 +167,14 @@ async function streamOutput(
   onChunk?: (chunk: string) => void
 ): Promise<string> {
   const chunks: string[] = []
+  const guard = createOutputGuard()
 
   if (subprocess.stdout) {
     for await (const chunk of subprocess.stdout) {
       const text = chunk.toString()
-      chunks.push(text)
+      if (guard.push(text)) {
+        chunks.push(text)
+      }
       if (onChunk) {
         onChunk(text)
       } else {

@@ -16,6 +16,7 @@ import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
+import { createOutputGuard } from './outputGuard.js'
 
 const logger = createLogger('claude-code')
 
@@ -258,9 +259,6 @@ function extractImagesFromEvent(event: StreamJsonEvent): string[] {
   return paths
 }
 
-// 100MB max output size to prevent OOM
-const MAX_OUTPUT_BYTES = 100 * 1024 * 1024
-
 async function streamOutput(
   subprocess: ResultPromise,
   onChunk?: (chunk: string) => void,
@@ -269,29 +267,20 @@ async function streamOutput(
 ): Promise<{ rawOutput: string; extractedImagePaths: string[] }> {
   const chunks: string[] = []
   const extractedImagePaths: string[] = []
+  const guard = createOutputGuard()
   let buffer = ''
-  let totalBytes = 0
-  let truncated = false
 
   if (subprocess.stdout) {
     for await (const chunk of subprocess.stdout) {
       const text = chunk.toString()
-      totalBytes += Buffer.byteLength(text)
 
       // Record first stdout arrival
       if (perf && startTime && perf.firstStdout === 0) {
         perf.firstStdout = Date.now() - startTime
       }
 
-      if (!truncated) {
-        if (totalBytes > MAX_OUTPUT_BYTES) {
-          truncated = true
-          logger.warn(
-            `Output exceeded ${MAX_OUTPUT_BYTES / 1024 / 1024}MB limit, truncating collection`
-          )
-        } else {
-          chunks.push(text)
-        }
+      if (guard.push(text)) {
+        chunks.push(text)
       }
 
       buffer += text
@@ -361,8 +350,8 @@ async function streamOutput(
   await subprocess
 
   const output = chunks.join('')
-  const result = truncated
-    ? output + `\n\n[OUTPUT TRUNCATED: exceeded ${MAX_OUTPUT_BYTES / 1024 / 1024}MB limit, ${(totalBytes / 1024 / 1024).toFixed(1)}MB total]`
+  const result = guard.truncated
+    ? output + `\n\n[OUTPUT TRUNCATED: exceeded 100MB limit, ${(guard.totalBytes / 1024 / 1024).toFixed(1)}MB total]`
     : output
 
   return { rawOutput: result, extractedImagePaths }

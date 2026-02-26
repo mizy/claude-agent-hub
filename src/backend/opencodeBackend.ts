@@ -12,6 +12,7 @@ import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { collectStderr } from './processHelpers.js'
+import { createOutputGuard } from './outputGuard.js'
 
 const logger = createLogger('opencode')
 
@@ -148,8 +149,8 @@ function parseOutput(raw: string): { response: string; sessionId: string } {
       if (event.text || event.content || event.result) {
         response = event.text || event.content || event.result
       }
-    } catch {
-      // skip non-JSON lines
+    } catch (e) {
+      logger.debug(`Skipping non-JSON line: ${getErrorMessage(e)}`)
     }
   }
 
@@ -161,12 +162,15 @@ async function streamOutput(
   onChunk?: (chunk: string) => void
 ): Promise<string> {
   const chunks: string[] = []
+  const guard = createOutputGuard()
   let buffer = ''
 
   if (subprocess.stdout) {
     for await (const chunk of subprocess.stdout) {
       const text = chunk.toString()
-      chunks.push(text)
+      if (guard.push(text)) {
+        chunks.push(text)
+      }
       buffer += text
 
       // Parse complete JSON lines and extract assistant text
@@ -186,8 +190,8 @@ async function streamOutput(
               process.stdout.write(content)
             }
           }
-        } catch {
-          // Non-JSON line — only show in CLI
+        } catch (e) {
+          logger.debug(`Non-JSON stream line: ${getErrorMessage(e)}`)
           if (!onChunk) {
             process.stdout.write(line + '\n')
           }

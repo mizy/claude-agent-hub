@@ -15,6 +15,7 @@ import { toInvokeError } from '../shared/toInvokeError.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
+import { createOutputGuard } from './outputGuard.js'
 
 const logger = createLogger('codebuddy')
 
@@ -117,15 +118,18 @@ export function createCodebuddyBackend(): BackendAdapter {
 
 // ============ Private Helpers ============
 
-/** 解析可用的二进制名（codebuddy 或 cbc） */
+/** 解析可用的二进制名（codebuddy 或 cbc），结果缓存 */
+let cachedBinary: string | null = null
 async function resolveBinary(): Promise<string> {
+  if (cachedBinary) return cachedBinary
   try {
     await execa('codebuddy', ['--version'])
-    return 'codebuddy'
+    cachedBinary = 'codebuddy'
   } catch (e) {
     logger.debug(`codebuddy binary not found, falling back to cbc: ${getErrorMessage(e)}`)
-    return 'cbc'
+    cachedBinary = 'cbc'
   }
+  return cachedBinary
 }
 
 function buildArgs(
@@ -169,12 +173,15 @@ async function streamOutput(
   onChunk?: (chunk: string) => void
 ): Promise<string> {
   const chunks: string[] = []
+  const guard = createOutputGuard()
   let buffer = ''
 
   if (subprocess.stdout) {
     for await (const chunk of subprocess.stdout) {
       const text = chunk.toString()
-      chunks.push(text)
+      if (guard.push(text)) {
+        chunks.push(text)
+      }
       buffer += text
 
       const lines = buffer.split('\n')
