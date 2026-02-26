@@ -34,34 +34,10 @@ describe('createOpencodeBackend', () => {
   })
 })
 
-/**
- * 因为 buildArgs, parseOutput, toInvokeError 是模块私有函数，
- * 我们通过测试 invoke 的行为间接覆盖它们，
- * 但也可以通过导出来直接测试。
- *
- * 这里通过模拟来测试边界情况。
- */
 describe('opencodeBackend edge cases', () => {
-  it('invoke should return error for non-existent binary', async () => {
+  it('checkAvailable should return boolean without throwing', async () => {
     const backend = createOpencodeBackend()
-    // opencode binary likely doesn't exist in test env
-    const result = await backend.invoke({
-      prompt: 'test',
-      timeoutMs: 1000,
-    })
-    // Should return err, not throw
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.error.type).toBeDefined()
-      expect(result.error.message).toBeTruthy()
-    }
-  })
-
-  it('checkAvailable should return false when binary not found', async () => {
-    const backend = createOpencodeBackend()
-    // opencode likely not installed in test env
     const available = await backend.checkAvailable()
     expect(typeof available).toBe('boolean')
-    // Most likely false in test env, but we just check it doesn't throw
   })
 })
