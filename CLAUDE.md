@@ -227,6 +227,21 @@ pnpm run clean          # 清理构建产物
 - 所有 `JSON.parse` 调用已在 try-catch 中
 - 空 catch 块必须添加 `logger.debug` 日志（除非有明确设计理由如进程退出场景）
 
+## 定时任务规范
+
+**所有定时/周期任务必须通过 CAH workflow 实现，不得使用系统 cron 或 `-S` 参数独立调度。**
+
+标准模式：用 `cah "任务描述" -S "<cron>"` 创建带调度的任务，workflow 中使用 `schedule-wait` 节点等待执行时机，用 `lark-notify` 节点将结果推送飞书。
+
+典型 workflow 结构：
+```
+[schedule-wait] → [task: 执行分析/报告] → [lark-notify: 推送飞书]
+```
+
+- `schedule-wait` 支持 cron 表达式和 datetime，到时间后自动触发后续节点
+- `lark-notify` 自动取上游最近完成节点的输出，也可通过 `content` 表达式指定（如 `outputs.node_id._raw`）
+- 任务描述中不要包含 slash command（如 `/jira-backlog-rank`），AI 子进程不认识 skill，应直接写具体指令
+
 ## 规范
 
 - 文件/函数: 动词+名词 (`createTask.ts` / `createTask()`)，类: PascalCase

@@ -32,6 +32,7 @@ import {
   buildNodeContext,
   buildEvalContext,
 } from './nodeResultProcessor.js'
+import { evaluateExpression } from './engine/ExpressionEvaluator.js'
 import type { Workflow, WorkflowNode, WorkflowInstance } from './types.js'
 import type { TraceContext } from '../types/trace.js'
 
@@ -203,6 +204,7 @@ export async function executeNodeByType(
         if (task && task.status === 'developing') {
           updateTask(swTaskId, { status: 'waiting' })
         }
+
       }
       // Return WAITING_FOR_SCHEDULE so NodeWorker marks this node as waiting
       // without blocking the worker. The daemon's waitingRecoveryJob (every minute)
@@ -211,6 +213,10 @@ export async function executeNodeByType(
         success: false,
         error: 'WAITING_FOR_SCHEDULE',
       }
+    }
+
+    case 'lark-notify': {
+      return executeLarkNotifyNode(node, instance)
     }
 
     default:
@@ -421,5 +427,83 @@ async function executeTaskNode(
     output,
     sessionId: newSessionId,
     costUsd: result.value.costUsd,
+  }
+}
+
+/**
+ * 执行飞书通知节点 - 将内容发送到飞书群
+ */
+async function executeLarkNotifyNode(
+  node: WorkflowNode,
+  instance: WorkflowInstance
+): Promise<{ success: boolean; output?: unknown; error?: string }> {
+  const config = node.larkNotify
+  if (!config) {
+    return { success: false, error: 'lark-notify: missing larkNotify config' }
+  }
+
+  // 解析消息内容
+  let text: string | undefined
+  if (config.content) {
+    const ctx = buildEvalContext(instance)
+    const value = evaluateExpression(config.content, ctx)
+    text = String(value)
+  } else {
+    // 取最近完成节点的输出
+    const doneNodes = Object.entries(instance.nodeStates || {})
+      .filter(([, s]) => s.status === 'done' && s.completedAt)
+      .sort((a, b) => new Date(b[1].completedAt!).getTime() - new Date(a[1].completedAt!).getTime())
+    const latest = doneNodes[0]
+    if (latest) {
+      const latestNodeId = latest[0]
+      const nodeOutput = instance.outputs?.[latestNodeId] as Record<string, unknown> | undefined
+      text = nodeOutput?._raw as string | undefined
+    }
+  }
+
+  if (!text) {
+    return { success: false, error: 'lark-notify: no content to send' }
+  }
+
+  // 解析 chatId
+  let chatId = config.chatId
+  if (!chatId) {
+    const larkConfig = await getLarkConfig()
+    chatId = larkConfig?.chatId
+  }
+  if (!chatId) {
+    try {
+      const { getDefaultLarkChatId } = await import('../messaging/larkWsClient.js')
+      chatId = getDefaultLarkChatId() ?? undefined
+    } catch {
+      // larkWsClient not available
+    }
+  }
+  if (!chatId) {
+    return { success: false, error: 'lark-notify: no chatId configured' }
+  }
+
+  // 添加标题
+  if (config.title) {
+    text = `**${config.title}**\n\n${text}`
+  }
+
+  // 截断过长消息
+  if (text.length > 4000) {
+    text = text.slice(0, 4000) + '\n\n...(truncated)'
+  }
+
+  // 发送消息
+  try {
+    const { sendLarkMessageViaApi } = await import('../messaging/index.js')
+    const sent = await sendLarkMessageViaApi(chatId, text)
+    if (!sent) {
+      return { success: false, error: 'lark-notify: failed to send message' }
+    }
+    logger.info(`Lark notify sent to ${chatId}, length=${text.length}`)
+    return { success: true, output: { sent: true, chatId, length: text.length } }
+  } catch (err) {
+    logger.error(`Lark notify failed: ${err}`)
+    return { success: false, error: 'lark-notify: failed to send message' }
   }
 }

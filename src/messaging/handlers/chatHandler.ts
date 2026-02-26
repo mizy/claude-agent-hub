@@ -19,7 +19,6 @@ import {
   destroySessions,
   getModelOverride,
   getBackendOverride,
-  shouldResetSession,
   incrementTurn,
 } from './sessionManager.js'
 import { createStreamHandler, sendFinalResponse } from './streamingHandler.js'
@@ -216,22 +215,12 @@ interface SessionState {
   willStartNewSession: boolean
 }
 
-/** Resolve session: auto-reset, backend priority, change detection */
+/** Resolve session: backend priority, change detection */
 function resolveSessionState(
   chatId: string,
   inlineBackend: string | undefined,
-  messenger: MessengerAdapter
+  _messenger: MessengerAdapter
 ): SessionState {
-  // Auto-reset session if turn/token limits exceeded
-  if (shouldResetSession(chatId)) {
-    clearSession(chatId)
-    logger.info(`♻️ session auto-reset [${chatId.slice(0, 8)}]`)
-    logConversationEvent('会话自动重置', `chatId: ${chatId.slice(0, 8)}`)
-    messenger
-      .reply(chatId, '♻️ 对话轮次已满，自动开启新会话')
-      .catch(e => logger.debug(`reset notify failed: ${getErrorMessage(e)}`))
-  }
-
   const session = getSession(chatId)
   const sessionId = session?.sessionId
   const sessionBackend = getBackendOverride(chatId)
@@ -535,6 +524,15 @@ async function handleChatInternal(
       if (result.error.type === 'cancelled') {
         stream.stopStreaming()
         await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger)
+        return
+      }
+      // Session invalidated (e.g. backend restarted, session expired on backend side)
+      // Clear our local session so next message starts fresh automatically
+      const errMsg = result.error.message.toLowerCase()
+      if (errMsg.includes('session') || errMsg.includes('conversation not found')) {
+        clearSession(chatId)
+        logger.info(`session invalidated, cleared [${chatId.slice(0, 8)}]: ${result.error.message}`)
+        await sendErrorToUser(chatId, stream.getPlaceholderId(), messenger, '会话已失效，已自动清理 — 请重新发送消息')
         return
       }
       await sendErrorToUser(chatId, stream.getPlaceholderId(), messenger, `AI 调用失败: ${result.error.message}`)

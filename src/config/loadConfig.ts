@@ -187,8 +187,8 @@ export function applyEnvOverrides(config: Config): Config {
             mcpServers: [],
             session: {
               timeoutMinutes: 60,
-              maxTurns: 10,
-              maxEstimatedTokens: 50000,
+              maxTurns: 0,
+              maxEstimatedTokens: 0,
               maxSessions: 200,
             },
           },
@@ -284,14 +284,15 @@ export function getDefaultConfig(): Config {
           mcpServers: [],
           session: {
             timeoutMinutes: 60,
-            maxTurns: 10,
-            maxEstimatedTokens: 50_000,
+            maxTurns: 0,
+            maxEstimatedTokens: 0,
             maxSessions: 200,
           },
         },
       },
     },
     defaultBackend: 'default',
+    scheduledTasks: [],
     memory: {
       forgetting: {
         enabled: true,

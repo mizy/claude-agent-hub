@@ -27,10 +27,10 @@ export const gitConfigSchema = z.object({
 export const sessionConfigSchema = z.object({
   /** Session timeout in minutes (default 60) */
   timeoutMinutes: z.number().default(60),
-  /** Max turns before auto-reset (default 10) */
-  maxTurns: z.number().default(10),
-  /** Max estimated tokens before auto-reset (default 50000) */
-  maxEstimatedTokens: z.number().default(50_000),
+  /** @deprecated No longer used — backend handles context compression natively */
+  maxTurns: z.number().default(0),
+  /** @deprecated No longer used — backend handles context compression natively */
+  maxEstimatedTokens: z.number().default(0),
   /** Max concurrent sessions in memory (LRU eviction, default 200) */
   maxSessions: z.number().default(200),
 })
@@ -122,6 +122,19 @@ export const daemonConfigSchema = z.object({
   poll_interval: z.string().default('5m'),
 })
 
+export const scheduledTaskConfigSchema = z.object({
+  /** node-cron expression, e.g. "30 9 * * 1-5" */
+  cron: z.string(),
+  /** Task title shown in task list */
+  title: z.string(),
+  /** Full task description — no slash commands, use direct instructions */
+  description: z.string(),
+  /** Backend name to use (defaults to defaultBackend) */
+  backend: z.string().optional(),
+  /** Model override */
+  model: z.string().optional(),
+})
+
 export const configSchema = z.object({
   agents: z.array(agentConfigSchema).default([]),
   tasks: taskConfigSchema.default({}),
@@ -133,6 +146,7 @@ export const configSchema = z.object({
   notify: notifyConfigSchema.optional(),
   daemon: daemonConfigSchema.optional(),
   memory: memoryConfigSchema.default({}),
+  scheduledTasks: z.array(scheduledTaskConfigSchema).default([]),
 })
 
 export type AgentConfig = z.infer<typeof agentConfigSchema>
@@ -145,6 +159,7 @@ export type LarkConfig = z.infer<typeof larkConfigSchema>
 export type TelegramConfig = z.infer<typeof telegramConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>
 export type DaemonConfig = z.infer<typeof daemonConfigSchema>
+export type ScheduledTaskConfig = z.infer<typeof scheduledTaskConfigSchema>
 export type MemoryForgettingConfig = z.infer<typeof memoryForgettingConfigSchema>
 export type MemoryAssociationConfig = z.infer<typeof memoryAssociationConfigSchema>
 export type MemoryReinforceConfig = z.infer<typeof memoryReinforceConfigSchema>

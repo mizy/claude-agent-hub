@@ -24,6 +24,7 @@ export type NodeType =
   | 'script'
   | 'foreach'
   | 'schedule-wait'
+  | 'lark-notify'
 export type NodeStatus = 'pending' | 'ready' | 'running' | 'waiting' | 'done' | 'failed' | 'skipped'
 export type WorkflowStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
 
@@ -85,6 +86,7 @@ export interface WorkflowNode {
   script?: ScriptConfig
   foreach?: ForeachConfig
   scheduleWait?: ScheduleWaitConfig
+  larkNotify?: LarkNotifyConfig
 
   // 通用选项
   timeout?: number // 超时（毫秒）
@@ -212,6 +214,18 @@ export interface ForeachConfig {
 export interface ScheduleWaitConfig {
   cron: string // cron 表达式 (e.g., "*/5 * * * *")
   timezone?: string // 时区 (e.g., "Asia/Shanghai")
+}
+
+/**
+ * 飞书消息推送节点 - 将上游节点输出发送到飞书
+ */
+export interface LarkNotifyConfig {
+  /** 消息内容表达式，引用上游输出 (e.g., "outputs.jira_analysis._raw")。缺省则取最近一个完成节点的输出 */
+  content?: string
+  /** 目标 chatId，缺省使用全局配置 */
+  chatId?: string
+  /** 消息标题前缀 */
+  title?: string
 }
 
 export interface WorkflowEdge {

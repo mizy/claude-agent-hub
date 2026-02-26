@@ -17,7 +17,6 @@ import {
   getModelOverride,
   setBackendOverride,
   getBackendOverride,
-  shouldResetSession,
   incrementTurn,
   enqueueChat,
   getSessionCount,
@@ -143,42 +142,19 @@ describe('sessionManager', () => {
     })
   })
 
-  describe('turn counting and session reset', () => {
-    it('should not reset session within limits', () => {
+  describe('turn counting', () => {
+    it('should increment turn count and tokens', () => {
       setSession('chat-1', 'sess-1')
       incrementTurn('chat-1', 100, 200)
-      expect(shouldResetSession('chat-1')).toBe(false)
-      expect(getSession('chat-1')).toBeDefined()
-    })
-
-    it('should mark session for reset when turns exceed maxTurns (deferred to next chat turn)', () => {
-      configureSession({ timeoutMinutes: 60, maxTurns: 3, maxEstimatedTokens: 999_999, maxSessions: 200 })
-      setSession('chat-1', 'sess-1')
-      incrementTurn('chat-1', 10, 10)
-      incrementTurn('chat-1', 10, 10)
-      incrementTurn('chat-1', 10, 10)
-      // After 3 turns, turnCount=3 which is not > 3
-      expect(shouldResetSession('chat-1')).toBe(false)
-      incrementTurn('chat-1', 10, 10)
-      // After 4 turns, turnCount=4 > 3, session marked for reset (not deleted yet)
-      expect(getSession('chat-1')).toBeDefined()
-      expect(shouldResetSession('chat-1')).toBe(true)
-    })
-
-    it('should mark session for reset when tokens exceed maxEstimatedTokens (deferred to next chat turn)', () => {
-      configureSession({ timeoutMinutes: 60, maxTurns: 999, maxEstimatedTokens: 100, maxSessions: 200 })
-      setSession('chat-1', 'sess-1')
-      // Each char ≈ 1/3 token, so 300 chars input + 300 chars output ≈ 200 tokens > 100
-      incrementTurn('chat-1', 300, 300)
-      // Session still exists but marked for reset
-      expect(getSession('chat-1')).toBeDefined()
-      expect(shouldResetSession('chat-1')).toBe(true)
+      const s = getSession('chat-1')
+      expect(s!.turnCount).toBe(1)
+      expect(s!.estimatedTokens).toBeGreaterThan(0)
     })
 
     it('should be no-op for non-existent session', () => {
       // Should not throw
       incrementTurn('no-such', 100, 100)
-      expect(shouldResetSession('no-such')).toBe(false)
+      expect(getSession('no-such')).toBeUndefined()
     })
   })
 
