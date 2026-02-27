@@ -382,7 +382,6 @@ pnpm run clean            # 清理构建产物
 
 - [VISION.md](./VISION.md) — 终极愿景：从工具到生命体的进化路线图
 - [CLAUDE.md](./CLAUDE.md) — AI 开发指南与模块索引
-- [docs/architecture.md](./docs/architecture.md) — 详细架构文档
 
 ## License
 
