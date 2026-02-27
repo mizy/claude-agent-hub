@@ -16,7 +16,6 @@ import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from '.
 import { collectStderr } from './processHelpers.js'
 import { collectStream } from './collectStream.js'
 import {
-  buildMcpConfigJson,
   extractImagesFromEvent,
   type StreamJsonEvent,
 } from './claudeCompatHelpers.js'
@@ -52,7 +51,7 @@ export function createOpencodeBackend(): BackendAdapter {
         signal,
       } = options
 
-      const args = buildArgs(prompt, model, stream, sessionId, skipPermissions, disableMcp, mcpServers)
+      const args = buildArgs(prompt, model, sessionId)
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
@@ -134,15 +133,7 @@ export function createOpencodeBackend(): BackendAdapter {
 
 // ============ Private Helpers ============
 
-function buildArgs(
-  prompt: string,
-  model?: string,
-  stream?: boolean,
-  sessionId?: string,
-  skipPermissions?: boolean,
-  disableMcp?: boolean,
-  mcpServers?: string[]
-): string[] {
+function buildArgs(prompt: string, model?: string, sessionId?: string): string[] {
   const args: string[] = ['run']
 
   if (sessionId) {
@@ -155,22 +146,6 @@ function buildArgs(
   }
 
   args.push('--format', 'json')
-
-  if (skipPermissions) {
-    args.push('--dangerously-skip-permissions')
-  }
-
-  if (stream) {
-    args.push('--verbose')
-  }
-
-  if (disableMcp) {
-    args.push('--strict-mcp-config')
-    if (mcpServers?.length) {
-      const mcpConfig = buildMcpConfigJson(mcpServers)
-      if (mcpConfig) args.push('--mcp-config', mcpConfig)
-    }
-  }
 
   // opencode v1.2.15+: prompt must come after -- separator
   args.push('--', prompt)
