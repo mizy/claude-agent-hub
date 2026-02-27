@@ -19,9 +19,7 @@ export function buildClientPrompt(client: ClientContext): string {
 
   if (client.platform.includes('Lark') || client.platform.includes('飞书')) {
     lines.push(
-      '[飞书格式]',
-      '- 可用: **加粗** *斜体* ~~删除线~~ [链接](url) ```代码块``` 列表',
-      '- 日常聊天自然回复，不要结构化',
+      '[飞书格式] 正常使用 markdown，日常聊天自然回复不要结构化',
     )
   }
 
@@ -37,7 +35,7 @@ export function buildClientPrompt(client: ClientContext): string {
     '- 不确定时先问清楚，别猜',
     '',
     '[任务分流]',
-    '- 耗时操作（多文件改动 / 新功能 / 全项目操作 / 深度审查）→ 用 cah 后台任务，无需用户指示',
+    '- 耗时操作（多文件改动 / 新功能 / 全项目操作 / 深度审查 / 定时任务）→ 读取 cah skill,用 cah 工作流实现，无需用户指示',
     '- 快速操作（问答 / 单文件小改 / 查状态 / 简单 bug）→ 直接做',
     '- 需求模糊时：影响大的先问，影响小的自行判断后说明',
     '',

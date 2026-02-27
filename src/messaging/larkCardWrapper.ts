@@ -79,6 +79,95 @@ export function normalizeLarkMarkdown(text: string): string {
   return result
 }
 
+/** Post element types for Lark rich text (msg_type: 'post') */
+interface PostTextElement {
+  tag: 'text'
+  text: string
+  style?: string[]
+}
+interface PostLinkElement {
+  tag: 'a'
+  text: string
+  href: string
+  style?: string[]
+}
+type PostElement = PostTextElement | PostLinkElement
+
+/**
+ * Convert markdown text to Lark post rich text content JSON string.
+ *
+ * Post format supports: bold, italic, underline, lineThrough, link, at.
+ * Returns JSON.stringify({ zh_cn: { content: paragraphs } }) ready for msg_type: 'post'.
+ */
+export function markdownToPostContent(text: string): string {
+  let result = convertMarkdownTables(text)
+  // # headings → **bold**
+  result = result.replace(/^#{1,}\s+(.+)$/gm, '**$1**')
+  // ``` code blocks ``` → strip fences, preserve content
+  result = result.replace(/^```[\w]*\n?([\s\S]*?)^```/gm, (_match, code: string) => {
+    return code.trimEnd()
+  })
+  // > blockquote → strip >
+  result = result.replace(/^>\s?(.*)$/gm, '$1')
+  // --- horizontal rules → remove
+  result = result.replace(/^(?:---+|\*\*\*+|___+)\s*$/gm, '')
+  // <text_tag ...> → strip tags, keep content
+  result = result.replace(/<text_tag[^>]*>([\s\S]*?)<\/text_tag>/g, '$1')
+  // <font color=...> → strip tags, keep content (post doesn't support <font>)
+  result = result.replace(/<font[^>]*>([\s\S]*?)<\/font>/g, '$1')
+
+  // Split into paragraphs by newline
+  const lines = result.split('\n')
+  const paragraphs: PostElement[][] = lines.map(line => parseInlineElements(line))
+
+  return JSON.stringify({ zh_cn: { content: paragraphs } })
+}
+
+/** Parse inline markdown elements into PostElement array */
+function parseInlineElements(line: string): PostElement[] {
+  // Empty line → paragraph with single newline to produce visual spacing
+  if (!line) return [{ tag: 'text', text: '\n' }]
+
+  const elements: PostElement[] = []
+  // Priority: ** > * > ~~ > [link](url) > `code`
+  const regex = /\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(line)) !== null) {
+    // Push plain text before this match
+    if (match.index > lastIndex) {
+      elements.push({ tag: 'text', text: line.slice(lastIndex, match.index) })
+    }
+
+    if (match[1] !== undefined) {
+      // **bold**
+      elements.push({ tag: 'text', text: match[1], style: ['bold'] })
+    } else if (match[2] !== undefined) {
+      // *italic*
+      elements.push({ tag: 'text', text: match[2], style: ['italic'] })
+    } else if (match[3] !== undefined) {
+      // ~~strikethrough~~
+      elements.push({ tag: 'text', text: match[3], style: ['lineThrough'] })
+    } else if (match[4] !== undefined && match[5] !== undefined) {
+      // [text](url)
+      elements.push({ tag: 'a', text: match[4], href: match[5] })
+    } else if (match[6] !== undefined) {
+      // `code` → plain text (strip backticks)
+      elements.push({ tag: 'text', text: match[6] })
+    }
+
+    lastIndex = match.index + match[0].length
+  }
+
+  // Push remaining plain text
+  if (lastIndex < line.length) {
+    elements.push({ tag: 'text', text: line.slice(lastIndex) })
+  }
+
+  return elements
+}
+
 /**
  * Split text by horizontal rules (---) and build card elements.
  * Each section becomes a markdown element, separated by hr elements.

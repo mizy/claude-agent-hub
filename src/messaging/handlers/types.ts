@@ -35,6 +35,8 @@ export interface MessengerAdapter {
 export interface SendOptions {
   /** 消息格式：markdown 或 html，平台适配层自行映射到各平台的格式标识 */
   parseMode?: 'markdown' | 'html'
+  /** 引用回复的目标消息 ID（飞书群聊中引用 @机器人 的原始消息） */
+  replyToMessageId?: string
 }
 
 // ── 审批相关类型 ──

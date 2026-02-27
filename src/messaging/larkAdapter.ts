@@ -9,9 +9,9 @@ import type * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { uploadLarkImage, sendLarkImage } from './sendLarkNotify.js'
-import { buildMarkdownCard } from './larkCardWrapper.js'
+import { markdownToPostContent } from './larkCardWrapper.js'
 import type { LarkCard } from './buildLarkCard.js'
-import type { MessengerAdapter } from './handlers/types.js'
+import type { MessengerAdapter, SendOptions } from './handlers/types.js'
 
 const logger = createLogger('lark-adapter')
 
@@ -40,36 +40,42 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, maxRetries = 1)
 
 export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
   return {
-    async reply(chatId, text) {
+    async reply(chatId, text, options?: SendOptions) {
       try {
+        const content = markdownToPostContent(text)
+        const replyTo = options?.replyToMessageId
         await withRetry(
           () =>
-            larkClient.im.v1.message.create({
-              params: { receive_id_type: 'chat_id' },
-              data: {
-                receive_id: chatId,
-                content: buildMarkdownCard(text),
-                msg_type: 'interactive',
-              },
-            }),
+            replyTo
+              ? larkClient.im.v1.message.reply({
+                  path: { message_id: replyTo },
+                  data: { content, msg_type: 'post' },
+                })
+              : larkClient.im.v1.message.create({
+                  params: { receive_id_type: 'chat_id' },
+                  data: { receive_id: chatId, content, msg_type: 'post' },
+                }),
           'reply'
         )
       } catch (error) {
         logger.error(`→ reply failed: ${formatErrorMessage(error)}`)
       }
     },
-    async sendAndGetId(chatId, text) {
+    async sendAndGetId(chatId, text, options?: SendOptions) {
       try {
+        const content = markdownToPostContent(text)
+        const replyTo = options?.replyToMessageId
         const res = await withRetry(
           () =>
-            larkClient.im.v1.message.create({
-              params: { receive_id_type: 'chat_id' },
-              data: {
-                receive_id: chatId,
-                content: buildMarkdownCard(text),
-                msg_type: 'interactive',
-              },
-            }),
+            replyTo
+              ? larkClient.im.v1.message.reply({
+                  path: { message_id: replyTo },
+                  data: { content, msg_type: 'post' },
+                })
+              : larkClient.im.v1.message.create({
+                  params: { receive_id_type: 'chat_id' },
+                  data: { receive_id: chatId, content, msg_type: 'post' },
+                }),
           'sendAndGetId'
         )
         return (res as LarkSdkResponse)?.data?.message_id ?? null
@@ -83,19 +89,20 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
       try {
         await withRetry(
           () =>
-            larkClient.im.v1.message.patch({
+            larkClient.im.v1.message.update({
               path: { message_id: messageId },
-              data: { content: buildMarkdownCard(text) },
+              data: {
+                msg_type: 'post',
+                content: markdownToPostContent(text),
+              },
             }),
           'editMessage'
         )
       } catch (error) {
         const msg = formatErrorMessage(error)
-        if (msg.includes('NOT a card') || msg.includes('not a card')) {
-          logger.warn(`→ edit failed (not a card), falling back to reply: ${messageId}`)
+        if (msg.includes('400') || msg.includes('not support')) {
+          logger.debug(`→ edit failed, falling back to reply: ${messageId}`)
           await this.reply(chatId, text)
-        } else if (msg.includes('400')) {
-          logger.debug(`→ edit skipped (400): ${messageId}`)
         } else {
           logger.error(`→ edit failed: ${msg}`)
         }

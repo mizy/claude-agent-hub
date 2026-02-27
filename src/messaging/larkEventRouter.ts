@@ -170,6 +170,17 @@ export async function createApprovalCallback() {
 
 // ── Event handlers ──
 
+/** Wrap adapter so all reply/sendAndGetId calls auto-quote the original message */
+function wrapWithReplyQuote(adapter: MessengerAdapter, messageId: string): MessengerAdapter {
+  return {
+    ...adapter,
+    reply: (chatId, text, options?) =>
+      adapter.reply(chatId, text, { ...options, replyToMessageId: messageId }),
+    sendAndGetId: (chatId, text, options?) =>
+      adapter.sendAndGetId(chatId, text, { ...options, replyToMessageId: messageId }),
+  }
+}
+
 export async function handleLarkMessage(
   chatId: string,
   text: string,
@@ -178,7 +189,8 @@ export async function handleLarkMessage(
   adapter: MessengerAdapter,
   botName: string | null,
   onChatIdDiscovered: (chatId: string) => void,
-  images?: string[]
+  images?: string[],
+  originalMessageId?: string
 ): Promise<void> {
   if (isGroup && !hasMention) return
 
@@ -190,11 +202,16 @@ export async function handleLarkMessage(
   logger.info(`← [${isGroup ? 'group' : 'dm'}]${imgSuffix}`)
   logUserMessage('lark', chatId, text || (images?.length ? '[图片消息]' : ''))
 
+  // In group chats, wrap adapter to quote the original @mention message
+  const messenger = isGroup && originalMessageId
+    ? wrapWithReplyQuote(adapter, originalMessageId)
+    : adapter
+
   await routeMessage({
     chatId,
     text,
     images,
-    messenger: adapter,
+    messenger,
     clientContext: larkClientContext(isGroup, botName),
     onApprovalResult: await createApprovalCallback(),
     checkBareApproval: true,
@@ -344,7 +361,7 @@ export async function processMessageEvent(
     grp: boolean,
     mention: boolean,
     imgs?: string[]
-  ) => handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs)
+  ) => handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs, messageId)
 
   // Rich text (post) message
   if (msgType === 'post') {
