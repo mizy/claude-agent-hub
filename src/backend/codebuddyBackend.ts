@@ -1,8 +1,8 @@
 /**
  * CodeBuddy CLI 后端适配器
  *
- * 腾讯 AI 编程助手，CLI 接口兼容 Claude Code
- * 非交互模式: codebuddy -p "prompt" --output-format json --dangerously-skip-permissions
+ * 腾讯 AI 编程助手，CLI 接口与 Claude Code 完全兼容
+ * 非交互模式: codebuddy -p "prompt" --output-format stream-json --dangerously-skip-permissions
  * 别名: cbc
  */
 
@@ -16,19 +16,9 @@ import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
 import { collectStream } from './collectStream.js'
+import { buildMcpConfigJson, createClaudeCompatStreamProcessor } from './claudeCompatHelpers.js'
 
 const logger = createLogger('codebuddy')
-
-interface StreamJsonEvent {
-  type: string
-  message?: {
-    content?: Array<{ type: string; text?: string }>
-  }
-  tool_use_result?: {
-    stdout?: string
-    stderr?: string
-  }
-}
 
 export function createCodebuddyBackend(): BackendAdapter {
   return {
@@ -40,8 +30,8 @@ export function createCodebuddyBackend(): BackendAdapter {
       supportsStreaming: true,
       supportsSessionReuse: true,
       supportsCostTracking: true,
-      supportsMcpConfig: false,
-      supportsAgentTeams: false,
+      supportsMcpConfig: true,
+      supportsAgentTeams: true,
     },
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
@@ -52,13 +42,16 @@ export function createCodebuddyBackend(): BackendAdapter {
         skipPermissions = true,
         timeoutMs = 30 * 60 * 1000,
         onChunk,
-        model,
+        disableMcp = false,
+        mcpServers,
         sessionId,
+        model,
         signal,
       } = options
 
-      const args = buildArgs(prompt, model, skipPermissions, stream, sessionId)
+      const args = buildArgs(prompt, skipPermissions, disableMcp, mcpServers, sessionId, stream, model)
       const startTime = Date.now()
+      const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
       const binary = await resolveBinary()
 
       try {
@@ -69,19 +62,32 @@ export function createCodebuddyBackend(): BackendAdapter {
           buffer: stream ? { stdout: false, stderr: true } : true,
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
+        perf.spawn = Date.now() - startTime
 
         let rawOutput: string
-        if (stream && subprocess.stdout) {
-          rawOutput = await streamOutput(subprocess, onChunk)
+        let mcpImagePaths: string[] = []
+        if (stream) {
+          const streamResult = await streamOutput(subprocess, onChunk, startTime, perf)
+          rawOutput = streamResult.rawOutput
+          mcpImagePaths = streamResult.extractedImagePaths
         } else {
           const result = await subprocess
           rawOutput = result.stdout
         }
 
         const durationMs = Date.now() - startTime
-        const parsed = parseOutput(rawOutput)
+        logger.debug(
+          `[perf] spawn: ${perf.spawn}ms, first-stdout: ${perf.firstStdout}ms, first-delta: ${perf.firstDelta}ms, total: ${durationMs}ms`
+        )
+        const parsed = parseClaudeCompatOutput(rawOutput)
 
-        logger.info(`完成 (${(durationMs / 1000).toFixed(1)}s)`)
+        if (mcpImagePaths.length > 0) {
+          logger.debug(`Extracted ${mcpImagePaths.length} MCP image(s): ${mcpImagePaths.join(', ')}`)
+        }
+
+        logger.info(
+          `完成 (${(durationMs / 1000).toFixed(1)}s, API: ${((parsed.durationApiMs ?? 0) / 1000).toFixed(1)}s)`
+        )
 
         return ok({
           prompt,
@@ -90,6 +96,7 @@ export function createCodebuddyBackend(): BackendAdapter {
           sessionId: parsed.sessionId,
           durationApiMs: parsed.durationApiMs,
           costUsd: parsed.costUsd,
+          mcpImagePaths: mcpImagePaths.length > 0 ? mcpImagePaths : undefined,
         })
       } catch (error: unknown) {
         if (signal?.aborted) {
@@ -134,10 +141,12 @@ async function resolveBinary(): Promise<string> {
 
 function buildArgs(
   prompt: string,
-  model?: string,
-  skipPermissions?: boolean,
+  skipPermissions: boolean,
+  disableMcp: boolean,
+  mcpServers?: string[],
+  sessionId?: string,
   stream?: boolean,
-  sessionId?: string
+  model?: string
 ): string[] {
   const args: string[] = []
 
@@ -154,6 +163,7 @@ function buildArgs(
   if (stream) {
     args.push('--output-format', 'stream-json')
     args.push('--verbose')
+    args.push('--include-partial-messages')
   } else {
     args.push('--output-format', 'json')
   }
@@ -162,44 +172,41 @@ function buildArgs(
     args.push('--dangerously-skip-permissions')
   }
 
+  if (disableMcp) {
+    args.push('--strict-mcp-config')
+    if (mcpServers?.length) {
+      const mcpConfig = buildMcpConfigJson(mcpServers)
+      if (mcpConfig) args.push('--mcp-config', mcpConfig)
+    }
+  }
+
   args.push(prompt)
   return args
 }
 
-const parseOutput = parseClaudeCompatOutput
-
 async function streamOutput(
   subprocess: ResultPromise,
-  onChunk?: (chunk: string) => void
-): Promise<string> {
-  return collectStream(subprocess, {
-    onChunk,
-    processLine(line, cb) {
-      try {
-        const event = JSON.parse(line) as StreamJsonEvent
+  onChunk?: (chunk: string) => void,
+  startTime?: number,
+  perf?: { spawn: number; firstStdout: number; firstDelta: number }
+): Promise<{ rawOutput: string; extractedImagePaths: string[] }> {
+  const extractedImagePaths: string[] = []
+  const mcpToolUseIds = new Set<string>()
 
-        if (event.type === 'assistant' && event.message?.content) {
-          let assistantText = ''
-          for (const block of event.message.content) {
-            if (block.type === 'text' && block.text) {
-              assistantText += block.text
-            }
-          }
-          if (assistantText) {
-            if (cb) cb(assistantText + '\n')
-            else process.stdout.write(chalk.dim(assistantText + '\n'))
-          }
-        } else if (event.type === 'user' && event.tool_use_result) {
-          const toolOutput =
-            (event.tool_use_result.stdout ?? '') + (event.tool_use_result.stderr ?? '')
-          if (toolOutput && !cb) {
-            process.stdout.write(chalk.dim(toolOutput + '\n'))
-          }
-        }
-      } catch {
-        if (!cb) process.stdout.write(chalk.dim(line + '\n'))
-      }
-    },
+  const processLine = createClaudeCompatStreamProcessor({
+    mcpToolUseIds,
+    extractedImagePaths,
+    perf,
+    startTime,
+    fallbackWrite: (text) => process.stdout.write(chalk.dim(text)),
   })
-}
 
+  const rawOutput = await collectStream(subprocess, {
+    onChunk,
+    perf,
+    startTime,
+    processLine,
+  })
+
+  return { rawOutput, extractedImagePaths }
+}

@@ -2,9 +2,11 @@
  * OpenCode CLI 后端适配器 (v1.x)
  *
  * 非交互模式: opencode run "prompt" -m provider/model --format json
+ * 完整支持 Claude Code 同等功能：MCP 配置、费用追踪、图片提取、权限控制
  */
 
 import { execa, type ResultPromise } from 'execa'
+import chalk from 'chalk'
 import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
@@ -13,6 +15,11 @@ import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { collectStderr } from './processHelpers.js'
 import { collectStream } from './collectStream.js'
+import {
+  buildMcpConfigJson,
+  extractImagesFromEvent,
+  type StreamJsonEvent,
+} from './claudeCompatHelpers.js'
 
 const logger = createLogger('opencode')
 
@@ -25,9 +32,9 @@ export function createOpencodeBackend(): BackendAdapter {
     capabilities: {
       supportsStreaming: true,
       supportsSessionReuse: true,
-      supportsCostTracking: false,
-      supportsMcpConfig: false,
-      supportsAgentTeams: false,
+      supportsCostTracking: true,
+      supportsMcpConfig: true,
+      supportsAgentTeams: true,
     },
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
@@ -35,15 +42,19 @@ export function createOpencodeBackend(): BackendAdapter {
         prompt,
         cwd = process.cwd(),
         stream = false,
+        skipPermissions = true,
         timeoutMs = 30 * 60 * 1000,
         onChunk,
+        disableMcp = false,
+        mcpServers,
         model,
         sessionId,
         signal,
       } = options
 
-      const args = buildArgs(prompt, model, stream, sessionId)
+      const args = buildArgs(prompt, model, stream, sessionId, skipPermissions, disableMcp, mcpServers)
       const startTime = Date.now()
+      const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
       try {
         const subprocess = execa('opencode', args, {
@@ -53,12 +64,16 @@ export function createOpencodeBackend(): BackendAdapter {
           buffer: stream ? { stdout: false, stderr: true } : true,
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
+        perf.spawn = Date.now() - startTime
 
         let rawOutput: string
         let stderrOutput = ''
+        let mcpImagePaths: string[] = []
         if (stream && subprocess.stdout) {
           collectStderr(subprocess, s => { stderrOutput = s })
-          rawOutput = await streamOutput(subprocess, onChunk)
+          const streamResult = await streamOutput(subprocess, onChunk, startTime, perf)
+          rawOutput = streamResult.rawOutput
+          mcpImagePaths = streamResult.extractedImagePaths
         } else {
           const result = await subprocess
           rawOutput = result.stdout
@@ -66,6 +81,9 @@ export function createOpencodeBackend(): BackendAdapter {
         }
 
         const durationMs = Date.now() - startTime
+        logger.debug(
+          `[perf] spawn: ${perf.spawn}ms, first-stdout: ${perf.firstStdout}ms, first-delta: ${perf.firstDelta}ms, total: ${durationMs}ms`
+        )
         const parsed = parseOutput(rawOutput)
 
         if (!parsed.response && stderrOutput) {
@@ -76,13 +94,23 @@ export function createOpencodeBackend(): BackendAdapter {
           }
         }
 
-        logger.info(`完成 (${(durationMs / 1000).toFixed(1)}s)`)
+        if (mcpImagePaths.length > 0) {
+          logger.debug(`Extracted ${mcpImagePaths.length} MCP image(s): ${mcpImagePaths.join(', ')}`)
+        }
+
+        logger.info(
+          `完成 (${(durationMs / 1000).toFixed(1)}s` +
+          `${parsed.durationApiMs ? `, API: ${(parsed.durationApiMs / 1000).toFixed(1)}s` : ''})`
+        )
 
         return ok({
           prompt,
           response: parsed.response,
           durationMs,
           sessionId: parsed.sessionId,
+          durationApiMs: parsed.durationApiMs,
+          costUsd: parsed.costUsd,
+          mcpImagePaths: mcpImagePaths.length > 0 ? mcpImagePaths : undefined,
         })
       } catch (error: unknown) {
         if (signal?.aborted) {
@@ -109,13 +137,12 @@ export function createOpencodeBackend(): BackendAdapter {
 function buildArgs(
   prompt: string,
   model?: string,
-  _stream?: boolean,
-  sessionId?: string
+  stream?: boolean,
+  sessionId?: string,
+  skipPermissions?: boolean,
+  disableMcp?: boolean,
+  mcpServers?: string[]
 ): string[] {
-  // opencode v1.x: opencode run "prompt" -m provider/model --format json
-  // Note: opencode has no --yes flag (unlike claude-code)
-  // Always use JSON format — plain text output mixes ANSI codes, tool output,
-  // and multiple assistant turns, causing duplicate/garbled replies
   const args: string[] = ['run', prompt]
 
   if (sessionId) {
@@ -128,6 +155,22 @@ function buildArgs(
   }
 
   args.push('--format', 'json')
+
+  if (skipPermissions) {
+    args.push('--dangerously-skip-permissions')
+  }
+
+  if (stream) {
+    args.push('--verbose')
+  }
+
+  if (disableMcp) {
+    args.push('--strict-mcp-config')
+    if (mcpServers?.length) {
+      const mcpConfig = buildMcpConfigJson(mcpServers)
+      if (mcpConfig) args.push('--mcp-config', mcpConfig)
+    }
+  }
 
   return args
 }
@@ -150,10 +193,35 @@ function extractSessionId(event: Record<string, unknown>): string | undefined {
   return typeof id === 'string' ? id : undefined
 }
 
-/** 解析 opencode JSON 输出（提取最终 assistant 文本 + sessionId） */
-function parseOutput(raw: string): { response: string; sessionId: string } {
+/** Extract cost/duration from an opencode JSON event */
+function extractMetrics(event: Record<string, unknown>): {
+  durationApiMs?: number
+  costUsd?: number
+} {
+  const result: { durationApiMs?: number; costUsd?: number } = {}
+
+  // Try common field names for API duration
+  const dur = event.duration_api_ms ?? event.durationApiMs ?? event.duration_ms
+  if (typeof dur === 'number') result.durationApiMs = dur
+
+  // Try common field names for cost
+  const cost = event.total_cost_usd ?? event.totalCostUsd ?? event.cost ?? event.total_cost
+  if (typeof cost === 'number') result.costUsd = cost
+
+  return result
+}
+
+/** 解析 opencode JSON 输出（提取最终 assistant 文本 + sessionId + 费用） */
+function parseOutput(raw: string): {
+  response: string
+  sessionId: string
+  durationApiMs?: number
+  costUsd?: number
+} {
   let response = ''
   let sessionId = ''
+  let durationApiMs: number | undefined
+  let costUsd: number | undefined
 
   const lines = raw.split('\n').filter(l => l.trim())
   for (const line of lines) {
@@ -163,27 +231,55 @@ function parseOutput(raw: string): { response: string; sessionId: string } {
       if (sid) sessionId = sid
       const text = extractEventText(event)
       if (text) response += text
+      const metrics = extractMetrics(event)
+      if (metrics.durationApiMs != null) durationApiMs = metrics.durationApiMs
+      if (metrics.costUsd != null) costUsd = metrics.costUsd
     } catch (e) {
       logger.debug(`Skipping non-JSON line: ${getErrorMessage(e)}`)
     }
   }
 
-  return { response, sessionId }
+  return { response, sessionId, durationApiMs, costUsd }
 }
 
 async function streamOutput(
   subprocess: ResultPromise,
-  onChunk?: (chunk: string) => void
-): Promise<string> {
-  return collectStream(subprocess, {
+  onChunk?: (chunk: string) => void,
+  startTime?: number,
+  perf?: { spawn: number; firstStdout: number; firstDelta: number }
+): Promise<{ rawOutput: string; extractedImagePaths: string[] }> {
+  const extractedImagePaths: string[] = []
+  const mcpToolUseIds = new Set<string>()
+
+  const rawOutput = await collectStream(subprocess, {
     onChunk,
+    perf,
+    startTime,
     processLine(line, cb) {
       try {
         const event = JSON.parse(line)
+
+        // OpenCode native format: extract text content
         const content = extractEventText(event)
         if (content) {
+          if (perf && startTime && perf.firstDelta === 0) {
+            perf.firstDelta = Date.now() - startTime
+          }
           if (cb) cb(content)
-          else process.stdout.write(content)
+          else process.stdout.write(chalk.dim(content))
+        }
+
+        // Claude-compatible stream events (when opencode proxies claude)
+        const streamEvent = event as StreamJsonEvent
+        if (streamEvent.type === 'assistant' && streamEvent.message?.content) {
+          for (const block of streamEvent.message.content) {
+            if (block.type === 'tool_use' && block.id && block.name?.startsWith('mcp__')) {
+              mcpToolUseIds.add(block.id)
+            }
+          }
+        } else if (streamEvent.type === 'user') {
+          const imgPaths = extractImagesFromEvent(streamEvent, mcpToolUseIds)
+          extractedImagePaths.push(...imgPaths)
         }
       } catch (e) {
         logger.debug(`Non-JSON stream line: ${getErrorMessage(e)}`)
@@ -191,5 +287,6 @@ async function streamOutput(
       }
     },
   })
-}
 
+  return { rawOutput, extractedImagePaths }
+}

@@ -23,9 +23,9 @@ describe('createOpencodeBackend', () => {
   it('should declare capabilities', () => {
     expect(backend.capabilities.supportsStreaming).toBe(true)
     expect(backend.capabilities.supportsSessionReuse).toBe(true)
-    expect(backend.capabilities.supportsCostTracking).toBe(false)
-    expect(backend.capabilities.supportsMcpConfig).toBe(false)
-    expect(backend.capabilities.supportsAgentTeams).toBe(false)
+    expect(backend.capabilities.supportsCostTracking).toBe(true)
+    expect(backend.capabilities.supportsMcpConfig).toBe(true)
+    expect(backend.capabilities.supportsAgentTeams).toBe(true)
   })
 
   it('should have invoke and checkAvailable methods', () => {
