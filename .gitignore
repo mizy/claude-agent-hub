@@ -32,6 +32,13 @@ playwright-report/
 test-results/
 playwright/.cache/
 
+# Generated images / screenshots (analysis outputs, MCP screenshots, etc.)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+
 # Test reports and outputs
 tests/reports/
 tests/*.md
