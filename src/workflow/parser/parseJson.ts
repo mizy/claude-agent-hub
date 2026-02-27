@@ -266,7 +266,7 @@ function tryParseJson(text: string): JsonWorkflowInput {
   }
 }
 
-/** Fix common AI-generated JSON issues: trailing commas, unescaped control chars in strings */
+/** Fix common AI-generated JSON issues: trailing commas, unescaped control chars, unescaped quotes */
 function repairJson(text: string): string {
   let result = text
   // Remove trailing commas before } or ]
@@ -300,5 +300,56 @@ function repairJson(text: string): string {
     }
     chars.push(ch)
   }
-  return chars.join('')
+  result = chars.join('')
+
+  // Fix unescaped double quotes inside string values by checking JSON.parse error position
+  try {
+    JSON.parse(result)
+    return result // Already valid after previous repairs
+  } catch (e) {
+    const posMatch = getErrorMessage(e).match(/position\s+(\d+)/)
+    if (!posMatch) return result
+    const errorPos = parseInt(posMatch[1]!, 10)
+    // Try escaping the quote at or near the error position
+    result = tryEscapeQuoteAt(result, errorPos)
+  }
+
+  return result
+}
+
+/**
+ * Attempt to fix an unescaped quote at/near the error position.
+ * Scans a small window around errorPos for a quote that looks like
+ * it's inside a string value (not a structural delimiter).
+ */
+function tryEscapeQuoteAt(text: string, errorPos: number): string {
+  // Search within a small window around the error position
+  const searchStart = Math.max(0, errorPos - 2)
+  const searchEnd = Math.min(text.length, errorPos + 3)
+
+  for (let i = searchStart; i < searchEnd; i++) {
+    if (text[i] !== '"') continue
+    // Check if this quote is inside a string (preceded by non-structural context)
+    // A structural quote is typically preceded by : , [ { or whitespace after these
+    const before = text.slice(Math.max(0, i - 5), i).trimEnd()
+    const after = text[i + 1] || ''
+    // Skip if it looks like a structural delimiter (key-value boundary or array element)
+    if (before.endsWith(':') || before.endsWith(',') || before.endsWith('[') || before.endsWith('{')) continue
+    if (after === ':' || after === ',' || after === '}' || after === ']') continue
+    // This quote is likely an unescaped quote inside a string value — escape it
+    const fixed = text.slice(0, i) + '\\"' + text.slice(i + 1)
+    // Validate the fix helped (try parse, or at least check error moves forward)
+    try {
+      JSON.parse(fixed)
+      return fixed
+    } catch (e2) {
+      const newMatch = getErrorMessage(e2).match(/position\s+(\d+)/)
+      const newPos = newMatch ? parseInt(newMatch[1]!, 10) : 0
+      if (newPos > errorPos) {
+        // Progress — apply fix and try once more recursively
+        return tryEscapeQuoteAt(fixed, newPos)
+      }
+    }
+  }
+  return text
 }

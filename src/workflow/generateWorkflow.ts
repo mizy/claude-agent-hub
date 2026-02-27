@@ -209,9 +209,51 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   try {
     jsonContent = extractJson(invokeResult.response)
   } catch (extractError) {
-    // JSON 提取/解析失败 - 可能是简单问答，AI 直接给出了答案
-    logger.info(`JSON 提取失败 (${getErrorMessage(extractError)})，创建简单回答 workflow`)
-    return createDirectAnswerWorkflow(task, invokeResult.response, claudeSessionId)
+    const errMsg = getErrorMessage(extractError)
+    // Distinguish: parse error (malformed JSON) vs no JSON (direct answer)
+    const isParseError = errMsg.includes('Invalid JSON')
+    if (!isParseError) {
+      logger.info(`JSON 提取失败 (${errMsg})，创建简单回答 workflow`)
+      return createDirectAnswerWorkflow(task, invokeResult.response, claudeSessionId)
+    }
+
+    // JSON found but malformed — retry backend call once
+    logger.warn(`JSON 解析失败 (${errMsg})，2 秒后重试...`)
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    const retryResult = await invokeBackend({
+      prompt: prompt + '\n\n注意：请确保输出严格合法的 JSON 格式，不要有语法错误。',
+      stream: true,
+      model,
+      backendType: task.backend,
+    })
+    if (!retryResult.ok) {
+      throw new Error(`Retry failed [${retryResult.error.type}]: ${retryResult.error.message}`)
+    }
+    const retryInvoke = retryResult.value
+    logger.info(`重试响应: ${retryInvoke.response.length} 字符`)
+    appendConversation(task.id, {
+      timestamp: new Date().toISOString(),
+      phase: 'planning',
+      prompt: retryInvoke.prompt,
+      response: retryInvoke.response,
+      durationMs: retryInvoke.durationMs,
+      durationApiMs: retryInvoke.durationApiMs,
+      costUsd: retryInvoke.costUsd,
+    })
+    try {
+      jsonContent = extractJson(retryInvoke.response)
+    } catch (retryExtractError) {
+      const retryErrMsg = getErrorMessage(retryExtractError)
+      if (retryErrMsg.includes('Invalid JSON')) {
+        throw new Error(`Workflow JSON parse failed after retry: ${retryErrMsg}`)
+      }
+      logger.info(`重试后 JSON 提取失败 (${retryErrMsg})，创建简单回答 workflow`)
+      return createDirectAnswerWorkflow(task, retryInvoke.response, claudeSessionId)
+    }
+    if (retryInvoke.sessionId) {
+      // Update session ID from retry
+      Object.assign(invokeResult, { sessionId: retryInvoke.sessionId })
+    }
   }
   logger.debug(`提取到 JSON 对象`)
 
