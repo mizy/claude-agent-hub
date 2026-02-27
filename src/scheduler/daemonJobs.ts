@@ -13,7 +13,7 @@ import chalk from 'chalk'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
 import { withProcessTracking } from '../task/processTracking.js'
-import { getTasksByStatus, updateTask } from '../store/TaskStore.js'
+import { getTasksByStatus, updateTask, getProcessInfo, updateProcessInfo } from '../store/TaskStore.js'
 import { getTaskInstance, saveTaskInstance } from '../store/TaskWorkflowStore.js'
 import { updateInstanceVariables } from '../store/WorkflowStore.js'
 import { resumeTask } from '../task/resumeTask.js'
@@ -117,6 +117,19 @@ export function registerDaemonJobs(pollCronExpr: string): void {
             _scheduleWaitNodeId: null,
             _scheduleWaitTriggered: true,
           })
+          // Kill the idle process that's still running from the schedule-wait phase.
+          // The NodeWorker stays alive but idle while waiting — must kill before resume.
+          const processInfo = getProcessInfo(task.id)
+          if (processInfo?.pid) {
+            try {
+              process.kill(processInfo.pid)
+              logger.debug(`Killed idle schedule-wait process: PID ${processInfo.pid}`)
+            } catch {
+              // Already dead — fine
+            }
+            updateProcessInfo(task.id, { status: 'crashed' })
+          }
+
           updateTask(task.id, { status: 'developing' })
           resumeTask(task.id)
         }
