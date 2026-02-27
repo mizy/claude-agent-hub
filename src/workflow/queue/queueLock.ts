@@ -3,7 +3,7 @@
  * Shared infrastructure for queue operations
  */
 
-import { existsSync, unlinkSync, writeFileSync, statSync } from 'fs'
+import { existsSync, readFileSync, unlinkSync, writeFileSync, statSync } from 'fs'
 import { readJson, writeJson, ensureDir } from '../../store/readWriteJson.js'
 import { QUEUE_FILE, DATA_DIR } from '../../store/paths.js'
 import type { NodeJobData } from '../types.js'
@@ -41,6 +41,15 @@ export interface QueueData {
 const LOCK_FILE = `${QUEUE_FILE}.lock`
 let lockAcquired = false
 
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function acquireLock(): boolean {
   if (lockAcquired) return true
 
@@ -48,17 +57,39 @@ function acquireLock(): boolean {
     if (existsSync(LOCK_FILE)) {
       const stat = statSync(LOCK_FILE)
       const age = Date.now() - stat.mtimeMs
-      if (age < LOCK_TIMEOUT_MS) {
+
+      // Check if holding process is still alive
+      let holderAlive = true
+      try {
+        const holderPid = parseInt(readFileSync(LOCK_FILE, 'utf-8').trim(), 10)
+        if (!Number.isNaN(holderPid)) {
+          holderAlive = isProcessAlive(holderPid)
+        }
+      } catch {
+        // Can't read lock file — treat as stale
+        holderAlive = false
+      }
+
+      // Remove stale lock: holder is dead, or age exceeds timeout
+      if (!holderAlive || age >= LOCK_TIMEOUT_MS) {
+        logger.debug(`Removing stale queue lock (age=${Math.round(age / 1000)}s, holderAlive=${holderAlive})`)
+        unlinkSync(LOCK_FILE)
+      } else {
         return false
       }
-      unlinkSync(LOCK_FILE)
     }
 
     writeFileSync(LOCK_FILE, process.pid.toString(), { flag: 'wx' })
     lockAcquired = true
     return true
   } catch (e) {
-    logger.error('Failed to acquire queue lock:', e)
+    // EEXIST is normal contention — another process grabbed the lock between our check and create
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'EEXIST') {
+      logger.debug('Queue lock contention (EEXIST), will retry')
+    } else {
+      logger.error('Failed to acquire queue lock:', e)
+    }
     return false
   }
 }
