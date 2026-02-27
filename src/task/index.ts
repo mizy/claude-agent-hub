@@ -1,13 +1,16 @@
 /**
  * @entry Task 任务管理模块
  *
- * 提供任务的创建、执行、查询和生命周期管理能力
+ * 任务全生命周期：创建、执行、查询、暂停/恢复、停止、审批、孤儿检测
  *
- * 主要 API:
- * - createTask(): 创建任务
- * - executeTask(): 执行任务
- * - listTasks(): 列出任务
- * - stopTask(): 停止任务
+ * 能力分组：
+ * - 创建: createTask/createAndRunTask
+ * - 执行: executeTask/runTask/resumeTask/waitForWorkflowCompletion/setupIncrementalStatsSaving
+ * - 查询: listTasks/getTaskDetail/pollPendingTask/getAllTasks
+ * - 生命周期: stopTask/deleteTask/clearTasks/completeTask/rejectTask/pauseTask/resumePausedTask/injectNode
+ * - 孤儿检测: detectOrphanedTasks/resumeOrphanedTask/resumeAllOrphanedTasks/getOrphanedTasksSummary
+ * - Store 透传: getTask/getTaskFolder/getTaskWorkflow/getTaskInstance/getLogPath/getOutputPath/
+ *   getExecutionStats/getExecutionTimeline/formatExecutionSummary/formatTimeline
  */
 
 // Core task creation

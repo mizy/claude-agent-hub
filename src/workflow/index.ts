@@ -1,19 +1,20 @@
 /**
  * @entry Workflow 工作流引擎模块
  *
- * 提供工作流定义、执行和状态管理能力
+ * 工作流生成、执行、状态管理、队列调度的完整引擎
  *
- * 主要 API:
- * - generateWorkflow(): AI 生成工作流
- * - createWorkflow(): 创建工作流
- * - startWorkflow(): 启动工作流
- * - handleNodeResult(): 处理节点执行结果
- * - enqueueNodes(): 入队节点
- *
- * 子模块:
- * - workflow/engine: 引擎核心、状态管理
- * - workflow/queue: 任务队列、Worker
- * - workflow/parser: JSON 解析器
+ * 能力分组：
+ * - 生成: generateWorkflow() — AI 生成工作流定义
+ * - 引擎: createWorkflow/startWorkflow/handleNodeResult/getReadyNodes
+ * - 状态管理: recoverWorkflowInstance/pauseWorkflowInstance/resumeWorkflowInstance/
+ *   markNodeRunning/markNodeDone/markNodeFailed/getWorkflowProgress/getActiveNodes
+ * - 队列: enqueueNode/enqueueNodes/getQueueStats/closeQueue/
+ *   getWaitingHumanJobs/resumeWaitingJob/markJobFailed
+ * - Worker: createNodeWorker/startWorker/closeWorker/pauseWorker/resumeWorker/isWorkerRunning
+ * - 结果处理: extractRawOutput
+ * - 解析器: parseJson/validateJsonWorkflow/extractJson
+ * - 事件系统: workflowEvents + 7 种事件类型
+ *   (NodeStarted/NodeCompleted/NodeFailed/WorkflowStarted/Completed/Failed/Progress)
  */
 
 // ============ 核心类型 ============

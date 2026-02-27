@@ -1,14 +1,24 @@
 /**
  * @entry Store 存储模块
  *
- * 提供文件存储、任务持久化和日志管理能力
+ * 文件持久化层，所有数据通过此模块读写磁盘
  *
- * 主要 API:
+ * 能力分组：
  * - FileStore<T>: 泛型 key-value 文件存储类
- * - getStore(): 获取统一存储接口实例
- * - saveTask/getTask: 任务 CRUD
- * - saveWorkflow/getInstance: Workflow 存储
- * - appendExecutionLog: 日志写入
+ * - TaskStore: Task CRUD、进程管理（saveTask/getTask/getAllTasks/saveProcessInfo）
+ * - TaskWorkflowStore: Workflow/Instance 存储（saveTaskWorkflow/getTaskInstance/loadTaskFolder）
+ * - TaskLogStore: 日志写入（appendExecutionLog/appendConversation/appendJsonlLog）
+ * - WorkflowStore: Workflow 引擎存储（createInstance/saveInstance/updateNodeState）
+ * - MemoryStore: 语义记忆（getAllMemories/saveMemory/updateMemory）
+ * - EpisodeStore: 情景记忆（saveEpisode/listEpisodes/searchEpisodes）
+ * - PromptVersionStore: 提示词版本（savePromptVersion/getActiveVersion/rollbackToVersion）
+ * - TaskMessageStore: 任务消息队列（addTaskMessage/getUnconsumedMessages）
+ * - ExecutionStatsStore: 执行统计与时间线（saveExecutionStats/appendTimelineEvent）
+ * - TraceStore + createSpan: Span 追踪（appendSpan/getTrace/createRootSpan/createChildSpan）
+ * - exportOTLP: OTLP 格式导出（traceToOTLP/exportTraceToOTLP）
+ * - UnifiedStore: 统一存储接口（getStore()）
+ * - paths: 路径常量与构建函数
+ * - readWriteJson: JSON 文件读写工具
  */
 
 // 路径常量和构建函数

@@ -1,17 +1,19 @@
 /**
  * @entry Backend 模块 - CLI 后端抽象层
  *
- * 核心能力：
- * - invokeBackend(): 调用当前配置的 CLI 后端
- * - checkBackendAvailable(): 检查后端是否可用
- * - resolveBackend(): 获取后端实例
- * - registerBackend(): 注册自定义后端
+ * 能力分组：
+ * - 调用: invokeBackend()（自动限流、prompt 组装、Span 追踪）
+ * - 检测: checkBackendAvailable()
+ * - 注册: resolveBackend/resolveBackendForTask/registerBackend/clearBackendCache/getRegisteredBackends
+ * - 配置: resolveBackendConfig()（独立于 resolveBackend 的配置解析，避免循环依赖）
+ * - Prompt: buildPrompt()（persona system prompt + mode 指令 + 用户 prompt 组装）
  *
  * 支持的后端：
  * - claude-code: Claude Code CLI (默认)
  * - opencode: OpenCode CLI (75+ 模型，含免费 Zen 模型)
  * - iflow: iflow-cli (Qwen3-Coder, DeepSeek 等免费模型)
  * - codebuddy: Codebuddy CLI
+ * - openai-compatible: OpenAI 兼容 API
  */
 
 export type {

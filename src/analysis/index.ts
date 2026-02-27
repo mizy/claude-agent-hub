@@ -1,12 +1,14 @@
 /**
  * @entry Analysis 分析模块
  *
- * 提供项目上下文分析、历史学习和时间预估能力
+ * 项目上下文分析、历史学习、任务分类、模式识别、时间预估
  *
- * 主要 API:
- * - analyzeProjectContext(): 分析项目上下文
- * - learnFromHistory(): 从历史任务学习
- * - estimateRemainingTime(): 预估剩余时间
+ * 能力分组：
+ * - 项目上下文: analyzeProjectContext/formatProjectContextForPrompt
+ * - 历史学习: learnFromHistory/getTaskHistory/formatInsightsForPrompt
+ * - 任务分类: categorizeTask/extractKeywords
+ * - 模式识别: extractSuccessfulNodePatterns/getRecommendedNodeCountByCategory/addCategorySpecificAdvice
+ * - 时间预估: estimateNodeDuration/estimateRemainingTime/formatTimeEstimate/clearCache
  */
 
 // ============ 项目上下文 ============

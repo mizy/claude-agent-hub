@@ -1,14 +1,19 @@
 /**
  * @entry Types 类型定义模块
  *
- * 所有共享类型的统一导出入口。
+ * 所有共享类型的统一导出入口
  *
  * 按领域分组：
- * - task: 任务元数据、状态、创建选项
- * - workflow: 工作流定义、节点、实例、运行时状态
- * - persona: AI 人格配置
- * - output: 输出相关类型
- * - trace: 追踪/可观测性类型
+ * - task: Task/TaskStatus/TaskPriority/CreateTaskOptions + parseTaskPriority/parseTaskStatus
+ * - taskStatus: 12 个状态判断函数（isTerminalStatus/isActiveStatus/isRunningStatus/...）
+ * - workflow: Workflow/WorkflowNode/WorkflowEdge/WorkflowInstance/NodeState + 配置类型
+ * - nodeStatus: 10 个节点/工作流状态判断函数（isNodeDone/isWorkflowTerminal/...）
+ * - persona: PersonaConfig/PersonaTraits/PersonaPreferences
+ * - output: ExecutionTiming
+ * - taskMessage: TaskMessage/TaskMessageSource
+ * - promptVersion: PromptVersion/FailureAnalysis/PromptVersionStats
+ * - trace: Span/SpanKind/Trace/TraceContext/OTLP 映射类型
+ * - episode: Episode/EpisodeIndexEntry（从 memory/types.js re-export）
  */
 
 // Task types

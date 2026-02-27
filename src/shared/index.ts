@@ -1,14 +1,19 @@
 /**
  * @entry Shared 公共基础设施模块
  *
- * 提供底层工具函数，无业务逻辑依赖
+ * 底层工具函数，无业务逻辑依赖
  *
- * 主要 API:
- * - Result<T,E>: 函数式错误处理
- * - AppError: 统一错误类型
- * - createLogger(): 日志创建
- * - generateId(): ID 生成
- * - formatDuration(): 时间格式化
+ * 能力分组：
+ * - Result<T,E>: 函数式错误处理（ok/err/unwrap/map/flatMap/fromPromise/all）
+ * - AppError: 统一错误类型（assertNever/printError/printWarning）
+ * - Logger: 日志系统（createLogger/setLogLevel/setLogMode/logError/flushLogs）
+ * - ID: 生成与匹配（generateId/generateShortId/isValidUUID/shortenId/matchesShortId）
+ * - 错误守卫: isError/getErrorMessage/getErrorStack/ensureError
+ * - 错误格式化: formatErrorMessage/toInvokeError
+ * - 文本: truncateText
+ * - Claude 配置: readGlobalClaudeMd/readProjectClaudeMd/readProjectMemory/readAllSkills/buildClaudeSystemPrompt
+ * - 事件总线: taskEventBus（task ↔ messaging 解耦的核心机制）
+ * - 时间: now/formatTime/formatRelative/formatDuration/parseInterval/intervalToCron
  */
 
 // Result 类型

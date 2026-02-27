@@ -3,16 +3,23 @@
  *
  * 平台无关的消息处理 + 飞书/Telegram 适配层 + 任务通知桥接
  *
- * 主要 API:
- * - routeMessage(): 统一消息路由（命令分发 + 对话 + 审批）
- * - handleCommand(): 统一命令处理（/run /list /logs ...）
- * - handleChat(): AI 自由对话
- * - handleApproval(): 审批处理
- * - sendTaskCompletionNotify(): 任务完成/失败通知
- * - startTelegramClient(): 启动 Telegram Bot
- * - startLarkWsClient(): 启动飞书 WebSocket
- * - sendLarkMessage(): 发送飞书消息
- * - sendTelegramTextMessage(): 发送 Telegram 消息
+ * 能力分组：
+ * - 消息路由: routeMessage/parseCommandText — 命令分发 + 对话 + 审批
+ * - 命令处理: handleCommand/handleRun/handleList/handleLogs/handleStop/... (12 个命令)
+ * - 对话: handleChat/clearChatSession/getChatSessionInfo/destroyChatHandler
+ * - 审批: handleApproval/parseApprovalCommand
+ * - 会话管理: loadSessions/configureSession
+ * - 飞书客户端: startLarkWsClient/stopLarkWsClient/getLarkClient
+ * - 飞书消息: sendLarkMessage/sendLarkCardViaApi/updateLarkCard/uploadLarkImage
+ * - 飞书卡片: buildCard/buildTaskCompletedCard/buildTaskListCard/... (10 种卡片)
+ * - 飞书事件路由: createLarkAdapter/handleLarkMessage/handleCardAction/processMessageEvent
+ * - 飞书 Markdown: normalizeLarkMarkdown/buildMarkdownCard/convertMarkdownTables
+ * - Telegram 客户端: startTelegramClient/stopTelegramClient/sendTelegramMessage
+ * - Telegram 通知: sendTelegramReviewNotification/sendTelegramTextMessage
+ * - 任务通知桥接: sendTaskCreatedNotification/sendTaskCompletionNotify
+ * - 事件监听: registerTaskEventListeners (task 事件 → IM 通知)
+ * - 情景记忆: triggerEpisodeOnTaskCreation/flushEpisode/clearEpisodeTracker
+ * - 流式处理: createStreamHandler/splitMessage/sendFinalResponse
  */
 
 // ── 平台无关的 handlers ──
