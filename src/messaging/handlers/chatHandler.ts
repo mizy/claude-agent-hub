@@ -377,9 +377,11 @@ async function processSuccessResult(
 
   // Build and send final response with completion marker
   const elapsedSec = ((Date.now() - bench.start) / 1000).toFixed(1)
-  const backendType = backendOverride ?? config.defaultBackend ?? 'claude-code'
-  const modelLabel = model ? ` (${model})` : ''
-  const finalText = response + `\n\n---\n⏱️ ${elapsedSec}s | ${backendType}${modelLabel}`
+  const backendName = backendOverride ?? config.defaultBackend ?? 'claude-code'
+  const configModel = config.backends[backendName]?.model
+  const displayModel = model ?? configModel
+  const modelLabel = displayModel ? ` (${displayModel})` : ''
+  const finalText = response + `\n\n---\n⏱️ ${elapsedSec}s | ${backendName}${modelLabel}`
 
   await stopStreaming()
   await sendFinalResponse(chatId, finalText, maxLen, placeholderId, messenger)
