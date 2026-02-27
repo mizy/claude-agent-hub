@@ -188,6 +188,12 @@ export async function executeNodeByType(
     }
 
     case 'schedule-wait': {
+      // If daemon resumed us after the wait period, proceed directly
+      if (instance.variables?._scheduleWaitTriggered) {
+        await updateInstanceVariables(instance.id, { _scheduleWaitTriggered: null })
+        return { success: true }
+      }
+
       const result = executeScheduleWaitNode(node, instance)
       if (!result.success) {
         return { success: false, error: result.error }
@@ -204,7 +210,6 @@ export async function executeNodeByType(
         if (task && task.status === 'developing') {
           updateTask(swTaskId, { status: 'waiting' })
         }
-
       }
       // Return WAITING_FOR_SCHEDULE so NodeWorker marks this node as waiting
       // without blocking the worker. The daemon's waitingRecoveryJob (every minute)

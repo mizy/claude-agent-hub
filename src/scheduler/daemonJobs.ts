@@ -110,10 +110,12 @@ export function registerDaemonJobs(pollCronExpr: string): void {
             }
             saveTaskInstance(task.id, instance)
           }
-          // Clear wait markers and restore task to developing before resume
+          // Clear wait markers and set triggered flag so schedule-wait handler
+          // knows to proceed directly instead of recalculating next cron time.
           updateInstanceVariables(instance.id, {
             _scheduleWaitResumeAt: null,
             _scheduleWaitNodeId: null,
+            _scheduleWaitTriggered: true,
           })
           updateTask(task.id, { status: 'developing' })
           resumeTask(task.id)
