@@ -81,6 +81,13 @@ export async function waitForWorkflowCompletion(
         return instance
       }
 
+      // 检测 schedule-wait：task 被设为 waiting，进程应主动退出
+      // Daemon's waitingRecoveryJob will resume the task when the scheduled time arrives.
+      if (task && task.status === 'waiting') {
+        logger.info('Task entered waiting state (schedule-wait), process exiting cleanly')
+        return instance
+      }
+
       // 检测外部暂停：task 被设为 paused 或 instance 被设为 paused
       if (task && task.status === 'paused' && !workerPaused) {
         logger.info('Task paused by external command, pausing worker...')

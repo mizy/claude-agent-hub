@@ -122,13 +122,18 @@ async function pollForJobs(): Promise<void> {
   }
 
   // 获取下一个任务（只获取绑定 instance 的任务）
-  const job = getNextJob(workerOptions.instanceId)
+  try {
+    const job = getNextJob(workerOptions.instanceId)
 
-  if (job) {
-    // 异步处理任务，不阻塞轮询
-    processJob(job.id, job.data).catch(err => {
-      logger.error(`Error processing job ${job.id}:`, err)
-    })
+    if (job) {
+      // 异步处理任务，不阻塞轮询
+      processJob(job.id, job.data).catch(err => {
+        logger.error(`Error processing job ${job.id}:`, err)
+      })
+    }
+  } catch (err) {
+    // Queue lock contention or file I/O error — log and retry on next poll
+    logger.debug(`pollForJobs error (will retry): ${err}`)
   }
 
   scheduleNextPoll()

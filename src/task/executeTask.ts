@@ -17,7 +17,7 @@ import {
   isWorkerRunning,
 } from '../workflow/index.js'
 import { updateInstanceStatus, updateInstanceVariables } from '../store/WorkflowStore.js'
-import { updateTask } from '../store/TaskStore.js'
+import { updateTask, getTask } from '../store/TaskStore.js'
 import { createRootSpan, endSpan } from '../store/createSpan.js'
 import { appendSpan } from '../store/TraceStore.js'
 import { appendExecutionLog } from '../store/TaskLogStore.js'
@@ -170,6 +170,18 @@ export async function executeTask(
     // Phase 3: Wait for completion and finalize
     const finalInstance = await waitForWorkflowCompletion(workflow, instance.id, task.id)
     const completedAt = now()
+
+    // Schedule-wait: task entered waiting state, process should exit cleanly.
+    // Daemon's waitingRecoveryJob will resume when the scheduled time arrives.
+    const currentTask = getTask(task.id)
+    if (currentTask?.status === 'waiting') {
+      logger.info('Task in waiting state (schedule-wait), process exiting without finalization')
+      if (workflowSpan) {
+        appendSpan(task.id, endSpan(workflowSpan))
+        workflowSpan = null
+      }
+      return { success: true, workflow, instance: finalInstance, outputPath: '', timing: { startedAt, completedAt } }
+    }
 
     // End workflow span (before finally, so we can set correct status)
     const success = finalInstance.status === 'completed'
