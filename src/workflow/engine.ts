@@ -46,7 +46,7 @@ export {
   evaluateCondition,
   validateExpression,
   extractVariables,
-} from './engine/ConditionEvaluator.js'
+} from './engine/ExpressionEvaluator.js'
 
 // 新节点执行器
 export {

@@ -30,7 +30,6 @@ import {
   getTaskWorkflow,
   saveTaskInstance,
   getTaskInstance,
-  loadTaskFolder,
   // From TaskLogStore
   appendConversation,
   type ConversationEntry,
@@ -331,33 +330,6 @@ describe('TaskStore', () => {
     })
   })
 
-  describe('loadTaskFolder', () => {
-    it('应加载完整的任务文件夹', () => {
-      const task = createTestTask()
-      saveTask(task)
-
-      const workflow: Workflow = {
-        id: 'wf-load-test',
-        name: 'Test',
-        description: '',
-        nodes: [],
-        edges: [],
-      }
-      saveTaskWorkflow(task.id, workflow)
-
-      const folder = loadTaskFolder(task.id)
-
-      expect(folder).not.toBe(null)
-      expect(folder?.task).toEqual(task)
-      expect(folder?.workflow).toEqual(workflow)
-      expect(folder?.taskId).toBe(task.id)
-    })
-
-    it('任务不存在时应返回 null', () => {
-      const folder = loadTaskFolder(`${TEST_PREFIX}-nonexistent`)
-      expect(folder).toBe(null)
-    })
-  })
 
   describe('Conversation 日志', () => {
     it('应追加对话记录', () => {

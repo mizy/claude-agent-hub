@@ -11,7 +11,7 @@
 cah "任务描述"           # 创建并执行任务（-p priority, -a agent, -b backend, -m model）
 cah "任务描述" -F        # 前台运行（可看日志）
 cah "任务描述" --no-run  # 仅创建不执行
-cah list                 # 查看任务列表（快捷方式，支持 -s/-a/--source/--no-progress/-w/-i）
+cah list                 # 查看任务列表（快捷方式，支持 -s/-a/--source/--cwd/--project/--no-progress/-w/-i）
 cah logs <id>            # 查看任务日志（快捷方式，支持 -f/-n）
 cah run                  # 手动执行队列中下一个 pending 任务
 cah init                 # 初始化项目配置（-f 强制覆盖）
@@ -35,7 +35,7 @@ cah task snapshot <id>   # 查看任务执行快照（--json）
 # 守护进程
 cah start                # 启动守护进程（前台，自动检测飞书/Telegram）
 cah start -D             # 后台运行（fork 子进程）
-cah stop                 # 停止守护进程
+cah stop                 # 停止守护进程（-a agent 停止指定 agent）
 cah restart              # 重启守护进程（默认后台，-D）
 cah status               # 查看运行状态
 
@@ -43,7 +43,7 @@ cah status               # 查看运行状态
 cah report work          # 工作报告（-a agent, -d days, -o output）
 cah report trend         # 趋势分析报告（-d days, -p period, --json）
 cah report live          # 实时状态监控（--json, -w watch, -i interval）
-cah dashboard            # 启动 Workflow 可视化面板（-p port, --open, -D）
+cah dashboard            # Workflow 可视化面板（start/stop/status，-p port, -H host, --open, -D）
 cah agent list           # 查看可用 Agent
 cah agent show <name>    # 查看 Agent 详情
 
@@ -65,13 +65,15 @@ cah memory cleanup       # 遗忘清理（--dry-run）
 cah prompt versions <p>  # 查看人格提示词版本
 cah prompt rollback <p> <vid>  # 回滚提示词版本
 cah prompt diff <p> <v1> <v2>  # 对比版本内容
+cah prompt compare <p> <v1> <v2>  # 对比版本性能指标
 cah prompt test <p>      # 启动 A/B 测试（-s min-samples）
 cah prompt evaluate <id> # 评估测试结果
 cah prompt extract       # 提取成功模式（-l limit）
 
 # 自管理
 cah self check           # 信号检测（stale daemon、corrupt data 等）
-cah self check --auto-fix # 检测并自动修复
+cah self check --fix     # 检测并自动修复
+cah self check --auto-fix # 自动修复并验证结果
 cah self evolve          # 运行一轮自我进化
 cah self evolve analyze  # 分析失败任务模式（-n limit）
 cah self evolve validate <id> # 验证进化效果
@@ -81,8 +83,13 @@ cah self drive stop      # 停止自驱（daemon 重启会恢复）
 cah self drive disable   # 永久禁用（daemon 重启不恢复）
 cah self drive enable    # 重新启用
 cah self drive status    # 查看自驱状态
-cah self drive goals     # 查看自驱目标
+cah self drive goals     # 查看自驱目标（list/enable/disable/set-schedule）
 cah self status          # 综合状态（健康+进化+自驱）
+
+# 定时任务
+cah schedule create <cron> <desc>  # 创建定时任务（-a agent, -b backend, -m model）
+cah schedule list        # 查看定时任务列表
+cah schedule stop <id>   # 停止定时任务
 
 # 后端 & 系统
 cah backend list         # 列出可用后端
@@ -119,7 +126,7 @@ Shared (shared/)  ────────────────────�
 Types (types/)                           共享类型定义
 ```
 
-## @entry 模块索引（26 个）
+## @entry 模块索引（25 个）
 
 | 模块 | 入口 | 核心能力 |
 |------|------|----------|
@@ -152,11 +159,17 @@ Types (types/)                           共享类型定义
 ## 任务执行流程
 
 ```
-cah "描述" → createTask(含 cwd) → analyzeProjectContext → learnFromHistory
-  → retrieveRelevantMemories → AI generateWorkflow → startWorkflow
-  → NodeWorker 并发执行节点(Persona) → invokeBackend → saveWorkflowOutput
-  → emitWorkflowCompleted → updateTask(completed/failed)
+cah "描述" → createTask(含 cwd, status: pending)
+  → prepareNewExecution(status: planning)
+    → generateWorkflow 内部并行:
+       Promise.all([analyzeProjectContext, learnFromHistory, retrieveRelevantMemories])
+    → invokeBackend 生成工作流 JSON
+  → startWorkflow(status: developing)
+  → NodeWorker 并发执行节点(Persona) → invokeBackend
+  → saveWorkflowOutput → emitWorkflowCompleted → updateTask(completed/failed)
 ```
+
+特殊路径：若 AI 返回直接回答（isDirectAnswer），跳过节点执行直接完成
 
 恢复流程：`cah task resume <id>` → recoverWorkflowInstance → 有 failed 节点则重试，全 pending 则重启
 
@@ -167,7 +180,7 @@ cah "描述" → createTask(含 cwd) → analyzeProjectContext → learnFromHist
 ```
 .cah-data/
 ├── tasks/task-{id}/
-│   ├── task.json       # 元数据（id, title, status, priority, cwd, source）
+│   ├── task.json       # 元数据（id, title, description, status, priority, cwd, source, backend, model, scheduleCron, retryCount, createdAt 等）
 │   ├── workflow.json   # 工作流定义（节点、边、变量）
 │   ├── instance.json   # 唯一执行状态源（节点状态、输出、变量）
 │   ├── process.json    # 后台进程信息（PID）
@@ -184,9 +197,18 @@ cah "描述" → createTask(含 cwd) → analyzeProjectContext → learnFromHist
 ├── memory/             # 语义记忆条目
 ├── episodes/           # 情景记忆
 ├── prompt-versions/    # 提示词版本历史
+├── ab-tests/           # A/B 测试数据
+├── evolution/          # 自进化历史
+├── failure-kb/         # 失败知识库
+├── success-patterns/   # 成功模式分析
+├── selfdrive/          # 自驱状态
+├── logs/               # 全局日志（daemon.log 等）
 ├── queue.json          # 任务队列
 ├── runner.lock         # 队列 Runner 锁
 ├── runner.log          # Runner 日志
+├── sessions.json       # 会话管理
+├── chat-buffers.json   # 聊天缓冲
+├── signal-cooldowns.json # 信号冷却
 ├── meta.json           # 元数据
 └── index.json          # 任务索引
 ```

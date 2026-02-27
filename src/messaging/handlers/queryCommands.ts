@@ -48,7 +48,7 @@ function formatRelativeTime(dateStr: string): string {
 
 function buildTaskListItems(tasks: Task[]): TaskListItem[] {
   return tasks.map(t => {
-    const prefix = t.source === 'selfdrive' ? '[自驱] ' : ''
+    const prefix = t.scheduleCron ? '[⏰] ' : t.source === 'selfdrive' ? '[自驱] ' : ''
     return {
       id: t.id,
       shortId: t.id.replace(/^task-/, '').slice(0, 4),

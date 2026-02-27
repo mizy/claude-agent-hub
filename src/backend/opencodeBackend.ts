@@ -162,13 +162,13 @@ function parseOutput(raw: string): { response: string; sessionId: string } {
       const sid = extractSessionId(event)
       if (sid) sessionId = sid
       const text = extractEventText(event)
-      if (text) response = text
+      if (text) response += text
     } catch (e) {
       logger.debug(`Skipping non-JSON line: ${getErrorMessage(e)}`)
     }
   }
 
-  return { response: response || raw.trim(), sessionId }
+  return { response, sessionId }
 }
 
 async function streamOutput(

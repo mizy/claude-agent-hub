@@ -21,13 +21,6 @@ const MIN_TURNS_FOR_EXPLICIT_END = 3
 
 let idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS
 
-/** Configure episode extractor settings (call on daemon startup) */
-export function configureEpisodeExtractor(opts: { idleTimeoutMs?: number }): void {
-  if (opts.idleTimeoutMs && opts.idleTimeoutMs > 0) {
-    idleTimeoutMs = opts.idleTimeoutMs
-  }
-}
-
 // Patterns that signal conversation end
 const END_PATTERNS = /^(?:好的|谢谢|就这样|ok|OK|Ok|thanks|thank you|收到|明白了|了解|done|\/done)[!！。.~～]*$/i
 

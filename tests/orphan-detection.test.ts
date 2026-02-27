@@ -142,12 +142,30 @@ describe('Orphan Detection', () => {
     expect(found!.pid).toBe(999999999)
   })
 
-  it('进程状态为 stopped 不视为 orphan', () => {
+  it('进程状态为 stopped 但 task 状态为活跃时视为 orphan', () => {
     const task = createTestTask({ status: 'planning' })
     saveTaskBypassingGrace(task)
 
     const processInfo: ProcessInfo = {
       pid: 999999998,
+      startedAt: OLD_TIME,
+      status: 'stopped',
+    }
+    saveProcessInfo(task.id, processInfo)
+
+    const orphans = detectOrphanedTasks()
+    const found = orphans.find(o => o.task.id === task.id)
+
+    expect(found).toBeDefined()
+    expect(found!.reason).toBe('process_not_found')
+  })
+
+  it('进程状态为 stopped 且 task 状态为终态时不视为 orphan', () => {
+    const task = createTestTask({ status: 'completed' })
+    saveTaskBypassingGrace(task)
+
+    const processInfo: ProcessInfo = {
+      pid: 999999997,
       startedAt: OLD_TIME,
       status: 'stopped',
     }

@@ -207,7 +207,9 @@ export async function executeNodeByType(
           _scheduleWaitNodeId: node.id,
         })
         const task = getTask(swTaskId)
-        if (task && task.status === 'developing') {
+        // Accept 'pending' too — race condition: NodeWorker can execute schedule-wait
+        // before executeTask.ts sets status to 'developing' (line after startWorkflow).
+        if (task && (task.status === 'developing' || task.status === 'pending')) {
           updateTask(swTaskId, { status: 'waiting' })
         }
       }
@@ -442,10 +444,8 @@ async function executeLarkNotifyNode(
   node: WorkflowNode,
   instance: WorkflowInstance
 ): Promise<{ success: boolean; output?: unknown; error?: string }> {
-  const config = node.larkNotify
-  if (!config) {
-    return { success: false, error: 'lark-notify: missing larkNotify config' }
-  }
+  // Allow missing larkNotify config — use defaults (auto-detect content & chatId)
+  const config = node.larkNotify ?? {}
 
   // 解析消息内容
   let text: string | undefined
@@ -495,27 +495,42 @@ async function executeLarkNotifyNode(
     return { success: false, error: 'lark-notify: no chatId configured' }
   }
 
-  // 添加标题
-  if (config.title) {
-    text = `**${config.title}**\n\n${text}`
-  }
-
   // 截断过长消息
   if (text.length > 4000) {
     text = text.slice(0, 4000) + '\n\n...(truncated)'
   }
 
-  // 发送消息
+  // 发送卡片消息（支持 markdown 渲染）
   try {
-    const { sendLarkMessageViaApi } = await import('../messaging/index.js')
-    const sent = await sendLarkMessageViaApi(chatId, text)
-    if (!sent) {
-      return { success: false, error: 'lark-notify: failed to send message' }
+    const { sendLarkCardViaApi, normalizeLarkMarkdown, buildCard } =
+      await import('../messaging/index.js')
+
+    // 将 markdown 文本按 --- 分段，构建卡片 elements
+    const sections = text.split(/^(?:---+|\*\*\*+|___+)\s*$/m)
+    const elements: Array<{ tag: 'markdown'; content: string } | { tag: 'hr' }> = []
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i]!.trim()
+      if (section) {
+        elements.push({ tag: 'markdown', content: normalizeLarkMarkdown(section) })
+      }
+      if (i < sections.length - 1) {
+        elements.push({ tag: 'hr' })
+      }
     }
-    logger.info(`Lark notify sent to ${chatId}, length=${text.length}`)
+    if (elements.length === 0) {
+      elements.push({ tag: 'markdown', content: text })
+    }
+
+    const title = config.title || '任务通知'
+    const card = buildCard(title, 'blue', elements)
+    const sent = await sendLarkCardViaApi(chatId, card)
+    if (!sent) {
+      return { success: false, error: 'lark-notify: failed to send card' }
+    }
+    logger.info(`Lark notify card sent to ${chatId}, length=${text.length}`)
     return { success: true, output: { sent: true, chatId, length: text.length } }
   } catch (err) {
     logger.error(`Lark notify failed: ${err}`)
-    return { success: false, error: 'lark-notify: failed to send message' }
+    return { success: false, error: 'lark-notify: failed to send card' }
   }
 }

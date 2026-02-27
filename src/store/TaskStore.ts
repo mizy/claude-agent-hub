@@ -147,11 +147,6 @@ export function getTaskFolder(taskId: string): string | null {
   return null
 }
 
-// Get task folder path (for compatibility, status is ignored)
-export function getTaskFolderByStatus(taskId: string, _status: TaskStatus): string {
-  return getTaskDir(taskId)
-}
-
 // ============ Task CRUD ============
 
 // Save task
@@ -197,11 +192,6 @@ export function getAllTaskSummaries(): TaskSummary[] {
 // Get tasks by status
 export function getTasksByStatus(status: TaskStatus): Task[] {
   return getAllTasks().filter(t => t.status === status)
-}
-
-// 获取指定状态的任务摘要
-export function getTaskSummariesByStatus(status: TaskStatus): TaskSummary[] {
-  return getTasksByStatus(status).map(toSummary)
 }
 
 // Update task
@@ -272,14 +262,6 @@ function isProcessRunningFn(pid: number): boolean {
   } catch {
     return false
   }
-}
-
-/** 进程操作聚合对象 */
-export const PROCESS_OPS = {
-  save: saveProcessInfoFn,
-  get: getProcessInfoFn,
-  update: updateProcessInfoFn,
-  isRunning: isProcessRunningFn,
 }
 
 // 兼容性单独导出

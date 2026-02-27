@@ -5,6 +5,7 @@
 import chalk from 'chalk'
 import { table } from 'table'
 import { existsSync } from 'fs'
+import { CronExpressionParser } from 'cron-parser'
 import {
   getTask,
   getProcessInfo,
@@ -111,6 +112,7 @@ export function renderTaskList(tasks: Task[], showProgress: boolean): void {
   for (const task of tasks) {
     const statusFn = statusColors[task.status] || chalk.white
     const priorityFn = priorityColors[task.priority] || chalk.white
+    const schedulePrefix = task.scheduleCron ? '[⏰] ' : ''
 
     // Get process info for running tasks
     let pidDisplay = '-'
@@ -145,26 +147,38 @@ export function renderTaskList(tasks: Task[], showProgress: boolean): void {
       }
     }
 
+    // Show "waiting (cron)" for scheduled tasks in waiting status
+    const statusDisplay =
+      task.status === 'waiting' && task.scheduleCron
+        ? statusFn('waiting (cron)')
+        : statusFn(task.status)
+
     if (showProgress) {
-      const titleDisplay = task.title
-        ? task.title.slice(0, 20) + (task.title.length > 20 ? '...' : '')
+      const rawTitle = task.title
+        ? schedulePrefix + task.title
+        : ''
+      const titleDisplay = rawTitle
+        ? rawTitle.slice(0, 20) + (rawTitle.length > 20 ? '...' : '')
         : chalk.gray('(无标题)')
       data.push([
         idDisplay,
         titleDisplay,
-        statusFn(task.status),
+        statusDisplay,
         progressDisplay,
         pidDisplay,
         priorityFn(task.priority),
       ])
     } else {
-      const titleDisplay = task.title
-        ? task.title.slice(0, 25) + (task.title.length > 25 ? '...' : '')
+      const rawTitle = task.title
+        ? schedulePrefix + task.title
+        : ''
+      const titleDisplay = rawTitle
+        ? rawTitle.slice(0, 25) + (rawTitle.length > 25 ? '...' : '')
         : chalk.gray('(无标题)')
       data.push([
         idDisplay,
         titleDisplay,
-        statusFn(task.status),
+        statusDisplay,
         pidDisplay,
         priorityFn(task.priority),
         task.createdAt.split('T')[0] ?? '',
@@ -256,6 +270,16 @@ export async function getTaskDetail(id: string, options: GetTaskDetailOptions = 
   console.log(`${chalk.gray('Status:')}   ${formatStatus(task.status)}`)
   console.log(`${chalk.gray('Priority:')} ${task.priority}`)
   console.log(`${chalk.gray('Assignee:')} ${task.assignee || chalk.gray('(not assigned)')}`)
+  if (task.scheduleCron) {
+    let nextRun = ''
+    try {
+      const interval = CronExpressionParser.parse(task.scheduleCron, { tz: 'Asia/Shanghai' })
+      nextRun = ` (next: ${interval.next().toISOString()})`
+    } catch {
+      // ignore parse errors
+    }
+    console.log(`${chalk.gray('Schedule:')} ${chalk.cyan(task.scheduleCron)}${nextRun}`)
+  }
   console.log(`${chalk.gray('Created:')}  ${task.createdAt}`)
 
   // Process info

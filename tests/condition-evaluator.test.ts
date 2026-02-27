@@ -7,7 +7,7 @@ import {
   evaluateCondition,
   validateExpression,
   extractVariables,
-} from '../src/workflow/engine/ConditionEvaluator.js'
+} from '../src/workflow/engine/ExpressionEvaluator.js'
 import type { EvalContext } from '../src/workflow/types.js'
 
 describe('evaluateCondition', () => {

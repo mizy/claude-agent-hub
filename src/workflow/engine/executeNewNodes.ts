@@ -7,7 +7,7 @@
 import { CronExpressionParser } from 'cron-parser'
 import { createLogger } from '../../shared/logger.js'
 import { evaluateExpression } from './ExpressionEvaluator.js'
-import { evaluateCondition } from './ConditionEvaluator.js'
+import { evaluateCondition } from './ExpressionEvaluator.js'
 import type { WorkflowNode, WorkflowInstance, EvalContext } from '../types.js'
 
 export { evaluateExpression } from './ExpressionEvaluator.js'

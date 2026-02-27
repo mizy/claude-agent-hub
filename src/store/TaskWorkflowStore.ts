@@ -5,22 +5,11 @@
 import { join } from 'path'
 import { createLogger } from '../shared/logger.js'
 import type { Workflow, WorkflowInstance } from '../types/workflow.js'
-import type { Task } from '../types/task.js'
 import { WORKFLOW_FILE, INSTANCE_FILE, getTaskDir } from './paths.js'
 import { readJson, writeJson } from './readWriteJson.js'
-import { getTaskFolder, getTask, getProcessInfo, type ProcessInfo } from './TaskStore.js'
+import { getTaskFolder } from './TaskStore.js'
 
 const logger = createLogger('task-workflow-store')
-
-// Task folder contents
-export interface TaskFolder {
-  path: string
-  taskId: string
-  task: Task
-  workflow?: Workflow
-  instance?: WorkflowInstance
-  process?: ProcessInfo
-}
 
 // ============ Workflow in Task Folder ============
 
@@ -71,22 +60,3 @@ export function getInstancePath(taskId: string): string {
   return join(getTaskDir(taskId), INSTANCE_FILE)
 }
 
-// ============ Load Full Task Folder ============
-
-// Load complete task folder
-export function loadTaskFolder(taskId: string): TaskFolder | null {
-  const task = getTask(taskId)
-  if (!task) return null
-
-  const taskDir = getTaskFolder(taskId)
-  if (!taskDir) return null
-
-  return {
-    path: taskDir,
-    taskId: taskId,
-    task,
-    workflow: getTaskWorkflow(taskId) || undefined,
-    instance: getTaskInstance(taskId) || undefined,
-    process: getProcessInfo(taskId) || undefined,
-  }
-}

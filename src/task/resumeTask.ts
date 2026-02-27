@@ -135,8 +135,21 @@ export function detectOrphanedTasks(): OrphanedTask[] {
         continue
       }
 
-      // 进程状态已经是 stopped 或 crashed，跳过
+      // 进程状态已经是 stopped 或 crashed — 通常意味着任务已正常终止，
+      // 但如果 task 还处于活跃状态（developing/planning），说明是异常退出后状态未更新，
+      // 需要当作孤儿处理。
       if (processInfo.status !== 'running') {
+        const isActiveStatus = task.status === 'developing' || task.status === 'planning'
+        if (!isActiveStatus) continue
+        logger.info(
+          `Task ${task.id} has process status=${processInfo.status} but task status=${task.status}, treating as orphaned`
+        )
+        orphaned.push({
+          task,
+          pid: processInfo.pid,
+          lastHeartbeat: processInfo.lastHeartbeat,
+          reason: 'process_not_found',
+        })
         continue
       }
 

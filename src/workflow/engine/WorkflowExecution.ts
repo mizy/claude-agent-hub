@@ -19,7 +19,7 @@ import {
   isNodeCompleted,
   checkWorkflowCompletion,
 } from './StateManager.js'
-import { evaluateCondition } from './ConditionEvaluator.js'
+import { evaluateCondition } from './ExpressionEvaluator.js'
 import { buildEvalContext } from '../nodeResultProcessor.js'
 import type {
   Workflow,
@@ -58,6 +58,7 @@ export async function getNextNodes(
   // 获取所有出边
   const outEdges = workflow.edges.filter(e => e.from === currentNodeId)
   const nextNodes: string[] = []
+  let loopBackFollowed = false
 
   for (const edge of outEdges) {
     const shouldFollow = await shouldFollowEdge(edge, instance, workflow)
@@ -81,10 +82,17 @@ export async function getNextNodes(
         resetLoopPath(instanceId, edge.to, currentNodeId, workflow)
 
         logger.debug(`Loop edge ${edge.id}: count ${currentLoops + 1}/${maxLoops}`)
+        loopBackFollowed = true
       }
 
       nextNodes.push(edge.to)
     }
+  }
+
+  // Loop-back 激活时，跳过 end 节点（循环优先于终止，loop 耗尽后 end 边才会正常触发）
+  if (loopBackFollowed) {
+    const endNodeIds = new Set(workflow.nodes.filter(n => n.type === 'end').map(n => n.id))
+    return nextNodes.filter(id => !endNodeIds.has(id))
   }
 
   return nextNodes
@@ -144,8 +152,10 @@ export function canExecuteNode(
     }
   }
 
-  // 所有入边的源节点必须完成（join 节点和并行汇聚点均需全部完成）
+  // 所有非 loop-back 入边的源节点必须完成（join 节点和并行汇聚点均需全部完成）
+  // Loop-back 边（如 notify → wait 循环回路）不应阻塞目标节点的首次执行
   return inEdges.every(edge => {
+    if (edge.maxLoops !== undefined || isTopologicalLoopBack(edge, workflow)) return true
     const sourceState = instance.nodeStates[edge.from]
     return sourceState != null && isNodeCompleted(sourceState)
   })

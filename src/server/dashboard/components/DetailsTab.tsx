@@ -68,6 +68,12 @@ function TaskInfoSection() {
             <div className="label">ID</div>
             <div className="value" style={{ fontSize: 10 }}>{task.id}</div>
           </div>
+          {task.scheduleCron && (
+            <div className="info-item">
+              <div className="label">Schedule</div>
+              <div className="value" style={{ color: '#818cf8' }}>{task.scheduleCron}</div>
+            </div>
+          )}
         </div>
       </div>
 

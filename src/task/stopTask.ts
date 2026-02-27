@@ -10,7 +10,11 @@ import {
   isProcessRunning,
 } from '../store/TaskStore.js'
 import { getTaskInstance } from '../store/TaskWorkflowStore.js'
-import { updateInstanceStatus, updateInstanceVariables } from '../store/WorkflowStore.js'
+import {
+  updateInstanceStatus,
+  updateInstanceVariables,
+  saveInstance,
+} from '../store/WorkflowStore.js'
 import { appendExecutionLog, appendJsonlLog } from '../store/TaskLogStore.js'
 import { createLogger } from '../shared/logger.js'
 import { getActiveNodes } from '../workflow/index.js'
@@ -70,7 +74,19 @@ export function stopTask(id: string): StopTaskResult {
   // Also update instance status to keep them in sync
   if (instance) {
     updateInstanceStatus(instance.id, 'cancelled')
-    // Clear schedule-wait markers so daemon won't try to resume a cancelled task
+    // Clear schedule-wait markers so daemon won't try to resume a cancelled task.
+    // Also reset any 'waiting' schedule-wait nodes back to 'pending' so that
+    // if the task is later resumed, recoverWorkflowInstance can re-execute them.
+    const waitNodeId = instance.variables?._scheduleWaitNodeId as string | undefined
+    if (waitNodeId && instance.nodeStates[waitNodeId]?.status === 'waiting') {
+      instance.nodeStates[waitNodeId] = {
+        ...instance.nodeStates[waitNodeId]!,
+        status: 'pending',
+        startedAt: undefined,
+        completedAt: undefined,
+      }
+      saveInstance(instance)
+    }
     if (instance.variables?._scheduleWaitResumeAt) {
       updateInstanceVariables(instance.id, {
         _scheduleWaitResumeAt: null,

@@ -10,6 +10,8 @@ export interface Task {
   priority: string
   createdAt: string
   retryCount: number
+  scheduleCron?: string
+  source?: string
 }
 
 export interface WorkflowNode {

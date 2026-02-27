@@ -96,6 +96,13 @@ body {
 .status-reviewing { background: #854d0e; }
 .status-waiting { background: #1d4ed8; }
 
+.task-tag {
+  padding: 1px 5px; border-radius: 3px;
+  font-size: 9px; font-weight: 500; letter-spacing: 0.3px;
+}
+.tag-scheduled { background: #4338ca; color: #c7d2fe; }
+.tag-selfdrive { background: #065f46; color: #a7f3d0; }
+
 .new-task-btn {
   padding: 6px 12px; border-radius: 6px; font-size: 12px;
   cursor: pointer; border: none; background: #3b82f6; color: #fff;

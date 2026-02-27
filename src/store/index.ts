@@ -6,7 +6,7 @@
  * 能力分组：
  * - FileStore<T>: 泛型 key-value 文件存储类
  * - TaskStore: Task CRUD、进程管理（saveTask/getTask/getAllTasks/saveProcessInfo）
- * - TaskWorkflowStore: Workflow/Instance 存储（saveTaskWorkflow/getTaskInstance/loadTaskFolder）
+ * - TaskWorkflowStore: Workflow/Instance 存储（saveTaskWorkflow/getTaskInstance）
  * - TaskLogStore: 日志写入（appendExecutionLog/appendConversation/appendJsonlLog）
  * - WorkflowStore: Workflow 引擎存储（createInstance/saveInstance/updateNodeState）
  * - MemoryStore: 语义记忆（getAllMemories/saveMemory/updateMemory）
@@ -48,14 +48,12 @@ export {
   getAllTasks,
   getAllTaskSummaries,
   getTasksByStatus,
-  getTaskSummariesByStatus,
   updateTask,
   deleteTask,
   // Task folder
   generateTaskId,
   createTaskFolder,
   getTaskFolder,
-  getTaskFolderByStatus,
   // Process info
   saveProcessInfo,
   getProcessInfo,
@@ -77,10 +75,6 @@ export {
   // Path helpers
   getWorkflowPath,
   getInstancePath,
-  // Load full folder
-  loadTaskFolder,
-  // Types
-  type TaskFolder,
 } from './TaskWorkflowStore.js'
 
 // TaskLogStore - Task 的日志和步骤输出
@@ -174,8 +168,6 @@ export {
   // Timeline
   appendTimelineEvent,
   getExecutionTimeline,
-  getTimelineForInstance,
-  clearTimelineForNewInstance,
   formatTimeline,
   // Types
   type ExecutionTimeline,

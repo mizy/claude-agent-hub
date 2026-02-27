@@ -6,7 +6,6 @@
 import { type Result, err, fromPromise } from '../shared/result.js'
 import { createLogger, type Logger } from '../shared/logger.js'
 import { ensureError } from '../shared/assertError.js'
-import { emitEvent } from './eventBus.js'
 
 export type WorkerStatus = 'idle' | 'running' | 'paused' | 'stopped'
 
@@ -178,53 +177,3 @@ export function createWorker<T, R>(config: WorkerConfig, handler: TaskHandler<T,
   }
 }
 
-// Task Worker 类型定义
-export interface TaskWorkerInput {
-  taskId: string
-}
-
-export interface TaskWorkerResult {
-  taskId: string
-  success: boolean
-  commitHash?: string
-  error?: string
-}
-
-// 创建 Task 专用 Worker
-export function createTaskWorker(
-  name: string,
-  handler: TaskHandler<TaskWorkerInput, TaskWorkerResult>
-): Worker<TaskWorkerInput, TaskWorkerResult> {
-  const worker = createWorker<TaskWorkerInput, TaskWorkerResult>(
-    {
-      name: `task:${name}`,
-      concurrency: 1, // 一次只处理一个任务
-      timeout: 30 * 60 * 1000, // 30 分钟超时
-      maxRetries: 2,
-      retryDelay: 5000,
-    },
-    handler
-  )
-
-  // 包装以添加事件发射
-  const originalExecute = worker.execute.bind(worker)
-  worker.execute = async (task: TaskWorkerInput) => {
-    await emitEvent('task:started', { taskId: task.taskId })
-
-    const result = await originalExecute(task)
-
-    if (result.ok && result.value.success) {
-      await emitEvent('task:completed', { taskId: task.taskId })
-    } else {
-      const errorMsg = result.ok ? result.value.error : result.error.message
-      await emitEvent('task:failed', {
-        taskId: task.taskId,
-        error: errorMsg ?? 'Unknown error',
-      })
-    }
-
-    return result
-  }
-
-  return worker
-}

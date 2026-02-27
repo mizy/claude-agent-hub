@@ -100,14 +100,6 @@ export function getWorkflow(id: string): Workflow | null {
   return found
 }
 
-export function getAllWorkflows(): Workflow[] {
-  const workflows: Workflow[] = []
-  forEachWorkflow(workflow => {
-    workflows.push(workflow)
-  })
-  return workflows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-}
-
 export function deleteWorkflow(id: string): void {
   // workflow 存储在 task 目录下，删除应通过 TaskStore.deleteTask
   workflowIdToTaskIdCache.delete(id)
@@ -174,10 +166,6 @@ export function getInstance(id: string): WorkflowInstance | null {
     return false
   })
   return found
-}
-
-export function getInstancesByWorkflow(workflowId: string): WorkflowInstance[] {
-  return getAllInstances().filter(i => i.workflowId === workflowId)
 }
 
 export function getInstancesByStatus(status: WorkflowStatus): WorkflowInstance[] {
