@@ -118,11 +118,13 @@ export function registerDaemonJobs(pollCronExpr: string): void {
             _scheduleWaitTriggered: true,
           })
           // Kill the idle process that's still running from the schedule-wait phase.
-          // The NodeWorker stays alive but idle while waiting — must kill before resume.
+          // Use SIGKILL to avoid graceful shutdown — the old process is just idle and
+          // its graceful handler would detect the new process's completion and emit
+          // a duplicate notification.
           const processInfo = getProcessInfo(task.id)
           if (processInfo?.pid) {
             try {
-              process.kill(processInfo.pid)
+              process.kill(processInfo.pid, 'SIGKILL')
               logger.debug(`Killed idle schedule-wait process: PID ${processInfo.pid}`)
             } catch {
               // Already dead — fine
