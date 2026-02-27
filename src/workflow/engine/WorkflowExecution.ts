@@ -9,6 +9,7 @@ import {
   getInstance,
   incrementLoopCount,
   resetNodeState,
+  updateNodeState,
   saveInstance,
 } from '../../store/WorkflowStore.js'
 import {
@@ -457,6 +458,10 @@ function resetLoopPath(
       }
     }
   }
+
+  // Reset attempts for the loop-back trigger node to prevent
+  // loop iterations from being counted as error retries
+  updateNodeState(instanceId, stopBeforeNodeId, { attempts: 0 })
 }
 
 // ============ 循环辅助函数 ============
