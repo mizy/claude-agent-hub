@@ -119,7 +119,7 @@ export async function sendReviewNotification(options: ReviewNotificationOptions)
 }
 
 /**
- * 通过 Lark API client 发送消息到指定 chat
+ * 通过 Lark API client 发送消息到指定 chat（以卡片形式）
  */
 export async function sendLarkMessageViaApi(chatId: string, text: string): Promise<boolean> {
   const client = await getOrCreateLarkClient()
@@ -128,19 +128,22 @@ export async function sendLarkMessageViaApi(chatId: string, text: string): Promi
     return false
   }
 
+  // Build a simple card with the text as markdown content
+  const card = buildCard('', 'blue', [mdElement(text)])
+
   try {
     await withRetry(
       () => client.im.v1.message.create({
         params: { receive_id_type: 'chat_id' },
         data: {
           receive_id: chatId,
-          content: JSON.stringify({ text }),
-          msg_type: 'text',
+          content: JSON.stringify(card),
+          msg_type: 'interactive',
         },
       }),
       'sendLarkMessage'
     )
-    logger.info(`Sent message via Lark API to chat ${chatId}`)
+    logger.info(`Sent card message via Lark API to chat ${chatId}`)
     return true
   } catch (error) {
     const errorMessage = formatErrorMessage(error)
@@ -167,16 +170,17 @@ export async function sendLarkMessage(
     logger.warn('API send failed, falling back to webhook')
   }
 
-  // 降级到 webhook
+  // 降级到 webhook（也用卡片）
   try {
+    const card = buildCard('', 'blue', [mdElement(text)])
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        msg_type: 'text',
-        content: { text },
+        msg_type: 'interactive',
+        card,
       }),
     })
 

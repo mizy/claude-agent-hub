@@ -119,6 +119,20 @@ function formatTaskLineLark(item: TaskListItem): string {
 
 // ── Card builders ──
 
+export function buildTaskCreatedCard(taskId: string, title: string, status: string): LarkCard {
+  const createdTime = new Date().toLocaleString('zh-CN')
+  return buildCard('✅ 任务已创建', 'blue', [
+    mdElement(`**${title}**`),
+    mdElement(`🔵 ${status}`),
+    hrElement(),
+    actionElement([
+      button('📋 查看详情', 'primary', taskDetailAction(taskId)),
+      button('📝 查看日志', 'default', taskLogsAction(taskId)),
+    ]),
+    noteElement(`${taskId.slice(0, 20)} · ${createdTime}`),
+  ])
+}
+
 export function buildTaskCompletedCard(task: TaskCardInfo, duration: string): LarkCard {
   const elements: LarkCardElement[] = []
 

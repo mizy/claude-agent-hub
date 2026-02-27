@@ -28,6 +28,7 @@ export type { LarkCard, LarkCardElement, LarkCardButton } from './larkCards/card
 
 // Task lifecycle cards
 export {
+  buildTaskCreatedCard,
   buildTaskCompletedCard,
   buildTaskFailedCard,
   buildTaskListCard,

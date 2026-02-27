@@ -19,7 +19,6 @@ import {
 } from './telegramClient.js'
 import {
   sendLarkCardViaApi,
-  sendLarkMessageViaApi,
 } from './sendLarkNotify.js'
 import {
   getDefaultLarkChatId,
@@ -27,6 +26,7 @@ import {
 import {
   buildTaskCompletedCard,
   buildTaskFailedCard,
+  buildTaskCreatedCard,
 } from './buildLarkCard.js'
 import type { Task } from '../types/task.js'
 
@@ -60,11 +60,11 @@ export async function sendTaskCreatedNotification(task: Task): Promise<void> {
       }
     }
 
-    // ── Lark ── Send via API client (text message type)
+    // ── Lark ── Send via API client (card)
     const larkChatId = notifyConfig?.lark?.chatId || getDefaultLarkChatId()
     if (larkChatId) {
-      const text = `✅ 任务已创建\nID: ${task.id}\n标题: ${displayTitle}\n状态: 🔵 ${task.status}`
-      const sent = await sendLarkMessageViaApi(larkChatId, text)
+      const card = buildTaskCreatedCard(task.id, displayTitle, task.status)
+      const sent = await sendLarkCardViaApi(larkChatId, card)
       if (sent) {
         logger.info(`Sent task creation notification for ${task.id}`)
       }
