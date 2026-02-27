@@ -143,7 +143,7 @@ function buildArgs(
   disableMcp?: boolean,
   mcpServers?: string[]
 ): string[] {
-  const args: string[] = ['run', prompt]
+  const args: string[] = ['run']
 
   if (sessionId) {
     args.push('--session', sessionId)
@@ -171,6 +171,9 @@ function buildArgs(
       if (mcpConfig) args.push('--mcp-config', mcpConfig)
     }
   }
+
+  // opencode v1.2.15+: prompt must come after -- separator
+  args.push('--', prompt)
 
   return args
 }
