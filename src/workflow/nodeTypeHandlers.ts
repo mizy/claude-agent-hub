@@ -450,9 +450,16 @@ async function executeLarkNotifyNode(
   // 解析消息内容
   let text: string | undefined
   if (config.content) {
-    const ctx = buildEvalContext(instance)
-    const value = evaluateExpression(config.content, ctx)
-    text = String(value)
+    // Only evaluate as expression if content references outputs/variables;
+    // otherwise treat as plain text (avoids expr-eval choking on emoji/unicode)
+    const hasExpression = /\b(outputs|variables|loopCount|nodeStates)\b/.test(config.content)
+    if (hasExpression) {
+      const ctx = buildEvalContext(instance)
+      const value = evaluateExpression(config.content, ctx)
+      text = String(value)
+    } else {
+      text = config.content
+    }
   } else {
     // 取最近完成节点的输出
     const doneNodes = Object.entries(instance.nodeStates || {})
