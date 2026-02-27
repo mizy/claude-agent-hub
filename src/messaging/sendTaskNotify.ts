@@ -165,6 +165,8 @@ export async function sendTaskCompletionNotify(
         totalCostUsd: info.totalCostUsd,
         outputSummary: outputSummary ?? undefined,
         nodes: info.nodes,
+        backend: task.backend,
+        model: task.model,
       }
       const card = success
         ? buildTaskCompletedCard(cardInfo, duration)

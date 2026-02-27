@@ -42,6 +42,8 @@ export interface TaskCardInfo {
   totalCostUsd?: number
   outputSummary?: string
   nodes?: TaskNodeInfo[]
+  backend?: string
+  model?: string
 }
 
 export interface TaskListItem {
@@ -103,6 +105,13 @@ function buildNodeOverview(nodes: TaskNodeInfo[]): string {
     .join('\n')
 }
 
+/** Format backend + model label for card footer, e.g. " · opencode/glm-4.7-free" */
+function formatBackendLabel(backend?: string, model?: string): string {
+  if (!backend && !model) return ''
+  if (backend && model) return ` · ${backend}/${model}`
+  return ` · ${backend || model}`
+}
+
 function formatTaskLineLark(item: TaskListItem): string {
   const title = item.title.replace(/^\d{4}-\d{2}-\d{2}\s*/, '')
   return `${statusEmoji(item.status)} **${item.shortId}** ${title}  ${item.relativeTime}`
@@ -130,7 +139,8 @@ export function buildTaskCompletedCard(task: TaskCardInfo, duration: string): La
   )
 
   const completedTime = new Date().toLocaleString('zh-CN')
-  elements.push(noteElement(`${task.id.slice(0, 20)} · ${completedTime}`))
+  const backendLabel = formatBackendLabel(task.backend, task.model)
+  elements.push(noteElement(`${task.id.slice(0, 20)} · ${completedTime}${backendLabel}`))
 
   return buildCard('✅ 任务完成', 'green', elements)
 }
@@ -160,7 +170,8 @@ export function buildTaskFailedCard(task: TaskCardInfo, duration: string, error:
   )
 
   const failedTime = new Date().toLocaleString('zh-CN')
-  elements.push(noteElement(`${task.id.slice(0, 20)} · ${failedTime}`))
+  const backendLabel = formatBackendLabel(task.backend, task.model)
+  elements.push(noteElement(`${task.id.slice(0, 20)} · ${failedTime}${backendLabel}`))
 
   return buildCard('❌ 任务失败', 'red', elements)
 }
