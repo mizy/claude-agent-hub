@@ -50,6 +50,8 @@ function parseScheduleMs(schedule: string): number | null {
 const GOAL_TASK_DESCRIPTIONS: Record<string, string> = {
   'evolve': '[自驱] 全局自进化',
   'cleanup': '[自驱] 遗忘清理',
+  'cleanup-code': '[自驱] 代码与文档清理',
+  'update-docs': '[自驱] 项目文档更新',
   'evolve-conversation': '[自驱] 对话体验自进化',
   'evolve-feature': '[自驱] 系统功能自进化',
 }
@@ -91,6 +93,35 @@ const STATIC_PROMPTS: Record<string, string> = {
 
 生成改进方案并应用，记录进化历史。`,
   'cleanup': '执行数据清理：清理过期日志、孤儿文件、过时的记忆条目等。',
+  'cleanup-code': `执行一轮代码和文档清理，移除项目中的无用内容。
+
+扫描范围：
+- 查找空文件、无内容的占位文件
+- 检查已废弃但未删除的代码文件（如标记了 deprecated 但仍存在的模块）
+- 识别未使用的导出函数/类型（通过 grep 确认无其他文件引用）
+- 查找过时的文档（README 中描述已不存在的功能、注释中引用已删除的文件）
+- 检查 dead code 路径（永远不会到达的分支、注释掉的代码块）
+
+清理原则：
+- 只删除确认无用的内容，有疑问的保留
+- 删除前通过 grep 确认无引用
+- 每轮最多清理 3-5 个文件/函数，不要大规模删除
+- 清理后运行 typecheck 和 test 验证无回归
+- 记录清理内容到 git commit message`,
+  'update-docs': `检查并更新项目文档，确保文档与代码实际状态一致。
+
+检查范围：
+- CLAUDE.md：命令列表、架构描述、@entry 模块索引是否与代码匹配
+- 各模块入口文件的 JSDoc 注释是否准确描述了当前 API
+- CLI --help 输出与实际命令是否一致
+- 数据结构文档与实际 JSON schema 是否匹配
+
+更新原则：
+- 只更新事实性内容（命令名、文件路径、API 签名等），不修改风格或措辞
+- 新增的功能/命令补充文档说明
+- 已删除的功能/命令移除文档中的引用
+- 每轮最多更新 2-3 个文档文件
+- 更新后通过 typecheck 验证（如果改了代码注释中的类型引用）`,
 }
 
 /** Get goal prompt with context awareness — CAH vs external project */

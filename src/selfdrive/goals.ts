@@ -12,7 +12,7 @@ import { generateShortId } from '../shared/generateId.js'
 
 // ============ Types ============
 
-export type GoalType = 'evolve' | 'cleanup' | 'evolve-conversation' | 'evolve-feature'
+export type GoalType = 'evolve' | 'cleanup' | 'cleanup-code' | 'update-docs' | 'evolve-conversation' | 'evolve-feature'
 
 export interface DriveGoal {
   id: string
@@ -92,30 +92,23 @@ const BUILTIN_GOALS: Omit<DriveGoal, 'id' | 'createdAt'>[] = [
     enabled: true,
   },
   {
-    description: 'Periodic data cleanup (old logs, orphaned files)',
-    type: 'cleanup',
+    description: 'Periodic code and doc cleanup (dead code, unused exports)',
+    type: 'cleanup-code',
     priority: 'low',
-    schedule: '6h',
-    enabled: false,
+    schedule: '3d',
+    enabled: true,
   },
   {
-    description: 'Periodic conversation experience evolution',
-    type: 'evolve-conversation',
-    priority: 'medium',
-    schedule: '12h',
-    enabled: false,
-  },
-  {
-    description: 'Periodic feature gap analysis and enhancement planning',
-    type: 'evolve-feature',
+    description: 'Periodic project documentation update',
+    type: 'update-docs',
     priority: 'low',
-    schedule: '1d',
-    enabled: false,
+    schedule: '2d',
+    enabled: true,
   },
 ]
 
 // Goal types that have been merged into 'evolve' — force-disable if they exist
-const DEPRECATED_GOAL_TYPES: GoalType[] = ['evolve-conversation', 'evolve-feature']
+const DEPRECATED_GOAL_TYPES: GoalType[] = ['evolve-conversation', 'evolve-feature', 'cleanup']
 
 /** Ensure built-in goals exist. Idempotent — skips if goals of each type already present.
  *  Also force-disables deprecated goal types that have been merged into 'evolve'. */

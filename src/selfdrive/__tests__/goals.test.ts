@@ -110,12 +110,11 @@ describe('goals', () => {
     it('creates built-in goals on first call', () => {
       ensureBuiltinGoals()
       const goals = listGoals()
-      expect(goals.length).toBeGreaterThanOrEqual(4)
+      expect(goals.length).toBeGreaterThanOrEqual(3)
       const types = goals.map(g => g.type)
       expect(types).toContain('evolve')
-      expect(types).toContain('cleanup')
-      expect(types).toContain('evolve-conversation')
-      expect(types).toContain('evolve-feature')
+      expect(types).toContain('cleanup-code')
+      expect(types).toContain('update-docs')
     })
 
     it('is idempotent — does not duplicate on second call', () => {
