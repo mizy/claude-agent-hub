@@ -14,6 +14,7 @@ import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { collectStderr } from './processHelpers.js'
 import { collectStream } from './collectStream.js'
+import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
 
 const logger = createLogger('iflow')
 
@@ -46,6 +47,14 @@ export function createIflowBackend(): BackendAdapter {
 
       const args = buildArgs(prompt, model, sessionId, skipPermissions)
       const startTime = Date.now()
+
+      logCliCommand({
+        backend: 'iflow',
+        command: buildRedactedCommand('iflow', args, prompt),
+        sessionId,
+        model,
+        cwd,
+      })
 
       try {
         const subprocess = execa('iflow', args, {

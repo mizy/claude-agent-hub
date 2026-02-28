@@ -102,6 +102,15 @@ async function main(): Promise<void> {
 
   // Set up global timeout (2 hours max)
   const timeoutTimer = setTimeout(() => {
+    // If task is in "waiting" state (e.g. schedule-wait), exit gracefully
+    // instead of marking as failed — the daemon will resume it when ready.
+    const currentTask = getTask(taskId)
+    if (currentTask?.status === 'waiting') {
+      logger.info(`Task in waiting state, exiting idle process (daemon will resume)`)
+      clearInterval(heartbeat)
+      process.exit(0)
+      return
+    }
     logger.error(`Task exceeded maximum duration (2 hours), terminating...`)
     updateTask(taskId, { status: 'failed' })
     updateProcessInfo(taskId, {

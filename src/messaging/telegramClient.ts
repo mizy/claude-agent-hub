@@ -10,7 +10,7 @@ import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { getNotifyConfig } from '../config/index.js'
 import { sendTelegramApprovalResult } from './sendTelegramNotify.js'
 import { routeMessage } from './handlers/messageRouter.js'
-import { logUserMessage } from './conversationLogger.js'
+import { logConversation } from '../store/conversationLog.js'
 import type { MessengerAdapter, ClientContext } from './handlers/types.js'
 
 const logger = createLogger('telegram')
@@ -123,7 +123,13 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
   const chatIdStr = String(message.chat.id)
 
   logger.info(`← [telegram] message received`)
-  logUserMessage('telegram', chatIdStr, text)
+  logConversation({
+    ts: new Date().toISOString(),
+    dir: 'in',
+    platform: 'telegram',
+    chatId: chatIdStr,
+    text,
+  })
 
   await routeMessage({
     chatId: chatIdStr,

@@ -9,8 +9,7 @@ import { createLogger } from '../../shared/logger.js'
 import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { buildClientPrompt, wrapMemoryContext, wrapHistoryContext } from '../../prompts/chatPrompts.js'
-import { logConversation, getRecentConversations } from './conversationLog.js'
-import { logAIResponse, logConversationEvent } from '../conversationLogger.js'
+import { logConversation, getRecentConversations, logConversationEvent } from '../../store/conversationLog.js'
 import {
   getSession,
   setSession,
@@ -369,7 +368,6 @@ async function processSuccessResult(
     model,
     backendType: backendOverride,
   })
-  logAIResponse(response, durationMs)
 
   // Update session
   if (newSessionId) setSession(chatId, newSessionId, backendOverride)

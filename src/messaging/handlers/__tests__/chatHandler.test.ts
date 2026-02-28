@@ -13,8 +13,9 @@ vi.mock('../../../backend/index.js', () => ({
 
 // Mock conversation log
 const mockLogConversation = vi.fn()
-vi.mock('../conversationLog.js', () => ({
+vi.mock('../../../store/conversationLog.js', () => ({
   logConversation: (...args: unknown[]) => mockLogConversation(...args),
+  logConversationEvent: vi.fn(),
   getRecentConversations: () => [],
 }))
 

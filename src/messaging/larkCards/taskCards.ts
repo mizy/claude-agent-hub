@@ -133,10 +133,16 @@ export function buildTaskCreatedCard(taskId: string, title: string, status: stri
   ])
 }
 
+/** Sanitize title for card display: first line only, no markdown chars, max 80 chars */
+function sanitizeCardTitle(title: string): string {
+  const firstLine = (title.split('\n')[0] ?? title).replace(/[*_`#]/g, '').trim()
+  return firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine
+}
+
 export function buildTaskCompletedCard(task: TaskCardInfo, duration: string): LarkCard {
   const elements: LarkCardElement[] = []
 
-  elements.push(mdElement(`**${task.title}**`))
+  elements.push(mdElement(`**${sanitizeCardTitle(task.title)}**`))
   elements.push(mdElement(buildCompactStats(task, duration)))
 
   if (task.nodes && task.nodes.length > 0) {
@@ -162,7 +168,7 @@ export function buildTaskCompletedCard(task: TaskCardInfo, duration: string): La
 export function buildTaskFailedCard(task: TaskCardInfo, duration: string, error: string): LarkCard {
   const elements: LarkCardElement[] = []
 
-  elements.push(mdElement(`**${task.title}**`))
+  elements.push(mdElement(`**${sanitizeCardTitle(task.title)}**`))
   elements.push(mdElement(buildCompactStats(task, duration)))
 
   if (task.nodes && task.nodes.length > 0) {

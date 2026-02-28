@@ -17,6 +17,7 @@ import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from '.
 import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
 import { collectStream } from './collectStream.js'
 import { buildMcpConfigJson, createClaudeCompatStreamProcessor } from './claudeCompatHelpers.js'
+import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
 
 const logger = createLogger('codebuddy')
 
@@ -53,6 +54,14 @@ export function createCodebuddyBackend(): BackendAdapter {
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
       const binary = await resolveBinary()
+
+      logCliCommand({
+        backend: 'codebuddy',
+        command: buildRedactedCommand(binary, args, prompt),
+        sessionId,
+        model,
+        cwd,
+      })
 
       try {
         const subprocess = execa(binary, args, {

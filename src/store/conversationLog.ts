@@ -8,9 +8,9 @@
 
 import { join } from 'path'
 import { appendFileSync, mkdirSync, readFileSync } from 'fs'
-import { DATA_DIR } from '../../store/paths.js'
-import { createLogger } from '../../shared/logger.js'
-import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { DATA_DIR } from './paths.js'
+import { createLogger } from '../shared/logger.js'
+import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 
 const logger = createLogger('conv-log')
 
@@ -19,8 +19,8 @@ const CONVERSATION_LOG_PATH = join(DATA_DIR, 'conversation.jsonl')
 export interface ConversationEntry {
   /** ISO 8601 时间戳 */
   ts: string
-  /** 消息方向：in=用户发送, out=AI回复 */
-  dir: 'in' | 'out'
+  /** 消息方向：in=用户发送, out=AI回复, event=会话事件, cmd=CLI命令 */
+  dir: 'in' | 'out' | 'event' | 'cmd'
   /** 平台 */
   platform: string
   /** 聊天 ID */
@@ -39,6 +39,18 @@ export interface ConversationEntry {
   model?: string
   /** Backend type used for this response, only dir=out */
   backendType?: string
+  /** Event name, only dir=event */
+  event?: string
+  /** Event detail, only dir=event */
+  eventDetail?: string
+  /** Full CLI command (prompt replaced with placeholder), only dir=cmd */
+  command?: string
+  /** Prompt character count, only dir=cmd */
+  promptLength?: number
+  /** Working directory, only dir=cmd */
+  cwd?: string
+  /** Task ID, only dir=cmd */
+  taskId?: string
 }
 
 let initialized = false
@@ -172,4 +184,51 @@ export function getMonthlyCost(): CostStats {
   const now = new Date()
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
   return getCostSince(firstDay)
+}
+
+// ── Event logging (replaces conversationLogger.ts) ──
+
+/** Log a conversation-level event (e.g. new session, backend switch) */
+export function logConversationEvent(event: string, details?: string, chatId?: string): void {
+  logConversation({
+    ts: new Date().toISOString(),
+    dir: 'event',
+    platform: '',
+    chatId: chatId ?? '',
+    text: details ? `${event} — ${details}` : event,
+    event,
+    eventDetail: details,
+  })
+}
+
+// ── CLI command logging ──
+
+/** Log a CLI backend command invocation */
+export function logCliCommand(entry: {
+  backend: string
+  command: string
+  sessionId?: string
+  model?: string
+  cwd?: string
+  taskId?: string
+  chatId?: string
+}): void {
+  logConversation({
+    ts: new Date().toISOString(),
+    dir: 'cmd',
+    platform: '',
+    chatId: entry.chatId ?? '',
+    text: '',
+    sessionId: entry.sessionId,
+    model: entry.model,
+    backendType: entry.backend,
+    command: entry.command,
+    cwd: entry.cwd,
+    taskId: entry.taskId,
+  })
+}
+
+/** Build a redacted CLI command string (replace prompt with length placeholder) */
+export function buildRedactedCommand(binary: string, args: string[], prompt: string): string {
+  return [binary, ...args.map(a => a === prompt ? `<prompt:${prompt.length} chars>` : a)].join(' ')
 }

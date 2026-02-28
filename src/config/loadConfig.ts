@@ -12,8 +12,8 @@ const logger = createLogger('config')
 const CONFIG_FILENAME = '.claude-agent-hub.yaml'
 
 let cachedConfig: Config | null = null
-let configWatcher: FSWatcher | null = null
-let watchedPath: string | null = null
+let configWatchers: FSWatcher[] = []
+let watchedPaths = new Set<string>()
 let reloadTimer: NodeJS.Timeout | null = null
 
 /**
@@ -50,10 +50,9 @@ export async function loadConfig(
 
   // Return cache if available (watch mode only affects watcher setup, not cache)
   if (cachedConfig) {
-    if (enableWatch && !configWatcher) {
+    if (enableWatch && watchedPaths.size === 0) {
       const { projectPath, globalPath } = findConfigPaths(cwd)
-      const watchPath = projectPath ?? globalPath
-      if (watchPath) startWatching(watchPath)
+      startWatchingAll([globalPath, projectPath].filter(Boolean) as string[])
     }
     return cachedConfig
   }
@@ -80,10 +79,9 @@ export async function loadConfig(
 
   cachedConfig = applyEnvOverrides(result.data)
 
-  // Watch project config if it exists, otherwise watch global
-  if (enableWatch && !configWatcher) {
-    const watchPath = projectPath ?? globalPath
-    if (watchPath) startWatching(watchPath)
+  // Watch both global and project configs when they exist
+  if (enableWatch && watchedPaths.size === 0) {
+    startWatchingAll([globalPath, projectPath].filter(Boolean) as string[])
   }
 
   return cachedConfig
@@ -207,23 +205,27 @@ export function applyEnvOverrides(config: Config): Config {
 }
 
 /**
- * 启动配置文件监听
+ * 启动多个配置文件的监听（全局 + 项目）
+ */
+function startWatchingAll(paths: string[]): void {
+  for (const p of paths) {
+    if (!watchedPaths.has(p)) {
+      startWatching(p)
+    }
+  }
+}
+
+/**
+ * 启动单个配置文件监听
+ * 同时处理 change 和 rename 事件（macOS 上编辑器常用原子写触发 rename）
  */
 function startWatching(configPath: string): void {
-  if (configWatcher && watchedPath === configPath) {
-    return // 已在监听同一文件
-  }
-
-  // 停止旧的监听器
-  stopWatching()
+  if (watchedPaths.has(configPath)) return
 
   logger.info(`Watching config file: ${configPath}`)
-  watchedPath = configPath
+  watchedPaths.add(configPath)
 
-  configWatcher = watch(configPath, async eventType => {
-    if (eventType !== 'change') return
-
-    // 防抖 500ms
+  const triggerReload = () => {
     if (reloadTimer) clearTimeout(reloadTimer)
     reloadTimer = setTimeout(async () => {
       try {
@@ -236,11 +238,35 @@ function startWatching(configPath: string): void {
         logger.error(`Failed to reload config: ${msg}`)
       }
     }, 500)
+  }
+
+  const watcher = watch(configPath, async eventType => {
+    // macOS 上编辑器（VS Code/vim 等）通过原子写保存文件，触发 rename 而非 change
+    // rename 后旧 watcher 的 inode 可能已失效，需要重建
+    if (eventType === 'rename') {
+      watchedPaths.delete(configPath)
+      const idx = configWatchers.indexOf(watcher)
+      if (idx !== -1) configWatchers.splice(idx, 1)
+      try { watcher.close() } catch {}
+
+      // 等文件落盘后重新建立监听，再触发 reload
+      setTimeout(() => {
+        if (existsSync(configPath)) {
+          startWatching(configPath)
+          triggerReload()
+        }
+      }, 200)
+      return
+    }
+
+    triggerReload()
   })
 
-  configWatcher.on('error', error => {
+  watcher.on('error', error => {
     logger.error(`Config watcher error: ${error.message}`)
   })
+
+  configWatchers.push(watcher)
 }
 
 /**
@@ -251,12 +277,12 @@ function stopWatching(): void {
     clearTimeout(reloadTimer)
     reloadTimer = null
   }
-  if (configWatcher) {
-    configWatcher.close()
-    configWatcher = null
-    watchedPath = null
-    logger.debug('Config file watching stopped')
+  for (const w of configWatchers) {
+    try { w.close() } catch {}
   }
+  configWatchers = []
+  watchedPaths.clear()
+  logger.debug('Config file watching stopped')
 }
 
 /**

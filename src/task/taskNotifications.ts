@@ -143,9 +143,12 @@ export async function emitWorkflowCompleted(ctx: CompletionContext): Promise<voi
   const taskNodes = workflow.nodes.filter(n => n.type !== 'start' && n.type !== 'end')
   const nodeInfos = taskNodes.map(n => {
     const state = finalInstance.nodeStates[n.id]
+    // If task succeeded and node has durationMs, it must have completed — override racing status
+    const resolvedStatus =
+      success && state?.durationMs ? 'done' : (state?.status ?? 'pending')
     return {
       name: n.name,
-      status: state?.status ?? 'pending',
+      status: resolvedStatus,
       durationMs: state?.durationMs,
     }
   })

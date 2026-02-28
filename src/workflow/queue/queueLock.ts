@@ -73,7 +73,11 @@ function acquireLock(): boolean {
       // Remove stale lock: holder is dead, or age exceeds timeout
       if (!holderAlive || age >= LOCK_TIMEOUT_MS) {
         logger.debug(`Removing stale queue lock (age=${Math.round(age / 1000)}s, holderAlive=${holderAlive})`)
-        unlinkSync(LOCK_FILE)
+        try {
+          unlinkSync(LOCK_FILE)
+        } catch {
+          logger.debug('Stale lock already removed by another process')
+        }
       } else {
         return false
       }

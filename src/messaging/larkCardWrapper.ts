@@ -34,22 +34,23 @@ export function convertMarkdownTables(text: string): string {
       if (dataRows.length === 0) return match
 
       const isKeyValue = headers.length === 2
+      const prefix = match.startsWith('\n') ? '\n' : ''
+
+      if (isKeyValue) {
+        const converted = dataRows.map(row => {
+          const cells = parseCells(row)
+          return `**${cells[0] ?? ''}**: ${cells[1] ?? ''}`
+        })
+        return prefix + converted.join('\n')
+      }
+
+      // Multi-column: bold header line + bulleted list rows
+      const headerLine = headers.map(h => `**${h}**`).join(' · ')
       const converted = dataRows.map(row => {
         const cells = parseCells(row)
-        if (isKeyValue) {
-          return `**${cells[0] ?? ''}**: ${cells[1] ?? ''}`
-        }
-        // Multi-column: first column as title, rest as fields on separate lines
-        const title = `**${cells[0] ?? ''}**`
-        const fields = headers.slice(1).map((h, i) => `  ${h}: ${cells[i + 1] ?? ''}`)
-        return title + '\n' + fields.join('\n')
+        return '- ' + cells.join(' · ')
       })
-
-      // Preserve leading newline if the match had one
-      const prefix = match.startsWith('\n') ? '\n' : ''
-      // Separate multi-column row blocks with blank lines for readability
-      const separator = isKeyValue ? '\n' : '\n\n'
-      return prefix + converted.join(separator)
+      return prefix + headerLine + '\n' + converted.join('\n')
     }
   )
 }
@@ -79,93 +80,48 @@ export function normalizeLarkMarkdown(text: string): string {
   return result
 }
 
-/** Post element types for Lark rich text (msg_type: 'post') */
-interface PostTextElement {
-  tag: 'text'
-  text: string
-  style?: string[]
-}
-interface PostLinkElement {
-  tag: 'a'
-  text: string
-  href: string
-  style?: string[]
-}
-type PostElement = PostTextElement | PostLinkElement
-
 /**
  * Convert markdown text to Lark post rich text content JSON string.
  *
- * Post format supports: bold, italic, underline, lineThrough, link, at.
- * Returns JSON.stringify({ zh_cn: { content: paragraphs } }) ready for msg_type: 'post'.
+ * Uses the `md` tag (Lark post format's native Markdown support), which handles:
+ *   **bold**, *italic*, ~~strikethrough~~, ~underline~, [link](url),
+ *   ``` code blocks ```, > blockquotes, \n --- \n dividers,
+ *   ordered/unordered lists, @ mentions
+ *
+ * Transformations applied before passing to md tag:
+ *   - # headings          → **heading** (md tag doesn't support # syntax)
+ *   - - [x] task          → - ✅ task
+ *   - - [ ] task          → - ☐ task
+ *   - `inline code`       → plain text (no native inline code in post md)
+ *   - --- hr              → \n ---\n (md tag requires surrounding newlines)
+ *   - markdown tables     → plain text (via convertMarkdownTables)
+ *
+ * Returns JSON.stringify({ zh_cn: { content: [[mdElement]] } }) for msg_type: 'post'.
  */
 export function markdownToPostContent(text: string): string {
-  let result = convertMarkdownTables(text)
-  // # headings → **bold**
-  result = result.replace(/^#{1,}\s+(.+)$/gm, '**$1**')
-  // ``` code blocks ``` → strip fences, preserve content
-  result = result.replace(/^```[\w]*\n?([\s\S]*?)^```/gm, (_match, code: string) => {
-    return code.trimEnd()
-  })
-  // > blockquote → strip >
-  result = result.replace(/^>\s?(.*)$/gm, '$1')
-  // --- horizontal rules → remove
-  result = result.replace(/^(?:---+|\*\*\*+|___+)\s*$/gm, '')
-  // <text_tag ...> → strip tags, keep content
+  // Strip Lark card-specific tags (not valid in post format)
+  let result = text
   result = result.replace(/<text_tag[^>]*>([\s\S]*?)<\/text_tag>/g, '$1')
-  // <font color=...> → strip tags, keep content (post doesn't support <font>)
   result = result.replace(/<font[^>]*>([\s\S]*?)<\/font>/g, '$1')
 
-  // Split into paragraphs by newline
-  const lines = result.split('\n')
-  const paragraphs: PostElement[][] = lines.map(line => parseInlineElements(line))
+  // Convert markdown tables to plain text
+  result = convertMarkdownTables(result)
 
-  return JSON.stringify({ zh_cn: { content: paragraphs } })
-}
+  // # headings → **heading** (md tag doesn't support # headings)
+  result = result.replace(/^#{1,6}\s+(.+)$/gm, '**$1**')
 
-/** Parse inline markdown elements into PostElement array */
-function parseInlineElements(line: string): PostElement[] {
-  // Empty line → paragraph with single newline to produce visual spacing
-  if (!line) return [{ tag: 'text', text: '\n' }]
+  // Task lists: - [x] → ✅, - [ ] → ☐
+  result = result.replace(/^(\s*)[*\-]\s+\[x\]\s*/gim, '$1- ✅ ')
+  result = result.replace(/^(\s*)[*\-]\s+\[ \]\s*/gim, '$1- ☐ ')
 
-  const elements: PostElement[] = []
-  // Priority: ** > * > ~~ > [link](url) > `code`
-  const regex = /\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`/g
-  let lastIndex = 0
-  let match: RegExpExecArray | null
+  // Inline code: strip backticks, keep content (no native inline code in post md tag)
+  // Must not match triple backticks (code blocks are supported)
+  result = result.replace(/(?<!`)`([^`\n]+)`(?!`)/g, '$1')
 
-  while ((match = regex.exec(line)) !== null) {
-    // Push plain text before this match
-    if (match.index > lastIndex) {
-      elements.push({ tag: 'text', text: line.slice(lastIndex, match.index) })
-    }
+  // Horizontal rules: md tag requires \n --- \n (with surrounding newlines)
+  result = result.replace(/^(?:---+|\*\*\*+|___+)\s*$/gm, '\n ---')
 
-    if (match[1] !== undefined) {
-      // **bold**
-      elements.push({ tag: 'text', text: match[1], style: ['bold'] })
-    } else if (match[2] !== undefined) {
-      // *italic*
-      elements.push({ tag: 'text', text: match[2], style: ['italic'] })
-    } else if (match[3] !== undefined) {
-      // ~~strikethrough~~
-      elements.push({ tag: 'text', text: match[3], style: ['lineThrough'] })
-    } else if (match[4] !== undefined && match[5] !== undefined) {
-      // [text](url)
-      elements.push({ tag: 'a', text: match[4], href: match[5] })
-    } else if (match[6] !== undefined) {
-      // `code` → plain text (strip backticks)
-      elements.push({ tag: 'text', text: match[6] })
-    }
-
-    lastIndex = match.index + match[0].length
-  }
-
-  // Push remaining plain text
-  if (lastIndex < line.length) {
-    elements.push({ tag: 'text', text: line.slice(lastIndex) })
-  }
-
-  return elements
+  return JSON.stringify({ zh_cn: { content: [[{ tag: 'md', text: result.trim() }]] } })
 }
 
 /**

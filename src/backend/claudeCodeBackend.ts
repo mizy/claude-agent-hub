@@ -15,6 +15,7 @@ import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from '.
 import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
 import { collectStream } from './collectStream.js'
 import { buildMcpConfigJson, createClaudeCompatStreamProcessor } from './claudeCompatHelpers.js'
+import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
 
 const logger = createLogger('claude-code')
 
@@ -52,6 +53,14 @@ export function createClaudeCodeBackend(): BackendAdapter {
       const args = buildArgs(prompt, skipPermissions, disableMcp, mcpServers, sessionId, stream, model)
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
+
+      logCliCommand({
+        backend: 'claude-code',
+        command: buildRedactedCommand('claude', args, prompt),
+        sessionId,
+        model,
+        cwd,
+      })
 
       try {
         // Remove CLAUDECODE env var to allow nested claude CLI calls

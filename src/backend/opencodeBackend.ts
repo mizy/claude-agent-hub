@@ -19,6 +19,7 @@ import {
   extractImagesFromEvent,
   type StreamJsonEvent,
 } from './claudeCompatHelpers.js'
+import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
 
 const logger = createLogger('opencode')
 
@@ -54,6 +55,14 @@ export function createOpencodeBackend(): BackendAdapter {
       const args = buildArgs(prompt, model, sessionId)
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
+
+      logCliCommand({
+        backend: 'opencode',
+        command: buildRedactedCommand('opencode', args, prompt),
+        sessionId,
+        model,
+        cwd,
+      })
 
       try {
         const subprocess = execa('opencode', args, {
