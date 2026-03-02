@@ -39,7 +39,7 @@ function contentSimilarity(a: string, b: string): number {
 function deduplicateMemories(memories: MemoryEntry[]): MemoryEntry[] {
   const result: MemoryEntry[] = []
   for (const m of memories) {
-    const isDup = result.some(existing => contentSimilarity(existing.content, m.content) > 0.7)
+    const isDup = result.some(existing => contentSimilarity(existing.content, m.content) > 0.5)
     if (!isDup) result.push(m)
   }
   return result
@@ -89,5 +89,5 @@ export function formatMemoriesForPrompt(memories: MemoryEntry[]): string {
 
   if (sections.length === 0) return ''
 
-  return `## 记忆上下文\n\n${sections.join('\n\n')}`
+  return sections.join('\n\n')
 }

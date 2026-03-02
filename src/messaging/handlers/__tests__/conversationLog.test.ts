@@ -109,10 +109,12 @@ describe('conversationLog', () => {
     expect(entry.chatId).toBe('')
   })
 
-  it('should log CLI command', () => {
+  it('should log CLI command with prompt saved to separate file', () => {
+    const fullPrompt = '[system context]\n\n[memory]\n\nUser question here'
     logCliCommand({
       backend: 'claude-code',
       command: 'claude --model opus --print <prompt:3847 chars>',
+      prompt: fullPrompt,
       sessionId: 'sess-123',
       model: 'opus',
       cwd: '/home/user/project',
@@ -122,11 +124,17 @@ describe('conversationLog', () => {
     const entry = parseLastLine(logPath)
 
     expect(entry.dir).toBe('cmd')
+    expect(entry.text).toBe('')
+    expect(entry.promptLength).toBe(fullPrompt.length)
+    expect(entry.promptFile).toMatch(/logs\/prompts\/.*-claude-code\.txt$/)
     expect(entry.command).toBe('claude --model opus --print <prompt:3847 chars>')
     expect(entry.backendType).toBe('claude-code')
     expect(entry.model).toBe('opus')
-    expect(entry.cwd).toBe('/home/user/project')
     expect(entry.sessionId).toBe('sess-123')
+
+    // Verify the prompt file contains the full prompt
+    const promptContent = readFileSync(entry.promptFile as string, 'utf-8')
+    expect(promptContent).toBe(fullPrompt)
   })
 
   it('should build redacted command string', () => {

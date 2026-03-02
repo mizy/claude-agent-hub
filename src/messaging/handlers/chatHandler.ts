@@ -260,12 +260,17 @@ async function buildFullPrompt(
 ): Promise<string> {
   const clientPrefix = client ? buildClientPrompt(client) + '\n\n' : ''
 
-  // Inject recent history for new sessions
+  // Inject recent history for new sessions (only in/out, deduplicated)
   let historyRaw = ''
   if (willStartNewSession) {
     const recent = getRecentConversations(chatId, 5)
+      .filter(e => e.dir === 'in' || e.dir === 'out')
     if (recent.length > 0) {
-      historyRaw = recent
+      // Deduplicate consecutive entries with same dir+text
+      const deduped = recent.filter((e, i) =>
+        i === 0 || e.dir !== recent[i - 1]!.dir || e.text !== recent[i - 1]!.text
+      )
+      historyRaw = deduped
         .map(e => {
           const role = e.dir === 'in' ? '用户' : 'AI'
           const content = e.text.length > 200 ? e.text.slice(0, 197) + '...' : e.text

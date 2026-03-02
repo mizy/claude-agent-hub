@@ -58,6 +58,7 @@ export function createCodebuddyBackend(): BackendAdapter {
       logCliCommand({
         backend: 'codebuddy',
         command: buildRedactedCommand(binary, args, prompt),
+        prompt,
         sessionId,
         model,
         cwd,

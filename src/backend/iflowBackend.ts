@@ -51,6 +51,7 @@ export function createIflowBackend(): BackendAdapter {
       logCliCommand({
         backend: 'iflow',
         command: buildRedactedCommand('iflow', args, prompt),
+        prompt,
         sessionId,
         model,
         cwd,

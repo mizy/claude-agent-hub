@@ -29,7 +29,6 @@ describe('formatMemoriesForPrompt', () => {
     ]
 
     const result = formatMemoriesForPrompt(memories)
-    expect(result).toContain('## 记忆上下文')
     expect(result).toContain('### 经验教训')
     expect(result).toContain('- always run tests')
     expect(result).toContain('- check CI before merge')

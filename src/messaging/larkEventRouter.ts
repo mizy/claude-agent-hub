@@ -18,7 +18,6 @@ import { sendApprovalResultNotification } from './sendLarkNotify.js'
 import { buildWelcomeCard } from './buildLarkCard.js'
 import { routeMessage } from './handlers/messageRouter.js'
 import { dispatchCardAction } from './handlers/larkCardActions.js'
-import { logConversation } from '../store/conversationLog.js'
 import { isDuplicateMessage, isDuplicateContent, isStaleMessage } from './larkMessageDedup.js'
 import type { MessengerAdapter, ClientContext } from './handlers/types.js'
 
@@ -200,14 +199,6 @@ export async function handleLarkMessage(
 
   const imgSuffix = images?.length ? ` +${images.length} image(s)` : ''
   logger.info(`← [${isGroup ? 'group' : 'dm'}]${imgSuffix}`)
-  logConversation({
-    ts: new Date().toISOString(),
-    dir: 'in',
-    platform: 'lark',
-    chatId,
-    text: text || (images?.length ? '[图片消息]' : ''),
-    images,
-  })
 
   // In group chats, wrap adapter to quote the original @mention message
   const messenger = isGroup && originalMessageId

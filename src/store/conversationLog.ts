@@ -7,7 +7,7 @@
  */
 
 import { join } from 'path'
-import { appendFileSync, mkdirSync, readFileSync } from 'fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { DATA_DIR } from './paths.js'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
@@ -47,6 +47,8 @@ export interface ConversationEntry {
   command?: string
   /** Prompt character count, only dir=cmd */
   promptLength?: number
+  /** Path to full prompt file, only dir=cmd */
+  promptFile?: string
   /** Working directory, only dir=cmd */
   cwd?: string
   /** Task ID, only dir=cmd */
@@ -203,22 +205,43 @@ export function logConversationEvent(event: string, details?: string, chatId?: s
 
 // ── CLI command logging ──
 
-/** Log a CLI backend command invocation */
+const PROMPTS_DIR = join(DATA_DIR, 'logs', 'prompts')
+let promptsDirInit = false
+
+/** Log a CLI backend command invocation. Full prompt saved to separate file. */
 export function logCliCommand(entry: {
   backend: string
   command: string
+  prompt: string
   sessionId?: string
   model?: string
   cwd?: string
   taskId?: string
   chatId?: string
 }): void {
+  // Write full prompt to DATA_DIR/logs/prompts/{ts}-{backend}.txt
+  let promptFile: string | undefined
+  try {
+    if (!promptsDirInit) {
+      mkdirSync(PROMPTS_DIR, { recursive: true })
+      promptsDirInit = true
+    }
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    const filename = `${ts}-${entry.backend}.txt`
+    promptFile = join(PROMPTS_DIR, filename)
+    writeFileSync(promptFile, entry.prompt, 'utf-8')
+  } catch (error) {
+    logger.debug(`Failed to write prompt file: ${formatErrorMessage(error)}`)
+  }
+
   logConversation({
     ts: new Date().toISOString(),
     dir: 'cmd',
     platform: '',
     chatId: entry.chatId ?? '',
     text: '',
+    promptLength: entry.prompt.length,
+    promptFile,
     sessionId: entry.sessionId,
     model: entry.model,
     backendType: entry.backend,

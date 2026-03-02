@@ -59,6 +59,7 @@ export function createOpencodeBackend(): BackendAdapter {
       logCliCommand({
         backend: 'opencode',
         command: buildRedactedCommand('opencode', args, prompt),
+        prompt,
         sessionId,
         model,
         cwd,
