@@ -18,15 +18,13 @@ const SESSIONS_FILE = join(DATA_DIR, 'sessions.json')
 // Default config values (overridden by configureSession)
 let sessionConfig: SessionConfig = {
   timeoutMinutes: 60,
-  maxTurns: 10,
-  maxEstimatedTokens: 50_000,
   maxSessions: 200,
 }
 
 /** Configure session parameters from config. Call once at startup. */
 export function configureSession(config: SessionConfig): void {
   sessionConfig = config
-  logger.info(`Session config: timeout=${config.timeoutMinutes}m, maxTurns=${config.maxTurns}, maxTokens=${config.maxEstimatedTokens}, maxSessions=${config.maxSessions}`)
+  logger.info(`Session config: timeout=${config.timeoutMinutes}m, maxSessions=${config.maxSessions}`)
 }
 
 function getTimeoutMs(): number {

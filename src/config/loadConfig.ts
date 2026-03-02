@@ -185,8 +185,6 @@ export function applyEnvOverrides(config: Config): Config {
             mcpServers: [],
             session: {
               timeoutMinutes: 60,
-              maxTurns: 0,
-              maxEstimatedTokens: 0,
               maxSessions: 200,
             },
           },
@@ -310,8 +308,6 @@ export function getDefaultConfig(): Config {
           mcpServers: [],
           session: {
             timeoutMinutes: 60,
-            maxTurns: 0,
-            maxEstimatedTokens: 0,
             maxSessions: 200,
           },
         },

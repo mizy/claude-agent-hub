@@ -30,8 +30,6 @@ beforeEach(() => {
   // Reset to default config
   configureSession({
     timeoutMinutes: 60,
-    maxTurns: 10,
-    maxEstimatedTokens: 50_000,
     maxSessions: 200,
   })
 })
@@ -160,7 +158,7 @@ describe('sessionManager', () => {
 
   describe('LRU eviction', () => {
     it('should evict oldest sessions when over maxSessions', () => {
-      configureSession({ timeoutMinutes: 60, maxTurns: 10, maxEstimatedTokens: 50_000, maxSessions: 3 })
+      configureSession({ timeoutMinutes: 60, maxSessions: 3 })
 
       setSession('a', 's1')
       setSession('b', 's2')

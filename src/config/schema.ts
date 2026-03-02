@@ -27,10 +27,6 @@ export const gitConfigSchema = z.object({
 export const sessionConfigSchema = z.object({
   /** Session timeout in minutes (default 60) */
   timeoutMinutes: z.number().default(60),
-  /** @deprecated No longer used — backend handles context compression natively */
-  maxTurns: z.number().default(0),
-  /** @deprecated No longer used — backend handles context compression natively */
-  maxEstimatedTokens: z.number().default(0),
   /** Max concurrent sessions in memory (LRU eviction, default 200) */
   maxSessions: z.number().default(200),
 })
