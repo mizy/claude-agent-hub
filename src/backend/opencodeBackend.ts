@@ -95,6 +95,12 @@ export function createOpencodeBackend(): BackendAdapter {
         )
         const parsed = parseOutput(rawOutput)
 
+        // opencode error event (e.g. SSL cert failure, API error)
+        if (parsed.error && !parsed.response) {
+          logger.warn(`opencode error event: ${parsed.error}`)
+          return err({ type: 'process', message: parsed.error })
+        }
+
         if (!parsed.response && stderrOutput) {
           const stderrParsed = parseOutput(stderrOutput)
           if (stderrParsed.response) {
@@ -199,17 +205,30 @@ function extractMetrics(event: Record<string, unknown>): {
   return result
 }
 
+/** Extract error message from an opencode error event */
+function extractError(event: Record<string, unknown>): string | undefined {
+  if (event.type !== 'error') return undefined
+  const error = event.error as Record<string, unknown> | undefined
+  if (!error) return undefined
+  // { error: { data: { message: "..." } } } or { error: { message: "..." } }
+  const data = error.data as Record<string, unknown> | undefined
+  const msg = data?.message ?? error.message
+  return typeof msg === 'string' ? msg : JSON.stringify(error)
+}
+
 /** 解析 opencode JSON 输出（提取最终 assistant 文本 + sessionId + 费用） */
 function parseOutput(raw: string): {
   response: string
   sessionId: string
   durationApiMs?: number
   costUsd?: number
+  error?: string
 } {
   let response = ''
   let sessionId = ''
   let durationApiMs: number | undefined
   let costUsd: number | undefined
+  let errorMsg: string | undefined
 
   const lines = raw.split('\n').filter(l => l.trim())
   for (const line of lines) {
@@ -222,12 +241,14 @@ function parseOutput(raw: string): {
       const metrics = extractMetrics(event)
       if (metrics.durationApiMs != null) durationApiMs = metrics.durationApiMs
       if (metrics.costUsd != null) costUsd = metrics.costUsd
+      const err = extractError(event)
+      if (err) errorMsg = err
     } catch (e) {
       logger.debug(`Skipping non-JSON line: ${getErrorMessage(e)}`)
     }
   }
 
-  return { response, sessionId, durationApiMs, costUsd }
+  return { response, sessionId, durationApiMs, costUsd, error: errorMsg }
 }
 
 async function streamOutput(
@@ -246,6 +267,12 @@ async function streamOutput(
     processLine(line, cb) {
       try {
         const event = JSON.parse(line)
+
+        // OpenCode error event — log immediately
+        const errorMsg = extractError(event)
+        if (errorMsg) {
+          logger.warn(`opencode stream error: ${errorMsg}`)
+        }
 
         // OpenCode native format: extract text content
         const content = extractEventText(event)
