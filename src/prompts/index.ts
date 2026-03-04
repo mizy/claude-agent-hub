@@ -3,6 +3,12 @@
  *
  * 任务执行 / 对话相关的提示词模板
  * 注意：Agent 人格的 prompt 定义在 src/persona/builtinPersonas.ts
+ *
+ * 公共 API:
+ * - TASK_PROMPTS: 任务提示词常量
+ * - buildJsonWorkflowPrompt / buildExecuteNodePrompt / buildGenerateTitleFromWorkflowPrompt: 任务模板
+ * - buildClientPrompt: 对话模板
+ * - buildMemoryExtractionPrompt: 记忆提取模板
  */
 
 export {

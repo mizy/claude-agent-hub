@@ -4,17 +4,15 @@
  * 提供记忆存储、检索和格式化能力，让 AI Agent 能从历史经验中学习
  *
  * 主要 API:
- * - addMemory(): 添加记忆
- * - listMemories(): 列出记忆
- * - removeMemory(): 删除记忆
- * - searchMemories(): 关键词搜索
- * - retrieveRelevantMemories(): 智能检索相关记忆
- * - formatMemoriesForPrompt(): 格式化为 prompt 注入
- * - migrateMemoryEntry(): 懒加载迁移旧格式记忆
- * - calculateStrength(): 计算记忆当前强度
- * - reinforceMemory(): 强化记忆
- * - cleanupFadingMemories(): 清理衰减记忆
- * - getMemoryHealth(): 查看记忆健康状态
+ * - CRUD: addMemory / listMemories / removeMemory / searchMemories
+ * - 检索: retrieveRelevantMemories / retrieveAllMemoryContext
+ * - 情景记忆: retrieveEpisodes / shouldRetrieveEpisode / formatEpisodeContext / extractEpisode
+ * - 格式化: formatMemoriesForPrompt
+ * - 提取: extractMemoryFromTask（从任务学习）/ extractChatMemory（从对话学习）
+ * - 迁移: migrateMemoryEntry / needsMigration
+ * - 遗忘引擎: calculateStrength / reinforceMemory / cleanupFadingMemories / getMemoryHealth
+ * - 关联引擎: buildAssociations / spreadActivation / updateAssociationStrength
+ *   associativeRetrieve / rebuildAllAssociations
  */
 
 // Types

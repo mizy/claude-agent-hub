@@ -465,6 +465,73 @@ describe('canExecuteNode', () => {
 
     expect(canExecuteNode('nonexistent', workflow, instance)).toBe(false)
   })
+
+  it('should block end node when upstream has active loop-back edge', () => {
+    // Reproduces: schedule-wait loop-back bug where end node gets enqueued on resume
+    // Workflow: lark-notify → schedule-wait (loop-back, maxLoops: 365)
+    //           lark-notify → end (exit path)
+    const workflow = makeWorkflow(
+      [
+        { id: 'start', type: 'start', name: 'Start' },
+        { id: 'schedule-wait', type: 'schedule-wait', name: 'Wait', scheduleWait: { cron: '30 13 * * 1-5' } },
+        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'lark-notify', type: 'lark-notify', name: 'Notify', larkNotify: { title: 'test' } },
+        { id: 'end', type: 'end', name: 'End' },
+      ],
+      [
+        { id: 'e1', from: 'start', to: 'schedule-wait' },
+        { id: 'e2', from: 'schedule-wait', to: 'task1' },
+        { id: 'e3', from: 'task1', to: 'lark-notify' },
+        { id: 'e4', from: 'lark-notify', to: 'schedule-wait', maxLoops: 365 },
+        { id: 'e5', from: 'lark-notify', to: 'end' },
+      ]
+    )
+
+    // State after first iteration: lark-notify done, schedule-wait & end reset to pending
+    const instance = makeInstance(
+      {
+        start: ns('done'),
+        'schedule-wait': ns('pending'),
+        task1: ns('pending'),
+        'lark-notify': ns('done'),
+        end: ns('pending'),
+      },
+      { loopCounts: { e4: 1 } }  // loop ran once, 1 < 365 → still active
+    )
+
+    // end should be blocked because lark-notify has an active loop-back (e4)
+    expect(canExecuteNode('end', workflow, instance)).toBe(false)
+    // schedule-wait should be executable (loop-back edge is skipped in upstream check)
+    expect(canExecuteNode('schedule-wait', workflow, instance)).toBe(true)
+  })
+
+  it('should allow end node when loop-back reaches maxLoops', () => {
+    const workflow = makeWorkflow(
+      [
+        { id: 'start', type: 'start', name: 'Start' },
+        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'end', type: 'end', name: 'End' },
+      ],
+      [
+        { id: 'e1', from: 'start', to: 'task1' },
+        { id: 'e2', from: 'task1', to: 'start', maxLoops: 3 },
+        { id: 'e3', from: 'task1', to: 'end' },
+      ]
+    )
+
+    // Loop exhausted: loopCount = 3 >= maxLoops = 3
+    const instance = makeInstance(
+      {
+        start: ns('done'),
+        task1: ns('done'),
+        end: ns('pending'),
+      },
+      { loopCounts: { e2: 3 } }
+    )
+
+    // end should be executable now (loop exhausted)
+    expect(canExecuteNode('end', workflow, instance)).toBe(true)
+  })
 })
 
 // ============ getReadyNodes ============

@@ -5,6 +5,11 @@
  * - prepareExecution: 准备新任务 / 恢复任务
  * - taskRecovery: 恢复模式的节点入队
  * - taskNotifications: 事件发射、日志、通知
+ *
+ * 公共 API:
+ * - executeTask(): 核心执行函数，编排 prepare → start → worker → save 全流程
+ * - ExecuteTaskOptions / ExecuteTaskResult: 执行选项与结果类型
+ * - ResumeConflictError: 恢复冲突错误（re-export from prepareExecution）
  */
 
 import { executeNode } from '../workflow/executeNode.js'
@@ -220,7 +225,7 @@ export async function executeTask(
       return { success, workflow, instance: finalInstance, outputPath, timing: { startedAt, completedAt } }
     } else {
       logger.error(`任务失败: ${task.title}`)
-      const errorMsg = finalInstance.error || 'Unknown error (check logs for details)'
+      const errorMsg = finalInstance.error || collectNodeErrors(finalInstance) || `Workflow ${finalInstance.status} (no error details captured)`
       logger.error(`错误: ${errorMsg}`)
       throw new Error(errorMsg)
     }
@@ -287,4 +292,15 @@ export async function executeTask(
     // Restore original console methods
     restoreConsole()
   }
+}
+
+/** Collect first failed node error from instance as fallback when instance.error is empty */
+function collectNodeErrors(instance: WorkflowInstance): string | undefined {
+  if (!instance.nodeStates) return undefined
+  for (const [nodeId, state] of Object.entries(instance.nodeStates)) {
+    if (state.status === 'failed' && state.error) {
+      return `Node ${nodeId} failed: ${state.error}`
+    }
+  }
+  return undefined
 }

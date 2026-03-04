@@ -153,6 +153,26 @@ export function canExecuteNode(
     }
   }
 
+  // Block exit-path nodes when upstream has an active loop-back edge.
+  // e.g. lark-notify → end (exit) vs lark-notify → schedule-wait (loop-back):
+  // while the loop hasn't exhausted maxLoops, end should NOT be executable.
+  // Without this, getReadyNodes on resume would pick up end alongside schedule-wait.
+  for (const edge of inEdges) {
+    if (edge.maxLoops !== undefined || isTopologicalLoopBack(edge, workflow)) continue
+    // This is a non-loop-back inEdge. Check if the source also has an active loop-back.
+    const hasActiveLoop = workflow.edges.some(e => {
+      if (e.from !== edge.from) return false
+      if (!(e.maxLoops !== undefined || isTopologicalLoopBack(e, workflow))) return false
+      const maxLoops = e.maxLoops ?? DEFAULT_MAX_LOOPS
+      const currentLoops = instance.loopCounts[e.id] || 0
+      return currentLoops < maxLoops
+    })
+    if (hasActiveLoop) {
+      logger.debug(`Node ${nodeId} blocked: upstream ${edge.from} has active loop-back`)
+      return false
+    }
+  }
+
   // 所有非 loop-back 入边的源节点必须完成（join 节点和并行汇聚点均需全部完成）
   // Loop-back 边（如 notify → wait 循环回路）不应阻塞目标节点的首次执行
   return inEdges.every(edge => {
@@ -462,6 +482,28 @@ function resetLoopPath(
   // Reset attempts for the loop-back trigger node to prevent
   // loop iterations from being counted as error retries
   updateNodeState(instanceId, stopBeforeNodeId, { attempts: 0 })
+
+  // Also reset "exit path" nodes reachable from stopBeforeNodeId via non-loop-back edges.
+  // Without this, nodes like "end" remain "pending" with their predecessor (stopBeforeNodeId)
+  // still "done", causing them to appear ready on the next resume and terminating the workflow early.
+  const exitVisited = new Set<string>()
+  const exitQueue: string[] = []
+  for (const edge of workflow.edges) {
+    if (edge.from === stopBeforeNodeId && !isTopologicalLoopBack(edge, workflow)) {
+      exitQueue.push(edge.to)
+    }
+  }
+  while (exitQueue.length > 0) {
+    const nId = exitQueue.shift()!
+    if (exitVisited.has(nId)) continue
+    exitVisited.add(nId)
+    resetNodeState(instanceId, nId)
+    for (const edge of workflow.edges) {
+      if (edge.from === nId && !isTopologicalLoopBack(edge, workflow)) {
+        exitQueue.push(edge.to)
+      }
+    }
+  }
 }
 
 // ============ 循环辅助函数 ============

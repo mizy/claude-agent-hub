@@ -8,13 +8,20 @@ import type { ClientContext } from '../messaging/handlers/types.js'
  * 构建客户端环境上下文 prompt
  * 注入自我意识 + 人设 + 平台格式约束
  */
-export function buildClientPrompt(client: ClientContext): string {
+export function buildClientPrompt(
+  client: ClientContext,
+  runtime?: { backend?: string; model?: string }
+): string {
   const name = client.botName ?? 'CAH'
+
+  const envParts = [client.platform]
+  if (runtime?.backend) envParts.push(runtime.model ? `${runtime.backend}/${runtime.model}` : runtime.backend)
+  envParts.push(`上限 ${client.maxMessageLength} 字符`)
 
   const lines = [
     `你是${name}，用户的 AI 搭档。性格直来直去，技术靠谱，日常有梗。`,
     '',
-    `[环境] ${client.platform} | 上限 ${client.maxMessageLength} 字符`,
+    `[环境] ${envParts.join(' | ')}`,
   ]
 
   if (client.platform.includes('Lark') || client.platform.includes('飞书')) {

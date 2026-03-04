@@ -3,6 +3,14 @@
  *
  * Provides self-drive capabilities: goal management, scheduling,
  * and daemon integration for periodic health checks and self-evolution.
+ *
+ * 公共 API:
+ * - Goal CRUD: addGoal / updateGoal / removeGoal / getGoal / listGoals / listEnabledGoals
+ * - Goal 控制: enableGoal / disableGoal / updateGoalSchedule / markGoalRun / ensureBuiltinGoals
+ * - Scheduler: startScheduler / stopScheduler / getSchedulerStatus
+ * - Daemon 集成: startSelfDrive / stopSelfDrive / disableSelfDrive / enableSelfDrive
+ *   isSelfDrivePermanentlyDisabled / getSelfDriveStatus / resumeSelfDriveIfEnabled
+ * - Types: DriveGoal, GoalType
  */
 
 // Goal management

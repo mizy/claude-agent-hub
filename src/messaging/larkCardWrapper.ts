@@ -111,8 +111,8 @@ export function markdownToPostContent(text: string): string {
   result = result.replace(/^#{1,6}\s+(.+)$/gm, '**$1**')
 
   // Task lists: - [x] → ✅, - [ ] → ☐
-  result = result.replace(/^(\s*)[*\-]\s+\[x\]\s*/gim, '$1- ✅ ')
-  result = result.replace(/^(\s*)[*\-]\s+\[ \]\s*/gim, '$1- ☐ ')
+  result = result.replace(/^(\s*)[*-]\s+\[x\]\s*/gim, '$1- ✅ ')
+  result = result.replace(/^(\s*)[*-]\s+\[ \]\s*/gim, '$1- ☐ ')
 
   // Inline code: strip backticks, keep content (no native inline code in post md tag)
   // Must not match triple backticks (code blocks are supported)

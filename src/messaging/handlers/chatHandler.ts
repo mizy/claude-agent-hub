@@ -256,9 +256,10 @@ async function buildFullPrompt(
   willStartNewSession: boolean,
   client: ClientContext | undefined,
   images: string[] | undefined,
-  config: Awaited<ReturnType<typeof loadConfig>>
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  runtime?: { backend?: string; model?: string }
 ): Promise<string> {
-  const clientPrefix = client ? buildClientPrompt(client) + '\n\n' : ''
+  const clientPrefix = client ? buildClientPrompt(client, runtime) + '\n\n' : ''
 
   // Inject recent history for new sessions (only in/out, deduplicated)
   let historyRaw = ''
@@ -496,11 +497,13 @@ async function handleChatInternal(
   // 4. Build prompt and resolve model
   const config = await loadConfig()
   const hasImages = !!options?.images?.length
-  const prompt = await buildFullPrompt(
-    chatId, effectiveText, ss.willStartNewSession, options?.client, options?.images, config
-  )
   const model = resolveModel(
     effectiveText, hasImages, inlineModel, chatId, ss.backendOverride, config
+  )
+  const backendName = ss.backendOverride ?? config.defaultBackend ?? 'claude-code'
+  const prompt = await buildFullPrompt(
+    chatId, effectiveText, ss.willStartNewSession, options?.client, options?.images, config,
+    { backend: backendName, model: model ?? config.backends[backendName]?.model }
   )
   bench.promptReady = Date.now()
 

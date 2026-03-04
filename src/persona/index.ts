@@ -4,7 +4,7 @@
  * 提供 AI Agent 的人格定义和加载能力
  *
  * 主要 API:
- * - BUILTIN_PERSONAS: 内置人格定义
+ * - BUILTIN_PERSONAS / getBuiltinPersona / getAvailablePersonas: 内置人格定义与查询
  * - loadPersona(): 加载人格配置
  * - personaNeedsMcp(): 检查人格是否需要 MCP
  */

@@ -99,13 +99,9 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
           'editMessage'
         )
       } catch (error) {
-        const msg = formatErrorMessage(error)
-        if (msg.includes('400') || msg.includes('not support')) {
-          logger.debug(`→ edit failed, falling back to reply: ${messageId}`)
-          await this.reply(chatId, text)
-        } else {
-          logger.error(`→ edit failed: ${msg}`)
-        }
+        // Never fall back to reply() here: streaming edits fail silently,
+        // sendFinalResponse will send the complete response when done.
+        logger.debug(`→ edit failed (${messageId}): ${formatErrorMessage(error)}`)
       }
     },
     async replyCard(chatId: string, card: LarkCard) {

@@ -9,13 +9,15 @@
  * - 对话: handleChat/clearChatSession/getChatSessionInfo/destroyChatHandler
  * - 审批: handleApproval/parseApprovalCommand
  * - 会话管理: loadSessions/configureSession
- * - 飞书客户端: startLarkWsClient/stopLarkWsClient/getLarkClient
- * - 飞书消息: sendLarkMessage/sendLarkCardViaApi/updateLarkCard/uploadLarkImage
- * - 飞书卡片: buildCard/buildTaskCompletedCard/buildTaskListCard/... (10 种卡片)
- * - 飞书事件路由: createLarkAdapter/handleLarkMessage/handleCardAction/processMessageEvent
+ * - 飞书客户端: startLarkWsClient/stopLarkWsClient/isLarkWsClientRunning/getLarkClient/getDefaultLarkChatId
+ * - 飞书消息: sendLarkMessage/sendLarkMessageViaApi/sendLarkCardViaApi/updateLarkCard/uploadLarkImage/sendLarkImage
+ *   sendReviewNotification/sendApprovalResultNotification
+ * - 飞书卡片: buildCard/buildTaskCompletedCard/buildTaskFailedCard/buildApprovalCard/buildAutoWaitCard
+ *   buildWelcomeCard/buildTaskListCard/buildTaskDetailCard/buildTaskLogsCard/buildStatusCard/buildHelpCard (11 种)
+ * - 飞书事件路由: createLarkAdapter/larkClientContext/handleLarkMessage/handleCardAction/handleP2pChatCreate/processMessageEvent
  * - 飞书 Markdown: normalizeLarkMarkdown/buildMarkdownCard/convertMarkdownTables
- * - Telegram 客户端: startTelegramClient/stopTelegramClient/sendTelegramMessage
- * - Telegram 通知: sendTelegramReviewNotification/sendTelegramTextMessage
+ * - Telegram 客户端: startTelegramClient/stopTelegramClient/isTelegramClientRunning/sendTelegramMessage/getDefaultChatId
+ * - Telegram 通知: sendTelegramReviewNotification/sendTelegramTextMessage/sendTelegramApprovalResult
  * - 任务通知桥接: sendTaskCreatedNotification/sendTaskCompletionNotify
  * - 事件监听: registerTaskEventListeners (task 事件 → IM 通知)
  * - 情景记忆: triggerEpisodeOnTaskCreation/flushEpisode/clearEpisodeTracker

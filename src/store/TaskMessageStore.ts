@@ -3,6 +3,12 @@
  *
  * 支持在任务执行过程中接收来自 CLI/Lark/Telegram 的消息，
  * 并在 NodeWorker 执行节点时注入到 prompt context 中。
+ *
+ * 公共 API:
+ * - addTaskMessage(): 添加消息到队列
+ * - getUnconsumedMessages(): 获取未消费消息
+ * - markMessagesConsumed(): 标记消息已消费
+ * - getAllTaskMessages(): 获取所有消息
  */
 
 import { generateId } from '../shared/generateId.js'

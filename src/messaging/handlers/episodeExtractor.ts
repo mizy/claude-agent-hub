@@ -19,7 +19,7 @@ const logger = createLogger('episode-extractor')
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 const MIN_TURNS_FOR_EXPLICIT_END = 3
 
-let idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS
+const idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS
 
 // Patterns that signal conversation end
 const END_PATTERNS = /^(?:好的|谢谢|就这样|ok|OK|Ok|thanks|thank you|收到|明白了|了解|done|\/done)[!！。.~～]*$/i

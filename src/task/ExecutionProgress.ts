@@ -73,7 +73,8 @@ export async function waitForWorkflowCompletion(
       const task = getTask(taskId)
       if (task && (task.status === 'failed' || task.status === 'cancelled')) {
         logger.info(`Task status changed to ${task.status}, syncing instance status...`)
-        updateInstanceStatus(instanceId, task.status === 'cancelled' ? 'cancelled' : 'failed')
+        const reason = task.error || `Task externally ${task.status}`
+        updateInstanceStatus(instanceId, task.status === 'cancelled' ? 'cancelled' : 'failed', reason)
         const updatedInstance = getInstance(instanceId)
         if (updatedInstance) {
           return updatedInstance

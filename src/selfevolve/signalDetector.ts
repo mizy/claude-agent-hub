@@ -4,6 +4,11 @@
  * Scans recent failed/completed tasks using a sliding window to identify
  * systemic error patterns that should trigger self-evolution.
  * Lightweight, synchronous, no AI calls.
+ *
+ * 公共 API:
+ * - detectSignals(): 扫描近期任务，检测异常信号
+ * - resetSignalCooldowns(): 重置信号冷却状态
+ * - Types: SignalType, SignalSeverity, SignalEvent, DetectSignalOptions
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs'

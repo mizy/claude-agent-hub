@@ -13,7 +13,7 @@ const CONFIG_FILENAME = '.claude-agent-hub.yaml'
 
 let cachedConfig: Config | null = null
 let configWatchers: FSWatcher[] = []
-let watchedPaths = new Set<string>()
+const watchedPaths = new Set<string>()
 let reloadTimer: NodeJS.Timeout | null = null
 
 /**
@@ -245,7 +245,7 @@ function startWatching(configPath: string): void {
       watchedPaths.delete(configPath)
       const idx = configWatchers.indexOf(watcher)
       if (idx !== -1) configWatchers.splice(idx, 1)
-      try { watcher.close() } catch {}
+      try { watcher.close() } catch { /* watcher already closed */ }
 
       // 等文件落盘后重新建立监听，再触发 reload
       setTimeout(() => {
@@ -276,7 +276,7 @@ function stopWatching(): void {
     reloadTimer = null
   }
   for (const w of configWatchers) {
-    try { w.close() } catch {}
+    try { w.close() } catch { /* watcher already closed */ }
   }
   configWatchers = []
   watchedPaths.clear()

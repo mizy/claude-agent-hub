@@ -5,12 +5,16 @@
  *
  * 主要 API:
  * - classifyFailure(): 基于规则的快速失败分类（LLM 前置判断）
- * - analyzeFailure(): 分析失败任务，判断是否与 prompt 质量相关
+ * - analyzeFailure / extractFailedNodes: 分析失败任务
  * - generateImprovement(): 基于失败分析生成改进版 prompt
- * - saveNewVersion(): 保存新的 prompt 版本
- * - getActivePrompt(): 获取 persona 当前活跃版本的 prompt
- * - rollbackVersion(): 回滚到指定版本
- * - recordUsage(): 记录版本使用结果（成功/失败/耗时）
+ * - saveNewVersion / getActivePrompt / rollbackVersion / recordUsage: 版本管理
+ * - compareVersions(): 版本对比
+ * - extractSuccessPatterns / findMatchingPattern / savePattern / getAllPatterns: 成功模式提取
+ * - recordFailure / getAllFailures / getFailuresByCategory / getFailuresByPersona
+ *   getRecentFailures / computeFailureStats / formatFailureKnowledgeForPrompt: 失败知识库
+ * - createABTest / selectVariant / evaluateABTest / concludeABTest
+ *   calculateFitness / getRunningTest: A/B 测试
+ * - runEvolutionCycle / refreshSuccessPatterns: 进化引擎
  */
 
 // ============ 失败分类 ============

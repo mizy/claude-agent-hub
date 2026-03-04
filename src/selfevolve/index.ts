@@ -5,12 +5,17 @@
  * Integrates with prompt-optimization for prompt-level improvements.
  *
  * Main API:
- * - analyzeRecentFailures(): Scan failed tasks and extract patterns
- * - applyImprovements(): Apply improvement proposals via prompt-optimization
- * - validateEvolution(): Check if an evolution cycle improved outcomes
- * - runEvolutionCycle(): Orchestrate full analyze → review → improve → record cycle
- * - reviewImprovement/reviewImprovements(): Agent review for improvement proposals
- * - recordEvolution/listEvolutions(): Evolution history CRUD
+ * - analyzeRecentFailures / analyzeTaskPatterns: Scan failed tasks and extract patterns
+ * - analyzePerformance: Performance trend analysis
+ * - applyImprovements: Apply improvement proposals via prompt-optimization
+ * - validateEvolution: Check if an evolution cycle improved outcomes
+ * - runEvolutionCycle: Orchestrate full analyze → review → improve → record cycle
+ * - reviewImprovement / reviewImprovements: Agent review for improvement proposals
+ * - recordEvolution / listEvolutions / getEvolution / updateEvolution / getLatestEvolution: History CRUD
+ * - detectSignals / resetSignalCooldowns: Signal detection for systemic patterns
+ * - tryAutoRepair: Auto-fix detected issues
+ * - resolveEvolveContext: Detect CAH vs external project context
+ * - runHealthCheck: Health check (signals + optional auto-repair)
  */
 
 // ============ Types ============

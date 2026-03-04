@@ -1,4 +1,11 @@
 /* Dark theme — Slate palette */
+:root {
+  --wf-pending: #6b7280;
+  --wf-running: #3b82f6;
+  --wf-completed: #22c55e;
+  --wf-failed: #ef4444;
+  --wf-skipped: #eab308;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -15,7 +22,7 @@ body {
 /* Sidebar wrapper for responsive */
 .sidebar-wrap { flex-shrink: 0; }
 .sidebar {
-  width: 300px;
+  width: 260px;
   background: #1e293b;
   border-right: 1px solid #334155;
   display: flex;
@@ -137,18 +144,11 @@ body {
 .legend { display: flex; gap: 12px; }
 .legend-item { display: flex; align-items: center; gap: 4px; }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
-.dot-pending { background: #6b7280; }
-.dot-running { background: #3b82f6; }
-.dot-done { background: #22c55e; }
-.dot-failed { background: #ef4444; }
-.dot-skipped { background: #eab308; }
-.zoom-controls { margin-left: auto; display: flex; gap: 4px; align-items: center; }
-.zoom-btn {
-  width: 24px; height: 24px; border: none; background: #334155;
-  color: #e2e8f0; border-radius: 4px; cursor: pointer; font-size: 14px;
-}
-.zoom-btn:hover { background: #475569; }
-.zoom-btn.fit { width: auto; padding: 0 6px; font-size: 11px; }
+.dot-pending { background: var(--wf-pending); }
+.dot-running { background: var(--wf-running); }
+.dot-done { background: var(--wf-completed); }
+.dot-failed { background: var(--wf-failed); }
+.dot-skipped { background: var(--wf-skipped); }
 
 /* Canvas */
 .canvas-container {
@@ -167,10 +167,35 @@ body {
   pointer-events: none; z-index: 100; max-width: 300px;
 }
 
+/* MMEditor overrides */
+.canvas-container .ve-editor { background: #0f172a; }
+.canvas-container .ve-editor-back { background: #0f172a !important; }
+.canvas-container .ve-editor-svg { cursor: grab; }
+.canvas-container .ve-node.wf-selected .ve-node-shape rect { stroke-width: 3; fill: #475569; }
+/* Node status color fallback via CSS class */
+.canvas-container .ve-node.wf-status-pending .ve-node-shape rect { stroke: var(--wf-pending); }
+.canvas-container .ve-node.wf-status-running .ve-node-shape rect { stroke: var(--wf-running); }
+.canvas-container .ve-node.wf-status-completed .ve-node-shape rect { stroke: var(--wf-completed); }
+.canvas-container .ve-node.wf-status-failed .ve-node-shape rect { stroke: var(--wf-failed); }
+.canvas-container .ve-node.wf-status-skipped .ve-node-shape rect { stroke: var(--wf-skipped); }
+.canvas-container .ve-node.wf-status-pending .ve-node-shape circle { fill: var(--wf-pending); }
+.canvas-container .ve-node.wf-status-running .ve-node-shape circle { fill: var(--wf-running); }
+.canvas-container .ve-node.wf-status-completed .ve-node-shape circle { fill: var(--wf-completed); }
+.canvas-container .ve-node.wf-status-failed .ve-node-shape circle { fill: var(--wf-failed); }
+.canvas-container .ve-node.wf-status-skipped .ve-node-shape circle { fill: var(--wf-skipped); }
+.canvas-container .ve-node.active .ve-link-points { display: none; }
+.canvas-container .ve-link-points { display: none !important; }
+.canvas-container .ve-line-shape { stroke: #475569; stroke-width: 2; }
+.canvas-container .ve-back-edge .ve-line-shape { stroke: #f59e0b; stroke-dasharray: 6 4; }
+.canvas-container .ve-loop-edge .ve-line-shape { stroke: #8b5cf6; stroke-dasharray: 5 5; }
+.canvas-container .ve-loop-body-edge .ve-line-shape { stroke: #8b5cf6; }
+@keyframes wf-pulse-anim { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+.wf-pulse { animation: wf-pulse-anim 1.5s ease-in-out infinite; }
+
 /* ===== Right Panel ===== */
 .right-panel-wrap { flex-shrink: 0; }
 .right-panel {
-  width: 380px; background: #1e293b; border-left: 1px solid #334155;
+  width: 320px; background: #1e293b; border-left: 1px solid #334155;
   display: flex; flex-direction: column; height: 100vh;
 }
 .panel-tabs { display: flex; border-bottom: 1px solid #334155; }
@@ -448,8 +473,8 @@ body {
 
 /* ===== Tablet: <=1024px ===== */
 @media (max-width: 1024px) {
-  .sidebar { width: 260px; }
-  .right-panel { width: 320px; }
+  .sidebar { width: 240px; }
+  .right-panel { width: 300px; }
   .panel-toggle { display: flex; }
   .right-panel-wrap.collapsed { display: none; }
 }
@@ -481,7 +506,6 @@ body {
   .main-header h2 { font-size: 13px; }
   .toolbar { padding: 6px 12px; flex-wrap: wrap; gap: 6px; }
   .legend { flex-wrap: wrap; gap: 6px; }
-  .zoom-controls { margin-left: 0; }
   .toast-container { right: 12px; left: 12px; }
   .toast { max-width: 100%; }
   .modal { width: 90vw; padding: 16px; }

@@ -1,11 +1,16 @@
 /**
- * Self-drive scheduler
+ * @entry Self-drive scheduler
  *
  * Simple setInterval-based scheduler that executes goals by creating tasks.
  * Runs inside the daemon process — no separate process needed.
  *
  * Goal dimensions: evolve (unified), cleanup. (evolve-conversation/evolve-feature deprecated, merged into evolve)
  * Prompts are context-aware — CAH project vs external project generate different prompts.
+ *
+ * 公共 API:
+ * - startScheduler(): 启动所有已启用目标的定时器 + 信号检测
+ * - stopScheduler(): 停止所有定时器
+ * - getSchedulerStatus(): 获取调度器运行状态
  */
 
 import { createLogger } from '../shared/logger.js'

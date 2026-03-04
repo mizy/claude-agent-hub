@@ -2,6 +2,12 @@
  * @entry Config 配置模块
  *
  * 加载 YAML 配置、Schema 校验、项目初始化
+ *
+ * 主要 API:
+ * - loadConfig / getDefaultConfig / clearConfigCache / stopConfigWatch / applyEnvOverrides
+ * - initProject(): 初始化项目配置
+ * - getNotifyConfig / getLarkConfig / getBackendConfig / getTaskConfig: 便捷子配置读取
+ * - schema: Schema 校验类型与工具
  */
 
 export {

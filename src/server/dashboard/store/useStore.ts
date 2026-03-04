@@ -18,12 +18,17 @@ export interface WorkflowNode {
   id: string
   name: string
   type: string
-  config?: { bodyNodes?: string[] }
+  // Raw data: loop nodes use `loop` field, but also mapped as `config` for legacy compat
+  config?: { bodyNodes?: string[]; maxIterations?: number }
+  loop?: { bodyNodes?: string[]; maxIterations?: number }
 }
 
 export interface WorkflowEdge {
+  id: string
   from: string
   to: string
+  maxLoops?: number
+  condition?: string
 }
 
 export interface NodeState {
