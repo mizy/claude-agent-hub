@@ -15,10 +15,7 @@ import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { collectStderr } from './processHelpers.js'
 import { collectStream } from './collectStream.js'
-import {
-  extractImagesFromEvent,
-  type StreamJsonEvent,
-} from './claudeCompatHelpers.js'
+import { extractImagesFromEvent, type StreamJsonEvent } from './claudeCompatHelpers.js'
 import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
 
 const logger = createLogger('opencode')
@@ -68,6 +65,14 @@ export function createOpencodeBackend(): BackendAdapter {
           timeout: timeoutMs,
           stdin: 'ignore',
           buffer: stream ? { stdout: false, stderr: true } : true,
+          env: {
+            ...process.env,
+            OPENCODE_PERMISSION: JSON.stringify({
+              bash: 'allow',
+              edit: 'allow',
+              read: 'allow',
+            }),
+          },
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
         perf.spawn = Date.now() - startTime
@@ -76,7 +81,9 @@ export function createOpencodeBackend(): BackendAdapter {
         let stderrOutput = ''
         let mcpImagePaths: string[] = []
         if (stream && subprocess.stdout) {
-          collectStderr(subprocess, s => { stderrOutput = s })
+          collectStderr(subprocess, s => {
+            stderrOutput = s
+          })
           const streamResult = await streamOutput(subprocess, onChunk, startTime, perf)
           rawOutput = streamResult.rawOutput
           mcpImagePaths = streamResult.extractedImagePaths
@@ -101,18 +108,22 @@ export function createOpencodeBackend(): BackendAdapter {
         if (!parsed.response && stderrOutput) {
           const stderrParsed = parseOutput(stderrOutput)
           if (stderrParsed.response) {
-            logger.warn(`opencode returned error via stderr: ${stderrParsed.response.slice(0, 200)}`)
+            logger.warn(
+              `opencode returned error via stderr: ${stderrParsed.response.slice(0, 200)}`
+            )
             return err({ type: 'process', message: stderrParsed.response })
           }
         }
 
         if (mcpImagePaths.length > 0) {
-          logger.debug(`Extracted ${mcpImagePaths.length} MCP image(s): ${mcpImagePaths.join(', ')}`)
+          logger.debug(
+            `Extracted ${mcpImagePaths.length} MCP image(s): ${mcpImagePaths.join(', ')}`
+          )
         }
 
         logger.info(
           `完成 (${(durationMs / 1000).toFixed(1)}s` +
-          `${parsed.durationApiMs ? `, API: ${(parsed.durationApiMs / 1000).toFixed(1)}s` : ''})`
+            `${parsed.durationApiMs ? `, API: ${(parsed.durationApiMs / 1000).toFixed(1)}s` : ''})`
         )
 
         return ok({

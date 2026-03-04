@@ -13,7 +13,8 @@ outputs/
 .idea/
 .vscode/
 *.swp
-*.swo
+*.
+.iflow
 
 # OS
 .DS_Store

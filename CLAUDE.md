@@ -6,26 +6,31 @@
 
 ```bash
 # 任务（必须在目标项目目录下运行，cwd 用于同项目冲突检测和自动串行）
-cah "任务描述"           # 创建并执行（-p priority, -a agent, -b backend, -m model, -S schedule, -F 前台, -v verbose, -d data-dir, --no-run 仅创建）
-cah list                 # 任务列表（-s status, -w watch, --no-progress, -a agent, --source, --cwd, --project, -i interval）
+cah "任务描述"           # 创建并执行（-p priority, -a agent, -b backend, -m model, -S schedule, -F 前台, --no-run 仅创建）
+cah list                 # 任务列表（-s status, -w watch, --no-progress）
 cah logs <id>            # 任务日志（-f follow, -n tail）
 cah run                  # 手动执行队列中下一个 pending 任务
-cah task show|resume|pause|stop|delete|clear|msg|complete|reject|trace|snapshot|add|stats|inject-node  # 详见 cah task --help
+cah task delete|stop|clear|complete|reject|resume|pause|snapshot|msg|inject-node|trace  # 详见 cah task --help
 
 # 守护进程
 cah start [-D]           # 启动（-D 后台），cah stop, cah restart, cah status
 
 # 其他子命令（详见 cah <cmd> --help）
+cah run                  # 手动执行队列中下一个 pending 任务
+cah list                 # 任务列表（-s status, -w watch, --no-progress）
+cah logs <id>            # 任务日志（-f follow, -n tail）
 cah report work|trend|live    # 报告
 cah memory list|add|search|delete|health|fading|reinforce|associations|episodes|recall|link|cleanup  # 记忆
-cah self check [--fix] | evolve | drive start|stop | status  # 自管理
+cah self check [--fix|--auto-fix]|status  # 自检查
+cah self evolve (子组)    # 自进化
+cah self drive start|stop|disable|enable|status|goals  # 自驱管理
 cah schedule create|list|stop  # 定时任务
 cah backend list|current      # 后端
+cah prompt (子组)       # Prompt 管理
+cah agent (子组)         # Agent 管理
+cah init                 # 初始化
+cah trace                # 链路追踪
 cah dashboard                 # 可视化面板
-cah init                      # 初始化项目配置
-cah agent list|show           # Agent (Persona) 管理
-cah prompt versions|rollback|diff|compare|test|evaluate|extract  # Prompt 版本管理
-cah chat                      # 与 AI 对话（-m model, -b backend）
 ```
 
 ## 分层架构
@@ -60,21 +65,11 @@ cah "描述" → createTask(cwd, pending)
 │   ├── logs/            # execution.log, conversation.log, events.jsonl, conversation.jsonl
 │   ├── outputs/         # result.md
 │   └── traces/          # trace-{traceId}.jsonl (OTLP Span)
-├── memory/              # 语义记忆
-├── episodes/            # 情景记忆
+├── memory/ episodes/    # 语义/情景记忆
 ├── logs/prompts/        # 每次 backend 调用的完整 prompt
-├── prompt-versions/     # prompt 版本存储
-├── failure-kb/          # 失败知识库
-├── ab-tests/            # A/B 测试数据
-├── success-patterns/    # 成功模式提取
-├── evolution/           # 自进化历史
-├── selfdrive/           # 自驱动目标与状态
-├── chat-sessions/       # 聊天会话数据
 ├── conversation.jsonl   # 全局 IM 对话日志（in/out/event/cmd）
 ├── queue.json           # 任务队列
-├── runner.lock/log      # 队列运行器锁与日志
-├── daemon.pid/log       # daemon PID 与日志
-└── sessions.json        # IM 会话状态
+└── daemon.pid           # daemon PID
 ```
 
 ## 开发

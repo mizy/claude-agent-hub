@@ -6,6 +6,7 @@
  * - taskList.ts — list + show sub-commands
  * - taskLogs.ts — logs + stats sub-commands
  * - taskLifecycle.ts — delete, stop, clear, complete, reject, resume, pause, snapshot, msg, inject-node
+ * - trace.ts — trace sub-command
  */
 
 import { Command } from 'commander'

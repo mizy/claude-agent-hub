@@ -6,13 +6,28 @@
  * 核心命令：
  *   cah "任务描述"           - 创建并后台执行任务
  *   cah "任务描述" -F        - 前台运行（实时查看日志）
- *   cah task list            - 查看任务列表
+ *   cah run                  - 手动执行队列中下一个待处理任务
+ *   cah list                 - 列出任务队列
+ *   cah logs <id>            - 查看任务执行日志
  *
  * 守护进程：
  *   cah start               - 启动守护进程（前台阻塞）
  *   cah stop                - 停止守护进程
  *   cah restart              - 重启守护进程
  *   cah status              - 查看运行状态
+ *
+ * 子命令：
+ *   cah task                - 任务管理（list/resume/pause/delete 等）
+ *   cah memory              - 记忆管理（list/add/search/delete 等）
+ *   cah self                - 自管理（check/status/evolve/drive）
+ *   cah prompt               - Prompt 管理
+ *   cah agent               - Agent 管理
+ *   cah backend             - 后端管理
+ *   cah schedule            - 定时任务
+ *   cah report              - 报告
+ *   cah dashboard           - 可视化面板
+ *   cah init                - 初始化
+ *   cah trace               - 链路追踪
  */
 
 import { Command } from 'commander'
@@ -49,13 +64,20 @@ import { registerTaskEventListeners } from '../messaging/registerTaskEventListen
 
 /** Options that consume the next argv as value (for positional counting) */
 const OPTIONS_WITH_VALUE = new Set([
-  '-p', '--priority',
-  '-a', '--agent',
-  '-d', '--data-dir',
-  '-t', '--task',
-  '-b', '--backend',
-  '-m', '--model',
-  '-S', '--schedule',
+  '-p',
+  '--priority',
+  '-a',
+  '--agent',
+  '-d',
+  '--data-dir',
+  '-t',
+  '--task',
+  '-b',
+  '--backend',
+  '-m',
+  '--model',
+  '-S',
+  '--schedule',
 ])
 
 /**
@@ -194,7 +216,9 @@ async function handleTaskDescription(
     } catch (e) {
       if (options.schedule) {
         error(`Invalid cron expression: "${options.schedule}"`)
-        console.log('  Examples: "0 9 * * *" (daily 9am), "*/30 * * * *" (every 30min), "0 0 * * 1" (weekly Monday)')
+        console.log(
+          '  Examples: "0 9 * * *" (daily 9am), "*/30 * * * *" (every 30min), "0 0 * * 1" (weekly Monday)'
+        )
         return
       }
       throw e
@@ -214,9 +238,7 @@ async function handleTaskDescription(
     // 2. 检测同项目冲突
     const cwd = process.cwd()
     const allTasksNow = getAllTasks()
-    const sameProjectRunning = allTasksNow.filter(
-      t => isRunningStatus(t.status) && t.cwd === cwd
-    )
+    const sameProjectRunning = allTasksNow.filter(t => isRunningStatus(t.status) && t.cwd === cwd)
     if (sameProjectRunning.length > 0) {
       warn(`同项目有 ${sameProjectRunning.length} 个任务正在运行，将排队等待:`)
       for (const t of sameProjectRunning) {

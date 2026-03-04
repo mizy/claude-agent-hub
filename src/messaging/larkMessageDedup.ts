@@ -7,13 +7,22 @@
  * 3. Stale message filtering — ignores messages created before daemon start
  */
 
+import { createLogger } from '../shared/logger.js'
+
+const logger = createLogger('lark-dedup')
+
 const DEDUP_TTL_MS = 60_000
+const CONTENT_DEDUP_TTL_MS = 120_000
 const DEDUP_MAX_SIZE = 200
 const recentMessageIds = new Map<string, number>()
+const recentContentHashes = new Map<string, number>()
 
 export function isDuplicateMessage(messageId: string): boolean {
   if (!messageId) return false
-  if (recentMessageIds.has(messageId)) return true
+  if (recentMessageIds.has(messageId)) {
+    logger.debug(`msgId dedup hit: ${messageId.slice(0, 12)}`)
+    return true
+  }
 
   if (recentMessageIds.size >= DEDUP_MAX_SIZE) {
     const now = Date.now()
@@ -34,15 +43,12 @@ export function isDuplicateMessage(messageId: string): boolean {
   return false
 }
 
-// Content-based dedup
-const CONTENT_DEDUP_TTL_MS = 120_000
-const recentContentHashes = new Map<string, number>()
-
 export function isDuplicateContent(chatId: string, content: string): boolean {
   const key = `${chatId}:${simpleHash(content)}`
   const now = Date.now()
   const prev = recentContentHashes.get(key)
   if (prev && now - prev < CONTENT_DEDUP_TTL_MS) {
+    logger.debug(`content dedup hit: ${chatId.slice(0, 12)}`)
     return true
   }
 
