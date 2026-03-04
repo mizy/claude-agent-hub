@@ -18,8 +18,12 @@ export function createWebAdapter(res: Response): WebAdapter {
   let lastResponse = ''
 
   const safeSend = (payload: Record<string, unknown>) => {
-    if (!res.writableEnded) {
-      res.write(`data: ${JSON.stringify(payload)}\n\n`)
+    try {
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`)
+      }
+    } catch {
+      // Connection already closed, ignore
     }
   }
 

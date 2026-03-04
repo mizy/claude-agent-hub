@@ -364,6 +364,8 @@ export async function handleNodeResult(
           logger.warn(
             `Loop-back edge "${nodeId}"→"${loopEntryId}" exhausted. Force exit via "${loopEntryId}"→"${exitEdge.to}"`
           )
+          // Reset exit target node so it can be re-executed even if previously completed
+          resetNodeState(instanceId, exitEdge.to)
           return [exitEdge.to]
         }
       }

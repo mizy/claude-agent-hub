@@ -361,7 +361,7 @@ export async function saveConfig(config: Record<string, unknown>): Promise<void>
     throw new Error(`Invalid config: ${result.error.issues.map(i => i.message).join(', ')}`)
   }
   const configPath = join(homedir(), CONFIG_FILENAME)
-  const yamlContent = YAML.stringify(config, { indent: 2 })
+  const yamlContent = YAML.stringify(result.data, { indent: 2 })
   await writeFile(configPath, yamlContent, 'utf-8')
   // Reload and update cache
   cachedConfig = await reloadConfig()

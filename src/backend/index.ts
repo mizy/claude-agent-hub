@@ -13,7 +13,6 @@
  * - opencode: OpenCode CLI (75+ 模型，含免费 Zen 模型)
  * - iflow: iflow-cli (Qwen3-Coder, DeepSeek 等免费模型)
  * - codebuddy: Codebuddy CLI
- * - openai-compatible: OpenAI 兼容 API
  */
 
 export type {

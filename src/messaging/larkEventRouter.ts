@@ -6,9 +6,9 @@
  * - larkAdapter.ts — MessengerAdapter factory
  */
 
-import { statSync } from 'fs'
+import { statSync, mkdirSync } from 'fs'
 import { join } from 'path'
-import { tmpdir } from 'os'
+import { DATA_DIR } from '../store/paths.js'
 import type * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
 import { formatErrorMessage } from '../shared/formatErrorMessage.js'
@@ -118,7 +118,9 @@ export async function downloadLarkImage(
       )
       return null
     }
-    const filePath = join(tmpdir(), `lark-img-${Date.now()}-${imageKey.slice(-8)}.png`)
+    const tmpDir = join(DATA_DIR, 'tmp')
+    mkdirSync(tmpDir, { recursive: true })
+    const filePath = join(tmpDir, `lark-img-${Date.now()}-${imageKey.slice(-8)}.png`)
     await fileData.writeFile(filePath)
 
     const fileSize = statSync(filePath).size

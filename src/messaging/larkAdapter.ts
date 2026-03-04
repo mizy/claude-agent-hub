@@ -39,45 +39,35 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, maxRetries = 1)
 }
 
 export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
+  /** Send a post message (create or reply), return raw SDK response */
+  const sendPost = (chatId: string, text: string, replyTo?: string, label = 'send') => {
+    const content = markdownToPostContent(text)
+    return withRetry(
+      () =>
+        replyTo
+          ? larkClient.im.v1.message.reply({
+              path: { message_id: replyTo },
+              data: { content, msg_type: 'post' },
+            })
+          : larkClient.im.v1.message.create({
+              params: { receive_id_type: 'chat_id' },
+              data: { receive_id: chatId, content, msg_type: 'post' },
+            }),
+      label
+    )
+  }
+
   return {
     async reply(chatId, text, options?: SendOptions) {
       try {
-        const content = markdownToPostContent(text)
-        const replyTo = options?.replyToMessageId
-        await withRetry(
-          () =>
-            replyTo
-              ? larkClient.im.v1.message.reply({
-                  path: { message_id: replyTo },
-                  data: { content, msg_type: 'post' },
-                })
-              : larkClient.im.v1.message.create({
-                  params: { receive_id_type: 'chat_id' },
-                  data: { receive_id: chatId, content, msg_type: 'post' },
-                }),
-          'reply'
-        )
+        await sendPost(chatId, text, options?.replyToMessageId, 'reply')
       } catch (error) {
         logger.error(`→ reply failed: ${formatErrorMessage(error)}`)
       }
     },
     async sendAndGetId(chatId, text, options?: SendOptions) {
       try {
-        const content = markdownToPostContent(text)
-        const replyTo = options?.replyToMessageId
-        const res = await withRetry(
-          () =>
-            replyTo
-              ? larkClient.im.v1.message.reply({
-                  path: { message_id: replyTo },
-                  data: { content, msg_type: 'post' },
-                })
-              : larkClient.im.v1.message.create({
-                  params: { receive_id_type: 'chat_id' },
-                  data: { receive_id: chatId, content, msg_type: 'post' },
-                }),
-          'sendAndGetId'
-        )
+        const res = await sendPost(chatId, text, options?.replyToMessageId, 'sendAndGetId')
         return (res as LarkSdkResponse)?.data?.message_id ?? null
       } catch (error) {
         logger.error(`→ send failed: ${formatErrorMessage(error)}`)

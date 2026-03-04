@@ -3,7 +3,10 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { fetchApi, postApi, deleteApi } from '../api/fetchApi'
 
+let msgIdCounter = 0
+
 interface ChatMessage {
+  id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: string
@@ -25,6 +28,10 @@ interface SessionDetail {
   backend?: string
   createdAt: string
   updatedAt: string
+}
+
+function createMsg(role: ChatMessage['role'], content: string): ChatMessage {
+  return { id: `msg-${++msgIdCounter}`, role, content, timestamp: new Date().toISOString() }
 }
 
 export function ChatPage() {
@@ -65,7 +72,7 @@ export function ChatPage() {
     setActiveSessionId(id)
     const detail = await fetchApi<SessionDetail>(`/api/chat/sessions/${id}`)
     if (detail) {
-      setMessages(detail.messages)
+      setMessages(detail.messages.map(m => ({ ...m, id: m.id || `msg-${++msgIdCounter}` })))
       if (detail.backend) setSelectedBackend(detail.backend)
     }
   }
@@ -98,7 +105,7 @@ export function ChatPage() {
     const trimmed = input.trim()
     if (!trimmed || streaming) return
 
-    const userMsg: ChatMessage = { role: 'user', content: trimmed, timestamp: new Date().toISOString() }
+    const userMsg = createMsg('user', trimmed)
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setStreaming(true)
@@ -167,32 +174,20 @@ export function ChatPage() {
 
       // Finalize: add assistant message
       if (accumulated) {
-        const assistantMsg: ChatMessage = {
-          role: 'assistant',
-          content: accumulated,
-          timestamp: new Date().toISOString(),
-        }
+        const assistantMsg = createMsg('assistant', accumulated)
         setMessages(prev => [...prev, assistantMsg])
       }
       setStreamingContent('')
       loadSessions()
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        const errorMsg: ChatMessage = {
-          role: 'assistant',
-          content: `[Error: ${(err as Error).message}]`,
-          timestamp: new Date().toISOString(),
-        }
+        const errorMsg = createMsg('assistant', `[Error: ${(err as Error).message}]`)
         setMessages(prev => [...prev, errorMsg])
         setStreamingContent('')
       } else {
         // Aborted: finalize partial content
         if (accumulated) {
-          setMessages(prev => [...prev, {
-            role: 'assistant',
-            content: accumulated + '\n[Stopped]',
-            timestamp: new Date().toISOString(),
-          }])
+          setMessages(prev => [...prev, createMsg('assistant', accumulated + '\n[Stopped]')])
           setStreamingContent('')
         }
       }
@@ -200,7 +195,7 @@ export function ChatPage() {
       setStreaming(false)
       abortRef.current = null
     }
-  }, [input, streaming, activeSessionId, selectedBackend])
+  }, [input, streaming, activeSessionId, selectedBackend, loadSessions])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -260,7 +255,7 @@ export function ChatPage() {
       <div className="chat-main">
         <div className="chat-messages">
           {messages.map((msg) => (
-            <div key={`${msg.timestamp}-${msg.role}`} className={`chat-bubble ${msg.role}`}>
+            <div key={msg.id} className={`chat-bubble ${msg.role}`}>
               {msg.role === 'user' ? (
                 <div className="chat-bubble-content user-content">{msg.content}</div>
               ) : (

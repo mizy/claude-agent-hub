@@ -61,7 +61,7 @@ export function Sidebar() {
               <span className={`task-status status-${task.status}`}>{task.status}</span>
               {task.scheduleCron && <span className="task-tag tag-scheduled">scheduled</span>}
               {task.source === 'selfdrive' && <span className="task-tag tag-selfdrive">self-drive</span>}
-              <span>{new Date(task.createdAt).toLocaleString('zh-CN', { hour12: false })}</span>
+              <span className="task-time">{new Date(task.createdAt).toLocaleString('zh-CN', { hour12: false })}</span>
             </div>
             <ActionButtons task={task} />
           </div>

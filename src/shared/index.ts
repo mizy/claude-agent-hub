@@ -13,7 +13,7 @@
  * - 文本: truncateText
  * - Claude 配置: readGlobalClaudeMd/readProjectClaudeMd/readProjectMemory/readAllSkills/buildClaudeSystemPrompt
  * - 事件总线: taskEventBus（task ↔ messaging 解耦的核心机制）
- * - 时间: now/formatTime/formatRelative/formatDuration/parseInterval/intervalToCron
+ * - 时间: now/formatTime/formatRelative/timeDiff/formatDuration/parseInterval/intervalToCron
  */
 
 // Result 类型

@@ -9,7 +9,7 @@
  * - 状态管理: recoverWorkflowInstance/pauseWorkflowInstance/resumeWorkflowInstance/
  *   markNodeRunning/markNodeDone/markNodeFailed/getWorkflowProgress/getActiveNodes
  * - 队列: enqueueNode/enqueueNodes/getQueueStats/closeQueue/
- *   getWaitingHumanJobs/resumeWaitingJob/markJobFailed
+ *   getWaitingHumanJobs/resumeWaitingJob/resumeWaitingJobsForInstance/markJobFailed
  * - Worker: createNodeWorker/startWorker/closeWorker/pauseWorker/resumeWorker/isWorkerRunning
  * - 结果处理: extractRawOutput
  * - 解析器: parseJson/validateJsonWorkflow/extractJson
