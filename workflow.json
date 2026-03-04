@@ -1,0 +1,61 @@
+{
+  "name": "代码与文档清理",
+  "description": "扫描并清理项目中的空文件、废弃代码、未使用导出、过时文档等无用内容",
+  "nodes": [
+    { "id": "start", "type": "start", "name": "开始" },
+    {
+      "id": "scan",
+      "type": "task",
+      "name": "扫描识别可清理项",
+      "task": {
+        "persona": "Explorer",
+        "prompt": "扫描项目识别可清理内容：\n\n1. 查找空文件/占位文件：扫描 src/ 目录下所有空文件（0 字节或只有空白的 .ts/.tsx 文件）\n2. 检查废弃代码：grep -r \"deprecated\" src/ 查找标记为废弃但仍存在的模块\n3. 识别未使用的导出：用 grep 检查 src/ 目录下的 export 函数/类型是否被其他文件引用（排除 index.ts 导出）\n4. 查找过时文档：检查 README.md 中描述的功能是否仍存在\n5. 检查 dead code：grep 查找注释掉的代码块（// xxx、/* xxx */）、永远不走的分支（if (false)）\n\n每类问题列出具体文件路径和行号，优先选择最明显无用的 3-5 个清理目标。"
+      }
+    },
+    {
+      "id": "cleanup",
+      "type": "task",
+      "name": "执行清理",
+      "task": {
+        "persona": "Pragmatist",
+        "prompt": "根据扫描结果执行清理：\n\n1. 确认清理目标：对于每个待清理项，再次 grep 确认无其他文件引用\n2. 执行删除：删除空文件、废弃模块、未使用导出、注释代码\n3. 记录清理：记录删除的文件/函数/代码块，格式化为可读列表\n4. 完成后运行 pnpm run typecheck 确认无编译错误\n\n只删除确认无用的内容，有疑问的保留。清理完成后输出已清理的条目列表。"
+      }
+    },
+    {
+      "id": "verify",
+      "type": "task",
+      "name": "构建验证",
+      "task": {
+        "persona": "Tester",
+        "prompt": "验证清理无回归：\n\n1. 运行 pnpm run typecheck 确认类型检查通过\n2. 运行 pnpm test 确认测试通过\n\n全部通过时输出 BUILD_PASSED，否则输出 BUILD_FAILED 并列出失败项。"
+      }
+    },
+    {
+      "id": "commit",
+      "type": "task",
+      "name": "Git提交",
+      "task": {
+        "persona": "Pragmatist",
+        "prompt": "将清理内容提交到 Git：\n\n1. 运行 git status 查看变更文件\n2. 运行 git diff --stat 查看变更统计\n3. 编写 commit message，格式：chore: 清理 [具体内容]\n4. 执行 git add -A && git commit -m \"commit message\"\n5. 输出提交成功的确认信息\n\n如果无需提交（无变更），输出 NO_CHANGES。"
+      }
+    },
+    { "id": "end", "type": "end", "name": "结束" }
+  ],
+  "edges": [
+    { "from": "start", "to": "scan" },
+    { "from": "scan", "to": "cleanup" },
+    { "from": "cleanup", "to": "verify" },
+    {
+      "from": "verify",
+      "to": "commit",
+      "condition": "outputs.verify._raw.includes('BUILD_PASSED')"
+    },
+    {
+      "from": "verify",
+      "to": "cleanup",
+      "condition": "!outputs.verify._raw.includes('BUILD_PASSED')",
+      "maxLoops": 2
+    },
+    { "from": "commit", "to": "end" }
+  ]
+}

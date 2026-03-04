@@ -61,6 +61,11 @@ export async function collectStream(
     }
   }
 
+  // Process any remaining content in buffer (last line without newline)
+  if (processLine && buffer.trim()) {
+    processLine(buffer, onChunk)
+  }
+
   await subprocess
 
   const output = chunks.join('')

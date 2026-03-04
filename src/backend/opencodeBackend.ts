@@ -97,7 +97,9 @@ export function createOpencodeBackend(): BackendAdapter {
         logger.debug(
           `[perf] spawn: ${perf.spawn}ms, first-stdout: ${perf.firstStdout}ms, first-delta: ${perf.firstDelta}ms, total: ${durationMs}ms`
         )
+        logger.info(`[debug] rawOutput length: ${rawOutput.length}, first 200 chars: ${rawOutput.slice(0, 200)}`)
         const parsed = parseOutput(rawOutput)
+        logger.info(`[debug] parsed response length: ${parsed.response.length}, sessionId: ${parsed.sessionId}`)
 
         // opencode error event (e.g. SSL cert failure, API error)
         if (parsed.error && !parsed.response) {
