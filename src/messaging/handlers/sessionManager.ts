@@ -119,10 +119,10 @@ export function loadSessions(): void {
     // Backward compat: old sessions lack turnCount/estimatedTokens
     session.turnCount ??= 0
     session.estimatedTokens ??= 0
-    // Clear stale backend sessionId — backend CLIs don't persist sessions across restarts,
-    // so a restored sessionId will cause "conversation not found" errors on first message.
-    // Keep overrides (model/backend) intact so user preferences survive daemon restart.
-    session.sessionId = ''
+    // Keep sessionId intact — backends like Claude Code persist conversations on disk,
+    // so --resume with the old sessionId can restore full multi-turn context.
+    // If the backend session has expired or been cleaned up, chatHandler's error handling
+    // (detecting "session"/"conversation not found") will auto-clear and start fresh.
     sessions.set(chatId, session)
     restored++
   }

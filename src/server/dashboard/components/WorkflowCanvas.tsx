@@ -52,7 +52,7 @@ export function WorkflowCanvas() {
       const rawColor = STATUS_COLORS[status]
       const color = rawColor && /^#[0-9a-fA-F]{3,8}$/.test(rawColor) ? rawColor : '#6b7280'
       tip.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${esc(d.name as string || '')}</div>` +
-        `<div style="color:#64748b">${esc(d.nodeType as string || '')}</div>` +
+        `<div style="color:#64748b">${esc(d.nodeType as string || '')}${d.agent ? ` · ${esc(d.agent as string)}` : ''}</div>` +
         `<div style="color:${color};margin-top:4px">${esc(status)}</div>` +
         (d.durationMs ? `<div style="color:#94a3b8">${fmtDur(d.durationMs as number)}</div>` : '') +
         (d.error ? `<div style="color:#ef4444;margin-top:4px;font-size:10px">${esc((d.error as string).slice(0, 100))}</div>` : '')

@@ -18,6 +18,7 @@ export interface WorkflowNode {
   id: string
   name: string
   type: string
+  task?: { persona?: string; prompt?: string }
   // Raw data: loop nodes use `loop` field, but also mapped as `config` for legacy compat
   config?: { bodyNodes?: string[]; maxIterations?: number }
   loop?: { bodyNodes?: string[]; maxIterations?: number }

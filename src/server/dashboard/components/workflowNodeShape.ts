@@ -50,6 +50,7 @@ export const workflowNodeShape = {
     const nodeType = (data.nodeType as string) || 'task'
     const name = (data.name as string) || ''
     const durationMs = data.durationMs as number | undefined
+    const agent = data.agent as string | undefined
     const isLoopBody = !!data.isLoopBody
     const color = STATUS_COLORS[status] || STATUS_COLORS.pending
     const icon = TYPE_ICONS[nodeType] || '\u2022'
@@ -113,8 +114,9 @@ export const workflowNodeShape = {
     nameEl.textContent = displayName
     g.appendChild(nameEl)
 
-    // Subtext: type + duration
+    // Subtext: type + agent + duration
     let subtext = nodeType
+    if (agent) subtext += ` \u00b7 ${agent}`
     if (durationMs) subtext += ` \u00b7 ${fmtDur(durationMs)}`
     const subEl = createSvgEl('text', {
       x: '40', y: String(h / 2 + 14),

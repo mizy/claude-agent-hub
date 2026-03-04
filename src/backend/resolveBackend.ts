@@ -11,6 +11,7 @@ import { createClaudeCodeBackend } from './claudeCodeBackend.js'
 import { createOpencodeBackend } from './opencodeBackend.js'
 import { createIflowBackend } from './iflowBackend.js'
 import { createCodebuddyBackend } from './codebuddyBackend.js'
+import { createCursorBackend } from './cursorBackend.js'
 
 /** 后端工厂注册表 */
 const BACKEND_REGISTRY: Record<string, () => BackendAdapter> = {
@@ -18,6 +19,7 @@ const BACKEND_REGISTRY: Record<string, () => BackendAdapter> = {
   opencode: createOpencodeBackend,
   iflow: createIflowBackend,
   codebuddy: createCodebuddyBackend,
+  cursor: createCursorBackend,
 }
 
 /** 按 backend name 缓存实例 (name = backendType or 'default') */

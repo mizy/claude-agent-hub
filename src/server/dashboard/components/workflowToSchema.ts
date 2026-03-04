@@ -11,6 +11,7 @@ export interface WfNodeData {
   height: number
   nodeType: string
   status: string
+  agent?: string
   durationMs?: number
   error?: string
   isLoopBody?: boolean
@@ -128,6 +129,7 @@ export function workflowToSchema(
       width: NODE_W, height: NODE_H,
       nodeType: n.type,
       status,
+      agent: n.task?.persona,
       durationMs: st?.durationMs,
       error: st?.error,
       isLoopBody: bodySet.has(n.id),

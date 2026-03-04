@@ -16,7 +16,10 @@ export function buildClientPrompt(
 
   const envParts = [client.platform]
   if (runtime?.backend) envParts.push(runtime.model ? `${runtime.backend}/${runtime.model}` : runtime.backend)
-  envParts.push(`上限 ${client.maxMessageLength} 字符`)
+  // Only mention char limit for platforms with real constraints (Lark, Telegram)
+  if (client.maxMessageLength < 10000) {
+    envParts.push(`上限 ${client.maxMessageLength} 字符`)
+  }
 
   const lines = [
     `你是${name}，用户的 AI 搭档。性格直来直去，技术靠谱，日常有梗。`,

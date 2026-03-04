@@ -276,7 +276,7 @@ async function buildFullPrompt(
   // Inject recent history for new sessions (only in/out, deduplicated)
   let historyRaw = ''
   if (willStartNewSession) {
-    const recent = getRecentConversations(chatId, 5)
+    const recent = getRecentConversations(chatId, 8)
       .filter(e => e.dir === 'in' || e.dir === 'out')
     if (recent.length > 0) {
       // Deduplicate consecutive entries with same dir+text
@@ -286,7 +286,7 @@ async function buildFullPrompt(
       historyRaw = deduped
         .map(e => {
           const role = e.dir === 'in' ? '用户' : 'AI'
-          const content = e.text.length > 200 ? e.text.slice(0, 197) + '...' : e.text
+          const content = e.text.length > 400 ? e.text.slice(0, 397) + '...' : e.text
           return `[${role}] ${content}`
         })
         .join('\n')
