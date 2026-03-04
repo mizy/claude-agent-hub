@@ -338,8 +338,38 @@ export async function handleNodeResult(
       }
     }
 
-    // All out edges exhausted (e.g. maxLoops depleted on loop-back edge) — dead end.
-    // Complete the workflow to avoid it hanging forever with no enqueued nodes.
+    // Check if we hit a dead end because a loop-back edge exhausted.
+    // If so, backtrack to the loop entry node and force its non-loop exit path.
+    const exhaustedLoopEdges = workflow.edges.filter(e =>
+      e.from === nodeId &&
+      (e.maxLoops !== undefined || isTopologicalLoopBack(e, workflow)) &&
+      (updatedInstance.loopCounts[e.id] || 0) >= (e.maxLoops ?? DEFAULT_MAX_LOOPS)
+    )
+    if (exhaustedLoopEdges.length > 0) {
+      for (const loopEdge of exhaustedLoopEdges) {
+        const loopEntryId = loopEdge.to
+        // Find non-loop-back edges from the loop entry node that exit the loop
+        // (i.e. their destination doesn't loop back to loopEntryId)
+        const exitEdges = workflow.edges.filter(e => {
+          if (e.from !== loopEntryId) return false
+          if (e.maxLoops !== undefined || isTopologicalLoopBack(e, workflow)) return false
+          const destLoopsBackToEntry = workflow.edges.some(
+            le => le.from === e.to && le.to === loopEntryId &&
+              (le.maxLoops !== undefined || isTopologicalLoopBack(le, workflow))
+          )
+          return !destLoopsBackToEntry
+        })
+        if (exitEdges.length > 0) {
+          const exitEdge = exitEdges[exitEdges.length - 1]!
+          logger.warn(
+            `Loop-back edge "${nodeId}"→"${loopEntryId}" exhausted. Force exit via "${loopEntryId}"→"${exitEdge.to}"`
+          )
+          return [exitEdge.to]
+        }
+      }
+    }
+
+    // True dead end — no reachable downstream nodes.
     logger.warn(`Node "${nodeId}" has no reachable downstream nodes (all edges exhausted), completing workflow`)
     await completeWorkflowInstance(instanceId)
     return []

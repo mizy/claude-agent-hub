@@ -112,7 +112,10 @@ export interface TaskMessage {
   createdAt: string
 }
 
+export type PageId = 'tasks' | 'settings' | 'chat'
+
 interface DashboardStore {
+  currentPage: PageId
   tasks: Task[]
   selectedTaskId: string | null
   taskData: TaskData | null
@@ -151,12 +154,14 @@ interface DashboardStore {
   setSidebarOpen: (v: boolean) => void
   setRightPanelOpen: (v: boolean) => void
   toggleRightPanelCollapsed: () => void
+  setCurrentPage: (page: PageId) => void
   closeMobilePanels: () => void
 }
 
 let toastId = 0
 
 export const useStore = create<DashboardStore>((set, get) => ({
+  currentPage: 'tasks',
   tasks: [],
   selectedTaskId: null,
   taskData: null,
@@ -284,6 +289,7 @@ export const useStore = create<DashboardStore>((set, get) => ({
     } else get().addToast('Failed to inject node', 'error')
   },
 
+  setCurrentPage: page => set({ currentPage: page }),
   setShowNewTaskModal: v => set({ showNewTaskModal: v }),
   setShowMessageModal: v => set({ showMessageModal: v }),
   setShowInjectNodeModal: v => set({ showInjectNodeModal: v }),

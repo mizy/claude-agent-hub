@@ -13,6 +13,11 @@ const STREAM_THROTTLE_MS = 800
 const STREAM_MIN_DELTA = 50 // chars
 const DEFAULT_MAX_LENGTH = 4096
 
+export interface StreamHandlerOptions {
+  throttleMs?: number
+  minDelta?: number
+}
+
 /**
  * Create a streaming chunk handler that throttles edits to a placeholder message.
  * Returns { onChunk, getAccumulated } — onChunk is undefined if no placeholderId.
@@ -22,8 +27,11 @@ export function createStreamHandler(
   placeholderIdRef: { placeholderId: string | null },
   maxLen: number,
   messenger: MessengerAdapter,
-  bench: { firstChunk: number }
+  bench: { firstChunk: number },
+  options?: StreamHandlerOptions,
 ): { onChunk: ((chunk: string) => void) | undefined; getAccumulated: () => string; stop: () => void } {
+  const throttleMs = options?.throttleMs ?? STREAM_THROTTLE_MS
+  const minDelta = options?.minDelta ?? STREAM_MIN_DELTA
   let accumulated = ''
   let lastEditAt = 0
   let lastEditLength = 0
@@ -60,8 +68,8 @@ export function createStreamHandler(
       return
     }
 
-    // Subsequent chunks: throttle (800ms interval + 50 char delta)
-    if (now - lastEditAt > STREAM_THROTTLE_MS && deltaLen > STREAM_MIN_DELTA) {
+    // Subsequent chunks: throttle
+    if (now - lastEditAt > throttleMs && deltaLen > minDelta) {
       lastEditAt = now
       lastEditLength = accumulated.length
       const preview =

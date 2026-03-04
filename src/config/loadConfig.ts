@@ -1,4 +1,4 @@
-import { readFile } from 'fs/promises'
+import { readFile, writeFile } from 'fs/promises'
 import { existsSync, watch, type FSWatcher } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -349,6 +349,22 @@ export function getDefaultConfig(): Config {
       },
     },
   }
+}
+
+/**
+ * Save config to the global YAML file (~/.claude-agent-hub.yaml)
+ * Updates the cached config after writing.
+ */
+export async function saveConfig(config: Record<string, unknown>): Promise<void> {
+  const result = configSchema.safeParse(config)
+  if (!result.success) {
+    throw new Error(`Invalid config: ${result.error.issues.map(i => i.message).join(', ')}`)
+  }
+  const configPath = join(homedir(), CONFIG_FILENAME)
+  const yamlContent = YAML.stringify(config, { indent: 2 })
+  await writeFile(configPath, yamlContent, 'utf-8')
+  // Reload and update cache
+  cachedConfig = await reloadConfig()
 }
 
 /**

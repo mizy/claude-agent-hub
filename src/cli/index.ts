@@ -29,6 +29,7 @@ import { registerDashboardCommand } from './commands/server.js'
 import { registerBackendCommands } from './commands/backend.js'
 import { registerSelfCommand } from './commands/self.js'
 import { registerScheduleCommand } from './commands/schedule.js'
+import { registerChatCommand } from './commands/chat.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask, getAllTasks, listTasks } from '../task/queryTask.js'
@@ -99,6 +100,7 @@ const KNOWN_COMMANDS = [
   'backend',
   'self',
   'schedule',
+  'chat',
 ]
 
 // Bridge task lifecycle events to messaging notifications
@@ -300,6 +302,7 @@ registerDashboardCommand(program)
 registerBackendCommands(program)
 registerSelfCommand(program)
 registerScheduleCommand(program)
+registerChatCommand(program)
 
 // cah list - 查看任务列表的快捷命令
 program

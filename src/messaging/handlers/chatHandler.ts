@@ -20,7 +20,7 @@ import {
   getBackendOverride,
   incrementTurn,
 } from './sessionManager.js'
-import { createStreamHandler, sendFinalResponse } from './streamingHandler.js'
+import { createStreamHandler, sendFinalResponse, type StreamHandlerOptions } from './streamingHandler.js'
 import { sendDetectedImages } from './imageExtractor.js'
 import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
 import { trackEpisodeTurn, destroyEpisodeTrackers, flushEpisode } from './episodeExtractor.js'
@@ -99,6 +99,18 @@ export function clearChatSession(chatId: string): boolean {
  */
 export function getChatSessionInfo(chatId: string) {
   return getSession(chatId)
+}
+
+/**
+ * Cancel the active AI call for a chatId (e.g. when SSE client disconnects).
+ */
+export function cancelActiveChat(chatId: string): void {
+  const controller = activeControllers.get(chatId)
+  if (controller) {
+    logger.info(`⚡ cancelling active chat [${chatId.slice(0, 8)}] (client disconnect)`)
+    controller.abort()
+    activeControllers.delete(chatId)
+  }
 }
 
 /**
@@ -440,12 +452,13 @@ function setupStreamingAndPlaceholder(
   maxLen: number,
   messenger: MessengerAdapter,
   bench: ReturnType<typeof createBenchmark>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  streamOptions?: StreamHandlerOptions,
 ): StreamSetup {
   let placeholderId: string | null = null
   const streamState = { placeholderId: null as string | null }
   const { onChunk, stop: stopStreaming } = createStreamHandler(
-    chatId, streamState, maxLen, messenger, bench
+    chatId, streamState, maxLen, messenger, bench, streamOptions
   )
   signal.addEventListener('abort', () => stopStreaming(), { once: true })
 
@@ -507,8 +520,10 @@ async function handleChatInternal(
   )
   bench.promptReady = Date.now()
 
-  // 5. Setup streaming + placeholder
-  const stream = setupStreamingAndPlaceholder(chatId, hasImages, maxLen, messenger, bench, signal)
+  // 5. Setup streaming + placeholder (Web SSE uses lower throttle)
+  const streamOpts: StreamHandlerOptions | undefined =
+    platform === 'Web' ? { throttleMs: 150, minDelta: 10 } : undefined
+  const stream = setupStreamingAndPlaceholder(chatId, hasImages, maxLen, messenger, bench, signal, streamOpts)
   const chatMcp = config.backends[config.defaultBackend]?.chat?.mcpServers ?? []
   bench.parallelStart = Date.now()
 

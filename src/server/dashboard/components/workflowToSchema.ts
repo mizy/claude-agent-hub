@@ -51,6 +51,14 @@ const STATUS_MAP: Record<string, string> = {
   skipped: 'skipped',
 }
 
+const EDGE_COLORS: Record<string, string> = {
+  pending: 'rgba(107,114,128,0.4)',
+  running: '#3b82f6',
+  completed: '#22c55e',
+  failed: '#ef4444',
+  skipped: '#eab308',
+}
+
 /** Detect back-edges via DFS to handle cycles in layout */
 function findBackEdges(nodeIds: string[], adj: Record<string, string[]>): Set<string> {
   const backEdges = new Set<string>()
@@ -74,6 +82,7 @@ export function workflowToSchema(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   instance: Instance | null,
+  taskDone = false,
 ): WfSchemaData {
   const ns = instance?.nodeStates || {}
   const loopCounts = instance?.loopCounts || {}
@@ -86,7 +95,7 @@ export function workflowToSchema(
     const maxIterations = n.loop?.maxIterations ?? n.config?.maxIterations
     if (n.type === 'loop' && bodyNodes) {
       loopMap.set(n.id, { bodyNodes, maxIterations })
-      cfg.bodyNodes.forEach((id: string) => bodySet.add(id))
+      bodyNodes.forEach((id: string) => bodySet.add(id))
     }
   })
 
@@ -108,7 +117,8 @@ export function workflowToSchema(
 
   const schemaNodes: WfNodeData[] = nodes.map(n => {
     const st = ns[n.id]
-    const status = STATUS_MAP[st?.status || 'pending'] || 'pending'
+    let status = STATUS_MAP[st?.status || 'pending'] || 'pending'
+    if (taskDone && status === 'pending') status = 'skipped'
     const loopInfo = loopMap.get(n.id)
     return {
       uuid: n.id,
@@ -128,8 +138,25 @@ export function workflowToSchema(
     }
   })
 
+  // Build nodeStatus map for edge styling
+  const nodeStatusMap = new Map<string, string>()
+  schemaNodes.forEach(n => nodeStatusMap.set(n.uuid, n.status))
+
+  function edgeStatus(fromId: string, toId: string): string {
+    const fromSt = nodeStatusMap.get(fromId) || 'pending'
+    const toSt = nodeStatusMap.get(toId) || 'pending'
+    if (toSt === 'running') return 'running'
+    if (fromSt === 'failed') return 'failed'
+    if (fromSt === 'completed') return 'completed'
+    if (fromSt === 'skipped') return 'skipped'
+    return 'pending'
+  }
+
   const schemaLines: WfLineData[] = edges.map(e => {
     const isBack = backEdges.has(`${e.from}->${e.to}`)
+    const st = edgeStatus(e.from, e.to)
+    const curLoops = loopCounts[e.id]
+    const classes = ['ve-edge', `ve-edge-${st}`, ...(isBack ? ['ve-back-edge'] : []), ...(st === 'running' ? ['running'] : [])].join(' ')
     return {
       uuid: e.id,
       from: e.from,
@@ -138,9 +165,11 @@ export function workflowToSchema(
       toPoint: isBack ? LP.right : LP.top,
       condition: e.condition,
       maxLoops: e.maxLoops,
-      curLoops: loopCounts[e.id],
+      curLoops,
       isBackEdge: isBack,
-      className: isBack ? 've-back-edge' : undefined,
+      className: classes,
+      style: { stroke: EDGE_COLORS[st] || EDGE_COLORS.pending },
+      label: curLoops != null && e.maxLoops ? `${curLoops}/${e.maxLoops}` : undefined,
     }
   })
 
@@ -148,30 +177,38 @@ export function workflowToSchema(
   loopMap.forEach(({ bodyNodes, maxIterations }, loopId) => {
     if (!bodyNodes.length) return
     // loop → first body (purple dashed)
+    const enterSt = edgeStatus(loopId, bodyNodes[0])
     schemaLines.push({
       uuid: `loop-enter-${loopId}`,
       from: loopId, to: bodyNodes[0],
-      fromPoint: LP.right, toPoint: LP.left, // side entry for loop body
-      className: 've-loop-edge',
+      fromPoint: LP.right, toPoint: LP.left,
+      className: ['ve-loop-edge', ...(enterSt === 'running' ? ['running'] : [])].join(' '),
+      style: { stroke: EDGE_COLORS[enterSt] || EDGE_COLORS.pending },
     })
     // body chain
     for (let i = 0; i < bodyNodes.length - 1; i++) {
+      const bodySt = edgeStatus(bodyNodes[i], bodyNodes[i + 1])
       schemaLines.push({
         uuid: `loop-body-${loopId}-${i}`,
         from: bodyNodes[i], to: bodyNodes[i + 1],
         fromPoint: LP.bottom, toPoint: LP.top,
-        className: 've-loop-body-edge',
+        className: ['ve-loop-body-edge', ...(bodySt === 'running' ? ['running'] : [])].join(' '),
+        style: { stroke: EDGE_COLORS[bodySt] || EDGE_COLORS.pending },
       })
     }
     // last body → loop (amber dashed back-flow)
+    const backSt = edgeStatus(bodyNodes[bodyNodes.length - 1], loopId)
+    const curLoops = loopCounts[loopId]
     schemaLines.push({
       uuid: `loop-back-${loopId}`,
       from: bodyNodes[bodyNodes.length - 1], to: loopId,
       fromPoint: LP.left, toPoint: LP.left,
       isBackEdge: true,
-      className: 've-back-edge',
-      curLoops: loopCounts[loopId],
+      className: ['ve-back-edge', ...(backSt === 'running' ? ['running'] : [])].join(' '),
+      style: { stroke: EDGE_COLORS[backSt] || EDGE_COLORS.pending },
+      curLoops,
       maxLoops: maxIterations,
+      label: curLoops != null && maxIterations ? `${curLoops}/${maxIterations}` : undefined,
     })
   })
 

@@ -37,6 +37,7 @@ import { resumeTask, resumeFailedTask } from '../task/resumeTask.js'
 import { resumePausedTask } from '../task/index.js'
 import { spawnTaskProcess } from '../task/spawnTask.js'
 import { createTaskWithFolder } from '../task/createTaskWithFolder.js'
+import { loadConfig, saveConfig } from '../config/loadConfig.js'
 
 const logger = createLogger('server-routes')
 
@@ -48,6 +49,7 @@ export function registerRoutes(app: Express): void {
   registerTaskRoutes(app)
   registerTaskActionRoutes(app)
   registerTraceRoutes(app)
+  registerConfigRoutes(app)
 }
 
 // ============ Summary ============
@@ -394,25 +396,8 @@ function registerTraceRoutes(app: Express): void {
     }
   })
 
-  // GET /api/tasks/:id/traces/:traceId
-  app.get(
-    '/api/tasks/:id/traces/:traceId',
-    (req: Request<{ id: string; traceId: string }>, res: Response) => {
-      try {
-        const { id, traceId } = req.params
-        const trace = getTrace(id, traceId)
-        if (!trace) {
-          res.status(404).json({ error: 'Trace not found' })
-          return
-        }
-        res.json(trace)
-      } catch (err) {
-        logger.error('Failed to get trace', err)
-        res.status(500).json({ error: 'Failed to get trace' })
-      }
-    }
-  )
-
+  // NOTE: /slow and /errors must be registered BEFORE /:traceId to avoid being
+  // matched as a traceId parameter
   // GET /api/tasks/:id/traces/slow
   app.get('/api/tasks/:id/traces/slow', (req: Request<{ id: string }>, res: Response) => {
     try {
@@ -448,6 +433,51 @@ function registerTraceRoutes(app: Express): void {
     } catch (err) {
       logger.error('Failed to get error chains', err)
       res.status(500).json({ error: 'Failed to get error chains' })
+    }
+  })
+
+  // GET /api/tasks/:id/traces/:traceId
+  app.get(
+    '/api/tasks/:id/traces/:traceId',
+    (req: Request<{ id: string; traceId: string }>, res: Response) => {
+      try {
+        const { id, traceId } = req.params
+        const trace = getTrace(id, traceId)
+        if (!trace) {
+          res.status(404).json({ error: 'Trace not found' })
+          return
+        }
+        res.json(trace)
+      } catch (err) {
+        logger.error('Failed to get trace', err)
+        res.status(500).json({ error: 'Failed to get trace' })
+      }
+    }
+  )
+}
+
+// ============ Config API ============
+
+function registerConfigRoutes(app: Express): void {
+  // GET /api/config - read current config
+  app.get('/api/config', async (_req: Request, res: Response) => {
+    try {
+      const config = await loadConfig()
+      res.json(config)
+    } catch (err) {
+      logger.error('Failed to get config', err)
+      res.status(500).json({ error: 'Failed to get config' })
+    }
+  })
+
+  // PUT /api/config - save config
+  app.put('/api/config', async (req: Request, res: Response) => {
+    try {
+      await saveConfig(req.body)
+      res.json({ success: true })
+    } catch (err) {
+      logger.error('Failed to save config', err)
+      res.status(500).json({ error: 'Failed to save config' })
     }
   })
 }

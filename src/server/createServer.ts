@@ -10,6 +10,7 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { createLogger } from '../shared/logger.js'
 import { registerRoutes } from './routes.js'
+import { registerChatRoutes } from './chatRoutes.js'
 
 const logger = createLogger('server')
 
@@ -43,7 +44,7 @@ export function startServer(options: ServerOptions = {}): void {
   // CORS for development
   app.use((_req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*')
-    res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
     if (_req.method === 'OPTIONS') {
       res.sendStatus(204)
@@ -54,6 +55,7 @@ export function startServer(options: ServerOptions = {}): void {
 
   // API Routes
   registerRoutes(app)
+  registerChatRoutes(app)
 
   // Static files
   app.use(express.static(publicDir))
