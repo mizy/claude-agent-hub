@@ -175,6 +175,9 @@ export function validateJsonWorkflow(input: unknown): { valid: boolean; errors: 
       if (type === 'schedule-wait' && !node.scheduleWait) {
         errors.push(`Schedule-wait node "${node.id}" missing "scheduleWait" config`)
       }
+      if (type === 'lark-notify' && !node.larkNotify) {
+        errors.push(`Lark-notify node "${node.id}" missing "larkNotify" config`)
+      }
     }
   }
 
@@ -195,10 +198,18 @@ export function validateJsonWorkflow(input: unknown): { valid: boolean; errors: 
  * 从 Claude 响应中提取 JSON
  */
 export function extractJson(response: string): JsonWorkflowInput {
-  // 尝试提取 ```json ... ``` 代码块
-  const codeBlockMatch = response.match(/```(?:json)?\s*\n([\s\S]*?)\n```/)
-  if (codeBlockMatch?.[1]) {
-    return tryParseJson(codeBlockMatch[1].trim())
+  // 尝试提取 ```json ... ``` 代码块，取最后一个（Agent Teams 模式下讨论内包含示例块，最终 workflow 在最后）
+  const codeBlockRegex = /```(?:json)?\s*\n([\s\S]*?)\n```/g
+  let lastCodeBlock: string | null = null
+  let codeBlockMatch: RegExpExecArray | null
+  while ((codeBlockMatch = codeBlockRegex.exec(response)) !== null) {
+    const candidate = codeBlockMatch[1]?.trim()
+    if (candidate?.startsWith('{')) {
+      lastCodeBlock = candidate
+    }
+  }
+  if (lastCodeBlock) {
+    return tryParseJson(lastCodeBlock)
   }
 
   // 尝试直接解析为 JSON
@@ -207,8 +218,8 @@ export function extractJson(response: string): JsonWorkflowInput {
     return tryParseJson(trimmed)
   }
 
-  // 尝试找到第一个 { 开始的 JSON（string-aware brace matching）
-  const jsonStart = response.indexOf('{')
+  // 尝试找到最后一个完整 { } JSON（避免取到讨论中的片段）
+  const jsonStart = response.lastIndexOf('{')
   if (jsonStart !== -1) {
     let depth = 0
     let jsonEnd = jsonStart

@@ -120,6 +120,8 @@ const STATIC_PROMPTS: Record<string, string> = {
 - 各模块入口文件的 JSDoc 注释是否准确描述了当前 API
 - CLI --help 输出与实际命令是否一致
 - 数据结构文档与实际 JSON schema 是否匹配
+- ~/.claude/skills/cah/SKILL.md：检查 skill 触发描述、核心命令列表、workflow 说明是否与当前 cah CLI 实际行为匹配（重点：新增/删除的子命令、changed options、workflow 节点类型变化）
+- 项目目录下的 SKILL.md（若存在）：同上，确保与 ~/.claude/skills/cah/SKILL.md 内容保持同步，两者的命令列表和触发条件应一致
 
 更新原则：
 - 只更新事实性内容（命令名、文件路径、API 签名等），不修改风格或措辞

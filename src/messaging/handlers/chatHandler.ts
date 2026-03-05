@@ -41,7 +41,19 @@ import { parseBackendOverride } from './parseBackendOverride.js'
 
 const logger = createLogger('chat-handler')
 
+import { basename, extname } from 'path'
+import { existsSync, readFileSync, statSync as fsStatSync } from 'fs'
+
 const DEFAULT_MAX_LENGTH = 4096
+
+const TEXT_EXTS = new Set([
+  '.txt', '.md', '.ts', '.js', '.jsx', '.tsx', '.json', '.yaml', '.yml',
+  '.csv', '.xml', '.html', '.css', '.py', '.sh', '.log', '.toml', '.ini',
+  '.env', '.sql', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.rb', '.php',
+  '.swift', '.kt', '.scala', '.r', '.lua', '.conf', '.cfg', '.properties',
+])
+const MAX_INLINE_SIZE = 50 * 1024 // 50KB per file
+const MAX_TOTAL_INLINE = 200 * 1024 // 200KB total across all files
 
 // Per-chatId AbortController for interrupting active AI calls
 const activeControllers = new Map<string, AbortController>()
@@ -55,6 +67,8 @@ export interface ChatOptions {
   client?: ClientContext
   /** Optional image file paths from the user message */
   images?: string[]
+  /** Optional non-image file paths (PDF, txt, xlsx etc.) from the user message */
+  files?: string[]
 }
 
 /**
@@ -164,7 +178,6 @@ async function sendMcpImages(
   messenger: MessengerAdapter
 ): Promise<void> {
   if (mcpImagePaths.length === 0 || !messenger.replyImage) return
-  const { readFileSync, existsSync } = await import('fs')
   for (const imgPath of mcpImagePaths) {
     try {
       if (!existsSync(imgPath)) {
@@ -260,7 +273,7 @@ function resolveSessionState(
 
 // ── Internal: prompt assembly ──
 
-/** Build full prompt: client context + memory + history + user text + images */
+/** Build full prompt: client context + memory + history + user text + images + files */
 async function buildFullPrompt(
   chatId: string,
   effectiveText: string,
@@ -268,7 +281,8 @@ async function buildFullPrompt(
   client: ClientContext | undefined,
   images: string[] | undefined,
   config: Awaited<ReturnType<typeof loadConfig>>,
-  runtime?: { backend?: string; model?: string }
+  runtime?: { backend?: string; model?: string },
+  files?: string[]
 ): Promise<string> {
   const clientPrefix = client ? buildClientPrompt(client, runtime) + '\n\n' : ''
 
@@ -308,7 +322,7 @@ async function buildFullPrompt(
     }
   }
 
-  // Assemble: system context → memory → history → user message → images
+  // Assemble: system context → memory → history → user message → images → files
   let prompt =
     clientPrefix + wrapMemoryContext(memoryRaw) + wrapHistoryContext(historyRaw) + effectiveText
   if (images?.length) {
@@ -318,6 +332,29 @@ async function buildFullPrompt(
       .map(p => `[用户发送了图片，请使用 Read 工具查看后回复，路径→${p}←]`)
       .join('\n')
     prompt = prompt ? `${prompt}\n\n${imagePart}` : imagePart
+  }
+  if (files?.length) {
+    let totalInlined = 0
+    const filePart = files
+      .map(p => {
+        const name = basename(p)
+        const ext = extname(p).toLowerCase()
+        if (TEXT_EXTS.has(ext) && totalInlined < MAX_TOTAL_INLINE) {
+          try {
+            const size = fsStatSync(p).size
+            if (size <= MAX_INLINE_SIZE && totalInlined + size <= MAX_TOTAL_INLINE) {
+              const content = readFileSync(p, 'utf-8')
+              totalInlined += size
+              const maxBacktickRun = (content.match(/`+/g) ?? []).reduce((m, s) => Math.max(m, s.length), 0)
+              const fence = '`'.repeat(Math.max(3, maxBacktickRun + 1))
+              return `[用户发送了文件 ${name}，内容如下:]\n${fence}\n${content}\n${fence}`
+            }
+          } catch (e) { logger.debug(`Failed to read file inline, falling back to path: ${getErrorMessage(e)}`) }
+        }
+        return `[用户发送了文件 ${name}，请使用 Read 工具查看后回复，路径→${p}←]`
+      })
+      .join('\n')
+    prompt = prompt ? `${prompt}\n\n${filePart}` : filePart
   }
   return prompt
 }
@@ -448,6 +485,7 @@ interface StreamSetup {
 function setupStreamingAndPlaceholder(
   chatId: string,
   hasImages: boolean,
+  hasFiles: boolean,
   maxLen: number,
   messenger: MessengerAdapter,
   bench: ReturnType<typeof createBenchmark>,
@@ -461,8 +499,9 @@ function setupStreamingAndPlaceholder(
   )
   signal.addEventListener('abort', () => stopStreaming(), { once: true })
 
+  const placeholderText = hasImages ? '🖼️ 已收到图片，分析中...' : hasFiles ? '📎 已收到文件，分析中...' : '🤔 思考中...'
   const placeholderPromise = messenger
-    .sendAndGetId(chatId, hasImages ? '🖼️ 已收到图片，分析中...' : '🤔 思考中...')
+    .sendAndGetId(chatId, placeholderText)
     .then(pId => { placeholderId = pId; streamState.placeholderId = pId; return pId })
     .catch(e => { logger.debug(`placeholder send failed: ${getErrorMessage(e)}`); return null })
 
@@ -486,7 +525,7 @@ async function handleChatInternal(
 
   // 1. Parse input
   const { inlineBackend, inlineModel, effectiveText } = await parseMessageInput(text)
-  if (!effectiveText && !options?.images?.length) {
+  if (!effectiveText && !options?.images?.length && !options?.files?.length) {
     logger.info(`⊘ empty message skipped [${chatId.slice(0, 8)}]`)
     return
   }
@@ -515,14 +554,16 @@ async function handleChatInternal(
   const backendName = ss.backendOverride ?? config.defaultBackend ?? 'claude-code'
   const prompt = await buildFullPrompt(
     chatId, effectiveText, ss.willStartNewSession, options?.client, options?.images, config,
-    { backend: backendName, model: model ?? config.backends[backendName]?.model }
+    { backend: backendName, model: model ?? config.backends[backendName]?.model },
+    options?.files
   )
   bench.promptReady = Date.now()
 
   // 5. Setup streaming + placeholder (Web SSE uses lower throttle)
   const streamOpts: StreamHandlerOptions | undefined =
     platform === 'Web' ? { throttleMs: 150, minDelta: 10 } : undefined
-  const stream = setupStreamingAndPlaceholder(chatId, hasImages, maxLen, messenger, bench, signal, streamOpts)
+  const hasFiles = !!options?.files?.length
+  const stream = setupStreamingAndPlaceholder(chatId, hasImages, hasFiles, maxLen, messenger, bench, signal, streamOpts)
   const chatMcp = config.backends[config.defaultBackend]?.chat?.mcpServers ?? []
   bench.parallelStart = Date.now()
 

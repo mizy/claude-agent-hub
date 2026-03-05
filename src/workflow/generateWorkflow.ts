@@ -91,14 +91,14 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
 
   // 智能化增强：并行获取项目上下文、历史学习和记忆
   logger.info('分析项目上下文和历史记录...')
+  const query = task.description || task.title
   let projectContext, learningInsights, memories
   try {
-    const query = task.description || task.title
     const now = new Date()
     const allMigrated = getAllMemories().map(migrateMemoryEntry)
     const activeEntries = allMigrated.filter(e => calculateStrength(e, now) >= 10)
 
-    ;[projectContext, learningInsights, memories] = await Promise.all([
+    const results = await Promise.allSettled([
       analyzeProjectContext(),
       learnFromHistory(query),
       (async () => {
@@ -112,10 +112,23 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
         return [...keywordResults, ...extra].slice(0, 15)
       })(),
     ])
+    // 上下文获取失败时降级为空值，不阻断 planning
+    if (results[0].status === 'rejected') {
+      logger.warn(`analyzeProjectContext failed (degraded): ${getErrorMessage(results[0].reason)}`)
+    }
+    if (results[1].status === 'rejected') {
+      logger.warn(`learnFromHistory failed (degraded): ${getErrorMessage(results[1].reason)}`)
+    }
+    if (results[2].status === 'rejected') {
+      logger.warn(`retrieveMemories failed (degraded): ${getErrorMessage(results[2].reason)}`)
+    }
+    projectContext = results[0].status === 'fulfilled' ? results[0].value : { projectType: 'unknown', mainLanguage: 'unknown', frameworks: [], directoryStructure: '', keyFiles: [], scripts: {} }
+    learningInsights = results[1].status === 'fulfilled' ? results[1].value : { taskCategory: 'other' as const, successPatterns: [], commonFailures: [], successfulNodePatterns: [], relatedTasks: [] }
+    memories = results[2].status === 'fulfilled' ? results[2].value : []
   } catch (error) {
     const msg = getErrorMessage(error)
-    logger.error(`Planning preparation failed: ${msg}`)
-    throw new Error(`Planning preparation failed (analyzeProjectContext/learnFromHistory/retrieveMemories): ${msg}`, { cause: error })
+    logger.error(`Planning preparation unexpected error: ${msg}`)
+    throw new Error(`Planning preparation failed: ${msg}`, { cause: error })
   }
 
   // 格式化上下文
@@ -124,7 +137,6 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   const memoryPrompt = formatMemoriesForPrompt(memories)
 
   // Success pattern + failure knowledge injection
-  const query = task.description || task.title
   const matchingPattern = findMatchingPattern(query, getAllPatterns())
   const successPatternPrompt = matchingPattern
     ? formatSuccessPatternForPrompt(matchingPattern)

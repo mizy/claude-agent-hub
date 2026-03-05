@@ -39,6 +39,8 @@ export interface RouteMessageOptions {
   text: string
   /** Optional image file paths (e.g. downloaded from Lark) */
   images?: string[]
+  /** Optional non-image file paths (e.g. PDF, txt, xlsx sent by user) */
+  files?: string[]
   messenger: MessengerAdapter
   clientContext: ClientContext
   /**
@@ -71,7 +73,7 @@ export interface RouteMessageOptions {
  * 5. Non-command: free chat → chatHandler
  */
 export async function routeMessage(options: RouteMessageOptions): Promise<void> {
-  const { chatId, text, images, messenger, clientContext, onApprovalResult, checkBareApproval } = options
+  const { chatId, text, images, files, messenger, clientContext, onApprovalResult, checkBareApproval } = options
 
   // Clean text (remove @mentions for matching)
   const cleanText = text.replace(/@\S+/g, '').trim()
@@ -157,7 +159,7 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
   }
 
   // Free chat (pass original text — chatHandler.parseBackendOverride needs @prefix intact)
-  await handleChat(chatId, text, messenger, { client: clientContext, images })
+  await handleChat(chatId, text, messenger, { client: clientContext, images, files })
 }
 
 // ── Helpers ──

@@ -108,4 +108,6 @@ export {
   formatDuration,
   parseInterval,
   intervalToCron,
+  formatTimeRange,
+  type TimeLocale,
 } from './formatTime.js'

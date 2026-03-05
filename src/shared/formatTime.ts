@@ -1,10 +1,14 @@
 /**
- * 时间处理工具
- * 基于 date-fns 的轻量封装
+ * 时间处理工具 — 薄路由层
+ * 实际实现拆分到 formatters/ 子模块
  */
 
-import { format, formatDistanceToNow, parseISO, differenceInMilliseconds } from 'date-fns'
-import { zhCN } from 'date-fns/locale'
+import { format, parseISO, differenceInMilliseconds } from 'date-fns'
+
+// Re-export formatters
+export { type TimeLocale, formatDuration } from './formatters/formatDuration.js'
+export { formatRelative } from './formatters/formatRelative.js'
+export { formatTimeRange } from './formatters/formatTimeRange.js'
 
 // ISO 时间戳
 export function now(): string {
@@ -16,25 +20,9 @@ export function formatTime(isoString: string, pattern: string = 'yyyy-MM-dd HH:m
   return format(parseISO(isoString), pattern)
 }
 
-// 相对时间（如 "3 分钟前"）
-export function formatRelative(isoString: string): string {
-  return formatDistanceToNow(parseISO(isoString), {
-    addSuffix: true,
-    locale: zhCN,
-  })
-}
-
 // 计算时间差（毫秒）
 export function timeDiff(start: string, end: string): number {
   return differenceInMilliseconds(parseISO(end), parseISO(start))
-}
-
-// 格式化持续时间
-export function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  if (ms < 3600000) return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
-  return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`
 }
 
 // 解析时间间隔字符串（如 "5m", "1h", "1d"）

@@ -63,7 +63,8 @@ describe('formatTime utilities', () => {
     })
 
     it('should format seconds', () => {
-      expect(formatDuration(3500)).toBe('3.5s')
+      expect(formatDuration(3000)).toBe('3s')
+      expect(formatDuration(3500)).toBe('3s')
     })
 
     it('should format minutes and seconds', () => {
@@ -79,9 +80,9 @@ describe('formatTime utilities', () => {
     })
 
     it('should handle exact boundaries', () => {
-      expect(formatDuration(1000)).toBe('1.0s')
-      expect(formatDuration(60000)).toBe('1m 0s')
-      expect(formatDuration(3600000)).toBe('1h 0m')
+      expect(formatDuration(1000)).toBe('1s')
+      expect(formatDuration(60000)).toBe('1m')
+      expect(formatDuration(3600000)).toBe('1h')
     })
   })
 

@@ -6,7 +6,7 @@
  * - larkAdapter.ts — MessengerAdapter factory
  */
 
-import { statSync, mkdirSync } from 'fs'
+import { statSync, mkdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { DATA_DIR } from '../store/paths.js'
 import type * as Lark from '@larksuiteoapi/node-sdk'
@@ -42,6 +42,10 @@ export interface LarkMessageEvent {
     chat_type?: string
     create_time?: string
     mentions?: Array<{ key: string; id: { open_id?: string }; name: string }>
+    /** ID of the message being quoted/replied to */
+    upper_message_id?: string
+    /** Thread parent message ID */
+    parent_id?: string
   }
 }
 
@@ -61,10 +65,11 @@ export interface LarkP2pChatCreateEvent {
   chat_id?: string
 }
 
-// ── Image buffering ──
+// ── File / image limits ──
 
 const IMAGE_BUFFER_DELAY_MS = 10_000
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
+const MAX_FILE_BYTES = 50 * 1024 * 1024
 
 interface PendingImage {
   chatId: string
@@ -84,7 +89,8 @@ async function flushPendingImages(
     text: string,
     isGroup: boolean,
     hasMention: boolean,
-    images?: string[]
+    images?: string[],
+    files?: string[]
   ) => Promise<void>
 ): Promise<void> {
   const pending = pendingImageBuffer.get(chatId)
@@ -127,6 +133,7 @@ export async function downloadLarkImage(
       logger.warn(
         `Image too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB > ${MAX_IMAGE_BYTES / 1024 / 1024}MB`
       )
+      try { unlinkSync(filePath) } catch (e) { logger.debug(`Failed to clean up tmp file ${filePath}: ${getErrorMessage(e)}`) }
       return null
     }
 
@@ -136,6 +143,84 @@ export async function downloadLarkImage(
     return filePath
   } catch (error) {
     logger.error(`Failed to download image ${imageKey}: ${getErrorMessage(error)}`)
+    return null
+  }
+}
+
+export async function downloadLarkFile(
+  larkClient: Lark.Client,
+  messageId: string,
+  fileKey: string,
+  fileName: string
+): Promise<string | null> {
+  try {
+    const res = await larkClient.im.v1.messageResource.get({
+      path: { message_id: messageId, file_key: fileKey },
+      params: { type: 'file' },
+    })
+    const fileData = res as unknown as { writeFile(path: string): Promise<void> }
+    if (typeof fileData?.writeFile !== 'function') {
+      logger.error(`Unexpected file response for key ${fileKey}`)
+      return null
+    }
+    const tmpDir = join(DATA_DIR, 'tmp')
+    mkdirSync(tmpDir, { recursive: true })
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'unnamed'
+    const filePath = join(tmpDir, `lark-file-${Date.now()}-${safeName}`)
+    await fileData.writeFile(filePath)
+
+    const fileSize = statSync(filePath).size
+    if (fileSize > MAX_FILE_BYTES) {
+      logger.warn(`File too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB > ${MAX_FILE_BYTES / 1024 / 1024}MB`)
+      try { unlinkSync(filePath) } catch (e) { logger.debug(`Failed to clean up tmp file ${filePath}: ${getErrorMessage(e)}`) }
+      return null
+    }
+
+    logger.debug(`Downloaded file: ${fileName} → ${filePath} (${(fileSize / 1024).toFixed(0)}KB)`)
+    return filePath
+  } catch (error) {
+    logger.error(`Failed to download file ${fileName}: ${getErrorMessage(error)}`)
+    return null
+  }
+}
+
+/** Fetch the text content of a quoted/replied-to message by ID */
+async function fetchQuotedMessageText(
+  larkClient: Lark.Client,
+  upperMessageId: string
+): Promise<string | null> {
+  try {
+    const res = await larkClient.im.v1.message.get({
+      path: { message_id: upperMessageId },
+    }) as unknown as { data?: { items?: Array<{ msg_type?: string; body?: { content?: string } }> } }
+    if (!res?.data?.items) {
+      logger.warn(`Unexpected response structure from im.v1.message.get for ${upperMessageId}: missing data.items`)
+      return null
+    }
+    const item = res.data.items[0]
+    if (!item) return null
+
+    const msgType = item.msg_type
+    const rawContent = item.body?.content
+    if (!rawContent) return null
+
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(rawContent)
+    } catch {
+      return rawContent.slice(0, 500)
+    }
+
+    if (msgType === 'text') {
+      return (parsed.text as string | undefined)?.slice(0, 500) ?? null
+    }
+    if (msgType === 'post') {
+      const { text } = parsePostContent(parsed)
+      return text.slice(0, 500) || null
+    }
+    return null
+  } catch (error) {
+    logger.debug(`Failed to fetch quoted message ${upperMessageId}: ${getErrorMessage(error)}`)
     return null
   }
 }
@@ -190,7 +275,8 @@ export async function handleLarkMessage(
   botName: string | null,
   onChatIdDiscovered: (chatId: string) => void,
   images?: string[],
-  originalMessageId?: string
+  originalMessageId?: string,
+  files?: string[]
 ): Promise<void> {
   if (isGroup && !hasMention) return
 
@@ -199,7 +285,8 @@ export async function handleLarkMessage(
   }
 
   const imgSuffix = images?.length ? ` +${images.length} image(s)` : ''
-  logger.info(`← [${isGroup ? 'group' : 'dm'}]${imgSuffix}`)
+  const fileSuffix = files?.length ? ` +${files.length} file(s)` : ''
+  logger.info(`← [${isGroup ? 'group' : 'dm'}]${imgSuffix}${fileSuffix}`)
 
   // In group chats, wrap adapter to quote the original @mention message
   const messenger = isGroup && originalMessageId
@@ -210,6 +297,7 @@ export async function handleLarkMessage(
     chatId,
     text,
     images,
+    files,
     messenger,
     clientContext: larkClientContext(isGroup, botName),
     onApprovalResult: await createApprovalCallback(),
@@ -259,6 +347,8 @@ interface PostElement {
   text?: string
   image_key?: string
   href?: string
+  // quote element: contains a nested message content
+  content?: unknown
 }
 
 function parsePostContent(
@@ -294,6 +384,7 @@ function parsePostContent(
       } else if (el.tag === 'a' && el.text) {
         texts.push(el.text)
       }
+      // quote element: skip (quoted context is handled via upper_message_id fetch)
     }
   }
 
@@ -317,7 +408,9 @@ export async function processMessageEvent(
   if (!message) return
 
   const msgType = message.message_type
-  if (msgType !== 'text' && msgType !== 'image' && msgType !== 'post') {
+
+  const SUPPORTED_MSG_TYPES = new Set(['text', 'image', 'post', 'file', 'audio'])
+  if (!SUPPORTED_MSG_TYPES.has(msgType ?? '')) {
     logger.debug(`Unsupported message type: ${msgType}`)
     return
   }
@@ -333,7 +426,7 @@ export async function processMessageEvent(
     return
   }
 
-  let content: { text?: string; image_key?: string }
+  let content: { text?: string; image_key?: string; file_key?: string; file_name?: string }
   try {
     content = JSON.parse(message.content || '{}')
   } catch {
@@ -342,9 +435,13 @@ export async function processMessageEvent(
   }
 
   const chatId = message.chat_id || ''
+  if (!chatId) {
+    logger.debug('Message missing chat_id, skipping')
+    return
+  }
 
   const rawContent = message.content || ''
-  if (chatId && isDuplicateContent(chatId, rawContent)) {
+  if (isDuplicateContent(chatId, rawContent)) {
     logger.info(
       `Duplicate content ignored (WS replay): chatId=${chatId.slice(0, 12)} msgId=${messageId}`
     )
@@ -354,13 +451,57 @@ export async function processMessageEvent(
   const hasMention = !!(message.mentions && message.mentions.length > 0)
   const isGroup = message.chat_type === 'group'
 
+  // Audio message: reply with friendly unsupported notice (after dedup/stale checks)
+  if (msgType === 'audio') {
+    if (isGroup && !hasMention) return
+    await adapter.reply(chatId, '⚠️ 暂不支持音频消息，请发送文字或文件')
+    return
+  }
+
+  // Fetch quoted message context (引用回复) if present
+  let quotedText: string | null = null
+  const upperMsgId = message.upper_message_id
+  if (upperMsgId) {
+    quotedText = await fetchQuotedMessageText(larkClient, upperMsgId)
+    if (quotedText) {
+      logger.debug(`Fetched quoted message context (${quotedText.length} chars)`)
+    }
+  }
+
+  /** Prepend quoted context to text */
+  function withQuote(txt: string): string {
+    if (!quotedText) return txt
+    const quoted = `[引用: ${quotedText}]`
+    return txt ? `${quoted}\n\n${txt}` : quoted
+  }
+
   const handleMsg = (
     cId: string,
     txt: string,
     grp: boolean,
     mention: boolean,
-    imgs?: string[]
-  ) => handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs, messageId)
+    imgs?: string[],
+    files?: string[]
+  ) => handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs, messageId, files)
+
+  // File message
+  if (msgType === 'file') {
+    if (isGroup && !hasMention) return
+
+    const fileKey = content.file_key
+    const fileName = content.file_name ?? 'file'
+    if (!fileKey || !messageId) {
+      logger.debug('File message missing file_key or message_id')
+      return
+    }
+    const filePath = await downloadLarkFile(larkClient, messageId, fileKey, fileName)
+    if (!filePath) {
+      await adapter.reply(chatId, `⚠️ 文件下载失败（${fileName}），可能文件过大或格式不支持`)
+      return
+    }
+    await handleMsg(chatId, withQuote(''), isGroup, hasMention, undefined, [filePath])
+    return
+  }
 
   // Rich text (post) message
   if (msgType === 'post') {
@@ -376,7 +517,7 @@ export async function processMessageEvent(
         if (path) images.push(path)
       }
     }
-    await handleMsg(chatId, postText, isGroup, hasMention, images.length > 0 ? images : undefined)
+    await handleMsg(chatId, withQuote(postText), isGroup, hasMention, images.length > 0 ? images : undefined)
     return
   }
 
@@ -391,6 +532,12 @@ export async function processMessageEvent(
     const imagePath = await downloadLarkImage(larkClient, messageId, imageKey)
     if (!imagePath) {
       await adapter.reply(chatId, '⚠️ 图片处理失败（可能文件过大或格式不支持），请重试')
+      return
+    }
+
+    // If there's a quoted message, flush image immediately with quote context
+    if (quotedText) {
+      await handleMsg(chatId, withQuote(''), isGroup, hasMention, [imagePath])
       return
     }
 
@@ -424,7 +571,7 @@ export async function processMessageEvent(
   }
 
   // Text message
-  const text = content.text || ''
+  const text = withQuote(content.text || '')
   if (pendingImageBuffer.has(chatId)) {
     await flushPendingImages(chatId, text, handleMsg)
   } else {
