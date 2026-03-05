@@ -19,6 +19,7 @@ import { routeMessage } from './handlers/messageRouter.js'
 import { dispatchCardAction } from './handlers/larkCardActions.js'
 import { isDuplicateMessage, isDuplicateContent, isStaleMessage } from './larkMessageDedup.js'
 import type { MessengerAdapter, ClientContext } from './handlers/types.js'
+import type { LarkConfig } from '../config/schema.js'
 
 // Re-export for external consumers
 export { createLarkAdapter } from './larkAdapter.js'
@@ -31,9 +32,42 @@ export {
 
 const logger = createLogger('lark-ws')
 
+const SUPPORTED_MSG_TYPES = new Set(['text', 'image', 'post', 'file', 'audio'])
+
+// ── Access control ──
+
+/**
+ * Check if a sender/chat is allowed based on lark.accessControl config.
+ * Default mode is 'open' (everyone allowed). Returns true if access is granted.
+ * Accepts pre-fetched accessControl to avoid redundant config reads.
+ */
+function checkLarkAccess(
+  chatId: string,
+  senderOpenId: string | undefined,
+  ac: LarkConfig['accessControl']
+): boolean {
+  if (!ac || ac.mode === 'open') return true
+
+  // allowlist mode: check chat or user (schema refine ensures non-empty allowlist)
+  if (ac.allowedChats?.length && ac.allowedChats.includes(chatId)) return true
+  if (senderOpenId && ac.allowedUsers?.length && ac.allowedUsers.includes(senderOpenId)) return true
+
+  logger.info(`Access denied: chatId=...${chatId.slice(-6)} sender=...${senderOpenId?.slice(-6) ?? 'unknown'}`)
+  logger.debug(`Access denied (full): chatId=${chatId} sender=${senderOpenId ?? 'unknown'}`)
+  return false
+}
+
 // ── Event types ──
 
 export interface LarkMessageEvent {
+  sender?: {
+    sender_id?: {
+      open_id?: string
+      user_id?: string
+      union_id?: string
+    }
+    sender_type?: string
+  }
   message?: {
     message_id?: string
     message_type?: string
@@ -52,6 +86,9 @@ export interface LarkMessageEvent {
 export interface LarkCardActionEvent {
   open_chat_id?: string
   open_message_id?: string
+  operator?: {
+    open_id?: string
+  }
   action?: {
     value?: Record<string, unknown>
   }
@@ -314,6 +351,11 @@ export async function handleCardAction(
   const value = data?.action?.value
   if (!chatId || !value) return undefined
 
+  // Access control for card actions (prevent bypassing allowlist via button clicks)
+  const operatorOpenId = data?.operator?.open_id
+  const larkConfig = await getLarkConfig()
+  if (!checkLarkAccess(chatId, operatorOpenId, larkConfig?.accessControl)) return undefined
+
   return dispatchCardAction({
     chatId,
     messageId,
@@ -409,7 +451,6 @@ export async function processMessageEvent(
 
   const msgType = message.message_type
 
-  const SUPPORTED_MSG_TYPES = new Set(['text', 'image', 'post', 'file', 'audio'])
   if (!SUPPORTED_MSG_TYPES.has(msgType ?? '')) {
     logger.debug(`Unsupported message type: ${msgType}`)
     return
@@ -440,6 +481,11 @@ export async function processMessageEvent(
     return
   }
 
+  // Access control check (fetch config once, reused for access check)
+  const senderOpenId = data.sender?.sender_id?.open_id
+  const larkConfig = await getLarkConfig()
+  if (!checkLarkAccess(chatId, senderOpenId, larkConfig?.accessControl)) return
+
   const rawContent = message.content || ''
   if (isDuplicateContent(chatId, rawContent)) {
     logger.info(
@@ -448,7 +494,11 @@ export async function processMessageEvent(
     return
   }
 
-  const hasMention = !!(message.mentions && message.mentions.length > 0)
+  // In group chats, only treat as mentioned if the bot itself is @-ed.
+  // Fall back to any-mention if botName is not configured.
+  const hasMention = !!(message.mentions?.length && (
+    !botName || message.mentions.some(m => m.name === botName)
+  ))
   const isGroup = message.chat_type === 'group'
 
   // Audio message: reply with friendly unsupported notice (after dedup/stale checks)

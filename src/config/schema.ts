@@ -51,11 +51,24 @@ export const backendConfigSchema = z.object({
   chat: chatConfigSchema.default({}),
 })
 
+export const larkAccessControlSchema = z.object({
+  /** Access mode: open (default, anyone can use) or allowlist (only listed users/chats) */
+  mode: z.enum(['open', 'allowlist']).default('open'),
+  /** Allowed user open_ids (only checked when mode=allowlist) */
+  allowedUsers: z.array(z.string()).default([]),
+  /** Allowed chat_ids (only checked when mode=allowlist) */
+  allowedChats: z.array(z.string()).default([]),
+}).refine(
+  data => data.mode !== 'allowlist' || data.allowedUsers.length > 0 || data.allowedChats.length > 0,
+  { message: 'accessControl mode=allowlist requires at least one allowedUsers or allowedChats entry' }
+)
+
 export const larkConfigSchema = z.object({
   webhookUrl: z.string().optional(), // 飞书 webhook URL（向后兼容）
   appId: z.string(), // 飞书应用 ID（WSClient 必需）
   appSecret: z.string(), // 飞书应用密钥（WSClient 必需）
   chatId: z.string().optional(), // 默认 Chat ID（用于推送通知）
+  accessControl: larkAccessControlSchema.optional(),
 })
 
 export const telegramConfigSchema = z.object({

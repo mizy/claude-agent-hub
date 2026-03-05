@@ -30,6 +30,22 @@ export interface MessengerAdapter {
 
   /** Optional: send an image message */
   replyImage?(chatId: string, imageData: Buffer, fileName?: string): Promise<void>
+
+  /** Optional: send a file message from Buffer (Lark only) */
+  replyFile?(chatId: string, fileData: Buffer, fileName: string): Promise<void>
+
+  /** Optional: send a file by path (Lark only) */
+  sendFile?(chatId: string, filePath: string): Promise<void>
+
+  /** Optional: send an image by path (Lark only) */
+  sendImage?(chatId: string, imagePath: string): Promise<void>
+}
+
+export interface MentionTarget {
+  /** Lark user open_id (ou_xxx) or 'all' for @所有人 */
+  userId: string
+  /** Display name shown in the @mention */
+  name: string
 }
 
 export interface SendOptions {
@@ -37,6 +53,8 @@ export interface SendOptions {
   parseMode?: 'markdown' | 'html'
   /** 引用回复的目标消息 ID（飞书群聊中引用 @机器人 的原始消息） */
   replyToMessageId?: string
+  /** @mention users in the message (Lark only) */
+  mentions?: MentionTarget[]
 }
 
 // ── 审批相关类型 ──

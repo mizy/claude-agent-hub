@@ -6,9 +6,11 @@
  * 否则用配置创建临时 client 发送（支持子进程场景）
  */
 
+import { extname } from 'node:path'
 import * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage, isError } from '../shared/assertError.js'
+import { withLarkRetry } from './larkRetry.js'
 import { getLarkConfig } from '../config/index.js'
 import { getLarkClient, getDefaultLarkChatId } from './larkWsClient.js'
 import { buildApprovalCard, buildCard, mdElement } from './buildLarkCard.js'
@@ -16,23 +18,8 @@ import type { LarkCard } from './buildLarkCard.js'
 
 const logger = createLogger('lark-notify')
 
-/** Simple retry for transient Lark API failures (network, rate limit) */
-async function withRetry<T>(fn: () => Promise<T>, label: string, maxRetries = 2): Promise<T> {
-  let lastError: unknown
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn()
-    } catch (error) {
-      lastError = error
-      if (attempt < maxRetries) {
-        const delay = 500 * (attempt + 1)
-        logger.debug(`${label} attempt ${attempt + 1} failed, retrying in ${delay}ms...`)
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-    }
-  }
-  throw lastError
-}
+/** Max file size for Lark file upload API (30MB) */
+export const LARK_MAX_FILE_SIZE = 30 * 1024 * 1024
 
 /**
  * Get a usable Lark client: prefer the shared WSClient instance,
@@ -131,7 +118,7 @@ export async function sendLarkMessageViaApi(chatId: string, text: string): Promi
   const card = buildCard('', 'blue', [mdElement(text)])
 
   try {
-    await withRetry(
+    await withLarkRetry(
       () => client.im.v1.message.create({
         params: { receive_id_type: 'chat_id' },
         data: {
@@ -245,7 +232,7 @@ export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promis
     const cardTitle = card.header?.title?.content || 'unknown'
     logger.info(`Sending Lark card: "${cardTitle}" to chat ${chatId}`)
 
-    await withRetry(
+    await withLarkRetry(
       () => client.im.v1.message.create({
         params: { receive_id_type: 'chat_id' },
         data: {
@@ -266,9 +253,6 @@ export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promis
 }
 
 /**
- * Update an existing card message
- */
-/**
  * Upload an image to Lark and return the image_key
  */
 export async function uploadLarkImage(
@@ -277,7 +261,7 @@ export async function uploadLarkImage(
 ): Promise<string | null> {
   try {
     logger.info(`Uploading image to Lark (${imageData.length} bytes)`)
-    const res = await withRetry(
+    const res = await withLarkRetry(
       () => client.im.v1.image.create({
         data: {
           image_type: 'message',
@@ -317,7 +301,7 @@ export async function sendLarkImage(
 ): Promise<boolean> {
   try {
     logger.info(`Sending image to Lark chat ${chatId.slice(0, 8)} (key: ${imageKey})`)
-    await withRetry(
+    await withLarkRetry(
       () => client.im.v1.message.create({
         params: { receive_id_type: 'chat_id' },
         data: {
@@ -340,6 +324,101 @@ export async function sendLarkImage(
   }
 }
 
+/**
+ * Upload a file to Lark and return the file_key.
+ * Supports: opus, mp4, pdf, doc, xls, ppt, stream (generic binary).
+ * Max 30MB per Lark API limit.
+ */
+export async function uploadLarkFile(
+  client: Lark.Client,
+  fileData: Buffer,
+  fileName: string
+): Promise<string | null> {
+  if (fileData.length > LARK_MAX_FILE_SIZE) {
+    logger.error(`File too large for Lark upload: ${fileData.length} bytes (max 30MB)`)
+    return null
+  }
+  if (fileData.length === 0) {
+    logger.error('Cannot upload empty file to Lark')
+    return null
+  }
+
+  type LarkFileType = 'opus' | 'mp4' | 'pdf' | 'doc' | 'xls' | 'ppt' | 'stream'
+  const extToType: Record<string, LarkFileType> = {
+    '.opus': 'opus', '.mp4': 'mp4', '.pdf': 'pdf',
+    '.doc': 'doc', '.docx': 'doc', '.xls': 'xls', '.xlsx': 'xls',
+    '.ppt': 'ppt', '.pptx': 'ppt',
+  }
+  const ext = extname(fileName).toLowerCase()
+  const fileType: LarkFileType = extToType[ext] || 'stream'
+
+  try {
+    logger.info(`Uploading file to Lark: ${fileName} (${fileData.length} bytes, type: ${fileType})`)
+    const res = await withLarkRetry(
+      () => client.im.v1.file.create({
+        data: {
+          // Lark SDK types only declare 'stream' but API accepts opus/mp4/pdf/doc/xls/ppt
+          file_type: fileType as 'stream',
+          file_name: fileName,
+          file: fileData,
+        },
+      }),
+      'uploadLarkFile'
+    )
+    const resAny = res as Record<string, unknown>
+    const dataObj = (resAny.data ?? resAny) as Record<string, unknown>
+    const fileKey = (dataObj.file_key as string) ?? undefined
+    if (!fileKey) {
+      logger.error('Lark file upload returned no file_key')
+      logger.error(`Response: ${JSON.stringify(res).slice(0, 500)}`)
+      return null
+    }
+    logger.info(`Uploaded file to Lark: ${fileKey}`)
+    return fileKey
+  } catch (error) {
+    const msg = getErrorMessage(error)
+    logger.error(`Failed to upload file to Lark: ${msg}`)
+    if (isError(error) && error.stack) {
+      logger.debug(error.stack)
+    }
+    return null
+  }
+}
+
+/**
+ * Send a file message to a Lark chat
+ */
+export async function sendLarkFile(
+  client: Lark.Client,
+  chatId: string,
+  fileKey: string,
+  fileName: string
+): Promise<boolean> {
+  try {
+    logger.info(`Sending file to Lark chat ${chatId.slice(0, 8)} (key: ${fileKey}, name: ${fileName})`)
+    await withLarkRetry(
+      () => client.im.v1.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          msg_type: 'file',
+          content: JSON.stringify({ file_key: fileKey, file_name: fileName }),
+        },
+      }),
+      'sendLarkFile'
+    )
+    logger.info(`File sent to Lark chat ${chatId.slice(0, 8)}`)
+    return true
+  } catch (error) {
+    const msg = getErrorMessage(error)
+    logger.error(`Failed to send file to Lark: ${msg}`)
+    if (isError(error) && error.stack) {
+      logger.debug(error.stack)
+    }
+    return false
+  }
+}
+
 export async function updateLarkCard(messageId: string, card: LarkCard): Promise<boolean> {
   const client = await getOrCreateLarkClient()
   if (!client) {
@@ -348,7 +427,7 @@ export async function updateLarkCard(messageId: string, card: LarkCard): Promise
   }
 
   try {
-    await withRetry(
+    await withLarkRetry(
       () => client.im.v1.message.patch({
         path: { message_id: messageId },
         data: { content: JSON.stringify(card) },

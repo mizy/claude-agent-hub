@@ -5,13 +5,16 @@
  * with retry support for transient API failures.
  */
 
+import { access, readFile, stat, constants } from 'node:fs/promises'
+import { basename } from 'node:path'
 import type * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
-import { uploadLarkImage, sendLarkImage } from './sendLarkNotify.js'
+import { withLarkRetry } from './larkRetry.js'
+import { uploadLarkImage, sendLarkImage, uploadLarkFile, sendLarkFile, LARK_MAX_FILE_SIZE } from './sendLarkNotify.js'
 import { markdownToPostContent } from './larkCardWrapper.js'
 import type { LarkCard } from './buildLarkCard.js'
-import type { MessengerAdapter, SendOptions } from './handlers/types.js'
+import type { MessengerAdapter, SendOptions, MentionTarget } from './handlers/types.js'
 
 const logger = createLogger('lark-adapter')
 
@@ -20,29 +23,27 @@ interface LarkSdkResponse {
   data?: { message_id?: string }
 }
 
-/** Simple retry for transient Lark API failures (network, TLS disconnect) */
-async function withRetry<T>(fn: () => Promise<T>, label: string, maxRetries = 1): Promise<T> {
-  let lastError: unknown
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn()
-    } catch (error) {
-      lastError = error
-      if (attempt < maxRetries) {
-        const delay = 500 * (attempt + 1)
-        logger.debug(`${label} attempt ${attempt + 1} failed, retrying in ${delay}ms...`)
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-    }
-  }
-  throw lastError
+/** Escape chars that could break Lark XML-like at tags (double-quote attrs only, single quotes not used) */
+function escapeAttr(s: string): string {
+  return s.replace(/[<>"&]/g, c => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', '&': '&amp;' })[c]!)
+}
+
+/** Build @mention prefix for Lark post md tag. 'all' → @所有人 */
+function buildMentionPrefix(mentions?: MentionTarget[]): string {
+  if (!mentions?.length) return ''
+  return mentions.map(m =>
+    m.userId === 'all'
+      ? '<at user_id="all">所有人</at>'
+      : `<at user_id="${escapeAttr(m.userId)}">${escapeAttr(m.name)}</at>`
+  ).join(' ') + ' '
 }
 
 export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
   /** Send a post message (create or reply), return raw SDK response */
-  const sendPost = (chatId: string, text: string, replyTo?: string, label = 'send') => {
-    const content = markdownToPostContent(text)
-    return withRetry(
+  const sendPost = (chatId: string, text: string, replyTo?: string, label = 'send', mentions?: MentionTarget[]) => {
+    const prefix = buildMentionPrefix(mentions)
+    const content = markdownToPostContent(prefix + text)
+    return withLarkRetry(
       () =>
         replyTo
           ? larkClient.im.v1.message.reply({
@@ -60,14 +61,14 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
   return {
     async reply(chatId, text, options?: SendOptions) {
       try {
-        await sendPost(chatId, text, options?.replyToMessageId, 'reply')
+        await sendPost(chatId, text, options?.replyToMessageId, 'reply', options?.mentions)
       } catch (error) {
         logger.error(`→ reply failed: ${getErrorMessage(error)}`)
       }
     },
     async sendAndGetId(chatId, text, options?: SendOptions) {
       try {
-        const res = await sendPost(chatId, text, options?.replyToMessageId, 'sendAndGetId')
+        const res = await sendPost(chatId, text, options?.replyToMessageId, 'sendAndGetId', options?.mentions)
         return (res as LarkSdkResponse)?.data?.message_id ?? null
       } catch (error) {
         logger.error(`→ send failed: ${getErrorMessage(error)}`)
@@ -77,7 +78,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
     async editMessage(chatId, messageId, text) {
       if (!messageId) return
       try {
-        await withRetry(
+        await withLarkRetry(
           () =>
             larkClient.im.v1.message.update({
               path: { message_id: messageId },
@@ -96,7 +97,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
     },
     async replyCard(chatId: string, card: LarkCard) {
       try {
-        await withRetry(
+        await withLarkRetry(
           () =>
             larkClient.im.v1.message.create({
               params: { receive_id_type: 'chat_id' },
@@ -116,7 +117,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
       if (!messageId) return
       try {
         logger.debug(`→ editCard called for msgId=${messageId}`)
-        const res = await withRetry(
+        const res = await withLarkRetry(
           () =>
             larkClient.im.v1.message.patch({
               path: { message_id: messageId },
@@ -139,6 +140,46 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
       const imageKey = await uploadLarkImage(larkClient, imageData)
       if (!imageKey) return
       await sendLarkImage(larkClient, chatId, imageKey)
+    },
+    async replyFile(chatId: string, fileData: Buffer, fileName: string) {
+      try {
+        if (fileData.length > LARK_MAX_FILE_SIZE) {
+          logger.error(`File too large for Lark upload: ${fileData.length} bytes (max 30MB)`)
+          return
+        }
+        const fileKey = await uploadLarkFile(larkClient, fileData, fileName)
+        if (!fileKey) return
+        await sendLarkFile(larkClient, chatId, fileKey, fileName)
+      } catch (error) {
+        logger.error(`→ replyFile failed: ${getErrorMessage(error)}`)
+      }
+    },
+    async sendFile(chatId: string, filePath: string) {
+      try {
+        await access(filePath, constants.R_OK)
+        const stats = await stat(filePath)
+        if (stats.size > LARK_MAX_FILE_SIZE) {
+          logger.error(`File too large for Lark upload: ${stats.size} bytes (max 30MB)`)
+          return
+        }
+        const fileData = await readFile(filePath)
+        const fileName = basename(filePath)
+        const fileKey = await uploadLarkFile(larkClient, fileData, fileName)
+        if (!fileKey) return
+        await sendLarkFile(larkClient, chatId, fileKey, fileName)
+      } catch (error) {
+        logger.error(`→ sendFile failed: ${getErrorMessage(error)}`)
+      }
+    },
+    async sendImage(chatId: string, imagePath: string) {
+      try {
+        const imageData = await readFile(imagePath)
+        const imageKey = await uploadLarkImage(larkClient, imageData)
+        if (!imageKey) return
+        await sendLarkImage(larkClient, chatId, imageKey)
+      } catch (error) {
+        logger.error(`→ sendImage failed: ${getErrorMessage(error)}`)
+      }
     },
   }
 }
