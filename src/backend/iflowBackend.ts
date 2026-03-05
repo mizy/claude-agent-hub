@@ -3,6 +3,11 @@
  *
  * 支持 Qwen3-Coder、DeepSeek-V3、Kimi-K2、GLM-4.6 等免费国产模型
  * 非交互模式: iflow -p "prompt" -y -m model
+ *
+ * 用户目录配置：
+ * - 通过 IFLOW_HOME 环境变量指定 iflow 的用户目录
+ * - 默认使用 cah 的 DATA_DIR/iflow 作为 iflow 的用户目录
+ * - 这样 iflow 的配置、缓存、日志等都存储在 cah 的数据目录下
  */
 
 import { execa, type ResultPromise } from 'execa'
@@ -15,6 +20,9 @@ import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from '.
 import { collectStderr } from './processHelpers.js'
 import { collectStream } from './collectStream.js'
 import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
+import { DATA_DIR } from '../store/paths.js'
+import { join } from 'path'
+import { mkdirSync } from 'fs'
 
 const logger = createLogger('iflow')
 
@@ -57,12 +65,20 @@ export function createIflowBackend(): BackendAdapter {
         cwd,
       })
 
+      // 设置 iflow 用户目录：优先使用环境变量，否则使用 cah 的 DATA_DIR/iflow
+      const iflowHome = process.env.IFLOW_HOME || join(DATA_DIR, 'iflow')
+      mkdirSync(iflowHome, { recursive: true })
+
       try {
         const subprocess = execa('iflow', args, {
           cwd,
           timeout: timeoutMs,
           stdin: 'ignore',
           buffer: stream ? { stdout: false, stderr: true } : true,
+          env: {
+            ...process.env,
+            IFLOW_HOME: iflowHome,
+          },
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),
         })
 
@@ -108,7 +124,15 @@ export function createIflowBackend(): BackendAdapter {
 
     async checkAvailable(): Promise<boolean> {
       try {
-        await execa('iflow', ['--version'], { timeout: 5000 })
+        // 设置 iflow 用户目录，与 invoke 保持一致
+        const iflowHome = process.env.IFLOW_HOME || join(DATA_DIR, 'iflow')
+        await execa('iflow', ['--version'], {
+          timeout: 5000,
+          env: {
+            ...process.env,
+            IFLOW_HOME: iflowHome,
+          },
+        })
         return true
       } catch (e) {
         logger.debug(`iflow not available: ${getErrorMessage(e)}`)
