@@ -10,6 +10,9 @@
 
 import cron from 'node-cron'
 import chalk from 'chalk'
+import { readdirSync, statSync, unlinkSync } from 'fs'
+import { join } from 'path'
+import { DATA_DIR } from '../store/paths.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask } from '../task/queryTask.js'
 import { withProcessTracking } from '../task/processTracking.js'
@@ -141,6 +144,26 @@ export function registerDaemonJobs(pollCronExpr: string): void {
     }
   })
   scheduledJobs.push(waitingRecoveryJob)
+
+  // Tmp file cleanup — every hour, delete files older than 24h
+  const tmpCleanupJob = cron.schedule('0 * * * *', () => {
+    try {
+      const tmpDir = join(DATA_DIR, 'tmp')
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000
+      let deleted = 0
+      for (const name of readdirSync(tmpDir)) {
+        const filePath = join(tmpDir, name)
+        try {
+          if (statSync(filePath).mtimeMs < cutoff) {
+            unlinkSync(filePath)
+            deleted++
+          }
+        } catch { /* skip */ }
+      }
+      if (deleted > 0) logger.debug(`Tmp cleanup: deleted ${deleted} file(s) from ${tmpDir}`)
+    } catch { /* dir may not exist yet */ }
+  })
+  scheduledJobs.push(tmpCleanupJob)
 }
 
 /** Stop all scheduled jobs */

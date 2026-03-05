@@ -351,7 +351,7 @@ async function buildFullPrompt(
             }
           } catch (e) { logger.debug(`Failed to read file inline, falling back to path: ${getErrorMessage(e)}`) }
         }
-        return `[用户发送了文件 ${name}，请使用 Read 工具查看后回复，路径→${p}←]`
+        return `[用户发送了文件 ${name}，路径→${p}←]`
       })
       .join('\n')
     prompt = prompt ? `${prompt}\n\n${filePart}` : filePart
