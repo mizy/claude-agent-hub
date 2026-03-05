@@ -1,7 +1,19 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { marked } from 'marked'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/github-dark.css'
 import DOMPurify from 'dompurify'
 import { fetchApi, postApi, deleteApi } from '../api/fetchApi'
+
+marked.setOptions({
+  renderer: Object.assign(new marked.Renderer(), {
+    code({ text, lang }: { text: string; lang?: string }) {
+      const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
+      const highlighted = hljs.highlight(text, { language }).value
+      return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`
+    },
+  }),
+})
 
 let msgIdCounter = 0
 const genMsgId = () => `client-msg-${++msgIdCounter}-${Date.now()}`
@@ -55,28 +67,7 @@ const QUICK_PROMPTS = [
   { iconKey: 'create', label: 'Create a task', prompt: 'Help me create a new task for ' },
 ]
 
-function groupSessionsByDate(sessions: SessionSummary[]): { label: string; items: SessionSummary[] }[] {
-  const now = new Date()
-  const today = now.toDateString()
-  const yesterday = new Date(now.getTime() - 86400000).toDateString()
-  const groups: { label: string; items: SessionSummary[] }[] = []
-  const map = new Map<string, SessionSummary[]>()
-
-  for (const s of sessions) {
-    const d = new Date(s.updatedAt).toDateString()
-    const label = d === today ? 'Today' : d === yesterday ? 'Yesterday' : 'Earlier'
-    if (!map.has(label)) map.set(label, [])
-    map.get(label)!.push(s)
-  }
-  for (const label of ['Today', 'Yesterday', 'Earlier']) {
-    const items = map.get(label)
-    if (items?.length) groups.push({ label, items })
-  }
-  return groups
-}
-
 export function ChatPage() {
-  const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -88,52 +79,41 @@ export function ChatPage() {
   const abortRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const loadSessions = useCallback(async () => {
-    const data = await fetchApi<SessionSummary[]>('/api/chat/sessions')
-    if (data) setSessions(data)
-  }, [])
-
-  const loadBackends = useCallback(async () => {
-    const data = await fetchApi<string[]>('/api/backends')
-    if (data) setBackends(data)
-  }, [])
-
-  // Load sessions and backends on mount
-  useEffect(() => {
-    loadSessions()
-    loadBackends()
-  }, [loadSessions, loadBackends])
-
-  // Scroll to bottom — instant during streaming to avoid queued smooth scrolls
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: streaming ? 'instant' : 'smooth' })
-  }, [messages, streamingContent, streaming])
-
-  const selectSession = async (id: string) => {
+  const selectSession = useCallback(async (id: string) => {
     setActiveSessionId(id)
     const detail = await fetchApi<SessionDetail>(`/api/chat/sessions/${id}`)
     if (detail) {
       setMessages(detail.messages.map(m => ({ ...m, id: m.id || genMsgId() })))
       if (detail.backend) setSelectedBackend(detail.backend)
     }
-  }
+  }, [])
 
-  const createNewSession = () => {
+  // Load most recent session and backends on mount
+  useEffect(() => {
+    ;(async () => {
+      const [sessions, backendList] = await Promise.all([
+        fetchApi<SessionSummary[]>('/api/chat/sessions'),
+        fetchApi<string[]>('/api/backends'),
+      ])
+      if (backendList) setBackends(backendList)
+      if (sessions?.length) selectSession(sessions[0].id)
+    })()
+  }, [selectSession])
+
+  // Scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: streaming ? 'instant' : 'smooth' })
+  }, [messages, streamingContent, streaming])
+
+  const clearChat = async () => {
+    if (activeSessionId) {
+      await deleteApi(`/api/chat/sessions/${activeSessionId}`)
+    }
     setActiveSessionId(null)
     setMessages([])
     setInput('')
     setStreamingContent('')
     inputRef.current?.focus()
-  }
-
-  const deleteSession = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    await deleteApi(`/api/chat/sessions/${id}`)
-    if (activeSessionId === id) {
-      setActiveSessionId(null)
-      setMessages([])
-    }
-    loadSessions()
   }
 
   const stopGeneration = () => {
@@ -183,7 +163,7 @@ export function ChatPage() {
 
         sseBuffer += decoder.decode(value, { stream: true })
         const parts = sseBuffer.split('\n')
-        sseBuffer = parts.pop() || '' // keep incomplete tail for next chunk
+        sseBuffer = parts.pop() || ''
 
         for (const line of parts) {
           if (!line.startsWith('data: ')) continue
@@ -215,20 +195,17 @@ export function ChatPage() {
         }
       }
 
-      // Finalize: add assistant message
       if (accumulated) {
         const assistantMsg = createMsg('assistant', accumulated)
         setMessages(prev => [...prev, assistantMsg])
       }
       setStreamingContent('')
-      loadSessions()
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         const errorMsg = createMsg('assistant', `[Error: ${(err as Error).message}]`)
         setMessages(prev => [...prev, errorMsg])
         setStreamingContent('')
       } else {
-        // Aborted: finalize partial content
         if (accumulated) {
           setMessages(prev => [...prev, createMsg('assistant', accumulated + '\n[Stopped]')])
           setStreamingContent('')
@@ -238,7 +215,7 @@ export function ChatPage() {
       setStreaming(false)
       abortRef.current = null
     }
-  }, [input, streaming, activeSessionId, selectedBackend, loadSessions])
+  }, [input, streaming, activeSessionId, selectedBackend])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -246,8 +223,6 @@ export function ChatPage() {
       sendMessage()
     }
   }
-
-  const activeSession = useMemo(() => sessions.find(s => s.id === activeSessionId), [sessions, activeSessionId])
 
   const renderMarkdown = useCallback((content: string) => {
     const raw = marked.parse(content, { async: false }) as string
@@ -265,69 +240,30 @@ export function ChatPage() {
 
   return (
     <div className="chat-page">
-      {/* Session List */}
-      <div className="chat-sessions">
-        <div className="chat-sessions-header">
-          <span>Sessions</span>
-          <button className="chat-new-btn" onClick={createNewSession} title="New Chat">+</button>
-        </div>
-        <div className="chat-sessions-list">
-          {groupSessionsByDate(sessions).map(group => (
-            <div key={group.label} className="chat-session-group">
-              <div className="chat-session-group-label">{group.label}</div>
-              {group.items.map(s => (
-                <div
-                  key={s.id}
-                  className={`chat-session-item ${activeSessionId === s.id ? 'active' : ''}`}
-                  onClick={() => selectSession(s.id)}
-                >
-                  <div className="chat-session-top">
-                    <div className="chat-session-title">{s.title}</div>
-                    <button
-                      className="chat-session-delete"
-                      onClick={(e) => deleteSession(s.id, e)}
-                      title="Delete session"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2L10 10M10 2L2 10"/></svg>
-                    </button>
-                  </div>
-                  <div className="chat-session-meta">
-                    <span>{formatTime(s.updatedAt)}</span>
-                    <span>·</span>
-                    <span>{s.messageCount} msgs</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-          {sessions.length === 0 && (
-            <div className="chat-empty-sessions">
-              <svg className="chat-empty-sessions-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-              <div>No conversations yet</div>
-              <div className="chat-empty-sessions-hint">Start a new chat to begin</div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Chat Area */}
       <div className="chat-main">
         <div className="chat-main-header">
-          <span className="chat-main-title">
-            {activeSessionId ? activeSession?.title || 'Chat' : 'New Chat'}
-          </span>
-          <select
-            className="chat-backend-select"
-            value={selectedBackend}
-            onChange={e => setSelectedBackend(e.target.value)}
-          >
-            <option value="">Default Backend</option>
-            {backends.map(b => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
+          <span className="chat-main-title">Chat</span>
+          <div className="chat-header-actions">
+            <select
+              className="chat-backend-select"
+              value={selectedBackend}
+              onChange={e => setSelectedBackend(e.target.value)}
+            >
+              <option value="">Default Backend</option>
+              {backends.map(b => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+            <button
+              className="chat-clear-btn"
+              onClick={clearChat}
+              title="Clear conversation"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div className="chat-messages">
           {messages.length === 0 && !streaming && (

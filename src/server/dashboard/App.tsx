@@ -14,6 +14,23 @@ const NAV_ITEMS: { id: PageId; icon: string; label: string }[] = [
   { id: 'settings', icon: '\u2699', label: 'Settings' },
 ]
 
+const PATH_TO_PAGE: Record<string, PageId> = {
+  '/': 'tasks',
+  '/tasks': 'tasks',
+  '/chat': 'chat',
+  '/settings': 'settings',
+}
+
+const PAGE_TO_PATH: Record<PageId, string> = {
+  tasks: '/tasks',
+  chat: '/chat',
+  settings: '/settings',
+}
+
+function getPageFromPath(): PageId {
+  return PATH_TO_PAGE[window.location.pathname] ?? 'tasks'
+}
+
 export function App() {
   useAutoRefresh()
 
@@ -30,6 +47,14 @@ export function App() {
   const setPendingDeleteTask = useStore((s) => s.setPendingDeleteTask)
   const setShowMessageModal = useStore((s) => s.setShowMessageModal)
   const setShowInjectNodeModal = useStore((s) => s.setShowInjectNodeModal)
+
+  // Sync page from URL on mount and browser back/forward
+  useEffect(() => {
+    setCurrentPage(getPageFromPath())
+    const handler = () => setCurrentPage(getPageFromPath())
+    window.addEventListener('popstate', handler)
+    return () => window.removeEventListener('popstate', handler)
+  }, [setCurrentPage])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -92,7 +117,10 @@ export function App() {
             <button
               key={item.id}
               className={`nav-item ${currentPage === item.id ? 'active' : ''}`}
-              onClick={() => setCurrentPage(item.id)}
+              onClick={() => {
+                history.pushState(null, '', PAGE_TO_PATH[item.id])
+                setCurrentPage(item.id)
+              }}
               title={item.label}
             >
               <span className="nav-icon">{item.icon}</span>

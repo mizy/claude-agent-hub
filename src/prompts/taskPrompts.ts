@@ -211,6 +211,14 @@ Return ONLY the title text, nothing else. Use the same language as the content (
    cron 为标准 5 字段 cron 表达式。配合 loop-back edge 实现周期性执行。
    最小等待时间 30 秒，防止意外死循环。执行时任务状态变为 waiting，不占用 worker。
 
+10. **lark-notify** - 飞书通知节点（直接调用飞书 API 发送消息，不经过 AI 执行）
+    \`\`\`json
+    { "id": "lark-notify", "type": "lark-notify", "name": "推送飞书", "larkNotify": { "content": "outputs.generate_report._raw", "title": "通知标题" } }
+    \`\`\`
+    - **凡是需要推送飞书消息，必须用此类型**，禁止用 task 节点让 AI 去"输出内容到飞书"——task 节点无法实际发送消息
+    - \`content\`：引用上游节点输出，如 \`outputs.generate_report._raw\`；省略则自动取最近完成节点的输出
+    - \`title\`：卡片标题，可选，默认"任务通知"
+
 ## 条件边与循环边
 
 边（edge）支持 condition 和 maxLoops 属性，用于实现条件分支和循环：

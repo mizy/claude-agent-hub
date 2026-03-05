@@ -35,7 +35,8 @@
 .canvas-container .ve-node .ve-link-points { display: none; }
 .canvas-container .ve-line-shape { stroke: var(--text-muted); stroke-width: 2; }
 .canvas-container .ve-back-edge .ve-line-shape { stroke: var(--warning-color); stroke-dasharray: 6 4; }
-.canvas-container .ve-line .ve-line-label text { stroke: none; fill: var(--warning-color); font-weight: 600; }
+.canvas-container .ve-line .ve-line-label rect { fill: rgba(255,255,255,0.15); }
+.canvas-container .ve-line .ve-line-label text { fill: var(--warning-color); font-weight: 600; font-size: 12px; stroke: none; }
 .canvas-container .ve-loop-edge .ve-line-shape { stroke: var(--loop-color); stroke-dasharray: 5 5; }
 .canvas-container .ve-loop-body-edge .ve-line-shape { stroke: var(--loop-color); }
 @keyframes wf-pulse-anim { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }

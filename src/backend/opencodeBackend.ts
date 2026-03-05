@@ -117,6 +117,16 @@ export function createOpencodeBackend(): BackendAdapter {
           }
         }
 
+        // Empty response guard: opencode may run tool_use (e.g. image read) but return no assistant text
+        if (!parsed.response && !parsed.error) {
+          const rawSnippet = rawOutput.slice(0, 500)
+          logger.warn(`opencode returned empty response. Raw output: ${rawSnippet}`)
+          return err({
+            type: 'process',
+            message: `OpenCode returned empty response (${durationMs}ms). Raw: ${rawSnippet.slice(0, 200)}`,
+          })
+        }
+
         if (mcpImagePaths.length > 0) {
           logger.debug(
             `Extracted ${mcpImagePaths.length} MCP image(s): ${mcpImagePaths.join(', ')}`
