@@ -5,6 +5,7 @@ import { EPISODES_DIR } from '../../store/paths.js'
 // Mock invokeBackend
 vi.mock('../../backend/index.js', () => ({
   invokeBackend: vi.fn(),
+  resolveLightModel: vi.fn().mockResolvedValue(undefined),
 }))
 
 import { extractEpisode } from '../extractEpisode.js'

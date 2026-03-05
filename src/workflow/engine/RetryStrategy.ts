@@ -4,7 +4,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
-import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 
 const logger = createLogger('retry-strategy')
 
@@ -29,7 +29,7 @@ export interface ClassifiedError {
  * 根据错误消息和类型判断错误类别
  */
 export function classifyError(error: unknown): ClassifiedError {
-  const message = formatErrorMessage(error)
+  const message = getErrorMessage(error)
   const lowerMessage = message.toLowerCase()
 
   // 暂时性错误 - 高重试成功率

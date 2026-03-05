@@ -17,4 +17,6 @@ export interface PersonaConfig {
   traits: PersonaTraits
   preferences: PersonaPreferences
   systemPrompt: string
+  /** Preferred model tier for this persona (e.g. 'sonnet' for tool-heavy personas) */
+  preferredModel?: string
 }

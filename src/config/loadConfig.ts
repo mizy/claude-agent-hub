@@ -4,7 +4,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import YAML from 'yaml'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { configSchema, type Config, type BackendConfig } from './schema.js'
 
 const logger = createLogger('config')
@@ -232,7 +232,7 @@ function startWatching(configPath: string): void {
         cachedConfig = newConfig
         logger.info('✓ Config reloaded successfully')
       } catch (error) {
-        const msg = formatErrorMessage(error)
+        const msg = getErrorMessage(error)
         logger.error(`Failed to reload config: ${msg}`)
       }
     }, 500)

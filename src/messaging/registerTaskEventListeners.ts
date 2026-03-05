@@ -10,7 +10,7 @@
 import { taskEventBus, type TaskCompletionPayload } from '../shared/events/index.js'
 import { sendTaskCompletionNotify } from './sendTaskNotify.js'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 
 const logger = createLogger('task-event-listener')
 
@@ -33,7 +33,7 @@ export function registerTaskEventListeners(): void {
         nodes: payload.nodes,
       })
     } catch (error) {
-      logger.warn(`Failed to send task completion notification: ${formatErrorMessage(error)}`)
+      logger.warn(`Failed to send task completion notification: ${getErrorMessage(error)}`)
     }
   })
 }

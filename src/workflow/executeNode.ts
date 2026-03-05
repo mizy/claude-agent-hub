@@ -7,8 +7,7 @@ import { markNodeRunning, markNodeFailed, handleNodeResult } from './index.js'
 import { getWorkflow, getInstance, saveInstance } from '../store/WorkflowStore.js'
 import { getTask, updateTask } from '../store/TaskStore.js'
 import { createLogger, logError as logErrorHelper } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
-import { isError, getErrorStack } from '../shared/assertError.js'
+import { getErrorMessage, isError, getErrorStack } from '../shared/assertError.js'
 import { logNodeStarted, logNodeCompleted, logNodeFailed } from './logNodeExecution.js'
 import { executeNodeByType } from './nodeTypeHandlers.js'
 import { createRootSpan, createChildSpan, endSpan } from '../store/createSpan.js'
@@ -221,7 +220,7 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     // End node span
     if (traceCtx) {
       const finished = endSpan(traceCtx.currentSpan, result.success ? undefined : {
-        error: { message: result.error || 'Unknown error' },
+        error: { message: result.error || `Node '${node.name}' (${nodeId}) failed` },
       })
       if (costUsd != null) {
         finished.cost = { amount: costUsd, currency: 'USD' }
@@ -255,25 +254,27 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
       const maxAttempts = node.retry?.maxAttempts ?? 3
       const willRetry = currentAttempt < maxAttempts
 
+      const errorDetail = result.error || `Node '${node.name}' (${nodeId}) failed with no error message`
+
       logNodeFailed({
         taskId,
         workflowId,
         instanceId,
         nodeId,
         node,
-        error: result.error || 'Unknown error',
+        error: errorDetail,
         attempt: currentAttempt,
         willRetry,
       })
 
-      await markNodeFailed(instanceId, nodeId, result.error || 'Unknown error')
+      await markNodeFailed(instanceId, nodeId, errorDetail)
       return {
         success: false,
         error: result.error,
       }
     }
   } catch (error) {
-    const errorMessage = formatErrorMessage(error)
+    const errorMessage = getErrorMessage(error)
 
     // End node span with error
     if (traceCtx) {

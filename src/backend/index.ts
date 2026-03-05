@@ -168,6 +168,16 @@ export async function invokeBackend(
 }
 
 /**
+ * Resolve a lightweight model for simple tasks (summarization, memory extraction, etc.)
+ * Returns 'haiku' for claude-code backend, undefined (use default) for others.
+ */
+export async function resolveLightModel(backendType?: string): Promise<string | undefined> {
+  const backend = await resolveBackend(backendType)
+  if (backend.name === 'claude-code') return 'haiku'
+  return undefined
+}
+
+/**
  * 检查当前配置的后端是否可用
  */
 export async function checkBackendAvailable(): Promise<boolean> {

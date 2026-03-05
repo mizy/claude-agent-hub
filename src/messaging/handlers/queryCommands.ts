@@ -4,7 +4,6 @@
 
 import { readFileSync } from 'fs'
 import { createLogger } from '../../shared/logger.js'
-import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { truncateText } from '../../shared/truncateText.js'
 import {
@@ -128,7 +127,7 @@ export async function handleList(statusFilter?: string, page = 1): Promise<Comma
       ),
     }
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     return { text: `❌ 获取任务列表失败: ${msg}` }
   }
 }

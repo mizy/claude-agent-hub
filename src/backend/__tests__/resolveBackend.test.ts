@@ -44,7 +44,8 @@ describe('getRegisteredBackends', () => {
     expect(backends).toContain('opencode')
     expect(backends).toContain('iflow')
     expect(backends).toContain('codebuddy')
-    expect(backends).toHaveLength(4)
+    expect(backends).toContain('cursor')
+    expect(backends).toHaveLength(5)
   })
 })
 

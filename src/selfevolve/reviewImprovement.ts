@@ -6,7 +6,7 @@
  * that prevents harmful or unnecessary changes.
  */
 
-import { invokeBackend } from '../backend/index.js'
+import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { Improvement, FailurePattern, PerformancePattern, ReviewResult } from './types.js'
@@ -29,9 +29,11 @@ export async function reviewImprovement(
   const prompt = buildReviewPrompt(improvement, context)
 
   try {
+    const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
       mode: 'review',
+      model: lightModel,
       skipPermissions: true,
       disableMcp: true,
       timeoutMs: 120_000, // 2 min per review

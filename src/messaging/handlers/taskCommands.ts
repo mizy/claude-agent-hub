@@ -3,7 +3,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
-import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { truncateText } from '../../shared/truncateText.js'
 import {
   createAndRunTask,
@@ -46,7 +46,7 @@ export async function handleRun(description: string): Promise<CommandResult> {
       ].join('\n'),
     }
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.error(`/run failed: ${msg}`)
     return { text: `❌ 创建任务失败: ${msg}` }
   }

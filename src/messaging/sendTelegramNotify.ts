@@ -7,7 +7,7 @@
  */
 
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { getNotifyConfig } from '../config/index.js'
 import {
   sendTelegramMessage as sendViaBotClient,
@@ -55,7 +55,7 @@ async function sendDirectMessage(
     }
     return true
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.error(`Telegram send error: ${msg}`)
     return false
   }

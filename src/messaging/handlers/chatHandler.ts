@@ -6,7 +6,6 @@
 import { invokeBackend } from '../../backend/index.js'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
-import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { buildClientPrompt, wrapMemoryContext, wrapHistoryContext } from '../../prompts/chatPrompts.js'
 import { logConversation, getRecentConversations, logConversationEvent } from '../../store/conversationLog.js'
@@ -576,7 +575,7 @@ async function handleChatInternal(
       await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger)
       return
     }
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.error(`chat error [${chatId.slice(0, 8)}]: ${msg}`)
     await sendErrorToUser(chatId, stream.getPlaceholderId(), messenger, `处理失败: ${msg}`)
   }

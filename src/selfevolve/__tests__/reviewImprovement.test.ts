@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../backend/index.js', () => ({
   invokeBackend: vi.fn(),
+  resolveLightModel: vi.fn().mockResolvedValue(undefined),
 }))
 
 import { reviewImprovement, reviewImprovements } from '../reviewImprovement.js'

@@ -8,8 +8,7 @@
 
 import * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
-import { isError } from '../shared/assertError.js'
+import { getErrorMessage, isError } from '../shared/assertError.js'
 import { getLarkConfig } from '../config/index.js'
 import { getLarkClient, getDefaultLarkChatId } from './larkWsClient.js'
 import { buildApprovalCard, buildCard, mdElement } from './buildLarkCard.js'
@@ -112,7 +111,7 @@ export async function sendReviewNotification(options: ReviewNotificationOptions)
     logger.info(`Sent review notification for node ${nodeId} via webhook`)
     return true
   } catch (error) {
-    const errorMessage = formatErrorMessage(error)
+    const errorMessage = getErrorMessage(error)
     logger.error(`Failed to send Lark notification: ${errorMessage}`)
     return false
   }
@@ -146,7 +145,7 @@ export async function sendLarkMessageViaApi(chatId: string, text: string): Promi
     logger.info(`Sent card message via Lark API to chat ${chatId}`)
     return true
   } catch (error) {
-    const errorMessage = formatErrorMessage(error)
+    const errorMessage = getErrorMessage(error)
     logger.error(`Failed to send Lark message via API: ${errorMessage}`)
     return false
   }
@@ -191,7 +190,7 @@ export async function sendLarkMessage(
 
     return true
   } catch (error) {
-    const errorMessage = formatErrorMessage(error)
+    const errorMessage = getErrorMessage(error)
     logger.error(`Failed to send Lark message: ${errorMessage}`)
     return false
   }
@@ -226,7 +225,7 @@ export async function sendApprovalResultNotification(
 
     return response.ok
   } catch (error) {
-    const errorMessage = formatErrorMessage(error)
+    const errorMessage = getErrorMessage(error)
     logger.warn(`Failed to send approval result notification: ${errorMessage}`)
     return false
   }
@@ -260,7 +259,7 @@ export async function sendLarkCardViaApi(chatId: string, card: LarkCard): Promis
     logger.info(`✓ Sent card via Lark API to chat ${chatId}`)
     return true
   } catch (error) {
-    const errorMessage = formatErrorMessage(error)
+    const errorMessage = getErrorMessage(error)
     logger.error(`Failed to send Lark card via API: ${errorMessage}`)
     return false
   }
@@ -299,7 +298,7 @@ export async function uploadLarkImage(
     logger.info(`✓ Uploaded image to Lark: ${imageKey}`)
     return imageKey
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.error(`✗ Failed to upload image to Lark: ${msg}`)
     if (isError(error) && error.stack) {
       logger.debug(error.stack)
@@ -332,7 +331,7 @@ export async function sendLarkImage(
     logger.info(`✓ Image sent to Lark chat ${chatId.slice(0, 8)}`)
     return true
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.error(`✗ Failed to send image to Lark: ${msg}`)
     if (isError(error) && error.stack) {
       logger.debug(error.stack)
@@ -358,7 +357,7 @@ export async function updateLarkCard(messageId: string, card: LarkCard): Promise
     )
     return true
   } catch (error) {
-    const errorMessage = formatErrorMessage(error)
+    const errorMessage = getErrorMessage(error)
     logger.error(`Failed to update Lark card: ${errorMessage}`)
     return false
   }

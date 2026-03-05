@@ -124,6 +124,7 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
   Explorer: {
     name: 'Explorer',
     description: '技术探索者，负责技术调研和创新方案',
+    preferredModel: 'sonnet',
     traits: {
       codeStyle: 'modern',
       commentLevel: 'moderate',
@@ -150,6 +151,7 @@ export const BUILTIN_PERSONAS: Record<string, PersonaConfig> = {
   Tester: {
     name: 'Tester',
     description: '测试工程师，负责保障软件质量',
+    preferredModel: 'sonnet',
     traits: {
       codeStyle: 'strict',
       commentLevel: 'detailed',

@@ -8,7 +8,7 @@ import { join } from 'path'
 import { TASKS_DIR } from '../store/paths.js'
 import { getAllTaskSummaries, type TaskSummary } from '../store/TaskStore.js'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { Workflow, WorkflowNode } from '../workflow/types.js'
 
 // 从拆分出的模块导入
@@ -67,7 +67,7 @@ async function buildHistoryEntry(summary: TaskSummary): Promise<TaskHistoryEntry
       nodeNames = taskNodes.map((n: WorkflowNode) => n.name)
     } catch (e) {
       logger.warn(
-        `Failed to parse workflow for ${summary.id}: ${formatErrorMessage(e)}`
+        `Failed to parse workflow for ${summary.id}: ${getErrorMessage(e)}`
       )
     }
   }
@@ -106,7 +106,7 @@ async function buildHistoryEntry(summary: TaskSummary): Promise<TaskHistoryEntry
       }
     } catch (e) {
       logger.warn(
-        `Failed to parse instance for ${summary.id}: ${formatErrorMessage(e)}`
+        `Failed to parse instance for ${summary.id}: ${getErrorMessage(e)}`
       )
     }
   }
@@ -120,7 +120,7 @@ async function buildHistoryEntry(summary: TaskSummary): Promise<TaskHistoryEntry
       description = task.description
     } catch (e) {
       logger.warn(
-        `Failed to parse task.json for ${summary.id}: ${formatErrorMessage(e)}`
+        `Failed to parse task.json for ${summary.id}: ${getErrorMessage(e)}`
       )
     }
   }

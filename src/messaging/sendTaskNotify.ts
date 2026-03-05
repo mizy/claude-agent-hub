@@ -7,7 +7,7 @@
  */
 
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { formatDuration } from '../shared/formatTime.js'
 import { getNotifyConfig } from '../config/index.js'
 import { readOutputSummary } from '../output/index.js'
@@ -70,7 +70,7 @@ export async function sendTaskCreatedNotification(task: Task): Promise<void> {
       }
     }
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.warn(`Failed to send task creation notification: ${msg}`)
   }
 }
@@ -147,7 +147,7 @@ export async function sendTaskCompletionNotify(
       }
     }
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.warn(`Telegram 通知发送失败: ${msg}`)
   }
 
@@ -174,7 +174,7 @@ export async function sendTaskCompletionNotify(
       await sendLarkCardViaApi(larkChatId, card)
     }
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.warn(`Lark 通知发送失败: ${msg}`)
   }
 }

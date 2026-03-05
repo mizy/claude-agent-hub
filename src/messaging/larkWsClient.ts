@@ -8,7 +8,7 @@ import * as Lark from '@larksuiteoapi/node-sdk'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { getLarkConfig } from '../config/index.js'
 import { DATA_DIR } from '../store/paths.js'
 import {
@@ -43,7 +43,7 @@ function loadPersistedChatId(): string | null {
   try {
     return readFileSync(LARK_CHAT_ID_FILE, 'utf-8').trim() || null
   } catch (error) {
-    logger.debug(`Failed to load persisted chatId: ${formatErrorMessage(error)}`)
+    logger.debug(`Failed to load persisted chatId: ${getErrorMessage(error)}`)
     return null
   }
 }
@@ -86,7 +86,7 @@ export async function startLarkWsClient(): Promise<void> {
     const botInfo = res as { bot?: { app_name?: string }; data?: { bot?: { app_name?: string } } }
     larkBotName = botInfo?.bot?.app_name ?? botInfo?.data?.bot?.app_name ?? null
   } catch (error) {
-    logger.warn(`Failed to fetch bot name: ${formatErrorMessage(error)}`)
+    logger.warn(`Failed to fetch bot name: ${getErrorMessage(error)}`)
   }
 
   wsClient = new Lark.WSClient({

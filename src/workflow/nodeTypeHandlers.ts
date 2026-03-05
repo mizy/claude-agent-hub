@@ -336,12 +336,14 @@ async function executeTaskNode(
   const taskBackend = instance.variables?.taskBackend as string | undefined
   const taskModel = instance.variables?.taskModel as string | undefined
 
-  // 从配置读取模型（任务级覆盖优先）
+  // 从配置读取模型（任务级覆盖优先，其次 persona 偏好，最后 backend 默认）
   const { resolveBackendConfig } = await import('../backend/index.js')
   const backendConfig = taskBackend
     ? await resolveBackendConfig(taskBackend)
     : await getBackendConfig()
-  const model = taskModel ?? backendConfig.model
+  // persona.preferredModel only applies to claude-code (which supports model name selection)
+  const personaModel = backendConfig.type === 'claude-code' ? persona.preferredModel : undefined
+  const model = taskModel ?? personaModel ?? backendConfig.model
 
   // Create LLM span for tracing
   const llmSpan = traceCtx

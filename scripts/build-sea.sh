@@ -13,7 +13,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_DIR/dist-sea"
-ENTRY="$PROJECT_DIR/src/cli/entry.ts"
+ENTRY="$PROJECT_DIR/src/cli/index.ts"
 BUNDLE="$BUILD_DIR/cah.cjs"
 BLOB="$BUILD_DIR/cah.blob"
 SEA_CONFIG="$BUILD_DIR/sea-config.json"

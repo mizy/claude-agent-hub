@@ -6,7 +6,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
-import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { parseApprovalCommand, handleApproval } from './approvalHandler.js'
 import { handleCommand } from './commandHandler.js'
 import { handleChat, clearChatSession, getChatSessionInfo, toggleBenchmark } from './chatHandler.js'
@@ -139,7 +139,7 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
           triggerEpisodeOnTaskCreation(chatId)
         }
       } catch (error) {
-        const msg = formatErrorMessage(error)
+        const msg = getErrorMessage(error)
         logger.error(`Command ${parsed.cmd} failed: ${msg}`)
         await messenger.reply(chatId, `❌ 命令执行失败: ${msg}`)
       }

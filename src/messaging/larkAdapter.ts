@@ -7,7 +7,7 @@
 
 import type * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { uploadLarkImage, sendLarkImage } from './sendLarkNotify.js'
 import { markdownToPostContent } from './larkCardWrapper.js'
 import type { LarkCard } from './buildLarkCard.js'
@@ -62,7 +62,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
       try {
         await sendPost(chatId, text, options?.replyToMessageId, 'reply')
       } catch (error) {
-        logger.error(`→ reply failed: ${formatErrorMessage(error)}`)
+        logger.error(`→ reply failed: ${getErrorMessage(error)}`)
       }
     },
     async sendAndGetId(chatId, text, options?: SendOptions) {
@@ -70,7 +70,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
         const res = await sendPost(chatId, text, options?.replyToMessageId, 'sendAndGetId')
         return (res as LarkSdkResponse)?.data?.message_id ?? null
       } catch (error) {
-        logger.error(`→ send failed: ${formatErrorMessage(error)}`)
+        logger.error(`→ send failed: ${getErrorMessage(error)}`)
         return null
       }
     },
@@ -91,7 +91,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
       } catch (error) {
         // Never fall back to reply() here: streaming edits fail silently,
         // sendFinalResponse will send the complete response when done.
-        logger.debug(`→ edit failed (${messageId}): ${formatErrorMessage(error)}`)
+        logger.debug(`→ edit failed (${messageId}): ${getErrorMessage(error)}`)
       }
     },
     async replyCard(chatId: string, card: LarkCard) {
@@ -109,7 +109,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
           'replyCard'
         )
       } catch (error) {
-        logger.error(`→ card send failed: ${formatErrorMessage(error)}`)
+        logger.error(`→ card send failed: ${getErrorMessage(error)}`)
       }
     },
     async editCard(chatId: string, messageId: string, card: LarkCard) {
@@ -126,7 +126,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
         )
         logger.debug(`→ editCard response: code=${(res as LarkSdkResponse)?.code}`)
       } catch (error) {
-        const msg = formatErrorMessage(error)
+        const msg = getErrorMessage(error)
         if (msg.includes('NOT a card') || msg.includes('not a card')) {
           logger.warn(`→ editCard failed (not a card), falling back to replyCard: ${messageId}`)
           await this.replyCard!(chatId, card)

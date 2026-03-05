@@ -16,7 +16,7 @@ import {
 } from '../store/TaskStore.js'
 import { registerTaskEventListeners } from '../messaging/registerTaskEventListeners.js'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { releaseRunnerLock } from './spawnTask.js'
 import { isRunningStatus } from '../types/taskStatus.js'
 
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
         })
         .catch(error => {
           updateProcessInfo(task.id, { status: 'stopped' })
-          const errorMessage = formatErrorMessage(error)
+          const errorMessage = getErrorMessage(error)
           logger.error(`Task failed: ${errorMessage}`)
           updateTask(task.id, { status: 'failed' })
         })
@@ -166,6 +166,6 @@ async function main(): Promise<void> {
 
 main().catch(err => {
   releaseRunnerLock()
-  logger.error(`Fatal error: ${formatErrorMessage(err)}`)
+  logger.error(`Fatal error: ${getErrorMessage(err)}`)
   process.exit(1)
 })

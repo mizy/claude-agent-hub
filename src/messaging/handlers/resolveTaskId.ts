@@ -3,7 +3,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
-import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { getAllTasks } from '../../task/index.js'
 import type { Task } from '../../types/task.js'
 import type { CommandResult } from './types.js'
@@ -49,7 +49,7 @@ export async function withResolvedTask(
     }
     return await handler(result.task!)
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.error(`Command failed for ${taskIdPrefix}: ${msg}`)
     return { text: `❌ ${msg}` }
   }

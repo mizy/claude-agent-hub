@@ -8,7 +8,7 @@ import { existsSync, readFileSync, readdirSync } from 'fs'
 import { TASKS_DIR } from '../store/paths.js'
 import { createLogger } from '../shared/logger.js'
 import { formatDuration } from '../shared/formatTime.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 
 const logger = createLogger('time-estimator')
 
@@ -97,7 +97,7 @@ function loadHistoricalData(): HistoricalData {
       }
     } catch (e) {
       logger.warn(
-        `Failed to parse stats for ${taskDir}: ${formatErrorMessage(e)}`
+        `Failed to parse stats for ${taskDir}: ${getErrorMessage(e)}`
       )
     }
   }

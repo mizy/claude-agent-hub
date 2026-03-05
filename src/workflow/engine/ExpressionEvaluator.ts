@@ -7,7 +7,7 @@
 
 import { Parser } from 'expr-eval'
 import { createLogger } from '../../shared/logger.js'
-import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import type { EvalContext } from '../types.js'
 
 const logger = createLogger('expr-eval')
@@ -257,7 +257,7 @@ export function evaluateCondition(expression: string, context: EvalContext): boo
     logger.debug(`Evaluated "${expression}" = ${result}`)
     return Boolean(result)
   } catch (error) {
-    logger.warn(`Condition evaluation failed for "${expression}": ${formatErrorMessage(error)}`)
+    logger.warn(`Condition evaluation failed for "${expression}": ${getErrorMessage(error)}`)
     return false
   }
 }
@@ -280,7 +280,7 @@ export function validateExpression(expression: string): {
   } catch (error) {
     return {
       valid: false,
-      error: formatErrorMessage(error),
+      error: getErrorMessage(error),
     }
   }
 }

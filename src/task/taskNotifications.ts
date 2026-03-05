@@ -24,7 +24,7 @@ import {
 import { recordFailure } from '../prompt-optimization/failureKnowledgeBase.js'
 import { getActiveVersion } from '../store/PromptVersionStore.js'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/index.js'
+import { getErrorMessage } from '../shared/index.js'
 import type { Task } from '../types/task.js'
 import type { Workflow, WorkflowInstance } from '../workflow/types.js'
 
@@ -168,12 +168,12 @@ export async function emitWorkflowCompleted(ctx: CompletionContext): Promise<voi
 
   // Memory extraction (non-blocking)
   extractMemoryFromTask(task, workflow, finalInstance).catch(e =>
-    logger.warn(`Memory extraction failed: ${formatErrorMessage(e)}`)
+    logger.warn(`Memory extraction failed: ${getErrorMessage(e)}`)
   )
 
   // Prompt optimization: record usage + analyze failures (non-blocking)
   trackPromptOptimization(task, workflow, finalInstance, success, totalDurationMs).catch(e =>
-    logger.warn(`Prompt optimization tracking failed: ${formatErrorMessage(e)}`)
+    logger.warn(`Prompt optimization tracking failed: ${getErrorMessage(e)}`)
   )
 }
 
@@ -284,7 +284,7 @@ async function trackPromptOptimization(
             details: `Created A/B test ${abTest.id}: ${abTest.controlVersionId} vs ${abTest.candidateVersionId}`,
           })
         } catch (e) {
-          logger.debug(`Auto A/B test creation failed: ${formatErrorMessage(e)}`)
+          logger.debug(`Auto A/B test creation failed: ${getErrorMessage(e)}`)
         }
       }
     }
@@ -308,6 +308,6 @@ function checkAndConcludeABTest(taskId: string, personaName: string, instanceId:
       details: `A/B test ${runningTest.id} concluded: winner=${result.winner}`,
     })
   } catch (e) {
-    logger.debug(`Auto A/B test conclusion failed: ${formatErrorMessage(e)}`)
+    logger.debug(`Auto A/B test conclusion failed: ${getErrorMessage(e)}`)
   }
 }

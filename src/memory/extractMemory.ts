@@ -5,7 +5,7 @@
  * Designed to be non-blocking — failures are logged but never thrown.
  */
 
-import { invokeBackend } from '../backend/index.js'
+import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { buildMemoryExtractionPrompt, type TaskSummary } from '../prompts/memoryPrompts.js'
 import { addMemory } from './manageMemory.js'
 import { createLogger } from '../shared/logger.js'
@@ -91,9 +91,11 @@ export async function extractMemoryFromTask(
     const summary = buildTaskSummary(task, workflow, instance)
     const prompt = buildMemoryExtractionPrompt(summary)
 
+    const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
       mode: 'review',
+      model: lightModel,
       disableMcp: true,
       timeoutMs: 180_000,
     })

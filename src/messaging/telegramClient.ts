@@ -6,7 +6,7 @@
  */
 
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { getNotifyConfig } from '../config/index.js'
 import { sendTelegramApprovalResult } from './sendTelegramNotify.js'
 import { routeMessage } from './handlers/messageRouter.js'
@@ -49,7 +49,7 @@ async function callApi<T>(method: string, params?: Record<string, unknown>): Pro
     }
     return result.result
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.error(`→ API ${method}: ${msg}`)
     return null
   }
@@ -167,7 +167,7 @@ async function pollLoop(): Promise<void> {
       consecutiveFailures++
 
       if (consecutiveFailures <= SILENT_AFTER_FAILURES) {
-        const msg = formatErrorMessage(error)
+        const msg = getErrorMessage(error)
         logger.error(`poll error (${consecutiveFailures}): ${msg}`)
       } else if (consecutiveFailures === SILENT_AFTER_FAILURES + 1) {
         logger.warn(`poll failing repeatedly, suppressing further logs (retry every ${Math.round(backoffMs / 1000)}s)`)
@@ -205,13 +205,13 @@ export async function startTelegramClient(): Promise<void> {
   botName = me?.first_name ?? me?.username ?? null
 
   pollLoop().catch(err => {
-    logger.error(`poll loop crashed: ${formatErrorMessage(err)}`)
+    logger.error(`poll loop crashed: ${getErrorMessage(err)}`)
     if (running) {
       logger.info('Restarting poll loop in 10s...')
       setTimeout(() => {
         if (running) {
           pollLoop().catch(e => {
-            logger.error(`poll loop restart failed: ${formatErrorMessage(e)}`)
+            logger.error(`poll loop restart failed: ${getErrorMessage(e)}`)
             running = false
           })
         }

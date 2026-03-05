@@ -19,8 +19,7 @@ import { ResumeConflictError } from './executeTask.js'
 import { getTask, updateTask, updateProcessInfo, getProcessInfo } from '../store/TaskStore.js'
 import { registerTaskEventListeners } from '../messaging/registerTaskEventListeners.js'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
-import { getErrorStack, getErrorMessage } from '../shared/assertError.js'
+import { getErrorMessage, getErrorStack } from '../shared/assertError.js'
 
 const logger = createLogger('task-process')
 
@@ -154,7 +153,7 @@ async function main(): Promise<void> {
     })
     logger.info(`Task completed: ${taskId}`)
   } catch (error) {
-    const errorMessage = formatErrorMessage(error)
+    const errorMessage = getErrorMessage(error)
 
     // ResumeConflictError 表示另一个进程正在执行，不应该标记任务为 failed
     // 只需要静默退出当前进程

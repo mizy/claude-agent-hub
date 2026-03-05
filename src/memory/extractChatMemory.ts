@@ -6,7 +6,7 @@
  * Non-blocking — runs asynchronously without affecting chat flow.
  */
 
-import { invokeBackend } from '../backend/index.js'
+import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { addMemory } from './manageMemory.js'
 import { buildAssociations } from './associationEngine.js'
 import { getAllMemories } from '../store/MemoryStore.js'
@@ -106,9 +106,11 @@ export async function extractChatMemory(
   try {
     const prompt = buildChatMemoryPrompt(messages)
 
+    const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
       mode: 'review',
+      model: lightModel,
       disableMcp: true,
       timeoutMs: 30_000,
     })

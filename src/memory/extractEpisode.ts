@@ -6,7 +6,7 @@
  * Non-blocking — runs asynchronously without affecting chat flow.
  */
 
-import { invokeBackend } from '../backend/index.js'
+import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { generateShortId } from '../shared/generateId.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
@@ -141,9 +141,11 @@ export async function extractEpisode(params: ExtractEpisodeParams): Promise<Epis
   try {
     const prompt = buildEpisodePrompt(messages)
 
+    const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
       mode: 'review',
+      model: lightModel,
       disableMcp: true,
       timeoutMs: 30_000,
     })

@@ -4,7 +4,7 @@
  */
 
 import { createLogger } from '../../shared/logger.js'
-import { formatErrorMessage } from '../../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import {
   getWaitingHumanJobs,
   resumeWaitingJob,
@@ -133,7 +133,7 @@ export async function handleApproval(
       return `❌ 已拒绝节点: ${nodeId}\n原因: ${reason}`
     }
   } catch (error) {
-    const msg = formatErrorMessage(error)
+    const msg = getErrorMessage(error)
     logger.error(`approval failed node=${nodeId}: ${msg}`)
     return `处理失败: ${msg}`
   }

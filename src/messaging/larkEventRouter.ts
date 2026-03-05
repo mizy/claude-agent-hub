@@ -11,7 +11,6 @@ import { join } from 'path'
 import { DATA_DIR } from '../store/paths.js'
 import type * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import { getLarkConfig } from '../config/index.js'
 import { sendApprovalResultNotification } from './sendLarkNotify.js'
@@ -136,7 +135,7 @@ export async function downloadLarkImage(
     )
     return filePath
   } catch (error) {
-    logger.error(`Failed to download image ${imageKey}: ${formatErrorMessage(error)}`)
+    logger.error(`Failed to download image ${imageKey}: ${getErrorMessage(error)}`)
     return null
   }
 }

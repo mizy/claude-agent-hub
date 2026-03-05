@@ -100,11 +100,18 @@ interface FailedNodeInfo {
   error: string
 }
 
-// Errors from external kills (SIGTERM, daemon restart) — not actionable signals
-const EXTERNAL_KILL_ERRORS = ['unknown error', 'unknown error (check logs for details)']
+// Errors from external kills (SIGTERM, daemon restart, orphan recovery) — not actionable signals
+const EXTERNAL_KILL_PATTERNS = [
+  'unknown error',
+  'unknown error (check logs for details)',
+  'process crashed or terminated unexpectedly',
+  'unknown error (no error message provided)',
+  'unknown error (undefined/null error object)',
+]
 
 function isExternalKillError(error: string): boolean {
-  return EXTERNAL_KILL_ERRORS.includes(error.toLowerCase().trim())
+  const normalized = error.toLowerCase().trim()
+  return EXTERNAL_KILL_PATTERNS.some(p => normalized === p || normalized.startsWith(p))
 }
 
 function collectFailedNodes(tasks: Task[]): FailedNodeInfo[] {

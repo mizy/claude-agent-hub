@@ -10,7 +10,7 @@ import { join } from 'path'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { DATA_DIR } from './paths.js'
 import { createLogger } from '../shared/logger.js'
-import { formatErrorMessage } from '../shared/formatErrorMessage.js'
+import { getErrorMessage } from '../shared/assertError.js'
 
 const logger = createLogger('conv-log')
 
@@ -68,7 +68,7 @@ export function logConversation(entry: ConversationEntry): void {
     ensureDir()
     appendFileSync(CONVERSATION_LOG_PATH, JSON.stringify(entry) + '\n', 'utf-8')
   } catch (error) {
-    logger.warn(`Failed to write conversation log: ${formatErrorMessage(error)}`)
+    logger.warn(`Failed to write conversation log: ${getErrorMessage(error)}`)
   }
 }
 
@@ -231,7 +231,7 @@ export function logCliCommand(entry: {
     promptFile = join(PROMPTS_DIR, filename)
     writeFileSync(promptFile, entry.prompt, 'utf-8')
   } catch (error) {
-    logger.debug(`Failed to write prompt file: ${formatErrorMessage(error)}`)
+    logger.debug(`Failed to write prompt file: ${getErrorMessage(error)}`)
   }
 
   logConversation({

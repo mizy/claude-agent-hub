@@ -3,9 +3,8 @@
  * Called when task.title is generic (e.g., "New Task", "Task 1")
  */
 
-import { invokeBackend } from '../backend/index.js'
+import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { buildGenerateTitleFromWorkflowPrompt } from '../prompts/index.js'
-import { getBackendConfig } from '../config/index.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from '../workflow/types.js'
@@ -38,13 +37,12 @@ export function isGenericTitle(title: string): boolean {
  */
 export async function generateTaskTitle(task: Task, workflow: Workflow): Promise<string> {
   const prompt = buildGenerateTitleFromWorkflowPrompt(task, workflow)
-  const backendConfig = await getBackendConfig()
-  const model = backendConfig.model
+  const lightModel = await resolveLightModel()
 
   const result = await invokeBackend({
     prompt,
     mode: 'plan',
-    model,
+    model: lightModel,
   })
 
   if (!result.ok) {
