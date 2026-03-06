@@ -14,7 +14,7 @@
  *   sendReviewNotification/sendApprovalResultNotification
  * - 飞书卡片: buildCard/buildTaskCompletedCard/buildTaskFailedCard/buildApprovalCard/buildAutoWaitCard
  *   buildWelcomeCard/buildTaskListCard/buildTaskDetailCard/buildTaskLogsCard/buildStatusCard/buildHelpCard (11 种)
- * - 飞书事件路由: createLarkAdapter/larkClientContext/handleLarkMessage/handleCardAction/handleP2pChatCreate/processMessageEvent
+ * - 飞书事件路由: createLarkAdapter/larkClientContext/handleLarkMessage/handleCardAction/handleP2pChatCreate/processMessageEvent/destroyGroupBuffer
  * - 飞书 Markdown: normalizeLarkMarkdown/buildMarkdownCard/convertMarkdownTables
  * - Telegram 客户端: startTelegramClient/stopTelegramClient/isTelegramClientRunning/sendTelegramMessage/getDefaultChatId
  * - Telegram 通知: sendTelegramReviewNotification/sendTelegramTextMessage/sendTelegramApprovalResult

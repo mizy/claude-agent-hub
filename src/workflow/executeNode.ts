@@ -270,7 +270,7 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
       await markNodeFailed(instanceId, nodeId, errorDetail)
       return {
         success: false,
-        error: result.error,
+        error: errorDetail,
       }
     }
   } catch (error) {

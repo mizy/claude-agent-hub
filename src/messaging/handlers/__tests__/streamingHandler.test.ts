@@ -5,7 +5,7 @@ import type { MessengerAdapter } from '../types.js'
 function createMockMessenger(): MessengerAdapter {
   return {
     reply: vi.fn().mockResolvedValue(undefined),
-    editMessage: vi.fn().mockResolvedValue(undefined),
+    editMessage: vi.fn().mockResolvedValue(true),
     sendAndGetId: vi.fn().mockResolvedValue('msg-1'),
   }
 }
@@ -72,7 +72,7 @@ describe('sendFinalResponse', () => {
   it('should edit placeholder and reply remaining parts', async () => {
     const text = 'part1\npart2'
     await sendFinalResponse('c1', text, 6, 'ph-1', messenger)
-    expect(messenger.editMessage).toHaveBeenCalledWith('c1', 'ph-1', 'part1')
+    expect(messenger.editMessage).toHaveBeenCalledWith('c1', 'ph-1', 'part1\n\n*…（接下条）*')
     expect(messenger.reply).toHaveBeenCalledWith('c1', 'part2')
   })
 
@@ -83,7 +83,7 @@ describe('sendFinalResponse', () => {
   })
 
   it('should fallback to reply when placeholder edit fails', async () => {
-    vi.mocked(messenger.editMessage).mockRejectedValueOnce(new Error('API error'))
+    vi.mocked(messenger.editMessage).mockResolvedValueOnce(false)
     await sendFinalResponse('c1', 'hello', 4096, 'ph-1', messenger)
     expect(messenger.reply).toHaveBeenCalledWith('c1', 'hello')
   })
@@ -92,6 +92,55 @@ describe('sendFinalResponse', () => {
     const text = 'a'.repeat(10) + '\n' + 'b'.repeat(10)
     await sendFinalResponse('c1', text, 11, null, messenger)
     expect(messenger.reply).toHaveBeenCalledTimes(2)
+  })
+
+  describe('table → card upgrade', () => {
+    const tableText = '| col1 | col2 |\n|------|------|\n| a    | b    |'
+
+    function createCardMessenger(deleteResult: boolean, sendCardResult: string | null) {
+      return {
+        reply: vi.fn().mockResolvedValue(undefined),
+        editMessage: vi.fn().mockResolvedValue(true),
+        sendAndGetId: vi.fn().mockResolvedValue('msg-1'),
+        deleteMessage: vi.fn().mockResolvedValue(deleteResult),
+        sendCard: vi.fn().mockResolvedValue(sendCardResult),
+      } satisfies MessengerAdapter
+    }
+
+    it('should delete placeholder and send card when table detected', async () => {
+      const m = createCardMessenger(true, 'card-1')
+      await sendFinalResponse('c1', tableText, 4096, 'ph-1', m)
+      expect(m.deleteMessage).toHaveBeenCalledWith('c1', 'ph-1')
+      expect(m.sendCard).toHaveBeenCalled()
+      expect(m.editMessage).not.toHaveBeenCalled()
+      expect(m.reply).not.toHaveBeenCalled()
+    })
+
+    it('should fallback to edit when deleteMessage fails', async () => {
+      const m = createCardMessenger(false, null)
+      await sendFinalResponse('c1', tableText, 4096, 'ph-1', m)
+      expect(m.deleteMessage).toHaveBeenCalled()
+      expect(m.sendCard).not.toHaveBeenCalled()
+      // Should fall through to normal edit path since placeholder still exists
+      expect(m.editMessage).toHaveBeenCalledWith('c1', 'ph-1', tableText)
+    })
+
+    it('should fallback to reply when delete succeeds but sendCard fails', async () => {
+      const m = createCardMessenger(true, null)
+      await sendFinalResponse('c1', tableText, 4096, 'ph-1', m)
+      // Deleted + card failed → placeholderId nulled → reply path
+      expect(m.reply).toHaveBeenCalledWith('c1', tableText)
+      expect(m.editMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not trigger card upgrade for tables inside code blocks', async () => {
+      const codeBlockTable = '```\n| col1 | col2 |\n|------|------|\n| a    | b    |\n```'
+      const m = createCardMessenger(true, 'card-1')
+      await sendFinalResponse('c1', codeBlockTable, 4096, 'ph-1', m)
+      // Should NOT trigger card upgrade
+      expect(m.deleteMessage).not.toHaveBeenCalled()
+      expect(m.editMessage).toHaveBeenCalledWith('c1', 'ph-1', codeBlockTable)
+    })
   })
 })
 
@@ -146,7 +195,7 @@ describe('createStreamHandler', () => {
   })
 
   it('should handle edit failures gracefully', async () => {
-    vi.mocked(messenger.editMessage).mockRejectedValue(new Error('edit failed'))
+    vi.mocked(messenger.editMessage).mockResolvedValue(false)
     const { onChunk } = createStreamHandler('c1', placeholderRef, 4096, messenger, bench)
     // Should not throw
     onChunk!('hi')

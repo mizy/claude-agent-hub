@@ -111,6 +111,7 @@ function TaskInfoSection() {
 export function DetailsTab() {
   const taskData = useStore((s) => s.taskData)
   const selectedNodeId = useStore((s) => s.selectedNodeId)
+  const selectNode = useStore((s) => s.selectNode)
 
   if (!taskData) {
     return <div className="empty-state">No execution data</div>
@@ -129,7 +130,10 @@ export function DetailsTab() {
     return (
       <div className="details-tab">
         <div className="panel-section">
-          <div className="panel-section-title">Node: {node?.name || selectedNodeId}</div>
+          <div className="panel-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="action-btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => selectNode(null)}>&larr; Back</button>
+            Node: {node?.name || selectedNodeId}
+          </div>
           <div className="info-grid">
             <div className="info-item">
               <div className="label">Status</div>
@@ -147,8 +151,30 @@ export function DetailsTab() {
               <div className="label">Duration</div>
               <div className="value">{state.durationMs ? fmtDur(state.durationMs) : '-'}</div>
             </div>
+            {node?.task?.persona && (
+              <div className="info-item full">
+                <div className="label">Agent</div>
+                <div className="value">{node.task.persona}</div>
+              </div>
+            )}
           </div>
         </div>
+
+        {node?.description && node.description !== node.name && (
+          <div className="panel-section">
+            <div className="panel-section-title">Description</div>
+            <div className="output-box">{node.description}</div>
+          </div>
+        )}
+
+        {node?.task?.prompt && (
+          <div className="panel-section">
+            <div className="panel-section-title">Prompt</div>
+            <div className="output-box" style={{ maxHeight: 300 }}>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{node.task.prompt}</pre>
+            </div>
+          </div>
+        )}
 
         {state.error && (
           <div className="panel-section">

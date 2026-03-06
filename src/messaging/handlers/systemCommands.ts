@@ -53,6 +53,7 @@ export function handleHelp(): CommandResult {
       '',
       '💬 对话:',
       '/new - 开始新对话',
+      '/compact - 压缩 context（保存记忆后开新会话）',
       '/chat - 查看对话状态',
       '/model [opus|sonnet|haiku|auto] - 切换模型',
       '/help - 显示此帮助',

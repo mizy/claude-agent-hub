@@ -23,6 +23,7 @@ export interface StreamContentBlock {
   tool_use_id?: string // for tool_result blocks, references the tool_use ID
   source?: { type: string; media_type?: string; data?: string }
   content?: StreamContentBlock[] // tool_result blocks nest content inside
+  input?: Record<string, unknown> // tool_use input params (e.g. { file_path: "/tmp/foo.png" })
 }
 
 export interface StreamJsonEvent {
@@ -68,6 +69,20 @@ export function buildMcpConfigJson(serverNames: string[]): string {
 }
 
 // ============ MCP Image Extraction ============
+
+const IMAGE_EXT_RE = /\.(png|jpg|jpeg|gif|webp|bmp)$/i
+
+/**
+ * Returns true for image files in system temp dirs that are safe to forward to chat.
+ * Excludes user-uploaded images (e.g. lark-img-* in ~/.cah-data/tmp/) to avoid echoing them back.
+ */
+function isScreenshotPath(filePath: unknown): boolean {
+  if (typeof filePath !== 'string') return false
+  if (!IMAGE_EXT_RE.test(filePath)) return false
+  // Must be in a system temp dir
+  const tempDirs = ['/tmp/', '/var/tmp/', process.env['TMPDIR'] ?? '']
+  return tempDirs.some(dir => dir && filePath.startsWith(dir))
+}
 
 /** Save base64-encoded image data to a temp file and return the path */
 export function saveBase64Image(data: string, mediaType?: string): string {
@@ -142,8 +157,13 @@ export function createClaudeCompatStreamProcessor(options: {
         else fallbackWrite?.(event.event.delta.text)
       } else if (event.type === 'assistant' && event.message?.content) {
         for (const block of event.message.content) {
-          if (block.type === 'tool_use' && block.id && block.name?.startsWith('mcp__')) {
-            mcpToolUseIds.add(block.id)
+          if (block.type === 'tool_use' && block.id) {
+            if (block.name?.startsWith('mcp__')) {
+              mcpToolUseIds.add(block.id)
+            } else if (block.name === 'Read' && isScreenshotPath(block.input?.file_path)) {
+              // Read tool on a temp/screenshot image — treat as sendable image
+              mcpToolUseIds.add(block.id)
+            }
           }
         }
         if (!cb && fallbackWrite) {

@@ -10,6 +10,7 @@
 
 import { extractEpisode } from '../../memory/index.js'
 import type { EpisodeMessage, ExtractEpisodeParams } from '../../memory/index.js'
+import { getAllMemories } from '../../store/MemoryStore.js'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
@@ -63,6 +64,17 @@ async function isEpisodicEnabled(): Promise<boolean> {
   }
 }
 
+/** Find memory IDs created in the last hour for this chatId */
+function findRecentMemoryIds(chatId: string): string[] {
+  const oneHourAgo = Date.now() - 60 * 60 * 1000
+  return getAllMemories()
+    .filter(m =>
+      m.source.chatId === chatId &&
+      new Date(m.createdAt).getTime() > oneHourAgo
+    )
+    .map(m => m.id)
+}
+
 async function doExtract(chatId: string, tracker: ConversationTracker, trigger: string): Promise<void> {
   if (tracker.extracted || tracker.messages.length < 4) return
   tracker.extracted = true
@@ -70,10 +82,13 @@ async function doExtract(chatId: string, tracker: ConversationTracker, trigger: 
 
   logger.info(`Episode extraction triggered: ${trigger} [${chatId.slice(0, 8)}] (${tracker.turnCount} turns)`)
 
+  const relatedMemoryIds = findRecentMemoryIds(chatId)
+
   const params: ExtractEpisodeParams = {
     messages: [...tracker.messages],
     platform: tracker.platform as 'lark' | 'telegram' | 'cli',
     conversationId: chatId,
+    relatedMemoryIds,
   }
 
   try {

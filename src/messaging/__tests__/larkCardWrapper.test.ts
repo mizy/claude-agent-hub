@@ -221,19 +221,19 @@ describe('buildMarkdownCard', () => {
     const input = '**Title**\n\n- item1\n- item2\n\n```js\nconst x = 1\n```'
     const result = JSON.parse(buildMarkdownCard(input))
     expect(result.config.wide_screen_mode).toBe(true)
-    expect(result.elements).toHaveLength(1)
-    expect(result.elements[0].tag).toBe('markdown')
-    expect(result.elements[0].content).toContain('- item1')
-    expect(result.elements[0].content).toContain('- item2')
-    expect(result.elements[0].content).toContain('```js\nconst x = 1\n```')
+    expect(result.body.elements).toHaveLength(1)
+    expect(result.body.elements[0].tag).toBe('markdown')
+    expect(result.body.elements[0].content).toContain('- item1')
+    expect(result.body.elements[0].content).toContain('- item2')
+    expect(result.body.elements[0].content).toContain('```js\nconst x = 1\n```')
   })
 
   it('splits sections by horizontal rules', () => {
     const input = 'Section 1\n\n---\n\nSection 2'
     const result = JSON.parse(buildMarkdownCard(input))
-    expect(result.elements).toHaveLength(3)
-    expect(result.elements[0].tag).toBe('markdown')
-    expect(result.elements[1].tag).toBe('hr')
-    expect(result.elements[2].tag).toBe('markdown')
+    expect(result.body.elements).toHaveLength(3)
+    expect(result.body.elements[0].tag).toBe('markdown')
+    expect(result.body.elements[1].tag).toBe('hr')
+    expect(result.body.elements[2].tag).toBe('markdown')
   })
 })

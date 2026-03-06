@@ -125,6 +125,20 @@ export function markdownToPostContent(text: string): string {
 }
 
 /**
+ * Normalize markdown for JSON 2.0 card rendering.
+ * JSON 2.0 natively supports: tables, # headings, code blocks, lists, bold, italic, etc.
+ * Still need to convert: `inline code` → <text_tag>, > blockquote → grey font
+ */
+function normalizeLarkCardV2(text: string): string {
+  let result = text
+  // `inline code` → <text_tag> (skip triple backticks)
+  result = result.replace(/(?<!`)(`)((?!`)[^`]+)\1(?!`)/g, '<text_tag color=\'neutral\'>$2</text_tag>')
+  // > blockquote → grey colored text
+  result = result.replace(/^>\s?(.*)$/gm, '<font color=\'grey\'>$1</font>')
+  return result
+}
+
+/**
  * Split text by horizontal rules (---) and build card elements.
  * Each section becomes a markdown element, separated by hr elements.
  */
@@ -136,7 +150,7 @@ export function buildMarkdownCard(text: string): string {
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i]!.trim()
     if (section) {
-      elements.push({ tag: 'markdown', content: normalizeLarkMarkdown(section) })
+      elements.push({ tag: 'markdown', content: normalizeLarkCardV2(section) })
     }
     // Add hr between sections (not after the last one)
     if (i < sections.length - 1) {
@@ -150,7 +164,8 @@ export function buildMarkdownCard(text: string): string {
   }
 
   return JSON.stringify({
+    schema: '2.0',
     config: { wide_screen_mode: true },
-    elements,
+    body: { elements },
   })
 }

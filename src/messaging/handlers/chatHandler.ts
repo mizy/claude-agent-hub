@@ -7,7 +7,7 @@ import { invokeBackend } from '../../backend/index.js'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
-import { buildClientPrompt, wrapMemoryContext, wrapHistoryContext } from '../../prompts/chatPrompts.js'
+import { buildClientPrompt, wrapMemoryContext, wrapHistoryContext, type PromptMode } from '../../prompts/chatPrompts.js'
 import { logConversation, getRecentConversations, logConversationEvent } from '../../store/conversationLog.js'
 import {
   getSession,
@@ -21,7 +21,7 @@ import {
 } from './sessionManager.js'
 import { createStreamHandler, sendFinalResponse, type StreamHandlerOptions } from './streamingHandler.js'
 import { sendDetectedImages } from './imageExtractor.js'
-import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
+import { triggerChatMemoryExtraction, clearChatMemoryBuffers } from './chatMemoryExtractor.js'
 import { trackEpisodeTurn, destroyEpisodeTrackers, flushEpisode } from './episodeExtractor.js'
 import { destroyGroupBuffer } from '../larkEventRouter.js'
 import { retrieveAllMemoryContext, addMemory } from '../../memory/index.js'
@@ -136,6 +136,7 @@ export async function destroyChatHandler(): Promise<void> {
     controller.abort()
   }
   activeControllers.clear()
+  clearChatMemoryBuffers()
   await destroyGroupBuffer()
   destroyEpisodeTrackers()
   destroySessions()
@@ -165,9 +166,8 @@ async function sendErrorToUser(
 ): Promise<void> {
   const errorMsg = `❌ ${msg}`
   if (placeholderId) {
-    await messenger.editMessage(chatId, placeholderId, errorMsg).catch(e => {
-      logger.debug(`error edit failed: ${getErrorMessage(e)}`)
-    })
+    const ok = await messenger.editMessage(chatId, placeholderId, errorMsg)
+    if (!ok) await messenger.reply(chatId, errorMsg)
   } else {
     await messenger.reply(chatId, errorMsg)
   }
@@ -275,7 +275,8 @@ function resolveSessionState(
 
 // ── Internal: prompt assembly ──
 
-/** Build full prompt: client context + memory + history + user text + images + files */
+/** Build full prompt: client context + memory + history + user text + images + files
+ *  mode='minimal' skips persona, memory, and history — for subagent/task internal calls */
 async function buildFullPrompt(
   chatId: string,
   effectiveText: string,
@@ -284,13 +285,15 @@ async function buildFullPrompt(
   images: string[] | undefined,
   config: Awaited<ReturnType<typeof loadConfig>>,
   runtime?: { backend?: string; model?: string },
-  files?: string[]
+  files?: string[],
+  mode: PromptMode = 'full'
 ): Promise<string> {
-  const clientPrefix = client ? buildClientPrompt(client, runtime) + '\n\n' : ''
+  const clientPrefix = client ? buildClientPrompt(client, runtime, mode) + '\n\n' : ''
 
   // Inject recent history for new sessions (only in/out, deduplicated)
+  // Skip in minimal mode
   let historyRaw = ''
-  if (willStartNewSession) {
+  if (mode === 'full' && willStartNewSession) {
     const recent = getRecentConversations(chatId, 8)
       .filter(e => e.dir === 'in' || e.dir === 'out')
     if (recent.length > 0) {
@@ -308,9 +311,9 @@ async function buildFullPrompt(
     }
   }
 
-  // Retrieve relevant memories for new sessions
+  // Retrieve relevant memories for new sessions (skip in minimal mode)
   let memoryRaw = ''
-  if (effectiveText && willStartNewSession) {
+  if (mode === 'full' && effectiveText && willStartNewSession) {
     try {
       const context = await retrieveAllMemoryContext(effectiveText, {
         maxResults: config.memory.chatMemory.maxMemories,

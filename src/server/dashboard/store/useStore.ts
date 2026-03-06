@@ -18,6 +18,7 @@ export interface WorkflowNode {
   id: string
   name: string
   type: string
+  description?: string
   task?: { persona?: string; prompt?: string }
   // Raw data: loop nodes use `loop` field, but also mapped as `config` for legacy compat
   config?: { bodyNodes?: string[]; maxIterations?: number }
@@ -185,7 +186,7 @@ export const useStore = create<DashboardStore>((set, get) => ({
     if (window.innerWidth <= 768) get().closeMobilePanels()
   },
 
-  selectNode: id => set({ selectedNodeId: id }),
+  selectNode: id => set({ selectedNodeId: id, ...(id ? { activeTab: 'details' } : {}) }),
   setActiveTab: tab => set({ activeTab: tab }),
 
   refreshTasks: async () => {

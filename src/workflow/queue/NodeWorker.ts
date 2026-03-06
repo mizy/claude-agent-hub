@@ -189,7 +189,7 @@ async function processJob(jobId: string, data: NodeJobData): Promise<void> {
   // Check if max attempts exceeded
   if (currentAttempts >= maxAttempts) {
     // 包含最后一次失败的详细原因
-    const lastError = nodeState?.error || 'Unknown error'
+    const lastError = nodeState?.error || `Unknown error (status=${nodeState?.status}, attempts=${currentAttempts})`
     const errorMsg = `Node ${nodeId} exceeded max attempts (${maxAttempts}). Last error: ${lastError}`
     logger.error(errorMsg)
     markJobFailed(jobId, errorMsg)

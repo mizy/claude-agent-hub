@@ -44,7 +44,7 @@ function createMockMessenger(): MessengerAdapter {
   return {
     reply: vi.fn(async () => {}),
     sendAndGetId: vi.fn(async () => 'placeholder-msg-id'),
-    editMessage: vi.fn(async () => {}),
+    editMessage: vi.fn(async () => true),
     replyImage: vi.fn(async () => {}),
   }
 }

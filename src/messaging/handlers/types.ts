@@ -19,8 +19,8 @@ export interface MessengerAdapter {
   /** 发送消息并返回消息 ID（用于后续编辑） */
   sendAndGetId(chatId: string, text: string, options?: SendOptions): Promise<string | null>
 
-  /** 编辑已发送的消息 */
-  editMessage(chatId: string, messageId: string, text: string, options?: SendOptions): Promise<void>
+  /** 编辑已发送的消息，返回是否成功 */
+  editMessage(chatId: string, messageId: string, text: string, options?: SendOptions): Promise<boolean>
 
   /** Optional: send a rich card message (Lark only) */
   replyCard?(chatId: string, card: LarkCard): Promise<void>
@@ -39,6 +39,12 @@ export interface MessengerAdapter {
 
   /** Optional: send an image by path (Lark only) */
   sendImage?(chatId: string, imagePath: string): Promise<void>
+
+  /** Optional: delete a message by ID */
+  deleteMessage?(chatId: string, messageId: string): Promise<boolean>
+
+  /** Optional: send a raw card JSON string (Lark JSON 2.0) */
+  sendCard?(chatId: string, cardJson: string, options?: SendOptions): Promise<string | null>
 }
 
 export interface MentionTarget {

@@ -21,6 +21,7 @@ export function createCliAdapter(): MessengerAdapter {
 
     async editMessage(_chatId, _messageId, _text) {
       // CLI streaming: ignore intermediate edits, final response via reply()
+      return true
     },
   }
 }

@@ -10,6 +10,7 @@ import { getErrorMessage } from '../../shared/assertError.js'
 import { parseApprovalCommand, handleApproval } from './approvalHandler.js'
 import { handleCommand } from './commandHandler.js'
 import { handleChat, clearChatSession, getChatSessionInfo, toggleBenchmark } from './chatHandler.js'
+import { flushChatMemory } from './chatMemoryExtractor.js'
 import { setModelOverride, getModelOverride, setBackendOverride, getBackendOverride } from './sessionManager.js'
 import { triggerEpisodeOnTaskCreation } from './episodeExtractor.js'
 import { APPROVAL_COMMANDS, TASK_COMMANDS } from './constants.js'
@@ -91,6 +92,21 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
     if (parsed.cmd === '/new') {
       const cleared = clearChatSession(chatId)
       await messenger.reply(chatId, cleared ? '✅ 已开始新对话' : '当前没有活跃会话')
+      return
+    }
+    if (parsed.cmd === '/compact') {
+      const info = getChatSessionInfo(chatId)
+      const tokensBefore = info?.estimatedTokens ?? 0
+      flushChatMemory(chatId)
+      const cleared = clearChatSession(chatId)
+      if (cleared) {
+        await messenger.reply(
+          chatId,
+          `✅ Context 已压缩\n释放 ~${tokensBefore.toLocaleString()} tokens，对话记忆已保存到记忆系统，开始新会话`
+        )
+      } else {
+        await messenger.reply(chatId, '当前没有活跃会话')
+      }
       return
     }
     if (parsed.cmd === '/chat') {

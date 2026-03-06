@@ -6,31 +6,29 @@
 
 ```bash
 # 任务（必须在目标项目目录下运行，cwd 用于同项目冲突检测和自动串行）
-cah "任务描述"           # 创建并执行（-p priority, -a agent, -b backend, -m model, -S schedule, -F 前台, --no-run 仅创建）
+cah "任务描述"           # 创建并执行（-p priority, -a agent, -b backend, -m model, -S schedule, -F 前台, --no-run 仅创建, -v verbose, -d data-dir）
 cah list                 # 任务列表（-s status, -w watch, --no-progress）
 cah logs <id>            # 任务日志（-f follow, -n tail）
 cah run                  # 手动执行队列中下一个 pending 任务
-cah task delete|stop|clear|complete|reject|resume|pause|snapshot|msg|inject-node|trace  # 详见 cah task --help
+cah chat <message>       # 与 AI 对话（一次性）
+cah task add|list|show|stats|logs|delete|stop|clear|complete|reject|resume|pause|snapshot|msg|inject-node|trace  # 详见 cah task --help
 
 # 守护进程
 cah start [-D]           # 启动（-D 后台），cah stop, cah restart, cah status
 
 # 其他子命令（详见 cah <cmd> --help）
-cah run                  # 手动执行队列中下一个 pending 任务
-cah list                 # 任务列表（-s status, -w watch, --no-progress）
-cah logs <id>            # 任务日志（-f follow, -n tail）
 cah report work|trend|live    # 报告
 cah memory list|add|search|delete|health|fading|reinforce|associations|episodes|recall|link|cleanup  # 记忆
 cah self check [--fix|--auto-fix]|status  # 自检查
-cah self evolve (子组)    # 自进化
+cah self evolve analyze|validate|history  # 自进化
 cah self drive start|stop|disable|enable|status|goals  # 自驱管理
 cah schedule create|list|stop  # 定时任务
 cah backend list|current      # 后端
-cah prompt (子组)       # Prompt 管理
-cah agent (子组)         # Agent 管理
+cah prompt versions|rollback|diff|compare|test|evaluate|extract  # Prompt 管理
+cah agent list|show           # Agent 管理
 cah init                 # 初始化
 cah trace                # 链路追踪
-cah dashboard                 # 可视化面板
+cah dashboard            # 可视化面板
 ```
 
 ## 分层架构
@@ -38,7 +36,7 @@ cah dashboard                 # 可视化面板
 ```
 CLI (cli/) → Server/Report/Messaging  表现层
 Task (task/) → Scheduler/Workflow/Analysis/Output/SelfEvolve/SelfDrive  业务层
-Backend (backend/)  集成层（claude-code/opencode/iflow/codebuddy/openai-compatible）
+Backend (backend/)  集成层（claude-code/opencode/iflow/codebuddy/cursor）
 Memory/Persona/Prompts/PromptOptimization/Config  领域层
 Store (store/)  持久层（GenericFileStore）
 Shared (shared/) / Types (types/)  基础设施
@@ -48,8 +46,8 @@ Shared (shared/) / Types (types/)  基础设施
 
 ```
 cah "描述" → createTask(cwd, pending)
-  → prepareNewExecution(planning) → generateWorkflow(analyzeProject + learnHistory + retrieveMemory) → invokeBackend
-  → startWorkflow(developing) → NodeWorker 并发执行节点 → invokeBackend
+  → prepareNewExecution(planning) → [generateTaskTitle] → generateWorkflow(analyzeProject + learnHistory + retrieveMemory) → invokeBackend
+  → startWorkflow → updateTask(developing) → NodeWorker 并发执行节点 → invokeBackend
   → saveWorkflowOutput → emitWorkflowCompleted → updateTask(completed/failed)
 ```
 
@@ -61,25 +59,39 @@ cah "描述" → createTask(cwd, pending)
 
 ```
 .cah-data/
-├── tasks/task-{id}/     # task.json, workflow.json, instance.json, process.json, stats.json, timeline.json, messages.json
+├── tasks/{uuid}/        # task.json, workflow.json, instance.json, process.json, stats.json, timeline.json, messages.json
 │   ├── logs/            # execution.log, conversation.log, events.jsonl, conversation.jsonl
 │   ├── outputs/         # result.md
 │   └── traces/          # trace-{traceId}.jsonl (OTLP Span)
 ├── memory/ episodes/    # 语义/情景记忆
 ├── logs/prompts/        # 每次 backend 调用的完整 prompt
+├── prompt-versions/     # Prompt 版本管理
+├── sessions.json        # 会话管理
+├── chat-buffers.json    # IM 聊天缓冲
+├── chat-sessions/       # 聊天会话数据
+├── selfdrive/           # 自驱动数据
+├── evolution/           # 自进化数据
+├── failure-kb/          # 失败知识库
+├── success-patterns/    # 成功模式
 ├── conversation.jsonl   # 全局 IM 对话日志（in/out/event/cmd）
 ├── queue.json           # 任务队列
-└── daemon.pid           # daemon PID
+├── runner.lock          # 队列运行锁
+├── daemon.pid           # daemon PID
+└── tmp/                 # 临时文件
 ```
 
 ## 开发
 
 ```bash
 pnpm run build          # 构建（tsup + dashboard）
+pnpm run build:types    # 仅生成类型声明
 pnpm run typecheck      # 类型检查（tsc --noEmit）
-pnpm test               # 测试（vitest）
+pnpm test               # 测试（vitest run）
+pnpm run test:watch     # 测试 watch 模式
 pnpm run lint:fix       # Lint 自动修复
 pnpm run dev            # 开发模式（tsx watch）
+pnpm run build:binary   # SEA 单文件构建
+pnpm run clean          # 清理 dist
 ```
 
 ## 架构模式

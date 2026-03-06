@@ -4,6 +4,7 @@
  * 能力分组：
  * - 调用: invokeBackend()（自动限流、prompt 组装、Span 追踪）
  * - 检测: checkBackendAvailable()
+ * - 轻量模型: resolveLightModel()（为简单任务选择轻量模型）
  * - 注册: resolveBackend/resolveBackendForTask/registerBackend/clearBackendCache/getRegisteredBackends
  * - 配置: resolveBackendConfig()（独立于 resolveBackend 的配置解析，避免循环依赖）
  * - Prompt: buildPrompt()（persona system prompt + mode 指令 + 用户 prompt 组装）
@@ -13,6 +14,7 @@
  * - opencode: OpenCode CLI (75+ 模型，含免费 Zen 模型)
  * - iflow: iflow-cli (Qwen3-Coder, DeepSeek 等免费模型)
  * - codebuddy: Codebuddy CLI
+ * - cursor: Cursor IDE 后端
  */
 
 export type {

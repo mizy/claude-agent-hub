@@ -5,6 +5,7 @@
 
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
+import { buildMarkdownCard } from '../larkCardWrapper.js'
 import type { MessengerAdapter } from './types.js'
 
 const logger = createLogger('streaming-handler')
@@ -41,11 +42,13 @@ export function createStreamHandler(
   let editChain: Promise<void> = Promise.resolve()
 
   function scheduleEdit(text: string, placeholderId: string): void {
-    editChain = editChain.then(() =>
-      messenger.editMessage(chatId, placeholderId, text).catch(e => {
-        logger.debug(`stream edit failed: ${getErrorMessage(e)}`)
+    editChain = editChain
+      .then(async () => {
+        await messenger.editMessage(chatId, placeholderId, text)
       })
-    )
+      .catch((err) => {
+        logger.debug(`streaming edit failed: ${getErrorMessage(err)}`)
+      })
   }
 
   const onChunk = (chunk: string) => {
@@ -115,8 +118,16 @@ export function splitMessage(text: string, maxLength: number = DEFAULT_MAX_LENGT
   return parts
 }
 
+/** Detect if text contains markdown tables (pipe rows with separator line), ignoring fenced code blocks */
+function hasMarkdownTable(text: string): boolean {
+  const stripped = text.replace(/```[\s\S]*?```/g, '')
+  return /^\|.+\|$/m.test(stripped) && /^\|[\s\-:|]+\|$/m.test(stripped)
+}
+
 /**
  * Send final response: replace placeholder with first part, send rest as new messages.
+ * If the response contains markdown tables and the adapter supports cards,
+ * delete the streaming placeholder and send a JSON 2.0 card instead.
  */
 export async function sendFinalResponse(
   chatId: string,
@@ -125,20 +136,49 @@ export async function sendFinalResponse(
   placeholderId: string | null,
   messenger: MessengerAdapter
 ): Promise<void> {
-  const parts = splitMessage(response, maxLen)
-  if (placeholderId && parts.length > 0) {
+  // Table → card upgrade: delete streaming post, send JSON 2.0 card
+  if (
+    hasMarkdownTable(response) &&
+    placeholderId &&
+    messenger.deleteMessage &&
+    messenger.sendCard
+  ) {
     try {
-      await messenger.editMessage(chatId, placeholderId, parts[0]!)
-    } catch (e) {
-      // Placeholder edit failed — fall back to sending as new message
-      logger.debug(`final edit failed, falling back to reply: ${getErrorMessage(e)}`)
-      await messenger.reply(chatId, parts[0]!)
+      const deleted = await messenger.deleteMessage(chatId, placeholderId)
+      if (deleted) {
+        const cardJson = buildMarkdownCard(response)
+        const cardMsgId = await messenger.sendCard(chatId, cardJson)
+        if (cardMsgId) return // success, skip normal flow
+        // Deleted but card failed — must send as new messages
+        placeholderId = null
+      }
+      // !deleted: placeholder still exists, keep placeholderId for normal edit path
+    } catch (err) {
+      logger.warn(`table card upgrade failed, fallback to post: ${getErrorMessage(err)}`)
+      // Exception after state unknown — null out to avoid editing a possibly-deleted message
+      placeholderId = null
     }
-    for (const part of parts.slice(1)) {
+  }
+
+  const parts = splitMessage(response, maxLen)
+
+  // Add continuation marker to non-last parts so the reader knows more follows
+  const markedParts = parts.map((part, i) =>
+    i < parts.length - 1 ? part + '\n\n*…（接下条）*' : part
+  )
+
+  if (placeholderId && markedParts.length > 0) {
+    const editOk = await messenger.editMessage(chatId, placeholderId, markedParts[0]!)
+    if (!editOk) {
+      // Placeholder edit failed — fall back to sending as new message
+      logger.debug('final edit failed, falling back to reply')
+      await messenger.reply(chatId, markedParts[0]!)
+    }
+    for (const part of markedParts.slice(1)) {
       await messenger.reply(chatId, part)
     }
   } else {
-    for (const part of parts) {
+    for (const part of markedParts) {
       await messenger.reply(chatId, part)
     }
   }

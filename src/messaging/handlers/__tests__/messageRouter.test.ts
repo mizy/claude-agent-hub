@@ -27,7 +27,7 @@ function createMockMessenger(): MessengerAdapter {
   return {
     reply: vi.fn(async () => {}),
     sendAndGetId: vi.fn(async () => 'msg-123'),
-    editMessage: vi.fn(async () => {}),
+    editMessage: vi.fn(async () => true),
     replyCard: vi.fn(async () => {}),
     editCard: vi.fn(async () => {}),
     replyImage: vi.fn(async () => {}),

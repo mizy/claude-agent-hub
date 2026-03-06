@@ -44,9 +44,12 @@ cah "任务描述" -p high
 # 指定执行 Agent
 cah "任务描述" -a <agent>
 
-# 指定后端 (claude-code/opencode/iflow/codebuddy/openai-compatible)
-cah "任务描述" -b openai-compatible -m gpt-4o
+# 指定后端 (claude-code/opencode/iflow/codebuddy/cursor)
+cah "任务描述" -b cursor -m gpt-4o
 cah "任务描述" --backend claude-code --model sonnet
+
+# 定时执行 (cron 表达式)
+cah "任务描述" -S "0 9 * * *"
 
 # 显示详细日志
 cah "任务描述" -v
@@ -70,6 +73,9 @@ cah list -w                     # 持续更新模式
 cah list -i 3000                # 更新间隔（毫秒）
 cah list --no-progress          # 隐藏进度显示
 cah list -a <agent>             # 按 Agent 筛选
+cah list --source <source>      # 按来源筛选（如 selfdrive）
+cah list --project              # 只显示当前目录的任务
+cah list --cwd <path>           # 按项目目录筛选
 
 # 添加任务（不自动执行）
 cah task add -t "任务标题"
@@ -198,11 +204,50 @@ cah run
 # 项目初始化
 cah init
 cah init -f                      # 强制覆盖已有配置
+```
 
-# 系统自检
-cah selfcheck
-cah selfcheck --fix              # 自动修复
-cah selfcheck --auto-fix         # 自动修复并验证
+### 系统自管理
+
+```bash
+# 系统自检与健康检查
+cah self check
+cah self check --fix               # 自动修复检测到的问题
+cah self check --auto-fix          # 自动修复并验证
+
+# 查看综合状态
+cah self status
+
+# 自我进化
+cah self evolve analyze          # 分析失败任务模式
+cah self evolve validate <id>    # 验证进化效果
+cah self evolve history          # 查看进化历史
+
+# 自驱模式
+cah self drive start|stop|disable|enable|status
+cah self drive goals             # 自驱目标管理
+```
+
+### 定时任务管理
+
+```bash
+# 创建定时任务
+cah schedule create "0 9 * * *" "任务描述"
+cah schedule add "0 9 * * *" "任务描述" -a coder -b claude-code -m sonnet
+
+# 列出定时任务
+cah schedule list
+cah schedule ls
+
+# 停止定时任务
+cah schedule stop <task-id>
+```
+
+### 对话命令
+
+```bash
+# 一次性对话
+cah chat "你好"
+cah chat "你好" -m opus -b claude-code
 ```
 
 ### Agent 管理
@@ -219,7 +264,7 @@ cah agent show <name>
 
 ```bash
 # 列出所有可用后端
-# 支持: claude-code / opencode / iflow / codebuddy / openai-compatible
+# 支持: claude-code / opencode / iflow / codebuddy / cursor
 cah backend list
 
 # 查看当前使用的后端和模型
@@ -336,7 +381,7 @@ cah "修复登录页面在移动端显示错乱的问题"
 cah "为 src/services/auth.ts 编写单元测试"
 
 # 指定后端和模型
-cah "生成 API 文档" -b openai-compatible -m gpt-4o
+cah "生成 API 文档" -b cursor -m gpt-4o
 ```
 
 ### 2. 任务交互与审核
@@ -386,7 +431,7 @@ cah task trace task-xxx --cost     # 成本归因
 cah report live
 
 # 系统自检
-cah selfcheck
+cah self check
 ```
 
 ## 任务数据结构
@@ -400,7 +445,7 @@ cah selfcheck
 
 ```
 .cah-data/
-├── tasks/task-{id}/
+├── tasks/{uuid}/
 │   ├── task.json          # 任务元数据（id, title, status, priority）
 │   ├── workflow.json      # 工作流定义（节点、边、变量）
 │   ├── instance.json      # 唯一执行状态源（节点状态、输出、变量）
@@ -412,9 +457,20 @@ cah selfcheck
 │   ├── outputs/           # result.md
 │   └── traces/            # trace-{traceId}.jsonl（OTLP 兼容 Span 数据）
 ├── memory/                # 记忆条目
+├── episodes/              # 情景记忆
 ├── prompt-versions/       # 提示词版本历史
+├── sessions.json          # 会话管理
+├── chat-buffers.json      # IM 聊天缓冲
+├── chat-sessions/         # 聊天会话数据
+├── selfdrive/             # 自驱动数据
+├── evolution/             # 自进化数据
+├── failure-kb/            # 失败知识库
+├── success-patterns/      # 成功模式
+├── conversation.jsonl     # 全局 IM 对话日志
 ├── queue.json             # 任务队列
-└── runner.lock            # 队列 Runner 锁
+├── runner.lock            # 队列 Runner 锁
+├── daemon.pid             # Daemon 进程 PID
+└── tmp/                   # 临时文件
 ```
 
 ## Workflow 执行流程

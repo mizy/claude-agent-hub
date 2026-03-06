@@ -377,7 +377,24 @@ export async function handleNodeResult(
     return []
   }
 
-  return nextNodes
+  // Filter: only enqueue downstream nodes whose ALL non-loop-back dependencies are satisfied
+  // AND whose status is still pending/ready (not already completed from a prior cycle).
+  // This ensures parallel fan-in (join) nodes are only triggered by the LAST upstream
+  // to complete, preventing duplicate runs and stale-data notifications.
+  const readyNextNodes = nextNodes.filter(id => {
+    const nodeState = updatedInstance.nodeStates[id]
+    if (nodeState && nodeState.status !== 'pending' && nodeState.status !== 'ready') {
+      logger.debug(`Skipping enqueue of "${id}": already in status "${nodeState.status}"`)
+      return false
+    }
+    if (!canExecuteNode(id, workflow, updatedInstance)) {
+      logger.debug(`Skipping enqueue of "${id}": dependencies not yet satisfied`)
+      return false
+    }
+    return true
+  })
+
+  return readyNextNodes
 }
 
 /**

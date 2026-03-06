@@ -75,11 +75,16 @@ function createAdapter(): MessengerAdapter {
     },
     async editMessage(chatId, messageId, text) {
       // "message is not modified" is normal Telegram behavior (stream update unchanged), silently ignore
-      await callApi('editMessageText', {
-        chat_id: chatId,
-        message_id: Number(messageId),
-        text,
-      })
+      try {
+        await callApi('editMessageText', {
+          chat_id: chatId,
+          message_id: Number(messageId),
+          text,
+        })
+        return true
+      } catch {
+        return false
+      }
     },
   }
 }

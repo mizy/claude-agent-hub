@@ -259,6 +259,16 @@ export async function executeTask(
     throw error
   } finally {
     // Always clean up resources regardless of success or failure
+
+    // Close any agent-browser session left open by the task
+    try {
+      const { execFile } = await import('node:child_process')
+      const { promisify } = await import('node:util')
+      await promisify(execFile)('agent-browser', ['close'], { timeout: 5000 })
+    } catch {
+      // Best-effort: ignore if agent-browser not running or not installed
+    }
+
     if (isWorkerRunning()) {
       try {
         await closeWorker()

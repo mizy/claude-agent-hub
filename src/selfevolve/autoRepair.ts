@@ -31,7 +31,27 @@ function isRunningAsDaemon(): boolean {
 
 async function repairStaleDaemon(): Promise<string | null> {
   if (isRunningAsDaemon()) {
-    return 'Stale code detected but running inside daemon — use `cah restart` manually'
+    // Daemon detected it's running stale code — spawn a fresh daemon and schedule self-exit
+    logger.info('Stale code detected inside daemon, spawning fresh daemon and exiting...')
+    const binPath = resolveBinPath()
+    const child = spawn(process.execPath, [binPath, 'start', '-D'], {
+      detached: true,
+      stdio: 'ignore',
+      env: (() => {
+        const env = { ...process.env }
+        delete env.CLAUDECODE
+        delete env.CLAUDE_CODE_ENTRYPOINT
+        return env
+      })(),
+    })
+    child.unref()
+    // Give the new daemon a moment to start, then exit this stale process.
+    // Use setTimeout so current signal detection cycle can finish logging.
+    setTimeout(() => {
+      logger.info('Stale daemon exiting to hand off to fresh process')
+      process.exit(0)
+    }, 3000)
+    return 'Stale daemon auto-restarting: spawned fresh process, will exit shortly'
   }
 
   const { stopDaemon } = await import('../scheduler/stopDaemon.js')

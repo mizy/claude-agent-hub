@@ -11,6 +11,8 @@
 
 import chalk from 'chalk'
 import { spawn } from 'child_process'
+import { existsSync, statSync } from 'fs'
+import { join } from 'path'
 import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import {
@@ -119,6 +121,22 @@ function getEntryArgs(): string[] {
   return [script]
 }
 
+/** Warn if dist/ build is older than package.json (likely needs rebuild) */
+function warnIfStaleBuild(): void {
+  try {
+    const distEntry = join(process.cwd(), 'dist', 'cli', 'index.js')
+    const pkgJson = join(process.cwd(), 'package.json')
+    if (!existsSync(distEntry) || !existsSync(pkgJson)) return
+    const buildTime = statSync(distEntry).mtime
+    const pkgTime = statSync(pkgJson).mtime
+    if (pkgTime > buildTime) {
+      console.log(chalk.yellow('⚠ package.json 比 dist/ 更新，可能需要先 pnpm run build'))
+    }
+  } catch {
+    // Best-effort check, ignore errors
+  }
+}
+
 /** 实际运行守护进程（前台阻塞） */
 async function runDaemon(): Promise<void> {
   // Remove CLAUDECODE env var early — daemon may be started from a Claude Code session,
@@ -139,6 +157,9 @@ async function runDaemon(): Promise<void> {
     console.error(chalk.gray(`  或使用 'kill ${lock.pid}' 强制停止`))
     process.exit(1)
   }
+
+  // Warn if dist/ is older than src/ — likely forgot to rebuild
+  warnIfStaleBuild()
 
   // Register task event → notification bridge
   registerTaskEventListeners()

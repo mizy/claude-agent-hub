@@ -169,8 +169,14 @@ export function triggerChatMemoryExtraction(
   buffer.messages.push({ role: 'assistant', text: aiResponse })
   buffer.turnCount++
 
-  // Trim old messages if buffer grows too large
+  // Extract before trimming so early messages are not lost
   if (buffer.messages.length > MAX_MESSAGES_PER_CHAT * 2) {
+    const earlyMessages = buffer.messages.slice(0, buffer.messages.length - MAX_MESSAGES_PER_CHAT * 2)
+    if (earlyMessages.length >= 2) {
+      extractChatMemory(earlyMessages, { chatId, platform }).catch(err => {
+        logger.debug(`Pre-trim extraction failed: ${getErrorMessage(err)}`)
+      })
+    }
     buffer.messages = buffer.messages.slice(-MAX_MESSAGES_PER_CHAT * 2)
   }
 

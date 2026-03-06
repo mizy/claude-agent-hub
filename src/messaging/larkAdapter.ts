@@ -76,7 +76,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
       }
     },
     async editMessage(chatId, messageId, text) {
-      if (!messageId) return
+      if (!messageId) return false
       try {
         await withLarkRetry(
           () =>
@@ -89,10 +89,10 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
             }),
           'editMessage'
         )
+        return true
       } catch (error) {
-        // Never fall back to reply() here: streaming edits fail silently,
-        // sendFinalResponse will send the complete response when done.
         logger.debug(`→ edit failed (${messageId}): ${getErrorMessage(error)}`)
+        return false
       }
     },
     async replyCard(chatId: string, card: LarkCard) {
@@ -169,6 +169,39 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
         await sendLarkFile(larkClient, chatId, fileKey, fileName)
       } catch (error) {
         logger.error(`→ sendFile failed: ${getErrorMessage(error)}`)
+      }
+    },
+    async deleteMessage(_chatId: string, messageId: string) {
+      try {
+        await withLarkRetry(
+          () => larkClient.im.v1.message.delete({ path: { message_id: messageId } }),
+          'deleteMessage'
+        )
+        return true
+      } catch (error) {
+        logger.warn(`→ deleteMessage failed (${messageId}): ${getErrorMessage(error)}`)
+        return false
+      }
+    },
+    async sendCard(chatId: string, cardJson: string, options?: SendOptions) {
+      try {
+        const res = await withLarkRetry(
+          () =>
+            options?.replyToMessageId
+              ? larkClient.im.v1.message.reply({
+                  path: { message_id: options.replyToMessageId! },
+                  data: { content: cardJson, msg_type: 'interactive' },
+                })
+              : larkClient.im.v1.message.create({
+                  params: { receive_id_type: 'chat_id' },
+                  data: { receive_id: chatId, content: cardJson, msg_type: 'interactive' },
+                }),
+          'sendCard'
+        )
+        return (res as LarkSdkResponse)?.data?.message_id ?? null
+      } catch (error) {
+        logger.error(`→ sendCard failed: ${getErrorMessage(error)}`)
+        return null
       }
     },
     async sendImage(chatId: string, imagePath: string) {

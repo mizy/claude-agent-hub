@@ -42,6 +42,7 @@ export function createWebAdapter(res: Response): WebAdapter {
       async editMessage(_chatId, _messageId, text) {
         lastResponse = text
         safeSend({ content: text, replace: true })
+        return true
       },
     },
     getLastResponse: () => lastResponse,

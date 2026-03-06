@@ -45,7 +45,7 @@ import type { MessengerAdapter, ClientContext } from '../types.js'
 function createMockMessenger(): MessengerAdapter & { replyCard?: ReturnType<typeof vi.fn> } {
   return {
     reply: vi.fn().mockResolvedValue(undefined),
-    editMessage: vi.fn().mockResolvedValue(undefined),
+    editMessage: vi.fn().mockResolvedValue(true),
     sendAndGetId: vi.fn().mockResolvedValue('msg-1'),
   }
 }

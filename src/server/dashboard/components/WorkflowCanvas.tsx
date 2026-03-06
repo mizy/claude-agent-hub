@@ -70,6 +70,27 @@ export function WorkflowCanvas() {
     editor.graph.on('node:mouseenter', showTip)
     editor.graph.on('node:mouseleave', hideTip)
 
+    // Edge label tooltip: show full condition on line hover
+    const showLineTip = ({ line, event }: { line: { data: Record<string, unknown> }; event: MouseEvent }) => {
+      const tip = tipRef.current
+      const wrap = containerRef.current
+      if (!tip || !wrap) return
+      const d = line.data
+      const condition = d.condition as string | undefined
+      if (!condition) return
+      tip.innerHTML = `<div style="font-size:11px;color:#94a3b8;margin-bottom:2px">Condition</div>` +
+        `<div style="font-family:monospace;font-size:11px;word-break:break-all">${esc(condition)}</div>`
+      tip.style.display = 'block'
+      const cr = wrap.getBoundingClientRect()
+      let tx = event.clientX - cr.left + 12, ty = event.clientY - cr.top + 12
+      if (tx + 220 > cr.width) tx = event.clientX - cr.left - 220
+      if (ty + 80 > cr.height) ty = event.clientY - cr.top - 80
+      tip.style.left = tx + 'px'
+      tip.style.top = ty + 'px'
+    }
+    editor.graph.on('line:mouseenter', showLineTip)
+    editor.graph.on('line:mouseleave', hideTip)
+
     return () => {
       editor.destroy()
       editorRef.current = null
