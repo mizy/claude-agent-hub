@@ -131,7 +131,7 @@ function makeFileEvent(overrides: {
 
 // ── Top-level import (module cached by vitest, mocks already hoisted) ──
 
-const { downloadLarkFile, processMessageEvent } = await import('../larkEventRouter.js')
+const { downloadLarkFile, processMessageEvent, destroyGroupBuffer } = await import('../larkEventRouter.js')
 
 // ── Tests ──
 
@@ -260,6 +260,7 @@ describe('processMessageEvent — file branch', () => {
   })
 
   it('processes group file message when @mention is present', async () => {
+    vi.useFakeTimers()
     const larkClient = makeLarkClient()
     const adapter = createMockAdapter()
     const { data } = makeFileEvent({
@@ -270,7 +271,11 @@ describe('processMessageEvent — file branch', () => {
     await processMessageEvent(data, larkClient as never, adapter, 'TestBot', vi.fn())
 
     expect(larkClient.im.v1.messageResource.get).toHaveBeenCalled()
+    // Flush the group buffer timer
+    await vi.runAllTimersAsync()
+
     expect(mockRouteMessage).toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })
 
@@ -422,6 +427,155 @@ describe('processMessageEvent — audio message', () => {
 
     expect(larkClient.im.v1.messageResource.get).not.toHaveBeenCalled()
     expect(larkClient.im.v1.message.get).not.toHaveBeenCalled()
+  })
+})
+
+// ── Group buffer aggregation tests ──
+
+function makeGroupTextEvent(
+  text: string,
+  chatId = 'oc_group001',
+  senderOpenId = 'ou_sender001',
+  messageId?: string
+): import('../larkEventRouter.js').LarkMessageEvent {
+  return {
+    sender: { sender_id: { open_id: senderOpenId } },
+    message: {
+      message_id: messageId ?? `om_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      message_type: 'text',
+      content: JSON.stringify({ text }),
+      chat_id: chatId,
+      chat_type: 'group',
+      create_time: String(Date.now()),
+      mentions: [{ key: 'bot', id: { open_id: 'ou_bot' }, name: 'TestBot' }],
+    },
+  }
+}
+
+describe('group buffer aggregation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockStatSync.mockReturnValue({ size: 1024 })
+  })
+
+  it('single message passes through without formatting', async () => {
+    vi.useFakeTimers()
+    const larkClient = makeLarkClient()
+    const adapter = createMockAdapter()
+
+    await processMessageEvent(
+      makeGroupTextEvent('hello'),
+      larkClient as never, adapter, 'TestBot', vi.fn()
+    )
+
+    // Not flushed yet
+    expect(mockRouteMessage).not.toHaveBeenCalled()
+
+    // Flush timer
+    await vi.runAllTimersAsync()
+
+    // Single message: text passed as-is, no context header
+    expect(mockRouteMessage).toHaveBeenCalledTimes(1)
+    const call = mockRouteMessage.mock.calls[0]![0]!
+    expect(call.text).toBe('hello')
+    expect(call.text).not.toContain('群聊上下文')
+
+    vi.useRealTimers()
+  })
+
+  it('multiple messages aggregate with context format', async () => {
+    vi.useFakeTimers()
+    const larkClient = makeLarkClient()
+    const adapter = createMockAdapter()
+
+    // Send 2 messages from different senders
+    await processMessageEvent(
+      makeGroupTextEvent('第一条', 'oc_group001', 'ou_aaa1'),
+      larkClient as never, adapter, 'TestBot', vi.fn()
+    )
+    await processMessageEvent(
+      makeGroupTextEvent('第二条', 'oc_group001', 'ou_bbb2'),
+      larkClient as never, adapter, 'TestBot', vi.fn()
+    )
+
+    await vi.runAllTimersAsync()
+
+    expect(mockRouteMessage).toHaveBeenCalledTimes(1)
+    const text = (mockRouteMessage.mock.calls[0]![0]! as { text: string }).text
+    expect(text).toContain('群聊上下文')
+    expect(text).toContain('最近2条@消息')
+    expect(text).toContain('第一条')
+    expect(text).toContain('最新消息')
+    expect(text).toContain('第二条')
+
+    vi.useRealTimers()
+  })
+
+  it('flushes immediately when maxMessages (5) reached', async () => {
+    vi.useFakeTimers()
+    const larkClient = makeLarkClient()
+    const adapter = createMockAdapter()
+
+    // Send 5 messages to hit the limit
+    for (let i = 0; i < 5; i++) {
+      await processMessageEvent(
+        makeGroupTextEvent(`msg${i}`, 'oc_group001', `ou_sender${i}`),
+        larkClient as never, adapter, 'TestBot', vi.fn()
+      )
+    }
+
+    // Should flush immediately without needing timer advance
+    // But flushGroupBuffer is async, so we need to let microtasks run
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(mockRouteMessage).toHaveBeenCalledTimes(1)
+    const text = (mockRouteMessage.mock.calls[0]![0]! as { text: string }).text
+    expect(text).toContain('最近5条@消息')
+
+    vi.useRealTimers()
+  })
+
+  it('destroyGroupBuffer flushes pending messages', async () => {
+    vi.useFakeTimers()
+    const larkClient = makeLarkClient()
+    const adapter = createMockAdapter()
+
+    await processMessageEvent(
+      makeGroupTextEvent('pending msg', 'oc_group001'),
+      larkClient as never, adapter, 'TestBot', vi.fn()
+    )
+
+    expect(mockRouteMessage).not.toHaveBeenCalled()
+
+    // Destroy should flush without waiting for timer
+    await destroyGroupBuffer()
+
+    expect(mockRouteMessage).toHaveBeenCalledTimes(1)
+    expect((mockRouteMessage.mock.calls[0]![0]! as { text: string }).text).toBe('pending msg')
+
+    vi.useRealTimers()
+  })
+
+  it('different chat IDs get independent buffers', async () => {
+    vi.useFakeTimers()
+    const larkClient = makeLarkClient()
+    const adapter = createMockAdapter()
+
+    await processMessageEvent(
+      makeGroupTextEvent('chat1 msg', 'oc_chat_a'),
+      larkClient as never, adapter, 'TestBot', vi.fn()
+    )
+    await processMessageEvent(
+      makeGroupTextEvent('chat2 msg', 'oc_chat_b'),
+      larkClient as never, adapter, 'TestBot', vi.fn()
+    )
+
+    await vi.runAllTimersAsync()
+
+    // Each chat flushed independently
+    expect(mockRouteMessage).toHaveBeenCalledTimes(2)
+
+    vi.useRealTimers()
   })
 })
 

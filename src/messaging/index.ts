@@ -129,6 +129,7 @@ export {
   handleCardAction,
   handleP2pChatCreate,
   processMessageEvent,
+  destroyGroupBuffer,
 } from './larkEventRouter.js'
 export type { LarkMessageEvent, LarkCardActionEvent, LarkP2pChatCreateEvent } from './larkEventRouter.js'
 

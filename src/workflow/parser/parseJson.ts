@@ -219,7 +219,24 @@ export function extractJson(response: string): JsonWorkflowInput {
   }
 
   // 尝试找到最后一个完整 { } JSON（避免取到讨论中的片段）
-  const jsonStart = response.lastIndexOf('{')
+  // Find the last top-level '{' (depth 0) to handle nested braces correctly
+  let jsonStart = -1
+  {
+    let scanDepth = 0
+    let scanInStr = false
+    let scanEsc = false
+    for (let i = 0; i < response.length; i++) {
+      const ch = response[i]
+      if (scanEsc) { scanEsc = false; continue }
+      if (ch === '\\' && scanInStr) { scanEsc = true; continue }
+      if (ch === '"') { scanInStr = !scanInStr; continue }
+      if (!scanInStr) {
+        if (ch === '{' && scanDepth === 0) jsonStart = i
+        if (ch === '{') scanDepth++
+        if (ch === '}') scanDepth--
+      }
+    }
+  }
   if (jsonStart !== -1) {
     let depth = 0
     let jsonEnd = jsonStart

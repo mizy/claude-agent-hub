@@ -209,12 +209,12 @@ async function runDaemon(): Promise<void> {
   console.log(chalk.green(`✓ 守护进程运行中 (PID: ${process.pid})`))
   console.log(chalk.gray('  Ctrl+C 停止'))
 
-  // Synchronous cleanup — safe to call from crash handlers
+  // Synchronous cleanup — safe to call from crash handlers (fire-and-forget async parts)
   const cleanupSync = () => {
     stopSelfDrive()
     stopSleepPrevention()
     stopAllJobs()
-    destroyChatHandler()
+    destroyChatHandler().catch(() => {})
     stopTelegramClient()
     releasePidLock()
   }
@@ -222,7 +222,12 @@ async function runDaemon(): Promise<void> {
   // Full async cleanup for graceful shutdown
   const cleanup = async (exitCode: number) => {
     console.log(chalk.yellow('\n停止守护进程...'))
-    cleanupSync()
+    stopSelfDrive()
+    stopSleepPrevention()
+    stopAllJobs()
+    await destroyChatHandler().catch(() => {})
+    stopTelegramClient()
+    releasePidLock()
     try {
       await stopLarkWsClient()
     } catch {

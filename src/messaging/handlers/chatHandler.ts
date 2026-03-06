@@ -23,6 +23,7 @@ import { createStreamHandler, sendFinalResponse, type StreamHandlerOptions } fro
 import { sendDetectedImages } from './imageExtractor.js'
 import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
 import { trackEpisodeTurn, destroyEpisodeTrackers, flushEpisode } from './episodeExtractor.js'
+import { destroyGroupBuffer } from '../larkEventRouter.js'
 import { retrieveAllMemoryContext, addMemory } from '../../memory/index.js'
 import type { MessengerAdapter, ClientContext } from './types.js'
 
@@ -129,12 +130,13 @@ export function cancelActiveChat(chatId: string): void {
 /**
  * Cleanup all sessions and stop timers. Call on daemon shutdown.
  */
-export function destroyChatHandler(): void {
+export async function destroyChatHandler(): Promise<void> {
   // Abort all active AI calls
   for (const controller of activeControllers.values()) {
     controller.abort()
   }
   activeControllers.clear()
+  await destroyGroupBuffer()
   destroyEpisodeTrackers()
   destroySessions()
 }

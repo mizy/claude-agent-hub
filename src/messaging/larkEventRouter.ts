@@ -118,6 +118,132 @@ interface PendingImage {
 
 const pendingImageBuffer = new Map<string, PendingImage>()
 
+// ── Group message aggregation buffer ──
+
+const GROUP_BUFFER_DELAY_MS = 3_000
+const GROUP_BUFFER_MAX_MESSAGES = 5
+
+interface BufferedGroupMessage {
+  senderOpenId?: string
+  text: string
+  images?: string[]
+  files?: string[]
+  messageId?: string
+}
+
+interface PendingGroupChat {
+  messages: BufferedGroupMessage[]
+  timer: ReturnType<typeof setTimeout>
+  adapter: MessengerAdapter
+  botName: string | null
+  onChatIdDiscovered: (chatId: string) => void
+}
+
+const pendingGroupBuffer = new Map<string, PendingGroupChat>()
+
+function addToGroupBuffer(
+  chatId: string,
+  text: string,
+  adapter: MessengerAdapter,
+  botName: string | null,
+  onChatIdDiscovered: (chatId: string) => void,
+  images?: string[],
+  files?: string[],
+  senderOpenId?: string,
+  messageId?: string
+): void {
+  const msg: BufferedGroupMessage = { text, images, files, senderOpenId, messageId }
+
+  const existing = pendingGroupBuffer.get(chatId)
+  if (existing) {
+    clearTimeout(existing.timer)
+    existing.messages.push(msg)
+    existing.adapter = adapter
+    existing.botName = botName
+    existing.onChatIdDiscovered = onChatIdDiscovered
+
+    if (existing.messages.length >= GROUP_BUFFER_MAX_MESSAGES) {
+      flushGroupBuffer(chatId).catch(error => {
+        logger.error(`Failed to flush group buffer on max: ${getErrorMessage(error)}`)
+      })
+      return
+    }
+
+    existing.timer = setTimeout(() => {
+      flushGroupBuffer(chatId).catch(error => {
+        logger.error(`Failed to flush group buffer on timeout: ${getErrorMessage(error)}`)
+      })
+    }, GROUP_BUFFER_DELAY_MS)
+  } else {
+    const entry: PendingGroupChat = {
+      messages: [msg],
+      timer: setTimeout(() => {
+        flushGroupBuffer(chatId).catch(error => {
+          logger.error(`Failed to flush group buffer on timeout: ${getErrorMessage(error)}`)
+        })
+      }, GROUP_BUFFER_DELAY_MS),
+      adapter,
+      botName,
+      onChatIdDiscovered,
+    }
+    pendingGroupBuffer.set(chatId, entry)
+  }
+}
+
+async function flushGroupBuffer(chatId: string): Promise<void> {
+  const pending = pendingGroupBuffer.get(chatId)
+  if (!pending) return
+  clearTimeout(pending.timer)
+  pendingGroupBuffer.delete(chatId)
+
+  const { messages, adapter, botName, onChatIdDiscovered } = pending
+  if (messages.length === 0) return
+
+  const last = messages[messages.length - 1]!
+  const allImages = messages.flatMap(m => m.images ?? [])
+  const allFiles = messages.flatMap(m => m.files ?? [])
+
+  let combinedText: string
+  if (messages.length === 1) {
+    combinedText = last.text
+  } else {
+    const formatSender = (openId?: string) =>
+      openId ? `用户(${openId.slice(-4)})` : '用户'
+    const contextLines = messages.slice(0, -1).map(m => {
+      const attachments = [
+        ...(m.images?.length ? [`+${m.images.length}图片`] : []),
+        ...(m.files?.length ? [`+${m.files.length}文件`] : []),
+      ].join(' ')
+      return `${formatSender(m.senderOpenId)}: ${m.text || '[附件]'}${attachments ? ` ${attachments}` : ''}`
+    })
+    const lastAttachments = [
+      ...(last.images?.length ? [`+${last.images.length}图片`] : []),
+      ...(last.files?.length ? [`+${last.files.length}文件`] : []),
+    ].join(' ')
+    combinedText = [
+      `[群聊上下文 - 最近${messages.length}条@消息]`,
+      ...contextLines,
+      '---',
+      `最新消息（来自${formatSender(last.senderOpenId)}）: ${last.text || '[附件]'}${lastAttachments ? ` ${lastAttachments}` : ''}`,
+    ].join('\n')
+    logger.info(`Group buffer flushed: ${messages.length} messages for chat ${chatId.slice(0, 8)}`)
+  }
+
+  await handleLarkMessage(
+    chatId, combinedText, true, true,
+    adapter, botName, onChatIdDiscovered,
+    allImages.length > 0 ? allImages : undefined,
+    last.messageId,
+    allFiles.length > 0 ? allFiles : undefined,
+    last.senderOpenId
+  )
+}
+
+export async function destroyGroupBuffer(): Promise<void> {
+  const chatIds = [...pendingGroupBuffer.keys()]
+  await Promise.allSettled(chatIds.map(chatId => flushGroupBuffer(chatId)))
+}
+
 async function flushPendingImages(
   chatId: string,
   text: string,
@@ -292,14 +418,23 @@ export async function createApprovalCallback() {
 
 // ── Event handlers ──
 
-/** Wrap adapter so all reply/sendAndGetId calls auto-quote the original message */
-function wrapWithReplyQuote(adapter: MessengerAdapter, messageId: string): MessengerAdapter {
+/** Wrap adapter so all reply/sendAndGetId calls auto-quote the original message and @mention the sender */
+function wrapWithReplyQuote(adapter: MessengerAdapter, messageId: string, senderOpenId?: string): MessengerAdapter {
+  const baseMentions = senderOpenId ? [{ userId: senderOpenId, name: '' }] : []
   return {
     ...adapter,
     reply: (chatId, text, options?) =>
-      adapter.reply(chatId, text, { ...options, replyToMessageId: messageId }),
+      adapter.reply(chatId, text, {
+        ...options,
+        replyToMessageId: messageId,
+        mentions: [...baseMentions, ...(options?.mentions ?? [])],
+      }),
     sendAndGetId: (chatId, text, options?) =>
-      adapter.sendAndGetId(chatId, text, { ...options, replyToMessageId: messageId }),
+      adapter.sendAndGetId(chatId, text, {
+        ...options,
+        replyToMessageId: messageId,
+        mentions: [...baseMentions, ...(options?.mentions ?? [])],
+      }),
   }
 }
 
@@ -313,7 +448,8 @@ export async function handleLarkMessage(
   onChatIdDiscovered: (chatId: string) => void,
   images?: string[],
   originalMessageId?: string,
-  files?: string[]
+  files?: string[],
+  senderOpenId?: string
 ): Promise<void> {
   if (isGroup && !hasMention) return
 
@@ -325,9 +461,9 @@ export async function handleLarkMessage(
   const fileSuffix = files?.length ? ` +${files.length} file(s)` : ''
   logger.info(`← [${isGroup ? 'group' : 'dm'}]${imgSuffix}${fileSuffix}`)
 
-  // In group chats, wrap adapter to quote the original @mention message
+  // In group chats, wrap adapter to quote the original @mention message and @mention the sender
   const messenger = isGroup && originalMessageId
-    ? wrapWithReplyQuote(adapter, originalMessageId)
+    ? wrapWithReplyQuote(adapter, originalMessageId, senderOpenId)
     : adapter
 
   await routeMessage({
@@ -525,14 +661,22 @@ export async function processMessageEvent(
     return txt ? `${quoted}\n\n${txt}` : quoted
   }
 
-  const handleMsg = (
+  const directHandleMsg = (
     cId: string,
     txt: string,
     grp: boolean,
     mention: boolean,
     imgs?: string[],
     files?: string[]
-  ) => handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs, messageId, files)
+  ) => handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs, messageId, files, senderOpenId)
+
+  // Group messages with @mention go through aggregation buffer
+  const handleMsg = isGroup && hasMention
+    ? (cId: string, txt: string, _grp: boolean, _mention: boolean, imgs?: string[], files?: string[]) => {
+        addToGroupBuffer(cId, txt, adapter, botName, onChatIdDiscovered, imgs, files, senderOpenId, messageId)
+        return Promise.resolve()
+      }
+    : directHandleMsg
 
   // File message
   if (msgType === 'file') {
