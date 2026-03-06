@@ -78,6 +78,12 @@ function findBackEdges(nodeIds: string[], adj: Record<string, string[]>): Set<st
   return backEdges
 }
 
+/** Return a minimal icon label for a condition edge; full text shown on hover */
+function summarizeCondition(cond?: string): string | null {
+  if (!cond) return null
+  return cond.startsWith('!') ? '✗' : '✓'
+}
+
 /** Convert workflow data to mmeditor schema format */
 export function workflowToSchema(
   nodes: WorkflowNode[],
@@ -171,7 +177,7 @@ export function workflowToSchema(
       isBackEdge: isBack,
       className: classes,
       style: { stroke: EDGE_COLORS[st] || EDGE_COLORS.pending },
-      label: curLoops != null && e.maxLoops ? `${curLoops}/${e.maxLoops}` : undefined,
+      label: [summarizeCondition(e.condition), curLoops != null && e.maxLoops ? `${curLoops}/${e.maxLoops}` : null].filter(Boolean).join(' ') || undefined,
     }
   })
 
@@ -216,7 +222,7 @@ export function workflowToSchema(
 
   // Pre-compute layout with dagre
   const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: 'TB', nodesep: 40, ranksep: 60, align: 'UL' })
+  g.setGraph({ rankdir: 'TB', nodesep: 40, ranksep: 100, align: 'UL' })
   g.setDefaultEdgeLabel(() => ({}))
   schemaNodes.forEach(n => g.setNode(n.uuid, { width: n.width, height: n.height }))
   // Skip back-edges for layout to avoid cycle issues
