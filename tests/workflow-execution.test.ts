@@ -152,7 +152,7 @@ describe('checkWorkflowCompletion', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'Task 1', task: { persona: 'coder', prompt: 'do' } },
+        { id: 'task1', type: 'task', name: 'Task 1', task: { agent: 'coder', prompt: 'do' } },
         { id: 'end', type: 'end', name: 'End' },
       ],
       [
@@ -176,7 +176,7 @@ describe('checkWorkflowCompletion', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'Task 1', task: { persona: 'coder', prompt: 'do' } },
+        { id: 'task1', type: 'task', name: 'Task 1', task: { agent: 'coder', prompt: 'do' } },
         { id: 'end', type: 'end', name: 'End' },
       ],
       [
@@ -200,7 +200,7 @@ describe('checkWorkflowCompletion', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'Task 1', task: { persona: 'coder', prompt: 'do', retries: 2 } },
+        { id: 'task1', type: 'task', name: 'Task 1', task: { agent: 'coder', prompt: 'do', retries: 2 } },
         { id: 'end', type: 'end', name: 'End' },
       ],
       [
@@ -225,7 +225,7 @@ describe('checkWorkflowCompletion', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'Task 1', task: { persona: 'coder', prompt: 'do', retries: 5 } },
+        { id: 'task1', type: 'task', name: 'Task 1', task: { agent: 'coder', prompt: 'do', retries: 5 } },
         { id: 'end', type: 'end', name: 'End' },
       ],
       [
@@ -264,9 +264,9 @@ describe('getWorkflowProgress', () => {
   const workflow = makeWorkflow(
     [
       { id: 'start', type: 'start', name: 'Start' },
-      { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
-      { id: 'task2', type: 'task', name: 'T2', task: { persona: 'c', prompt: 'p' } },
-      { id: 'task3', type: 'task', name: 'T3', task: { persona: 'c', prompt: 'p' } },
+      { id: 'task1', type: 'task', name: 'T1', task: { agent: 'c', prompt: 'p' } },
+      { id: 'task2', type: 'task', name: 'T2', task: { agent: 'c', prompt: 'p' } },
+      { id: 'task3', type: 'task', name: 'T3', task: { agent: 'c', prompt: 'p' } },
       { id: 'end', type: 'end', name: 'End' },
     ],
     []
@@ -364,7 +364,7 @@ describe('canExecuteNode', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'task1', type: 'task', name: 'T1', task: { agent: 'c', prompt: 'p' } },
       ],
       [{ id: 'e1', from: 'start', to: 'task1' }]
     )
@@ -380,7 +380,7 @@ describe('canExecuteNode', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'task1', type: 'task', name: 'T1', task: { agent: 'c', prompt: 'p' } },
       ],
       [{ id: 'e1', from: 'start', to: 'task1' }]
     )
@@ -395,9 +395,9 @@ describe('canExecuteNode', () => {
   it('should require ALL upstream for multi-edge node (AND logic)', () => {
     const workflow = makeWorkflow(
       [
-        { id: 'a', type: 'task', name: 'A', task: { persona: 'c', prompt: 'p' } },
-        { id: 'b', type: 'task', name: 'B', task: { persona: 'c', prompt: 'p' } },
-        { id: 'c', type: 'task', name: 'C', task: { persona: 'c', prompt: 'p' } },
+        { id: 'a', type: 'task', name: 'A', task: { agent: 'c', prompt: 'p' } },
+        { id: 'b', type: 'task', name: 'B', task: { agent: 'c', prompt: 'p' } },
+        { id: 'c', type: 'task', name: 'C', task: { agent: 'c', prompt: 'p' } },
       ],
       [
         { id: 'e1', from: 'a', to: 'c' },
@@ -416,8 +416,8 @@ describe('canExecuteNode', () => {
   it('should require ALL upstream for join node (AND logic)', () => {
     const workflow = makeWorkflow(
       [
-        { id: 'a', type: 'task', name: 'A', task: { persona: 'c', prompt: 'p' } },
-        { id: 'b', type: 'task', name: 'B', task: { persona: 'c', prompt: 'p' } },
+        { id: 'a', type: 'task', name: 'A', task: { agent: 'c', prompt: 'p' } },
+        { id: 'b', type: 'task', name: 'B', task: { agent: 'c', prompt: 'p' } },
         { id: 'join', type: 'join', name: 'Join' },
       ],
       [
@@ -446,8 +446,8 @@ describe('canExecuteNode', () => {
   it('should accept skipped upstream as completed', () => {
     const workflow = makeWorkflow(
       [
-        { id: 'a', type: 'task', name: 'A', task: { persona: 'c', prompt: 'p' } },
-        { id: 'b', type: 'task', name: 'B', task: { persona: 'c', prompt: 'p' } },
+        { id: 'a', type: 'task', name: 'A', task: { agent: 'c', prompt: 'p' } },
+        { id: 'b', type: 'task', name: 'B', task: { agent: 'c', prompt: 'p' } },
       ],
       [{ id: 'e1', from: 'a', to: 'b' }]
     )
@@ -474,7 +474,7 @@ describe('canExecuteNode', () => {
       [
         { id: 'start', type: 'start', name: 'Start' },
         { id: 'schedule-wait', type: 'schedule-wait', name: 'Wait', scheduleWait: { cron: '30 13 * * 1-5' } },
-        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'task1', type: 'task', name: 'T1', task: { agent: 'c', prompt: 'p' } },
         { id: 'lark-notify', type: 'lark-notify', name: 'Notify', larkNotify: { title: 'test' } },
         { id: 'end', type: 'end', name: 'End' },
       ],
@@ -509,7 +509,7 @@ describe('canExecuteNode', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'task1', type: 'task', name: 'T1', task: { agent: 'c', prompt: 'p' } },
         { id: 'end', type: 'end', name: 'End' },
       ],
       [
@@ -541,8 +541,8 @@ describe('getReadyNodes', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
-        { id: 'task2', type: 'task', name: 'T2', task: { persona: 'c', prompt: 'p' } },
+        { id: 'task1', type: 'task', name: 'T1', task: { agent: 'c', prompt: 'p' } },
+        { id: 'task2', type: 'task', name: 'T2', task: { agent: 'c', prompt: 'p' } },
         { id: 'end', type: 'end', name: 'End' },
       ],
       [
@@ -571,7 +571,7 @@ describe('getReadyNodes', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'task1', type: 'task', name: 'T1', task: { agent: 'c', prompt: 'p' } },
       ],
       [{ id: 'e1', from: 'start', to: 'task1' }]
     )
@@ -588,7 +588,7 @@ describe('getReadyNodes', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'task1', type: 'task', name: 'T1', task: { agent: 'c', prompt: 'p' } },
       ],
       [{ id: 'e1', from: 'start', to: 'task1' }]
     )
@@ -605,7 +605,7 @@ describe('getReadyNodes', () => {
     const workflow = makeWorkflow(
       [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'T1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'task1', type: 'task', name: 'T1', task: { agent: 'c', prompt: 'p' } },
       ],
       [{ id: 'e1', from: 'start', to: 'task1' }]
     )

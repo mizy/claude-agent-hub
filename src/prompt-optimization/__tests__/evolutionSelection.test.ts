@@ -8,14 +8,14 @@ const retiredIds: string[] = []
 
 // Mock PromptVersionStore
 vi.mock('../../store/PromptVersionStore.js', () => ({
-  getAllVersions: vi.fn((persona: string) => {
+  getAllVersions: vi.fn((agent: string) => {
     return [...versions.values()]
-      .filter(v => v.personaName === persona)
+      .filter(v => v.agentName === agent)
       .sort((a, b) => b.version - a.version)
   }),
-  getActiveVersion: vi.fn((persona: string) => {
+  getActiveVersion: vi.fn((agent: string) => {
     for (const v of versions.values()) {
-      if (v.personaName === persona && v.status === 'active') return v
+      if (v.agentName === agent && v.status === 'active') return v
     }
     return null
   }),
@@ -63,14 +63,14 @@ import * as successPattern from '../extractSuccessPattern.js'
 
 function makeVersion(
   id: string,
-  persona: string,
+  agent: string,
   version: number,
   status: 'active' | 'candidate' | 'retired',
   daysOld = 0
 ): PromptVersion {
   return {
     id,
-    personaName: persona,
+    agentName: agent,
     version,
     systemPrompt: 'test prompt',
     changelog: 'test',
@@ -95,7 +95,7 @@ beforeEach(() => {
 describe('runEvolutionCycle', () => {
   it('returns report with no versions', () => {
     const report = runEvolutionCycle('Pragmatist')
-    expect(report.personaName).toBe('Pragmatist')
+    expect(report.agentName).toBe('Pragmatist')
     expect(report.activeVersion).toBeNull()
     expect(report.candidateVersions).toBe(0)
     expect(report.retiredVersions).toBe(0)
@@ -128,7 +128,7 @@ describe('runEvolutionCycle', () => {
   it('does not retire candidates in running A/B tests', () => {
     vi.mocked(abTesting.getRunningTest).mockReturnValue({
       id: 'ab-1',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       controlVersionId: 'pv-1',
       candidateVersionId: 'pv-2',
       status: 'running',
@@ -146,7 +146,7 @@ describe('runEvolutionCycle', () => {
   it('concludes ready A/B tests', () => {
     vi.mocked(abTesting.getRunningTest).mockReturnValue({
       id: 'ab-1',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       controlVersionId: 'pv-1',
       candidateVersionId: 'pv-2',
       status: 'running',

@@ -1,9 +1,13 @@
 /**
  * Chat session state management
  * Handles per-chatId sessions, expiry cleanup, message queuing, and disk persistence
+ * Also manages web chat session files (chat-sessions/) for unified session access
  */
 
 import { join } from 'path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs'
+import { readdir, readFile as readFileAsync } from 'fs/promises'
+import { randomUUID } from 'crypto'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { readJson, writeJson } from '../../store/readWriteJson.js'
@@ -19,6 +23,7 @@ const SESSIONS_FILE = join(DATA_DIR, 'sessions.json')
 let sessionConfig: SessionConfig = {
   timeoutMinutes: 60,
   maxSessions: 200,
+  maxWebMessages: 200,
 }
 
 /** Configure session parameters from config. Call once at startup. */
@@ -204,17 +209,33 @@ export function getBackendOverride(chatId: string): string | undefined {
   return sessions.get(chatId)?.backendOverride
 }
 
-/** Rough token estimate from char count (~3 chars/token average for mixed CJK/Latin) */
-function estimateTokens(charCount: number): number {
-  return Math.ceil(charCount / 3)
+/** Rough token estimate: ASCII ~4 chars/token, CJK ~1 char/token */
+function estimateTokens(text: string): number {
+  let tokens = 0
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!
+    // CJK Unified Ideographs + common CJK ranges
+    if (
+      (code >= 0x4e00 && code <= 0x9fff) || // CJK Unified
+      (code >= 0x3400 && code <= 0x4dbf) || // CJK Ext A
+      (code >= 0x3000 && code <= 0x303f) || // CJK Symbols
+      (code >= 0xff00 && code <= 0xffef) || // Fullwidth Forms
+      (code >= 0xac00 && code <= 0xd7af)    // Hangul
+    ) {
+      tokens += 1
+    } else {
+      tokens += 0.25
+    }
+  }
+  return Math.ceil(tokens)
 }
 
 /** Increment turn count and accumulate estimated tokens after a chat round. */
-export function incrementTurn(chatId: string, inputLen: number, outputLen: number): void {
+export function incrementTurn(chatId: string, inputText: string, outputText: string): void {
   const session = sessions.get(chatId)
   if (!session) return
   session.turnCount++
-  session.estimatedTokens += estimateTokens(inputLen) + estimateTokens(outputLen)
+  session.estimatedTokens += estimateTokens(inputText) + estimateTokens(outputText)
   session.lastActiveAt = Date.now()
   schedulePersist()
 }
@@ -259,3 +280,172 @@ export function destroySessions(): void {
   sessions.clear()
   chatQueues.clear()
 }
+
+// ── Web chat session management (chat-sessions/ files) ──
+
+const WEB_SESSIONS_DIR = join(DATA_DIR, 'chat-sessions')
+
+export interface WebChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+export interface WebChatSession {
+  id: string
+  title: string
+  messages: WebChatMessage[]
+  backend?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WebSessionSummary {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  backend?: string
+  messageCount: number
+}
+
+function ensureWebSessionsDir(): void {
+  if (!existsSync(WEB_SESSIONS_DIR)) {
+    mkdirSync(WEB_SESSIONS_DIR, { recursive: true })
+  }
+}
+
+function isValidSessionId(id: string): boolean {
+  return /^[a-f0-9-]{36}$/.test(id)
+}
+
+function getWebSessionPath(id: string): string {
+  if (!isValidSessionId(id)) throw new Error('Invalid session ID')
+  return join(WEB_SESSIONS_DIR, `${id}.json`)
+}
+
+/** Load a web chat session from disk by chatId */
+export function loadWebSession(chatId: string): WebChatSession | null {
+  if (!isValidSessionId(chatId)) return null
+  const path = getWebSessionPath(chatId)
+  if (!existsSync(path)) return null
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+/** Save a web chat session to disk */
+export function saveWebSession(session: WebChatSession): void {
+  ensureWebSessionsDir()
+  writeFileSync(getWebSessionPath(session.id), JSON.stringify(session, null, 2))
+}
+
+/** Create a new web chat session and register it in the in-memory session map */
+export function createWebSession(title?: string, backend?: string): WebChatSession {
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  const session: WebChatSession = {
+    id,
+    title: title || 'New Chat',
+    messages: [],
+    backend,
+    createdAt: now,
+    updatedAt: now,
+  }
+  saveWebSession(session)
+  // Register in the unified ChatSession map so all channels can see it
+  sessions.set(id, {
+    sessionId: '',
+    lastActiveAt: Date.now(),
+    turnCount: 0,
+    estimatedTokens: 0,
+    backendOverride: backend,
+    sessionBackendType: backend ?? 'default',
+  })
+  evictIfNeeded()
+  ensureCleanupTimer()
+  schedulePersist()
+  return session
+}
+
+/** Delete a web chat session file and clear from in-memory map */
+export function deleteWebSession(chatId: string): boolean {
+  if (!isValidSessionId(chatId)) return false
+  const path = getWebSessionPath(chatId)
+  if (!existsSync(path)) return false
+  rmSync(path)
+  sessions.delete(chatId)
+  schedulePersist()
+  return true
+}
+
+/** Append a message to a web session, creating the session file if needed.
+ *  Truncates oldest messages when exceeding maxWebMessages (keeps first pair + recent). */
+export function appendWebMessage(
+  chatId: string,
+  userMessage: string,
+  assistantResponse: string
+): void {
+  let session = loadWebSession(chatId)
+  if (!session) {
+    session = {
+      id: chatId,
+      title: userMessage.slice(0, 50),
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+  }
+  const ts = new Date().toISOString()
+  session.messages.push({ role: 'user', content: userMessage, timestamp: ts })
+  if (assistantResponse) {
+    session.messages.push({ role: 'assistant', content: assistantResponse, timestamp: ts })
+  }
+
+  // Truncate old messages when over limit, keeping first 2 (initial context) + recent
+  const maxMessages = sessionConfig.maxWebMessages
+  if (session.messages.length > maxMessages) {
+    const keep = Math.max(maxMessages - 2, 0)
+    session.messages = [
+      ...session.messages.slice(0, 2),
+      ...(keep > 0 ? session.messages.slice(-keep) : []),
+    ]
+    logger.debug(`Web session ${chatId.slice(0, 8)} truncated to ${session.messages.length} messages`)
+  }
+
+  session.updatedAt = ts
+  saveWebSession(session)
+}
+
+/** List all web session summaries, sorted by updatedAt desc */
+export async function listWebSessions(): Promise<WebSessionSummary[]> {
+  ensureWebSessionsDir()
+  const files = (await readdir(WEB_SESSIONS_DIR)).filter(f => f.endsWith('.json'))
+  const results = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const content = await readFileAsync(join(WEB_SESSIONS_DIR, file), 'utf-8')
+        return JSON.parse(content) as WebChatSession
+      } catch { return null }
+    })
+  )
+  const summaries: WebSessionSummary[] = []
+  for (const data of results) {
+    if (!data) continue
+    summaries.push({
+      id: data.id,
+      title: data.title,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+      backend: data.backend,
+      messageCount: data.messages?.length ?? 0,
+    })
+  }
+  summaries.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+  return summaries
+}
+
+/** Check if a string is a valid UUID session ID */
+export { isValidSessionId as isValidWebSessionId }

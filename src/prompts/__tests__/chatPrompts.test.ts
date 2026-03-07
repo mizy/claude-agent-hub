@@ -27,7 +27,7 @@ beforeEach(() => {
 
 describe('buildClientPrompt', () => {
   describe('mode=full (default)', () => {
-    it('includes default persona when no SOUL.md', () => {
+    it('includes default agent when no SOUL.md', () => {
       const result = buildClientPrompt(makeClient())
       expect(result).toContain('AI 搭档')
       expect(result).toContain('[回复风格]')
@@ -35,11 +35,11 @@ describe('buildClientPrompt', () => {
     })
 
     it('uses SOUL.md content when available', () => {
-      mockedLoadSoul.mockReturnValue('Custom persona here')
+      mockedLoadSoul.mockReturnValue('Custom agent here')
       const result = buildClientPrompt(makeClient())
-      expect(result).toContain('Custom persona here')
+      expect(result).toContain('Custom agent here')
       expect(result).not.toContain('AI 搭档')
-      // Should NOT include default persona sections
+      // Should NOT include default agent sections
       expect(result).not.toContain('[回复风格]')
     })
 
@@ -50,7 +50,7 @@ describe('buildClientPrompt', () => {
       expect(resultNoSoul).toContain('prompt injection')
 
       // With SOUL
-      mockedLoadSoul.mockReturnValue('Custom SOUL persona')
+      mockedLoadSoul.mockReturnValue('Custom SOUL agent')
       const resultSoul = buildClientPrompt(makeClient())
       expect(resultSoul).toContain('[安全规则]')
       expect(resultSoul).toContain('prompt injection')

@@ -10,11 +10,11 @@ import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
-import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
 import { collectStream } from './collectStream.js'
 import { buildMcpConfigJson, createClaudeCompatStreamProcessor } from './claudeCompatHelpers.js'
+import { collectStderr, probeCliVersion } from './processHelpers.js'
 import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
 
 const logger = createLogger('claude-code')
@@ -47,10 +47,22 @@ export function createClaudeCodeBackend(): BackendAdapter {
         mcpServers,
         sessionId,
         model = 'opus',
+        attachments,
+        variant,
         signal,
       } = options
 
-      const args = buildArgs(prompt, skipPermissions, disableMcp, mcpServers, sessionId, stream, model)
+      const args = buildArgs({
+        prompt,
+        skipPermissions,
+        disableMcp,
+        mcpServers,
+        sessionId,
+        stream,
+        model,
+        attachments,
+        variant,
+      })
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
@@ -81,6 +93,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
         let rawOutput: string
         let mcpImagePaths: string[] = []
         if (stream) {
+          collectStderr(subprocess, () => {})
           const streamResult = await streamOutput(subprocess, onChunk, startTime, perf)
           rawOutput = streamResult.rawOutput
           mcpImagePaths = streamResult.extractedImagePaths
@@ -110,6 +123,14 @@ export function createClaudeCodeBackend(): BackendAdapter {
           sessionId: parsed.sessionId,
           durationApiMs: parsed.durationApiMs,
           costUsd: parsed.costUsd,
+          promptTokens: parsed.promptTokens,
+          completionTokens: parsed.completionTokens,
+          totalTokens: parsed.totalTokens,
+          benchmark: {
+            spawnMs: perf.spawn,
+            firstStdoutMs: perf.firstStdout || undefined,
+            firstChunkMs: perf.firstDelta || undefined,
+          },
           mcpImagePaths: mcpImagePaths.length > 0 ? mcpImagePaths : undefined,
         })
       } catch (error: unknown) {
@@ -121,30 +142,46 @@ export function createClaudeCodeBackend(): BackendAdapter {
     },
 
     async checkAvailable(): Promise<boolean> {
-      try {
-        const env = { ...process.env }
-        delete env.CLAUDECODE
-        await execa('claude', ['--version'], { env, timeout: 5000 })
-        return true
-      } catch (e) {
-        logger.debug(`claude not available: ${getErrorMessage(e)}`)
+      const env = { ...process.env }
+      delete env.CLAUDECODE
+      const version = await probeCliVersion('claude', { env })
+      if (!version) {
+        logger.debug('claude not available or version not detectable')
         return false
       }
+      logger.debug(`claude version: ${version}`)
+      return true
     },
   }
 }
 
 // ============ Private Helpers ============
 
-function buildArgs(
-  prompt: string,
-  skipPermissions: boolean,
-  disableMcp: boolean,
-  mcpServers?: string[],
-  sessionId?: string,
-  stream?: boolean,
+interface ClaudeBuildArgsOptions {
+  prompt: string
+  skipPermissions: boolean
+  disableMcp: boolean
+  mcpServers?: string[]
+  sessionId?: string
+  stream?: boolean
   model?: string
-): string[] {
+  attachments?: string[]
+  variant?: string
+}
+
+function buildArgs(options: ClaudeBuildArgsOptions): string[] {
+  const {
+    prompt,
+    skipPermissions,
+    disableMcp,
+    mcpServers,
+    sessionId,
+    stream,
+    model,
+    attachments,
+    variant,
+  } = options
+
   const args: string[] = []
 
   if (sessionId) {
@@ -153,6 +190,10 @@ function buildArgs(
 
   if (model) {
     args.push('--model', model)
+  }
+
+  if (variant) {
+    args.push('--effort', normalizeClaudeEffort(variant))
   }
 
   args.push('--print')
@@ -178,8 +219,25 @@ function buildArgs(
     }
   }
 
+  const fileSpecs = (attachments ?? []).filter(isClaudeFileSpec)
+  if (fileSpecs.length > 0) {
+    args.push('--file', ...fileSpecs)
+  }
+
   args.push(prompt)
   return args
+}
+
+function isClaudeFileSpec(value: string): boolean {
+  // Claude CLI expects --file in file_id:relative_path format, not local absolute paths.
+  return value.includes(':')
+}
+
+function normalizeClaudeEffort(variant: string): 'low' | 'medium' | 'high' {
+  const normalized = variant.trim().toLowerCase()
+  if (normalized === 'minimal' || normalized === 'low') return 'low'
+  if (normalized === 'max' || normalized === 'high') return 'high'
+  return 'medium'
 }
 
 async function streamOutput(

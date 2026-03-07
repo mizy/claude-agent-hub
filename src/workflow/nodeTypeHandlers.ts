@@ -7,7 +7,7 @@ import { invokeBackend } from '../backend/index.js'
 import { buildExecuteNodePrompt } from '../prompts/index.js'
 import { appendConversation, appendExecutionLog } from '../store/TaskLogStore.js'
 import { getUnconsumedMessages, markMessagesConsumed } from '../store/TaskMessageStore.js'
-import { personaNeedsMcp } from '../persona/personaMcpConfig.js'
+import { agentNeedsMcp } from '../agents/agentMcpConfig.js'
 import { updateInstanceVariables } from '../store/WorkflowStore.js'
 import { getTask, updateTask } from '../store/TaskStore.js'
 import { createChildSpan, endSpan } from '../store/createSpan.js'
@@ -28,12 +28,12 @@ import {
 } from './engine/executeNewNodes.js'
 import {
   extractStructuredOutput,
-  resolvePersona,
+  resolveAgent,
   buildNodeContext,
   buildEvalContext,
 } from './nodeResultProcessor.js'
 import { evaluateExpression } from './engine/ExpressionEvaluator.js'
-import type { Workflow, WorkflowNode, WorkflowInstance } from './types.js'
+import type { Workflow, WorkflowNode, WorkflowInstance, TaskConfig } from './types.js'
 import type { TraceContext } from '../types/trace.js'
 
 const logger = createLogger('node-handlers')
@@ -294,10 +294,13 @@ async function executeTaskNode(
     return { success: false, error: 'Task config missing' }
   }
 
-  const { persona: personaName, prompt: taskPrompt } = node.task
+  // backward compat: old workflow.json may still have persona field
+  const taskConfig = node.task as TaskConfig & { persona?: string }
+  const agentName = taskConfig.agent ?? taskConfig.persona
+  const taskPrompt = taskConfig.prompt
 
-  // 获取 persona (找不到会回退到默认 Pragmatist)
-  const persona = resolvePersona(personaName)
+  // 获取 agent (找不到会回退到默认 Pragmatist)
+  const agent = resolveAgent(agentName)
 
   // 构建上下文
   let context = buildNodeContext(instance)
@@ -320,11 +323,11 @@ async function executeTaskNode(
   }
 
   // 构建 prompt
-  const prompt = buildExecuteNodePrompt(persona, workflow, node.name, taskPrompt, context)
+  const prompt = buildExecuteNodePrompt(agent, workflow, node.name, taskPrompt, context)
 
   // 根据角色决定是否启用 MCP
   // 不需要外部集成的角色禁用 MCP，加速启动
-  const disableMcp = !personaNeedsMcp(persona.name)
+  const disableMcp = !agentNeedsMcp(agent.name)
 
   // taskId 用于日志写入（复用上面已声明的 taskId）
   const logTaskId = taskId
@@ -336,14 +339,14 @@ async function executeTaskNode(
   const taskBackend = instance.variables?.taskBackend as string | undefined
   const taskModel = instance.variables?.taskModel as string | undefined
 
-  // 从配置读取模型（任务级覆盖优先，其次 persona 偏好，最后 backend 默认）
+  // 从配置读取模型（任务级覆盖优先，其次 agent 偏好，最后 backend 默认）
   const { resolveBackendConfig } = await import('../backend/index.js')
   const backendConfig = taskBackend
     ? await resolveBackendConfig(taskBackend)
     : await getBackendConfig()
-  // persona.preferredModel only applies to claude-code (which supports model name selection)
-  const personaModel = backendConfig.type === 'claude-code' ? persona.preferredModel : undefined
-  const model = taskModel ?? personaModel ?? backendConfig.model
+  // agent.preferredModel only applies to claude-code (which supports model name selection)
+  const agentModel = backendConfig.type === 'claude-code' ? agent.preferredModel : undefined
+  const model = taskModel ?? agentModel ?? backendConfig.model
 
   // Create LLM span for tracing
   const llmSpan = traceCtx
@@ -361,7 +364,7 @@ async function executeTaskNode(
   const result = await invokeBackend({
     prompt,
     mode: 'execute',
-    persona,
+    agent,
     stream: true,
     disableMcp,
     sessionId: existingSessionId,

@@ -340,13 +340,13 @@ function registerTaskActionRoutes(app: Express): void {
         res.status(404).json({ success: false, error: 'Task not found' })
         return
       }
-      const { prompt, persona } = req.body
+      const { prompt, agent } = req.body
       if (!prompt || typeof prompt !== 'string') {
         res.status(400).json({ success: false, error: 'prompt is required' })
         return
       }
 
-      const result = injectNode(req.params.id, prompt, persona)
+      const result = injectNode(req.params.id, prompt, agent)
       if (!result.success) {
         res.status(400).json({ success: false, error: result.error })
         return

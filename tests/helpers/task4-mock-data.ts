@@ -92,7 +92,7 @@ export function createSimpleTestWorkflow(taskId: string): Workflow {
       name: '执行测试',
       description: '执行并发测试任务',
       task: {
-        persona: 'coder',
+        agent: 'coder',
         prompt: '执行一个简单的测试操作',
         timeout: 30000,
         retries: 1,
@@ -200,7 +200,7 @@ export function createCustomWorkflow(
       type: 'task',
       name: `任务 ${i}`,
       task: {
-        persona: 'coder',
+        agent: 'coder',
         prompt: `执行任务 ${i}`,
         timeout: 30000,
       },

@@ -1,13 +1,13 @@
 /**
  * nodeResultProcessor tests
- * Tests extractRawOutput, extractStructuredOutput, resolvePersona, buildNodeContext
+ * Tests extractRawOutput, extractStructuredOutput, resolveAgent, buildNodeContext
  */
 
 import { describe, it, expect } from 'vitest'
 import {
   extractRawOutput,
   extractStructuredOutput,
-  resolvePersona,
+  resolveAgent,
   buildNodeContext,
   buildEvalContext,
 } from '../nodeResultProcessor.js'
@@ -83,30 +83,30 @@ describe('extractStructuredOutput', () => {
   })
 })
 
-describe('resolvePersona', () => {
+describe('resolveAgent', () => {
   it('should return default Pragmatist for undefined', () => {
-    const persona = resolvePersona(undefined)
-    expect(persona.name).toBe('Pragmatist')
+    const agent = resolveAgent(undefined)
+    expect(agent.name).toBe('Pragmatist')
   })
 
   it('should return default for "auto"', () => {
-    const persona = resolvePersona('auto')
-    expect(persona.name).toBe('Pragmatist')
+    const agent = resolveAgent('auto')
+    expect(agent.name).toBe('Pragmatist')
   })
 
   it('should return default for empty string', () => {
-    const persona = resolvePersona('')
-    expect(persona.name).toBe('Pragmatist')
+    const agent = resolveAgent('')
+    expect(agent.name).toBe('Pragmatist')
   })
 
-  it('should find builtin persona by name', () => {
-    const persona = resolvePersona('Architect')
-    expect(persona.name).toBe('Architect')
+  it('should find builtin agent by name', () => {
+    const agent = resolveAgent('Architect')
+    expect(agent.name).toBe('Architect')
   })
 
-  it('should fallback to default for unknown persona', () => {
-    const persona = resolvePersona('NonExistent')
-    expect(persona.name).toBe('Pragmatist')
+  it('should fallback to default for unknown agent', () => {
+    const agent = resolveAgent('NonExistent')
+    expect(agent.name).toBe('Pragmatist')
   })
 })
 

@@ -12,6 +12,8 @@ export interface WfNodeData {
   nodeType: string
   status: string
   agent?: string
+  model?: string
+  backend?: string
   durationMs?: number
   error?: string
   isLoopBody?: boolean
@@ -90,6 +92,8 @@ export function workflowToSchema(
   edges: WorkflowEdge[],
   instance: Instance | null,
   taskDone = false,
+  taskModel?: string,
+  taskBackend?: string,
 ): WfSchemaData {
   const ns = instance?.nodeStates || {}
   const loopCounts = instance?.loopCounts || {}
@@ -135,7 +139,9 @@ export function workflowToSchema(
       width: NODE_W, height: NODE_H,
       nodeType: n.type,
       status,
-      agent: n.task?.persona,
+      agent: n.task?.agent,
+      model: n.config?.model || taskModel,
+      backend: n.config?.backend || taskBackend,
       durationMs: st?.durationMs,
       error: st?.error,
       isLoopBody: bodySet.has(n.id),

@@ -94,13 +94,13 @@ export function registerSelfEvolveCommand(parent: Command) {
           console.log()
         }
 
-        if (Object.keys(failureResult.personaBreakdown).length > 0) {
-          console.log(chalk.bold('Persona 分布:'))
-          for (const [persona, stats] of Object.entries(failureResult.personaBreakdown)) {
+        if (Object.keys(failureResult.agentBreakdown).length > 0) {
+          console.log(chalk.bold('Agent 分布:'))
+          for (const [agent, stats] of Object.entries(failureResult.agentBreakdown)) {
             const parts = []
             if (stats.successes) parts.push(`${stats.successes} 成功`)
             if (stats.failures) parts.push(`${stats.failures} 失败`)
-            console.log(`  ${persona}: ${parts.join(', ')} (主要: ${stats.topCategory})`)
+            console.log(`  ${agent}: ${parts.join(', ')} (主要: ${stats.topCategory})`)
           }
           console.log()
         }

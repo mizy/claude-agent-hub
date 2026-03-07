@@ -51,7 +51,7 @@ describe('analyzeRecentFailures (backward compat)', () => {
     const result = analyzeRecentFailures()
     expect(result.totalExamined).toBe(0)
     expect(result.patterns).toHaveLength(0)
-    expect(result.personaBreakdown).toEqual({})
+    expect(result.agentBreakdown).toEqual({})
   })
 
   it('analyzes failed tasks and groups into patterns', () => {
@@ -59,7 +59,7 @@ describe('analyzeRecentFailures (backward compat)', () => {
     vi.mocked(getTasksByStatus).mockReturnValue(tasks)
 
     vi.mocked(getTaskWorkflow).mockReturnValue({
-      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Pragmatist' } }],
+      nodes: [{ id: 'n1', type: 'task', task: { agent: 'Pragmatist' } }],
       edges: [],
     } as unknown as Workflow)
     vi.mocked(getTaskInstance).mockReturnValue({ nodeStates: {} } as unknown as WorkflowInstance)
@@ -96,11 +96,11 @@ describe('analyzeRecentFailures (backward compat)', () => {
     expect(result.totalExamined).toBe(1)
   })
 
-  it('tracks persona breakdown', () => {
+  it('tracks agent breakdown', () => {
     const tasks = [makeTask('t1'), makeTask('t2')]
     vi.mocked(getTasksByStatus).mockReturnValue(tasks)
     vi.mocked(getTaskWorkflow).mockReturnValue({
-      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Architect' } }],
+      nodes: [{ id: 'n1', type: 'task', task: { agent: 'Architect' } }],
       edges: [],
     } as unknown as Workflow)
     vi.mocked(getTaskInstance).mockReturnValue({ nodeStates: {} } as unknown as WorkflowInstance)
@@ -112,9 +112,9 @@ describe('analyzeRecentFailures (backward compat)', () => {
     })
 
     const result = analyzeRecentFailures()
-    expect(result.personaBreakdown).toHaveProperty('Architect')
-    expect(result.personaBreakdown['Architect']!.failures).toBe(2)
-    expect(result.personaBreakdown['Architect']!.topCategory).toBe('planning')
+    expect(result.agentBreakdown).toHaveProperty('Architect')
+    expect(result.agentBreakdown['Architect']!.failures).toBe(2)
+    expect(result.agentBreakdown['Architect']!.topCategory).toBe('planning')
   })
 
   it('handles tasks without workflow/instance gracefully', () => {
@@ -156,7 +156,7 @@ describe('analyzeTaskPatterns', () => {
       return []
     })
     vi.mocked(getTaskWorkflow).mockReturnValue({
-      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Pragmatist' } }],
+      nodes: [{ id: 'n1', type: 'task', task: { agent: 'Pragmatist' } }],
       edges: [],
     } as unknown as Workflow)
     vi.mocked(getTaskInstance).mockReturnValue({
@@ -174,21 +174,21 @@ describe('analyzeTaskPatterns', () => {
     expect(retryPattern!.taskIds).toContain('c1')
   })
 
-  it('includes successes in persona breakdown', () => {
+  it('includes successes in agent breakdown', () => {
     const completed = [makeTask('c1', { status: 'completed' as Task['status'], error: undefined })]
     vi.mocked(getTasksByStatus).mockImplementation((status: string) => {
       if (status === 'completed') return completed
       return []
     })
     vi.mocked(getTaskWorkflow).mockReturnValue({
-      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Pragmatist' } }],
+      nodes: [{ id: 'n1', type: 'task', task: { agent: 'Pragmatist' } }],
       edges: [],
     } as unknown as Workflow)
     vi.mocked(getTaskInstance).mockReturnValue({ nodeStates: {} } as unknown as WorkflowInstance)
 
     const result = analyzeTaskPatterns()
-    expect(result.personaBreakdown['Pragmatist']?.successes).toBe(1)
-    expect(result.personaBreakdown['Pragmatist']?.failures).toBe(0)
+    expect(result.agentBreakdown['Pragmatist']?.successes).toBe(1)
+    expect(result.agentBreakdown['Pragmatist']?.failures).toBe(0)
   })
 
   it('marks patterns as isNew=false when matching history fingerprints', () => {
@@ -198,7 +198,7 @@ describe('analyzeTaskPatterns', () => {
       return []
     })
     vi.mocked(getTaskWorkflow).mockReturnValue({
-      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Pragmatist' } }],
+      nodes: [{ id: 'n1', type: 'task', task: { agent: 'Pragmatist' } }],
       edges: [],
     } as unknown as Workflow)
     vi.mocked(getTaskInstance).mockReturnValue({ nodeStates: {} } as unknown as WorkflowInstance)
@@ -243,7 +243,7 @@ describe('analyzeTaskPatterns', () => {
       return []
     })
     vi.mocked(getTaskWorkflow).mockReturnValue({
-      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Pragmatist' } }],
+      nodes: [{ id: 'n1', type: 'task', task: { agent: 'Pragmatist' } }],
       edges: [],
     } as unknown as Workflow)
     vi.mocked(getTaskInstance).mockReturnValue({ nodeStates: {} } as unknown as WorkflowInstance)
@@ -269,7 +269,7 @@ describe('analyzeTaskPatterns', () => {
       return []
     })
     vi.mocked(getTaskWorkflow).mockReturnValue({
-      nodes: [{ id: 'n1', type: 'task', task: { persona: 'Pragmatist' } }],
+      nodes: [{ id: 'n1', type: 'task', task: { agent: 'Pragmatist' } }],
       edges: [],
     } as unknown as Workflow)
     vi.mocked(getTaskInstance).mockReturnValue({ nodeStates: {} } as unknown as WorkflowInstance)

@@ -135,7 +135,7 @@ afterEach(async () => {
 
 **节点创建**
 
-- `createTaskNode(id, name, persona)` - 创建任务节点
+- `createTaskNode(id, name, agent)` - 创建任务节点
 - `createConditionNode(id, name, expression)` - 创建条件节点
 - `createLoopNode(id, name, maxIterations)` - 创建循环节点
 

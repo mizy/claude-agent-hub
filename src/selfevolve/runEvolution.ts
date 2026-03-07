@@ -141,7 +141,7 @@ export async function runEvolutionCycle(
     // Step 3: Convert patterns to improvements (with history dedup)
     const improvements = patternsToImprovements(
       analysis.patterns,
-      analysis.personaBreakdown,
+      analysis.agentBreakdown,
       perfResult.patterns,
       history
     )
@@ -216,11 +216,11 @@ export async function runEvolutionCycle(
 
 /**
  * Convert failure patterns and performance patterns into concrete improvement proposals.
- * Prioritizes prompt-related patterns for personas with most failures.
+ * Prioritizes prompt-related patterns for agents with most failures.
  */
 function patternsToImprovements(
   patterns: FailurePattern[],
-  personaBreakdown: Record<string, { failures: number; topCategory: string }>,
+  agentBreakdown: Record<string, { failures: number; topCategory: string }>,
   performancePatterns?: PerformancePattern[],
   history?: EvolutionRecord[]
 ): Improvement[] {
@@ -253,14 +253,14 @@ function patternsToImprovements(
     const triggerId = pattern.taskIds[0]!
 
     if (pattern.category === 'prompt') {
-      const topPersona = findTopPersona(personaBreakdown)
+      const topAgent = findTopAgent(agentBreakdown)
 
       improvements.push({
         id,
         source: 'prompt',
         description: pattern.description,
-        personaName: topPersona,
-        detail: `Prompt improvement for ${topPersona}: ${pattern.description}`,
+        agentName: topAgent,
+        detail: `Prompt improvement for ${topAgent}: ${pattern.description}`,
         triggeredBy: triggerId,
       })
     } else {
@@ -303,16 +303,16 @@ function patternsToImprovements(
   return improvements
 }
 
-function findTopPersona(
+function findTopAgent(
   breakdown: Record<string, { failures: number; topCategory: string }>
 ): string {
-  let topPersona = 'Pragmatist'
+  let topAgent = 'Pragmatist'
   let maxFailures = 0
-  for (const [persona, stats] of Object.entries(breakdown)) {
+  for (const [agent, stats] of Object.entries(breakdown)) {
     if (stats.failures > maxFailures) {
-      topPersona = persona
+      topAgent = agent
       maxFailures = stats.failures
     }
   }
-  return topPersona
+  return topAgent
 }

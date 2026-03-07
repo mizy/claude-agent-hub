@@ -125,20 +125,22 @@ function detectContentTrigger(userText: string, extraKeywords?: string[]): strin
   return null
 }
 
-/** Cached config for extractEveryNTurns and extra keywords */
-let cachedExtractConfig: { extractEveryNTurns: number; extraKeywords: string[] } | null = null
+/** TTL-cached config for extractEveryNTurns and extra keywords */
+const CONFIG_TTL_MS = 60_000 // refresh from config every 60s
+let cachedExtractConfig: { extractEveryNTurns: number; extraKeywords: string[]; cachedAt: number } | null = null
 
 async function getExtractConfig(): Promise<{ extractEveryNTurns: number; extraKeywords: string[] }> {
-  if (cachedExtractConfig) return cachedExtractConfig
+  if (cachedExtractConfig && Date.now() - cachedExtractConfig.cachedAt < CONFIG_TTL_MS) return cachedExtractConfig
   try {
     const config = await loadConfig()
     const cm = config.memory.chatMemory
     cachedExtractConfig = {
       extractEveryNTurns: cm.extractEveryNTurns ?? DEFAULT_EXTRACT_EVERY_N_TURNS,
       extraKeywords: cm.triggerKeywords ?? [],
+      cachedAt: Date.now(),
     }
   } catch {
-    cachedExtractConfig = { extractEveryNTurns: DEFAULT_EXTRACT_EVERY_N_TURNS, extraKeywords: [] }
+    cachedExtractConfig = { extractEveryNTurns: DEFAULT_EXTRACT_EVERY_N_TURNS, extraKeywords: [], cachedAt: Date.now() }
   }
   return cachedExtractConfig
 }

@@ -191,6 +191,7 @@ export function applyEnvOverrides(config: Config): Config {
             session: {
               timeoutMinutes: 60,
               maxSessions: 200,
+              maxWebMessages: 200,
             },
           },
         }
@@ -314,6 +315,7 @@ export function getDefaultConfig(): Config {
           session: {
             timeoutMinutes: 60,
             maxSessions: 200,
+            maxWebMessages: 200,
           },
         },
       },

@@ -4,7 +4,7 @@
  * All periodic background jobs run by the daemon:
  * - Task polling — pick up pending tasks from queue
  * - Signal detection — detect and auto-repair issues
- * - Evolution cycle — evolve persona prompts
+ * - Evolution cycle — evolve agent prompts
  * - Waiting task recovery — resume schedule-wait tasks whose timer expired
  */
 
@@ -22,7 +22,7 @@ import { updateInstanceVariables } from '../store/WorkflowStore.js'
 import { resumeTask } from '../task/resumeTask.js'
 import { detectSignals, tryAutoRepair } from '../selfevolve/index.js'
 import { runEvolutionCycle } from '../prompt-optimization/index.js'
-import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
+import { BUILTIN_AGENTS } from '../agents/builtinAgents.js'
 import { createLogger } from '../shared/logger.js'
 
 const logger = createLogger('daemon-jobs')
@@ -68,14 +68,14 @@ export function registerDaemonJobs(pollCronExpr: string): void {
   })
   scheduledJobs.push(signalJob)
 
-  // Evolution cycle — every hour, for all personas
+  // Evolution cycle — every hour, for all agents
   const evolutionJob = cron.schedule('0 * * * *', () => {
     try {
-      for (const persona of Object.values(BUILTIN_PERSONAS)) {
-        const report = runEvolutionCycle(persona.name)
+      for (const agent of Object.values(BUILTIN_AGENTS)) {
+        const report = runEvolutionCycle(agent.name)
         if (report.activeVersion) {
           logger.debug(
-            `Evolution [${persona.name}]: active=v${report.activeVersion.version} ` +
+            `Evolution [${agent.name}]: active=v${report.activeVersion.version} ` +
               `(${(report.activeVersion.successRate * 100).toFixed(0)}% success, ${report.activeVersion.totalTasks} tasks), ` +
               `candidates=${report.candidateVersions}, trend=${report.failureTrend}`
           )

@@ -1,11 +1,11 @@
 export interface PromptVersion {
   id: string // "pv-{timestamp}-{random}"
-  personaName: string // "Pragmatist", "Architect" etc.
+  agentName: string // "Pragmatist", "Architect" etc.
   parentVersionId?: string // parent version ID (undefined for first version)
   version: number // incremental version number (1, 2, 3...)
 
   // Prompt content
-  systemPrompt: string // full persona systemPrompt
+  systemPrompt: string // full agent systemPrompt
   changelog: string // change description (AI generated)
 
   // Aggregated stats
@@ -29,7 +29,7 @@ export interface PromptVersionStats {
 
 export interface FailureAnalysis {
   taskId: string
-  personaName: string
+  agentName: string
   versionId: string // prompt version used
   failedNodes: FailedNodeInfo[]
   rootCause: string // AI analyzed root cause

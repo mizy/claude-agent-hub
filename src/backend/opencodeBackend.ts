@@ -11,11 +11,11 @@ import { ok, err } from '../shared/result.js'
 import { createLogger } from '../shared/logger.js'
 import type { Result } from '../shared/result.js'
 import { toInvokeError } from '../shared/toInvokeError.js'
-import { getErrorMessage } from '../shared/assertError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
-import { collectStderr } from './processHelpers.js'
+import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
+import { collectStderr, probeCliVersion } from './processHelpers.js'
 import { collectStream } from './collectStream.js'
-import { extractImagesFromEvent, type StreamJsonEvent } from './claudeCompatHelpers.js'
+import { createClaudeCompatStreamProcessor } from './claudeCompatHelpers.js'
 import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
 
 const logger = createLogger('opencode')
@@ -43,10 +43,19 @@ export function createOpencodeBackend(): BackendAdapter {
         onChunk,
         model,
         sessionId,
+        attachments,
+        variant,
         signal,
       } = options
 
-      const args = buildArgs(prompt, model, sessionId)
+      const args = buildOpencodeArgs({
+        prompt,
+        cwd,
+        model,
+        sessionId,
+        attachments,
+        variant,
+      })
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
@@ -98,7 +107,7 @@ export function createOpencodeBackend(): BackendAdapter {
           `[perf] spawn: ${perf.spawn}ms, first-stdout: ${perf.firstStdout}ms, first-delta: ${perf.firstDelta}ms, total: ${durationMs}ms`
         )
         logger.debug(`rawOutput length: ${rawOutput.length}, first 200 chars: ${rawOutput.slice(0, 200)}`)
-        const parsed = parseOutput(rawOutput)
+        const parsed = parseClaudeCompatOutput(rawOutput)
         logger.debug(`parsed response length: ${parsed.response.length}, sessionId: ${parsed.sessionId ? '***' : 'none'}`)
 
         // opencode error event (e.g. SSL cert failure, API error)
@@ -108,7 +117,7 @@ export function createOpencodeBackend(): BackendAdapter {
         }
 
         if (!parsed.response && stderrOutput) {
-          const stderrParsed = parseOutput(stderrOutput)
+          const stderrParsed = parseClaudeCompatOutput(stderrOutput)
           if (stderrParsed.response) {
             logger.warn(
               `opencode returned error via stderr: ${stderrParsed.response.slice(0, 200)}`
@@ -145,6 +154,14 @@ export function createOpencodeBackend(): BackendAdapter {
           sessionId: parsed.sessionId,
           durationApiMs: parsed.durationApiMs,
           costUsd: parsed.costUsd,
+          promptTokens: parsed.promptTokens,
+          completionTokens: parsed.completionTokens,
+          totalTokens: parsed.totalTokens,
+          benchmark: {
+            spawnMs: perf.spawn,
+            firstStdoutMs: perf.firstStdout || undefined,
+            firstChunkMs: perf.firstDelta || undefined,
+          },
           mcpImagePaths: mcpImagePaths.length > 0 ? mcpImagePaths : undefined,
         })
       } catch (error: unknown) {
@@ -156,20 +173,30 @@ export function createOpencodeBackend(): BackendAdapter {
     },
 
     async checkAvailable(): Promise<boolean> {
-      try {
-        await execa('opencode', ['--version'], { timeout: 5000 })
-        return true
-      } catch (e) {
-        logger.debug(`opencode not available: ${getErrorMessage(e)}`)
+      const version = await probeCliVersion('opencode')
+      if (!version) {
+        logger.debug('opencode not available or version not detectable')
         return false
       }
+      logger.debug(`opencode version: ${version}`)
+      return true
     },
   }
 }
 
 // ============ Private Helpers ============
 
-function buildArgs(prompt: string, model?: string, sessionId?: string): string[] {
+interface BuildOpencodeArgsOptions {
+  prompt: string
+  cwd: string
+  model?: string
+  sessionId?: string
+  attachments?: string[]
+  variant?: string
+}
+
+function buildOpencodeArgs(options: BuildOpencodeArgsOptions): string[] {
+  const { prompt, cwd, model, sessionId, attachments, variant } = options
   const args: string[] = ['run']
 
   if (sessionId) {
@@ -181,94 +208,24 @@ function buildArgs(prompt: string, model?: string, sessionId?: string): string[]
     args.push('-m', model.includes('/') ? model : `opencode/${model}`)
   }
 
+  // --variant requires opencode v1.3+
+  if (variant) {
+    args.push('--variant', variant)
+  }
+
+  // -f (file attachment) requires opencode v1.2+
+  for (const file of attachments ?? []) {
+    args.push('-f', file)
+  }
+
+  // Keep CLI execution directory explicit for remote/server-attach scenarios.
+  args.push('--dir', cwd)
   args.push('--format', 'json')
 
   // opencode v1.2.15+: prompt must come after -- separator
   args.push('--', prompt)
 
   return args
-}
-
-/** Extract text content from an opencode JSON event (supports both old and new format) */
-function extractEventText(event: Record<string, unknown>): string | undefined {
-  // New format: { type: "text", part: { text: "..." } }
-  if (event.type === 'text' && event.part && typeof event.part === 'object') {
-    const part = event.part as Record<string, unknown>
-    if (typeof part.text === 'string') return part.text
-  }
-  // Old format: { text: "..." } or { content: "..." } or { result: "..." }
-  const text = event.text || event.content || event.result
-  return typeof text === 'string' ? text : undefined
-}
-
-/** Extract sessionID from an opencode JSON event */
-function extractSessionId(event: Record<string, unknown>): string | undefined {
-  const id = event.sessionID || event.session_id || event.sessionId
-  return typeof id === 'string' ? id : undefined
-}
-
-/** Extract cost/duration from an opencode JSON event */
-function extractMetrics(event: Record<string, unknown>): {
-  durationApiMs?: number
-  costUsd?: number
-} {
-  const result: { durationApiMs?: number; costUsd?: number } = {}
-
-  // Try common field names for API duration
-  const dur = event.duration_api_ms ?? event.durationApiMs ?? event.duration_ms
-  if (typeof dur === 'number') result.durationApiMs = dur
-
-  // Try common field names for cost
-  const cost = event.total_cost_usd ?? event.totalCostUsd ?? event.cost ?? event.total_cost
-  if (typeof cost === 'number') result.costUsd = cost
-
-  return result
-}
-
-/** Extract error message from an opencode error event */
-function extractError(event: Record<string, unknown>): string | undefined {
-  if (event.type !== 'error') return undefined
-  const error = event.error as Record<string, unknown> | undefined
-  if (!error) return undefined
-  // { error: { data: { message: "..." } } } or { error: { message: "..." } }
-  const data = error.data as Record<string, unknown> | undefined
-  const msg = data?.message ?? error.message
-  return typeof msg === 'string' ? msg : JSON.stringify(error)
-}
-
-/** 解析 opencode JSON 输出（提取最终 assistant 文本 + sessionId + 费用） */
-function parseOutput(raw: string): {
-  response: string
-  sessionId: string
-  durationApiMs?: number
-  costUsd?: number
-  error?: string
-} {
-  let response = ''
-  let sessionId = ''
-  let durationApiMs: number | undefined
-  let costUsd: number | undefined
-  let errorMsg: string | undefined
-
-  const lines = raw.split('\n').filter(l => l.trim())
-  for (const line of lines) {
-    try {
-      const event = JSON.parse(line)
-      const sid = extractSessionId(event)
-      if (sid) sessionId = sid
-      const text = extractEventText(event)
-      if (text) response += text
-      const metrics = extractMetrics(event)
-      if (metrics.durationApiMs != null) durationApiMs = metrics.durationApiMs
-      if (metrics.costUsd != null) costUsd = metrics.costUsd
-      const err = extractError(event)
-      if (err) errorMsg = err
-    } catch (e) {
-      logger.debug(`Skipping non-JSON line: ${getErrorMessage(e)}`)
-    }
-  }
-
-  return { response, sessionId, durationApiMs, costUsd, error: errorMsg }
 }
 
 async function streamOutput(
@@ -280,47 +237,19 @@ async function streamOutput(
   const extractedImagePaths: string[] = []
   const mcpToolUseIds = new Set<string>()
 
+  const processLine = createClaudeCompatStreamProcessor({
+    mcpToolUseIds,
+    extractedImagePaths,
+    perf,
+    startTime,
+    fallbackWrite: (text) => process.stdout.write(chalk.dim(text)),
+  })
+
   const rawOutput = await collectStream(subprocess, {
     onChunk,
     perf,
     startTime,
-    processLine(line, cb) {
-      try {
-        const event = JSON.parse(line)
-
-        // OpenCode error event — log immediately
-        const errorMsg = extractError(event)
-        if (errorMsg) {
-          logger.warn(`opencode stream error: ${errorMsg}`)
-        }
-
-        // OpenCode native format: extract text content
-        const content = extractEventText(event)
-        if (content) {
-          if (perf && startTime && perf.firstDelta === 0) {
-            perf.firstDelta = Date.now() - startTime
-          }
-          if (cb) cb(content)
-          else process.stdout.write(chalk.dim(content))
-        }
-
-        // Claude-compatible stream events (when opencode proxies claude)
-        const streamEvent = event as StreamJsonEvent
-        if (streamEvent.type === 'assistant' && streamEvent.message?.content) {
-          for (const block of streamEvent.message.content) {
-            if (block.type === 'tool_use' && block.id && block.name?.startsWith('mcp__')) {
-              mcpToolUseIds.add(block.id)
-            }
-          }
-        } else if (streamEvent.type === 'user') {
-          const imgPaths = extractImagesFromEvent(streamEvent, mcpToolUseIds)
-          extractedImagePaths.push(...imgPaths)
-        }
-      } catch (e) {
-        logger.debug(`Non-JSON stream line: ${getErrorMessage(e)}`)
-        if (!cb) process.stdout.write(line + '\n')
-      }
-    },
+    processLine,
   })
 
   return { rawOutput, extractedImagePaths }

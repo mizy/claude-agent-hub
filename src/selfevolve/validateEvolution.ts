@@ -18,7 +18,7 @@ const logger = createLogger('selfevolve')
  *
  * Checks:
  * 1. Overall task success rate (before vs after)
- * 2. Per-persona A/B test results via prompt-optimization
+ * 2. Per-agent A/B test results via prompt-optimization
  * 3. Failure trend direction
  */
 export function validateEvolution(evolutionId: string): EvolutionValidation | null {
@@ -58,22 +58,22 @@ export function validateEvolution(evolutionId: string): EvolutionValidation | nu
   const afterTotal = afterCompleted.length + afterFailed.length
   const currentSuccessRate = afterTotal > 0 ? afterCompleted.length / afterTotal : 0
 
-  // Run per-persona evolution cycles to check A/B test results
-  const personas = getAffectedPersonas(record)
-  const personaReports = personas.map(p => runEvolutionCycle(p))
+  // Run per-agent evolution cycles to check A/B test results
+  const agents = getAffectedAgents(record)
+  const agentReports = agents.map(p => runEvolutionCycle(p))
 
   // Determine if improved
   const improved =
     afterTotal >= 3 && // Need enough samples
     currentSuccessRate > baselineSuccessRate &&
-    personaReports.every(r => r.failureTrend !== 'degrading')
+    agentReports.every(r => r.failureTrend !== 'degrading')
 
   const summary = buildSummary(
     baselineSuccessRate,
     currentSuccessRate,
     beforeTotal,
     afterTotal,
-    personaReports
+    agentReports
   )
 
   const validation: EvolutionValidation = {
@@ -95,19 +95,19 @@ export function validateEvolution(evolutionId: string): EvolutionValidation | nu
   return validation
 }
 
-/** Get persona names affected by an evolution record */
-function getAffectedPersonas(
-  record: { improvements: Array<{ personaName?: string }> }
+/** Get agent names affected by an evolution record */
+function getAffectedAgents(
+  record: { improvements: Array<{ agentName?: string }> }
 ): string[] {
-  const personas = new Set<string>()
+  const agents = new Set<string>()
   for (const imp of record.improvements) {
-    if (imp.personaName) personas.add(imp.personaName)
+    if (imp.agentName) agents.add(imp.agentName)
   }
-  // If no specific persona, check all personas with versions
-  if (personas.size === 0) {
-    personas.add('Pragmatist')
+  // If no specific agent, check all agents with versions
+  if (agents.size === 0) {
+    agents.add('Pragmatist')
   }
-  return Array.from(personas)
+  return Array.from(agents)
 }
 
 function buildSummary(
@@ -115,7 +115,7 @@ function buildSummary(
   current: number,
   beforeN: number,
   afterN: number,
-  personaReports: Array<{ personaName: string; failureTrend: string }>
+  agentReports: Array<{ agentName: string; failureTrend: string }>
 ): string {
   const parts: string[] = []
 
@@ -123,8 +123,8 @@ function buildSummary(
     `Success rate: ${(baseline * 100).toFixed(0)}% (n=${beforeN}) → ${(current * 100).toFixed(0)}% (n=${afterN})`
   )
 
-  for (const report of personaReports) {
-    parts.push(`${report.personaName}: trend=${report.failureTrend}`)
+  for (const report of agentReports) {
+    parts.push(`${report.agentName}: trend=${report.failureTrend}`)
   }
 
   if (afterN < 3) {

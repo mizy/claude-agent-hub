@@ -20,7 +20,7 @@ const logger = createLogger('evolution')
 // ============ Types ============
 
 export interface EvolutionReport {
-  personaName: string
+  agentName: string
   activeVersion: { id: string; version: number; successRate: number; totalTasks: number } | null
   candidateVersions: number
   retiredVersions: number
@@ -32,14 +32,14 @@ export interface EvolutionReport {
 // ============ Core Functions ============
 
 /**
- * Run a full evolution cycle for a persona:
+ * Run a full evolution cycle for an agent:
  * 1. Check and conclude any running A/B test
  * 2. Retire stale candidates (> 7 days without entering A/B test)
  * 3. Return evolution status report
  */
-export function runEvolutionCycle(personaName: string): EvolutionReport {
+export function runEvolutionCycle(agentName: string): EvolutionReport {
   // 1. Conclude running A/B test if ready
-  const runningTest = getRunningTest(personaName)
+  const runningTest = getRunningTest(agentName)
   if (runningTest) {
     const result = evaluateABTest(runningTest.id)
     if (result) {
@@ -49,17 +49,17 @@ export function runEvolutionCycle(personaName: string): EvolutionReport {
   }
 
   // 2. Retire stale candidates
-  retireStaleCandidates(personaName)
+  retireStaleCandidates(agentName)
 
   // 3. Build status report
-  const versions = getAllVersions(personaName)
+  const versions = getAllVersions(agentName)
   const active = versions.find(v => v.status === 'active')
   const candidates = versions.filter(v => v.status === 'candidate')
   const retired = versions.filter(v => v.status === 'retired')
-  const failureStats = computeFailureStats(personaName)
+  const failureStats = computeFailureStats(agentName)
 
   return {
-    personaName,
+    agentName,
     activeVersion: active
       ? {
           id: active.id,
@@ -70,7 +70,7 @@ export function runEvolutionCycle(personaName: string): EvolutionReport {
       : null,
     candidateVersions: candidates.length,
     retiredVersions: retired.length,
-    runningABTest: !!getRunningTest(personaName),
+    runningABTest: !!getRunningTest(agentName),
     failureTrend: failureStats.recentTrend,
     patternsExtracted: getAllPatterns().length,
   }
@@ -80,10 +80,10 @@ export function runEvolutionCycle(personaName: string): EvolutionReport {
  * Retire candidate versions that have been idle too long.
  * A candidate older than maxAgeDays that isn't part of a running A/B test gets retired.
  */
-function retireStaleCandidates(personaName: string, maxAgeDays = 7): void {
-  const versions = getAllVersions(personaName)
+function retireStaleCandidates(agentName: string, maxAgeDays = 7): void {
+  const versions = getAllVersions(agentName)
   const cutoff = Date.now() - maxAgeDays * 86400_000
-  const runningTest = getRunningTest(personaName)
+  const runningTest = getRunningTest(agentName)
 
   for (const version of versions) {
     if (version.status !== 'candidate') continue
@@ -99,9 +99,9 @@ function retireStaleCandidates(personaName: string, maxAgeDays = 7): void {
       continue
     }
 
-    retireVersion(personaName, version.id)
+    retireVersion(agentName, version.id)
     logger.info(
-      `Evolution: retired stale candidate ${version.id} (v${version.version}) for ${personaName} — idle ${Math.round((Date.now() - createdAt) / 86400_000)} days`
+      `Evolution: retired stale candidate ${version.id} (v${version.version}) for ${agentName} — idle ${Math.round((Date.now() - createdAt) / 86400_000)} days`
     )
   }
 }

@@ -31,6 +31,7 @@ beforeEach(() => {
   configureSession({
     timeoutMinutes: 60,
     maxSessions: 200,
+    maxWebMessages: 200,
   })
 })
 
@@ -115,8 +116,8 @@ describe('sessionManager', () => {
 
     it('should preserve turn counters when resuming same session', () => {
       setSession('chat-1', 'sess-1')
-      incrementTurn('chat-1', 100, 200)
-      incrementTurn('chat-1', 100, 200)
+      incrementTurn('chat-1', 'a'.repeat(100), 'a'.repeat(200))
+      incrementTurn('chat-1', 'a'.repeat(100), 'a'.repeat(200))
       const before = getSession('chat-1')!
       expect(before.turnCount).toBe(2)
 
@@ -129,8 +130,8 @@ describe('sessionManager', () => {
 
     it('should reset turn counters when session ID changes', () => {
       setSession('chat-1', 'sess-1')
-      incrementTurn('chat-1', 100, 200)
-      incrementTurn('chat-1', 100, 200)
+      incrementTurn('chat-1', 'a'.repeat(100), 'a'.repeat(200))
+      incrementTurn('chat-1', 'a'.repeat(100), 'a'.repeat(200))
       expect(getSession('chat-1')!.turnCount).toBe(2)
 
       // New session ID (e.g. backend switch or manual reset)
@@ -143,7 +144,7 @@ describe('sessionManager', () => {
   describe('turn counting', () => {
     it('should increment turn count and tokens', () => {
       setSession('chat-1', 'sess-1')
-      incrementTurn('chat-1', 100, 200)
+      incrementTurn('chat-1', 'a'.repeat(100), 'a'.repeat(200))
       const s = getSession('chat-1')
       expect(s!.turnCount).toBe(1)
       expect(s!.estimatedTokens).toBeGreaterThan(0)
@@ -151,14 +152,14 @@ describe('sessionManager', () => {
 
     it('should be no-op for non-existent session', () => {
       // Should not throw
-      incrementTurn('no-such', 100, 100)
+      incrementTurn('no-such', 'a'.repeat(100), 'a'.repeat(100))
       expect(getSession('no-such')).toBeUndefined()
     })
   })
 
   describe('LRU eviction', () => {
     it('should evict oldest sessions when over maxSessions', () => {
-      configureSession({ timeoutMinutes: 60, maxSessions: 3 })
+      configureSession({ timeoutMinutes: 60, maxSessions: 3, maxWebMessages: 200 })
 
       setSession('a', 's1')
       setSession('b', 's2')

@@ -3,7 +3,7 @@ import {
   recordFailure,
   getAllFailures,
   getFailuresByCategory,
-  getFailuresByPersona,
+  getFailuresByAgent,
   getRecentFailures,
   computeFailureStats,
   formatFailureKnowledgeForPrompt,
@@ -18,7 +18,7 @@ describe('recordFailure', () => {
   it('persists a failure record and returns it', () => {
     const record = recordFailure({
       taskId: 'task-1',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       versionId: 'pv-1',
       category: 'execution',
       confidence: 0.8,
@@ -34,7 +34,7 @@ describe('recordFailure', () => {
   it('stores multiple failures', () => {
     recordFailure({
       taskId: 'task-1',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       versionId: 'pv-1',
       category: 'execution',
       confidence: 0.8,
@@ -43,7 +43,7 @@ describe('recordFailure', () => {
     })
     recordFailure({
       taskId: 'task-2',
-      personaName: 'Analyst',
+      agentName: 'Analyst',
       versionId: 'pv-2',
       category: 'planning',
       confidence: 0.6,
@@ -59,7 +59,7 @@ describe('query functions', () => {
   beforeEach(() => {
     recordFailure({
       taskId: 'task-1',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       versionId: 'pv-1',
       category: 'execution',
       confidence: 0.8,
@@ -68,7 +68,7 @@ describe('query functions', () => {
     })
     recordFailure({
       taskId: 'task-2',
-      personaName: 'Analyst',
+      agentName: 'Analyst',
       versionId: 'pv-2',
       category: 'planning',
       confidence: 0.6,
@@ -77,7 +77,7 @@ describe('query functions', () => {
     })
     recordFailure({
       taskId: 'task-3',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       versionId: 'pv-1',
       category: 'prompt',
       confidence: 0.9,
@@ -95,9 +95,9 @@ describe('query functions', () => {
     expect(getFailuresByCategory('resource')).toHaveLength(0)
   })
 
-  it('getFailuresByPersona filters correctly', () => {
-    expect(getFailuresByPersona('Pragmatist')).toHaveLength(2)
-    expect(getFailuresByPersona('Analyst')).toHaveLength(1)
+  it('getFailuresByAgent filters correctly', () => {
+    expect(getFailuresByAgent('Pragmatist')).toHaveLength(2)
+    expect(getFailuresByAgent('Analyst')).toHaveLength(1)
   })
 
   it('getRecentFailures returns all recent records', () => {
@@ -109,7 +109,7 @@ describe('computeFailureStats', () => {
   beforeEach(() => {
     recordFailure({
       taskId: 'task-1',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       versionId: 'pv-1',
       category: 'execution',
       confidence: 0.8,
@@ -118,7 +118,7 @@ describe('computeFailureStats', () => {
     })
     recordFailure({
       taskId: 'task-2',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       versionId: 'pv-1',
       category: 'execution',
       confidence: 0.8,
@@ -127,7 +127,7 @@ describe('computeFailureStats', () => {
     })
     recordFailure({
       taskId: 'task-3',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       versionId: 'pv-1',
       category: 'planning',
       confidence: 0.6,
@@ -136,7 +136,7 @@ describe('computeFailureStats', () => {
     })
   })
 
-  it('computes stats across all personas', () => {
+  it('computes stats across all agents', () => {
     const stats = computeFailureStats()
     expect(stats.totalFailures).toBe(3)
     expect(stats.byCategory['execution']).toBe(2)
@@ -145,7 +145,7 @@ describe('computeFailureStats', () => {
     expect(stats.topPatterns[0]?.count).toBe(2)
   })
 
-  it('computes stats for specific persona', () => {
+  it('computes stats for specific agent', () => {
     const stats = computeFailureStats('Pragmatist')
     expect(stats.totalFailures).toBe(3)
   })
@@ -164,7 +164,7 @@ describe('formatFailureKnowledgeForPrompt', () => {
   it('includes category breakdown and suggestions', () => {
     recordFailure({
       taskId: 'task-1',
-      personaName: 'Pragmatist',
+      agentName: 'Pragmatist',
       versionId: 'pv-1',
       category: 'execution',
       confidence: 0.8,

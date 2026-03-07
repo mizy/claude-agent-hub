@@ -136,7 +136,7 @@ export async function sendFinalResponse(
   placeholderId: string | null,
   messenger: MessengerAdapter
 ): Promise<void> {
-  // Table → card upgrade: delete streaming post, send JSON 2.0 card
+  // Table → card upgrade: send card first, then delete streaming placeholder
   if (
     hasMarkdownTable(response) &&
     placeholderId &&
@@ -144,19 +144,19 @@ export async function sendFinalResponse(
     messenger.sendCard
   ) {
     try {
-      const deleted = await messenger.deleteMessage(chatId, placeholderId)
-      if (deleted) {
-        const cardJson = buildMarkdownCard(response)
-        const cardMsgId = await messenger.sendCard(chatId, cardJson)
-        if (cardMsgId) return // success, skip normal flow
-        // Deleted but card failed — must send as new messages
-        placeholderId = null
+      const cardJson = buildMarkdownCard(response)
+      const cardMsgId = await messenger.sendCard(chatId, cardJson)
+      if (cardMsgId) {
+        // Card sent successfully — now safe to delete placeholder
+        await messenger.deleteMessage(chatId, placeholderId).catch((err) => {
+          logger.debug(`failed to delete streaming placeholder: ${getErrorMessage(err)}`)
+        })
+        return
       }
-      // !deleted: placeholder still exists, keep placeholderId for normal edit path
+      // Card send returned falsy — keep placeholder for normal edit path below
     } catch (err) {
       logger.warn(`table card upgrade failed, fallback to post: ${getErrorMessage(err)}`)
-      // Exception after state unknown — null out to avoid editing a possibly-deleted message
-      placeholderId = null
+      // Card failed — placeholder still exists, fall through to normal edit path
     }
   }
 
@@ -170,9 +170,9 @@ export async function sendFinalResponse(
   if (placeholderId && markedParts.length > 0) {
     const editOk = await messenger.editMessage(chatId, placeholderId, markedParts[0]!)
     if (!editOk) {
-      // Placeholder edit failed — fall back to sending as new message
-      logger.debug('final edit failed, falling back to reply')
-      await messenger.reply(chatId, markedParts[0]!)
+      // Placeholder edit failed — do NOT fallback to reply() as user already saw streaming content.
+      // Silently skip; the last streamed edit is the best the user gets.
+      logger.warn('final edit failed, skipping (user saw streaming content)')
     }
     for (const part of markedParts.slice(1)) {
       await messenger.reply(chatId, part)

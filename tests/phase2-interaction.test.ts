@@ -69,8 +69,8 @@ function createTestWorkflow(taskId: string, nodes?: Workflow['nodes'], edges?: W
     description: 'Test workflow',
     nodes: nodes || [
       { id: 'start', type: 'start', name: 'Start' },
-      { id: 'node-a', type: 'task', name: 'Node A', task: { persona: 'Pragmatist', prompt: 'Do step A' } },
-      { id: 'node-b', type: 'task', name: 'Node B', task: { persona: 'Pragmatist', prompt: 'Do step B' } },
+      { id: 'node-a', type: 'task', name: 'Node A', task: { agent: 'Pragmatist', prompt: 'Do step A' } },
+      { id: 'node-b', type: 'task', name: 'Node B', task: { agent: 'Pragmatist', prompt: 'Do step B' } },
       { id: 'end', type: 'end', name: 'End' },
     ],
     edges: edges || [
@@ -428,7 +428,7 @@ describe('Inject Node', () => {
     expect(result.success).toBe(false)
   })
 
-  it('should use custom persona', () => {
+  it('should use custom agent', () => {
     const { taskId } = setupTask({ status: 'developing' })
     const workflow = createTestWorkflow(taskId)
     saveTaskWorkflow(taskId, workflow)
@@ -441,16 +441,16 @@ describe('Inject Node', () => {
 
     const updatedWorkflow = getTaskWorkflow(taskId)!
     const injectedNode = updatedWorkflow.nodes.find(n => n.id === result.nodeId)
-    expect(injectedNode!.task?.persona).toBe('Reviewer')
+    expect(injectedNode!.task?.agent).toBe('Reviewer')
   })
 
   it('should handle node with multiple downstream targets', () => {
     const { taskId } = setupTask({ status: 'developing' })
     const nodes: Workflow['nodes'] = [
       { id: 'start', type: 'start', name: 'Start' },
-      { id: 'branch', type: 'task', name: 'Branch', task: { persona: 'Pragmatist', prompt: 'branch' } },
-      { id: 'target1', type: 'task', name: 'Target 1', task: { persona: 'Pragmatist', prompt: 'target1' } },
-      { id: 'target2', type: 'task', name: 'Target 2', task: { persona: 'Pragmatist', prompt: 'target2' } },
+      { id: 'branch', type: 'task', name: 'Branch', task: { agent: 'Pragmatist', prompt: 'branch' } },
+      { id: 'target1', type: 'task', name: 'Target 1', task: { agent: 'Pragmatist', prompt: 'target1' } },
+      { id: 'target2', type: 'task', name: 'Target 2', task: { agent: 'Pragmatist', prompt: 'target2' } },
     ]
     const edges: Workflow['edges'] = [
       { id: 'e1', from: 'start', to: 'branch' },

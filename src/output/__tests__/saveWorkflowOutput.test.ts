@@ -176,7 +176,7 @@ describe('formatWorkflowOutput', () => {
           id: 'build',
           type: 'task',
           name: 'Build',
-          task: { persona: 'Pragmatist', prompt: 'build it' },
+          task: { agent: 'Pragmatist', prompt: 'build it' },
         },
         { id: 'end', type: 'end', name: 'End' },
       ],

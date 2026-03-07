@@ -132,9 +132,9 @@ export async function analyzeFailure(
     return null
   }
 
-  // Find the persona used (from first task node)
-  const taskNode = workflow.nodes.find(n => n.type === 'task' && n.task?.persona)
-  const personaName = taskNode?.task?.persona ?? 'Pragmatist'
+  // Find the agent used (from first task node)
+  const taskNode = workflow.nodes.find(n => n.type === 'task' && n.task?.agent)
+  const agentName = taskNode?.task?.agent ?? 'Pragmatist'
 
   const prompt = buildAnalysisPrompt(task, workflow, failedNodes)
 
@@ -166,7 +166,7 @@ export async function analyzeFailure(
 
   return {
     taskId: task.id,
-    personaName,
+    agentName,
     versionId,
     failedNodes,
     rootCause: `[${analysis.category}] ${analysis.rootCause}`,

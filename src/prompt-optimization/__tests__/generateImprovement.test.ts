@@ -32,7 +32,7 @@ function mockOkResponse(response: string): InvokeReturn {
 function makeVersion(overrides?: Partial<PromptVersion>): PromptVersion {
   return {
     id: 'pv-test-001',
-    personaName: 'Pragmatist',
+    agentName: 'Pragmatist',
     version: 1,
     systemPrompt: 'You are a pragmatic developer.',
     changelog: 'Initial version',
@@ -52,7 +52,7 @@ function makeVersion(overrides?: Partial<PromptVersion>): PromptVersion {
 function makeFailure(overrides?: Partial<FailureAnalysis>): FailureAnalysis {
   return {
     taskId: 'task-fail-001',
-    personaName: 'Pragmatist',
+    agentName: 'Pragmatist',
     versionId: 'pv-test-001',
     failedNodes: [
       {
@@ -94,7 +94,7 @@ describe('generateImprovement', () => {
 
     expect(result).not.toBeNull()
     expect(result!.id).toMatch(/^pv-/)
-    expect(result!.personaName).toBe('Pragmatist')
+    expect(result!.agentName).toBe('Pragmatist')
     expect(result!.parentVersionId).toBe('pv-test-001')
     expect(result!.systemPrompt).toContain('exact build commands')
     expect(result!.changelog).toContain('build command')
@@ -131,12 +131,12 @@ describe('generateImprovement', () => {
   })
 
   it('should increment version number correctly', async () => {
-    // Use a unique persona to avoid interference from other tests
-    const persona = 'VersionTestBot'
-    mkdirSync(join(DATA_DIR, 'prompt-versions', persona), { recursive: true })
+    // Use a unique agent to avoid interference from other tests
+    const agent = 'VersionTestBot'
+    mkdirSync(join(DATA_DIR, 'prompt-versions', agent), { recursive: true })
 
     const { savePromptVersion } = await import('../../store/PromptVersionStore.js')
-    savePromptVersion(makeVersion({ version: 3, id: 'pv-existing-003', personaName: persona }))
+    savePromptVersion(makeVersion({ version: 3, id: 'pv-existing-003', agentName: agent }))
 
     mockInvoke.mockResolvedValue(mockOkResponse(JSON.stringify({
       improvedPrompt: 'Better prompt',
@@ -144,7 +144,7 @@ describe('generateImprovement', () => {
     })))
 
     const result = await generateImprovement(
-      makeVersion({ personaName: persona }),
+      makeVersion({ agentName: agent }),
       [makeFailure()]
     )
 

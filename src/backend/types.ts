@@ -5,7 +5,7 @@
  */
 
 import type { Result } from '../shared/result.js'
-import type { PersonaConfig } from '../types/persona.js'
+import type { AgentConfig } from '../types/agent.js'
 import type { TraceContext } from '../types/trace.js'
 
 // ============ Invoke Types ============
@@ -13,7 +13,7 @@ import type { TraceContext } from '../types/trace.js'
 export interface InvokeOptions {
   prompt: string
   mode?: 'plan' | 'execute' | 'review'
-  persona?: PersonaConfig
+  agent?: AgentConfig
   cwd?: string
   /** 实时输出响应，默认 false */
   stream?: boolean
@@ -31,10 +31,23 @@ export interface InvokeOptions {
   sessionId?: string
   /** 模型选择，含义因后端而异 */
   model?: string
+  /** 推理变体/思考强度，含义因后端而异（如 opencode variant、claude effort） */
+  variant?: string
+  /** 附件路径/资源规格（后端按能力选择性支持） */
+  attachments?: string[]
   /** Trace 上下文，用于创建 LLM child span */
   traceCtx?: TraceContext
   /** Abort signal for cancelling the invocation */
   signal?: AbortSignal
+}
+
+export interface InvokeBenchmarkTiming {
+  /** 进程启动耗时 */
+  spawnMs: number
+  /** 首次 stdout 到达耗时（仅流式） */
+  firstStdoutMs?: number
+  /** 首个可展示文本 chunk 到达耗时（仅流式） */
+  firstChunkMs?: number
 }
 
 export interface InvokeResult {
@@ -47,8 +60,14 @@ export interface InvokeResult {
   durationApiMs?: number
   /** 总花费 USD，不支持的后端为 undefined */
   costUsd?: number
+  /** token 使用量，不支持的后端为 undefined */
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
   /** 等待并发槽位的毫秒数 */
   slotWaitMs?: number
+  /** 流式关键耗时，用于 benchmark/可观测性 */
+  benchmark?: InvokeBenchmarkTiming
   /** MCP 工具产生的本地图片路径（如截图），由 chatHandler 直接发送 */
   mcpImagePaths?: string[]
 }

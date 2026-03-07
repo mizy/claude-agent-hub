@@ -2,7 +2,7 @@
  * 任务相关 Prompt 定义
  */
 
-import type { PersonaConfig } from '../types/persona.js'
+import type { AgentConfig } from '../types/agent.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from '../workflow/types.js'
 
@@ -128,7 +128,7 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
 1. **task** - AI 执行任务
    \`\`\`json
-   { "id": "node_id", "type": "task", "name": "节点名称", "task": { "persona": "auto", "prompt": "任务描述" } }
+   { "id": "node_id", "type": "task", "name": "节点名称", "task": { "agent": "auto", "prompt": "任务描述" } }
    \`\`\`
 
 2. **lark-notify** - 飞书通知（直接调用 API，不经过 AI）
@@ -240,10 +240,10 @@ implement → verify → review → end (APPROVED)
 {
   "nodes": [
     { "id": "start", "type": "start", "name": "开始" },
-    { "id": "implement", "type": "task", "name": "实现功能", "task": { "persona": "Pragmatist", "prompt": "实现 xxx 功能" } },
-    { "id": "verify", "type": "task", "name": "构建验证", "task": { "persona": "Tester", "prompt": "运行 typecheck、lint、build、test，有失败先修复再验证。" } },
-    { "id": "review", "type": "task", "name": "代码评审", "task": { "persona": "Reviewer", "prompt": "严格评审代码变更，逐项检查正确性、代码质量、架构、错误处理、性能、安全。\\n\\n输出结论：APPROVED（零🔴问题）、NEEDS_CHANGES（有🔴必须修复项）或 REJECTED（架构性问题需重写）。按 🔴/🟡/🟢 分级列出问题。" } },
-    { "id": "fix", "type": "task", "name": "修复问题", "task": { "persona": "Pragmatist", "prompt": "根据评审意见修复代码问题" } },
+    { "id": "implement", "type": "task", "name": "实现功能", "task": { "agent": "Pragmatist", "prompt": "实现 xxx 功能" } },
+    { "id": "verify", "type": "task", "name": "构建验证", "task": { "agent": "Tester", "prompt": "运行 typecheck、lint、build、test，有失败先修复再验证。" } },
+    { "id": "review", "type": "task", "name": "代码评审", "task": { "agent": "Reviewer", "prompt": "严格评审代码变更，逐项检查正确性、代码质量、架构、错误处理、性能、安全。\\n\\n输出结论：APPROVED（零🔴问题）、NEEDS_CHANGES（有🔴必须修复项）或 REJECTED（架构性问题需重写）。按 🔴/🟡/🟢 分级列出问题。" } },
+    { "id": "fix", "type": "task", "name": "修复问题", "task": { "agent": "Pragmatist", "prompt": "根据评审意见修复代码问题" } },
     { "id": "end", "type": "end", "name": "结束" }
   ],
   "edges": [
@@ -268,7 +268,7 @@ implement → verify → review → end (APPROVED)
 {
   "nodes": [
     { "id": "start", "type": "start", "name": "开始" },
-    { "id": "execute", "type": "task", "name": "执行任务", "task": { "persona": "Pragmatist", "prompt": "执行检查/分析..." } },
+    { "id": "execute", "type": "task", "name": "执行任务", "task": { "agent": "Pragmatist", "prompt": "执行检查/分析..." } },
     { "id": "notify", "type": "lark-notify", "name": "推送结果", "larkNotify": { "title": "定时报告" } },
     { "id": "wait", "type": "schedule-wait", "name": "等待下次", "scheduleWait": { "cron": "0 9 * * 1-5" } }
   ],
@@ -324,14 +324,14 @@ implement → verify → review → end (APPROVED)
 }
 
 /**
- * 构建 Persona 描述列表
+ * 构建 Agent 描述列表
  */
-function formatPersonaDescriptions(personas: PersonaConfig[]): string {
-  if (personas.length === 0) {
-    return '- 无可用 Persona，使用 "auto" 自动选择默认 Persona'
+function formatAgentDescriptions(agents: AgentConfig[]): string {
+  if (agents.length === 0) {
+    return '- 无可用 Agent，使用 "auto" 自动选择默认 Agent'
   }
 
-  return personas
+  return agents
     .map(p => {
       const desc = p.description ? `: ${p.description}` : ''
       return `- **${p.name}**${desc}`
@@ -366,25 +366,25 @@ const AGENT_TEAMS_INSTRUCTION = `
  */
 export function buildJsonWorkflowPrompt(
   task: Task,
-  availablePersonas: PersonaConfig[] = [],
+  availableAgents: AgentConfig[] = [],
   projectContext: string = '',
   learningInsights: string = '',
   useAgentTeams: boolean = false,
   memoryContext: string = ''
 ): string {
-  const personaDescriptions = formatPersonaDescriptions(availablePersonas)
+  const agentDescriptions = formatAgentDescriptions(availableAgents)
   const agentTeamsInstruction = useAgentTeams ? AGENT_TEAMS_INSTRUCTION : ''
   const outputInstruction = useAgentTeams
     ? '先输出团队讨论过程，最后输出 JSON（JSON 放在所有文字之后）'
     : '只输出 JSON，不要有其他文字'
 
-  // 生成 Workflow 固定使用"软件架构师"角色，不受 persona 参数影响
+  // 生成 Workflow 固定使用"软件架构师"角色，不受 agent 参数影响
   return TASK_PROMPTS.GENERATE_JSON_WORKFLOW.replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
     .replace('{{taskTitle}}', task.title)
     .replace('{{taskDescription}}', task.description || '无')
     .replace('{{priority}}', task.priority)
-    .replace('{{agentDescriptions}}', personaDescriptions)
+    .replace('{{agentDescriptions}}', agentDescriptions)
     .replace('{{projectContext}}', projectContext)
     .replace('{{learningInsights}}', learningInsights)
     .replace('{{memoryContext}}', memoryContext)
@@ -396,7 +396,7 @@ export function buildJsonWorkflowPrompt(
  * 构建执行节点的 prompt
  */
 export function buildExecuteNodePrompt(
-  persona: PersonaConfig,
+  agent: AgentConfig,
   workflow: Workflow,
   nodeName: string,
   nodePrompt: string,
@@ -404,7 +404,7 @@ export function buildExecuteNodePrompt(
 ): string {
   return TASK_PROMPTS.EXECUTE_NODE.replace('{{currentTime}}', getCurrentTime())
     .replace('{{cwd}}', process.cwd())
-    .replace('{{agentName}}', persona.name)
+    .replace('{{agentName}}', agent.name)
     .replace('{{workflowName}}', workflow.name)
     .replace('{{nodeName}}', nodeName)
     .replace('{{nodePrompt}}', nodePrompt)

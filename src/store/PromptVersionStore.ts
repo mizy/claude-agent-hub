@@ -1,11 +1,11 @@
 /**
  * Prompt version store
  *
- * Uses FileStore in file mode, organized by persona subdirectory.
- * Each persona has its own store instance (cached in Map).
+ * Uses FileStore in file mode, organized by agent subdirectory.
+ * Each agent has its own store instance (cached in Map).
  *
  * Storage layout:
- *   .cah-data/prompt-versions/{persona}/{versionId}.json
+ *   .cah-data/prompt-versions/{agent}/{versionId}.json
  */
 
 import { join } from 'path'
@@ -14,18 +14,18 @@ import { PROMPT_VERSIONS_DIR } from './paths.js'
 import { generateShortId } from '../shared/generateId.js'
 import type { PromptVersion, PromptVersionStats } from '../types/promptVersion.js'
 
-// Per-persona store cache
+// Per-agent store cache
 const storeCache = new Map<string, FileStore<PromptVersion>>()
 
-function getStoreForPersona(personaName: string): FileStore<PromptVersion> {
-  let store = storeCache.get(personaName)
+function getStoreForAgent(agentName: string): FileStore<PromptVersion> {
+  let store = storeCache.get(agentName)
   if (!store) {
     store = new FileStore<PromptVersion>({
-      dir: join(PROMPT_VERSIONS_DIR, personaName),
+      dir: join(PROMPT_VERSIONS_DIR, agentName),
       mode: 'file',
       ext: '.json',
     })
-    storeCache.set(personaName, store)
+    storeCache.set(agentName, store)
   }
   return store
 }
@@ -38,48 +38,48 @@ export function generateVersionId(): string {
 
 /** Save a prompt version */
 export function savePromptVersion(version: PromptVersion): void {
-  const store = getStoreForPersona(version.personaName)
+  const store = getStoreForAgent(version.agentName)
   store.setSync(version.id, version)
 }
 
-/** Get a specific version by persona and version ID */
-export function getPromptVersion(personaName: string, versionId: string): PromptVersion | null {
-  const store = getStoreForPersona(personaName)
+/** Get a specific version by agent and version ID */
+export function getPromptVersion(agentName: string, versionId: string): PromptVersion | null {
+  const store = getStoreForAgent(agentName)
   return store.getSync(versionId)
 }
 
-/** Get all versions for a persona, sorted by version number descending */
-export function getAllVersions(personaName: string): PromptVersion[] {
-  const store = getStoreForPersona(personaName)
+/** Get all versions for an agent, sorted by version number descending */
+export function getAllVersions(agentName: string): PromptVersion[] {
+  const store = getStoreForAgent(agentName)
   const versions = store.getAllSync()
   return versions.sort((a, b) => b.version - a.version)
 }
 
-/** Get the currently active version for a persona */
-export function getActiveVersion(personaName: string): PromptVersion | null {
-  const versions = getAllVersions(personaName)
+/** Get the currently active version for an agent */
+export function getActiveVersion(agentName: string): PromptVersion | null {
+  const versions = getAllVersions(agentName)
   return versions.find(v => v.status === 'active') ?? null
 }
 
-/** Get the latest version (highest version number) for a persona */
-export function getLatestVersion(personaName: string): PromptVersion | null {
-  const versions = getAllVersions(personaName)
+/** Get the latest version (highest version number) for an agent */
+export function getLatestVersion(agentName: string): PromptVersion | null {
+  const versions = getAllVersions(agentName)
   return versions[0] ?? null
 }
 
 /** Update stats for a prompt version */
 export function updatePromptVersionStats(
-  personaName: string,
+  agentName: string,
   versionId: string,
   stats: PromptVersionStats
 ): boolean {
-  const store = getStoreForPersona(personaName)
+  const store = getStoreForAgent(agentName)
   return store.updateSync(versionId, { stats })
 }
 
 /** Retire a specific version (set status to 'retired') */
-export function retireVersion(personaName: string, versionId: string): boolean {
-  const store = getStoreForPersona(personaName)
+export function retireVersion(agentName: string, versionId: string): boolean {
+  const store = getStoreForAgent(agentName)
   return store.updateSync(versionId, { status: 'retired' as const })
 }
 
@@ -90,15 +90,15 @@ export function retireVersion(personaName: string, versionId: string): boolean {
  * Returns the newly activated version, or null if target not found.
  */
 export function rollbackToVersion(
-  personaName: string,
+  agentName: string,
   targetVersionId: string
 ): PromptVersion | null {
-  const store = getStoreForPersona(personaName)
+  const store = getStoreForAgent(agentName)
   const target = store.getSync(targetVersionId)
   if (!target) return null
 
   // Retire current active version
-  const currentActive = getActiveVersion(personaName)
+  const currentActive = getActiveVersion(agentName)
   if (currentActive && currentActive.id !== targetVersionId) {
     store.updateSync(currentActive.id, { status: 'retired' as const })
   }

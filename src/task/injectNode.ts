@@ -23,7 +23,7 @@ export interface InjectNodeResult {
  * The new node is inserted after the currently running/latest completed node
  * and before its downstream nodes.
  */
-export function injectNode(taskId: string, nodePrompt: string, persona = 'Pragmatist'): InjectNodeResult {
+export function injectNode(taskId: string, nodePrompt: string, agent = 'Pragmatist'): InjectNodeResult {
   const task = getTask(taskId)
   if (!task) {
     return { success: false, error: `Task not found: ${taskId}` }
@@ -77,7 +77,7 @@ export function injectNode(taskId: string, nodePrompt: string, persona = 'Pragma
     name: `[注入] ${nodePrompt.slice(0, 30)}`,
     description: nodePrompt,
     task: {
-      persona,
+      agent,
       prompt: nodePrompt,
     },
   }

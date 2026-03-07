@@ -94,7 +94,7 @@ export type SpanAttributes = Record<string, unknown> & {
 
   // Node 特有
   'node.attempt'?: number
-  'node.persona'?: string
+  'node.agent'?: string
 
   // Workflow 特有
   'workflow.name'?: string

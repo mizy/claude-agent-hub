@@ -33,17 +33,17 @@ function calculateFitness(stats: PromptVersionStats): number {
 }
 
 /**
- * Compare two prompt versions for a persona.
+ * Compare two prompt versions for an agent.
  *
  * Returns null if either version is not found.
  */
 export function compareVersions(
-  personaName: string,
+  agentName: string,
   versionId1: string,
   versionId2: string
 ): VersionComparison | null {
-  const v1 = getPromptVersion(personaName, versionId1)
-  const v2 = getPromptVersion(personaName, versionId2)
+  const v1 = getPromptVersion(agentName, versionId1)
+  const v2 = getPromptVersion(agentName, versionId2)
 
   if (!v1 || !v2) return null
 

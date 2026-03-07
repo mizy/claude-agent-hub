@@ -1,5 +1,5 @@
 /**
- * Persona 到 MCP 服务器的映射配置
+ * Agent 到 MCP 服务器的映射配置
  * 不同角色需要不同的外部工具集成
  */
 
@@ -11,10 +11,10 @@ export type McpServerName =
   | 'codeup-git' // 阿里云 Codeup
 
 /**
- * 每个 Persona 需要的 MCP 服务器
- * 没有列出的 Persona 默认不启用任何 MCP 服务器
+ * 每个 Agent 需要的 MCP 服务器
+ * 没有列出的 Agent 默认不启用任何 MCP 服务器
  */
-export const PERSONA_MCP_CONFIG: Record<string, McpServerName[]> = {
+export const AGENT_MCP_CONFIG: Record<string, McpServerName[]> = {
   // 架构师：专注系统设计，不需要外部集成
   Architect: [],
 
@@ -38,19 +38,34 @@ export const PERSONA_MCP_CONFIG: Record<string, McpServerName[]> = {
 
   // DevOps：需要 Jira/Codeup 集成
   DevOps: ['mcp-atlassian', 'codeup-git'],
+
+  // 调试专家
+  Debugger: [],
+
+  // 产品思维者：需要 Jira 管理需求
+  Product: ['mcp-atlassian'],
+
+  // 技术文档师
+  Documenter: [],
+
+  // 性能优化师
+  Optimizer: [],
+
+  // 技术导师
+  Mentor: [],
 }
 
 /**
- * 获取指定 Persona 需要的 MCP 服务器列表
+ * 获取指定 Agent 需要的 MCP 服务器列表
  */
-export function getPersonaMcpServers(persona: string): McpServerName[] {
-  return PERSONA_MCP_CONFIG[persona] ?? []
+export function getAgentMcpServers(agent: string): McpServerName[] {
+  return AGENT_MCP_CONFIG[agent] ?? []
 }
 
 /**
- * 检查 Persona 是否需要 MCP 服务器
+ * 检查 Agent 是否需要 MCP 服务器
  */
-export function personaNeedsMcp(persona: string): boolean {
-  const servers = getPersonaMcpServers(persona)
+export function agentNeedsMcp(agent: string): boolean {
+  const servers = getAgentMcpServers(agent)
   return servers.length > 0
 }

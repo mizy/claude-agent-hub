@@ -97,7 +97,7 @@ export async function generateImprovement(
   const prompt = buildImprovementPrompt(currentVersion, recentFailures)
 
   logger.info(
-    `Generating prompt improvement for ${currentVersion.personaName} v${currentVersion.version} ` +
+    `Generating prompt improvement for ${currentVersion.agentName} v${currentVersion.version} ` +
       `based on ${recentFailures.length} failure(s)`
   )
 
@@ -118,12 +118,12 @@ export async function generateImprovement(
   }
 
   // Determine next version number
-  const latest = getLatestVersion(currentVersion.personaName)
+  const latest = getLatestVersion(currentVersion.agentName)
   const nextVersion = (latest?.version ?? 0) + 1
 
   const newVersion: PromptVersion = {
     id: generateVersionId(),
-    personaName: currentVersion.personaName,
+    agentName: currentVersion.agentName,
     parentVersionId: currentVersion.id,
     version: nextVersion,
     systemPrompt: improvement.improvedPrompt,
@@ -141,7 +141,7 @@ export async function generateImprovement(
 
   savePromptVersion(newVersion)
   logger.info(
-    `Created candidate version ${currentVersion.personaName} v${nextVersion}: ${improvement.changelog}`
+    `Created candidate version ${currentVersion.agentName} v${nextVersion}: ${improvement.changelog}`
   )
 
   return newVersion

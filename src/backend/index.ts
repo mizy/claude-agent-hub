@@ -7,7 +7,7 @@
  * - 轻量模型: resolveLightModel()（为简单任务选择轻量模型）
  * - 注册: resolveBackend/resolveBackendForTask/registerBackend/clearBackendCache/getRegisteredBackends
  * - 配置: resolveBackendConfig()（独立于 resolveBackend 的配置解析，避免循环依赖）
- * - Prompt: buildPrompt()（persona system prompt + mode 指令 + 用户 prompt 组装）
+ * - Prompt: buildPrompt()（agent system prompt + mode 指令 + 用户 prompt 组装）
  *
  * 支持的后端：
  * - claude-code: Claude Code CLI (默认)
@@ -52,7 +52,7 @@ const logger = createLogger('backend')
 
 /**
  * 调用当前配置的 CLI 后端
- * 自动处理：限流、prompt 组装（persona + mode）、日志
+ * 自动处理：限流、prompt 组装（agent + mode）、日志
  *
  * 支持通过 backendType/backendModel 动态覆盖后端和模型
  */
@@ -72,8 +72,8 @@ export async function invokeBackend(
     }
   }
 
-  // 组装完整 prompt（persona system prompt + mode 指令 + 用户 prompt）
-  const fullPrompt = buildPrompt(options.prompt, options.persona, options.mode)
+  // 组装完整 prompt（agent system prompt + mode 指令 + 用户 prompt）
+  const fullPrompt = buildPrompt(options.prompt, options.agent, options.mode)
   const slots = getSlotInfo()
 
   logger.info(

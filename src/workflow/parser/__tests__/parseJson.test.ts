@@ -20,7 +20,7 @@ function makeMinimalInput(overrides: Partial<JsonWorkflowInput> = {}): JsonWorkf
         id: 'n1',
         type: 'task',
         name: 'Task 1',
-        task: { persona: 'coder', prompt: 'do something' },
+        task: { agent: 'coder', prompt: 'do something' },
       },
     ],
     edges: [],
@@ -52,7 +52,7 @@ describe('parseJson', () => {
     const input = makeMinimalInput({
       nodes: [
         { id: 'start', type: 'start', name: '开始' },
-        { id: 'n1', type: 'task', name: 'Task 1', task: { persona: 'coder', prompt: 'do' } },
+        { id: 'n1', type: 'task', name: 'Task 1', task: { agent: 'coder', prompt: 'do' } },
         { id: 'end', type: 'end', name: '结束' },
       ],
     })
@@ -67,7 +67,7 @@ describe('parseJson', () => {
     const input = makeMinimalInput({
       nodes: [
         { id: 'start', type: 'start', name: '开始' },
-        { id: 'n1', type: 'task', name: 'Task 1', task: { persona: 'coder', prompt: 'do' } },
+        { id: 'n1', type: 'task', name: 'Task 1', task: { agent: 'coder', prompt: 'do' } },
         { id: 'end', type: 'end', name: '结束' },
       ],
       edges: [
@@ -162,7 +162,7 @@ describe('parseJson', () => {
   it('should accept switch case with default value', () => {
     const input = makeMinimalInput({
       nodes: [
-        { id: 'n1', type: 'task', name: 'Task 1', task: { persona: 'coder', prompt: 'do' } },
+        { id: 'n1', type: 'task', name: 'Task 1', task: { agent: 'coder', prompt: 'do' } },
         {
           id: 'sw1',
           type: 'switch',

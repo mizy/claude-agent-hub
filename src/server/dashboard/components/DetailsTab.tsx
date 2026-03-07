@@ -151,10 +151,10 @@ export function DetailsTab() {
               <div className="label">Duration</div>
               <div className="value">{state.durationMs ? fmtDur(state.durationMs) : '-'}</div>
             </div>
-            {node?.task?.persona && (
+            {node?.task?.agent && (
               <div className="info-item full">
                 <div className="label">Agent</div>
-                <div className="value">{node.task.persona}</div>
+                <div className="value">{node.task.agent}</div>
               </div>
             )}
           </div>

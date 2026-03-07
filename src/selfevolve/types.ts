@@ -78,8 +78,8 @@ export interface Improvement {
   id: string
   source: ImprovementSource
   description: string
-  /** Which persona is affected (for prompt improvements) */
-  personaName?: string
+  /** Which agent is affected (for prompt improvements) */
+  agentName?: string
   /** Concrete change applied */
   detail: string
   /** The failure pattern that triggered this improvement */

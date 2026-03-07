@@ -12,6 +12,8 @@ export interface Task {
   retryCount: number
   scheduleCron?: string
   source?: string
+  model?: string
+  backend?: string
 }
 
 export interface WorkflowNode {
@@ -19,9 +21,9 @@ export interface WorkflowNode {
   name: string
   type: string
   description?: string
-  task?: { persona?: string; prompt?: string }
+  task?: { agent?: string; prompt?: string }
   // Raw data: loop nodes use `loop` field, but also mapped as `config` for legacy compat
-  config?: { bodyNodes?: string[]; maxIterations?: number }
+  config?: { bodyNodes?: string[]; maxIterations?: number; model?: string; backend?: string }
   loop?: { bodyNodes?: string[]; maxIterations?: number }
 }
 

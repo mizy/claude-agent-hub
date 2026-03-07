@@ -119,7 +119,7 @@ export function WorkflowCanvas() {
     if (!structureChanged && !taskChanged && !stateChanged) return
 
     const taskDone = taskData.task.status === 'completed' || taskData.task.status === 'done'
-    const schema = workflowToSchema(nodes, edges || [], taskData.instance, taskDone)
+    const schema = workflowToSchema(nodes, edges || [], taskData.instance, taskDone, taskData.task.model, taskData.task.backend)
     editor.schema.setData(schema).then(() => {
       if (structureChanged || taskChanged) {
         requestAnimationFrame(() => {

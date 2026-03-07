@@ -8,7 +8,7 @@
  * - taskStatus: 12 个状态判断函数（isTerminalStatus/isActiveStatus/isRunningStatus/...）
  * - workflow: Workflow/WorkflowNode/WorkflowEdge/WorkflowInstance/NodeState + 配置类型
  * - nodeStatus: 10 个节点/工作流状态判断函数（isNodeDone/isWorkflowTerminal/...）
- * - persona: PersonaConfig/PersonaTraits/PersonaPreferences
+ * - agent: AgentConfig/AgentTraits/AgentPreferences
  * - output: ExecutionTiming
  * - taskMessage: TaskMessage/TaskMessageSource
  * - promptVersion: PromptVersion/FailureAnalysis/PromptVersionStats
@@ -88,8 +88,8 @@ export {
   isWorkflowPaused,
 } from './nodeStatus.js'
 
-// Persona types
-export type { PersonaConfig, PersonaTraits, PersonaPreferences } from './persona.js'
+// Agent types
+export type { AgentConfig, AgentTraits, AgentPreferences } from './agent.js'
 
 // Output types
 export type { ExecutionTiming } from './output.js'

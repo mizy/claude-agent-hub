@@ -228,7 +228,7 @@ function buildWorkflow(
         type: 'task',
         name: task.name,
         task: {
-          persona: task.agent || 'auto',
+          agent: task.agent || 'auto',
           prompt: task.description || task.name,
         },
       })

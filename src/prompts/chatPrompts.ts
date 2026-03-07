@@ -21,8 +21,8 @@ function getCurrentTime(): string {
 /** Prompt detail level: full for chat, minimal for subagent/task internal calls */
 export type PromptMode = 'full' | 'minimal'
 
-/** Default persona when SOUL.md doesn't exist */
-const DEFAULT_PERSONA = [
+/** Default agent when SOUL.md doesn't exist */
+const DEFAULT_AGENT = [
   '[回复风格]',
   '- 中文回复，代码和专有名词除外',
   '- 简单问题直接答，不铺垫不复述问题',
@@ -100,8 +100,8 @@ const SAFETY_MINIMAL = [
  * 构建客户端环境上下文 prompt
  * 注入自我意识 + 人设（SOUL.md 优先） + 平台格式约束
  *
- * @param mode 'full' (default) = persona + env + format constraints;
- *             'minimal' = env info only, no persona/SOUL/format hints
+ * @param mode 'full' (default) = agent + env + format constraints;
+ *             'minimal' = env info only, no agent/SOUL/format hints
  */
 export function buildClientPrompt(
   client: ClientContext,
@@ -126,10 +126,10 @@ export function buildClientPrompt(
   const lines: string[] = []
 
   if (soul) {
-    // SOUL.md provides full persona — inject as-is, then append env context
+    // SOUL.md provides full agent — inject as-is, then append env context
     lines.push(soul, '', `[环境] ${envParts.join(' | ')}`)
   } else {
-    // Default hardcoded persona
+    // Default hardcoded agent
     lines.push(
       `你是${name}，用户的 AI 搭档。性格直来直去，技术靠谱，日常有梗。`,
       '',
@@ -145,9 +145,9 @@ export function buildClientPrompt(
 
   if (client.isGroup) lines.push('[群聊] 简洁回复，避免刷屏')
 
-  // Only append default persona sections when SOUL.md is not provided
+  // Only append default agent sections when SOUL.md is not provided
   if (!soul) {
-    lines.push('', DEFAULT_PERSONA)
+    lines.push('', DEFAULT_AGENT)
   }
 
   // Safety rules — always included regardless of SOUL/non-SOUL branch

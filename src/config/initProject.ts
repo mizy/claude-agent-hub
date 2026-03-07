@@ -17,13 +17,13 @@ backend:
 # Agent 配置
 agents:
   - name: dev
-    persona: Pragmatist
+    profile: Pragmatist
     schedule:
       poll_interval: 5m      # 任务轮询间隔
 
   # 可以添加更多 Agent
   # - name: reviewer
-  #   persona: Perfectionist
+  #   profile: Perfectionist
   #   role: reviewer
 
 # 任务配置

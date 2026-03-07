@@ -5,7 +5,7 @@ vi.mock('../analyzeTaskPatterns.js', () => ({
   analyzeTaskPatterns: vi.fn().mockReturnValue({
     totalExamined: 0,
     patterns: [],
-    personaBreakdown: {},
+    agentBreakdown: {},
   }),
 }))
 vi.mock('../analyzePerformance.js', () => ({
@@ -53,7 +53,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 0,
       patterns: [],
-      personaBreakdown: {},
+      agentBreakdown: {},
     })
     vi.mocked(analyzePerformance).mockReturnValue({
       totalExamined: 0,
@@ -76,7 +76,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
       patterns: [],
-      personaBreakdown: {},
+      agentBreakdown: {},
     })
 
     const result = await runEvolutionCycle()
@@ -100,7 +100,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
       patterns: [pattern],
-      personaBreakdown: { Pragmatist: { failures: 3, successes: 0, topCategory: 'planning' } },
+      agentBreakdown: { Pragmatist: { failures: 3, successes: 0, topCategory: 'planning' } },
     })
     // Auto-approve all improvements passed to review
     vi.mocked(reviewImprovements).mockImplementation(async (improvements) => {
@@ -125,7 +125,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
       patterns: [],
-      personaBreakdown: {},
+      agentBreakdown: {},
     })
     const perfPattern: PerformancePattern = {
       category: 'slow_execution',
@@ -172,7 +172,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
       patterns: [pattern],
-      personaBreakdown: {},
+      agentBreakdown: {},
     })
 
     const result = await runEvolutionCycle()
@@ -192,7 +192,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 10,
       patterns: [pattern],
-      personaBreakdown: { Pragmatist: { failures: 5, successes: 0, topCategory: 'prompt' } },
+      agentBreakdown: { Pragmatist: { failures: 5, successes: 0, topCategory: 'prompt' } },
     })
 
     // Review rejects the improvement
@@ -226,7 +226,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 10,
       patterns: [pattern],
-      personaBreakdown: { Pragmatist: { failures: 5, successes: 0, topCategory: 'prompt' } },
+      agentBreakdown: { Pragmatist: { failures: 5, successes: 0, topCategory: 'prompt' } },
     })
 
     const result = await runEvolutionCycle({ dryRun: true })
@@ -247,7 +247,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
       patterns: [pattern],
-      personaBreakdown: { Pragmatist: { failures: 3, successes: 0, topCategory: 'prompt' } },
+      agentBreakdown: { Pragmatist: { failures: 3, successes: 0, topCategory: 'prompt' } },
     })
     vi.mocked(reviewImprovements).mockImplementation(async (improvements) => {
       return improvements.map(imp => ({
@@ -289,7 +289,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
       patterns: [pattern],
-      personaBreakdown: {},
+      agentBreakdown: {},
     })
 
     const result = await runEvolutionCycle()
@@ -312,7 +312,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
       patterns: [pattern],
-      personaBreakdown: { Pragmatist: { failures: 3, successes: 0, topCategory: 'planning' } },
+      agentBreakdown: { Pragmatist: { failures: 3, successes: 0, topCategory: 'planning' } },
     })
     // History already has an improvement with the same description
     vi.mocked(listEvolutions).mockReturnValue([
@@ -352,7 +352,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 5,
       patterns: [pattern],
-      personaBreakdown: { Pragmatist: { failures: 2, successes: 0, topCategory: 'prompt' } },
+      agentBreakdown: { Pragmatist: { failures: 2, successes: 0, topCategory: 'prompt' } },
     })
     vi.mocked(reviewImprovements).mockImplementation(async (improvements) => {
       return improvements.map(imp => ({
@@ -384,7 +384,7 @@ describe('runEvolutionCycle', () => {
     vi.mocked(analyzeTaskPatterns).mockReturnValue({
       totalExamined: 0,
       patterns: [],
-      personaBreakdown: {},
+      agentBreakdown: {},
     })
 
     await runEvolutionCycle()

@@ -1,11 +1,11 @@
 /**
  * Prompt 组装
  *
- * 将 persona system prompt + mode 指令 + 用户 prompt 拼接为完整 prompt
+ * 将 agent system prompt + mode 指令 + 用户 prompt 拼接为完整 prompt
  * 此逻辑与具体后端无关
  */
 
-import type { PersonaConfig } from '../types/persona.js'
+import type { AgentConfig } from '../types/agent.js'
 
 const modeInstructions: Record<string, string> = {
   plan: '你现在处于计划模式，请分析任务并生成详细的执行计划。',
@@ -13,11 +13,11 @@ const modeInstructions: Record<string, string> = {
   review: '你现在处于审查模式，请仔细审查代码变更并提出建议。',
 }
 
-export function buildPrompt(prompt: string, persona?: PersonaConfig, mode?: string): string {
+export function buildPrompt(prompt: string, agent?: AgentConfig, mode?: string): string {
   const parts: string[] = []
 
-  if (persona?.systemPrompt) {
-    parts.push(persona.systemPrompt, '')
+  if (agent?.systemPrompt) {
+    parts.push(agent.systemPrompt, '')
   }
 
   if (mode && modeInstructions[mode]) {

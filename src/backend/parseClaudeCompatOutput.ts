@@ -5,6 +5,15 @@
  * the same JSON output format (type=result with result/session_id/duration/cost fields).
  */
 
+import {
+  extractAssistantTextFromEvent,
+  extractEventError,
+  extractEventMetrics,
+  extractEventSessionId,
+  extractEventTextDelta,
+  type StreamJsonEvent,
+} from './claudeCompatHelpers.js'
+
 export interface ClaudeCompatJsonOutput {
   type: string
   subtype?: string
@@ -14,6 +23,14 @@ export interface ClaudeCompatJsonOutput {
   result: string
   session_id?: string
   total_cost_usd?: number
+  usage?: Record<string, unknown>
+  tokenUsage?: Record<string, unknown>
+  tokens?: Record<string, unknown>
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
+  prompt_tokens?: number
+  completion_tokens?: number
 }
 
 export function isClaudeCompatJsonOutput(data: unknown): data is ClaudeCompatJsonOutput {
@@ -30,16 +47,24 @@ export function parseClaudeCompatOutput(raw: string): {
   sessionId: string
   durationApiMs?: number
   costUsd?: number
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  error?: string
 } {
   // Try single-line JSON
   try {
     const parsed = JSON.parse(raw)
     if (isClaudeCompatJsonOutput(parsed)) {
+      const metrics = extractEventMetrics(parsed as unknown as Record<string, unknown>)
       return {
         response: parsed.result,
         sessionId: parsed.session_id ?? '',
-        durationApiMs: parsed.duration_api_ms,
-        costUsd: parsed.total_cost_usd,
+        durationApiMs: metrics.durationApiMs ?? parsed.duration_api_ms,
+        costUsd: metrics.costUsd ?? parsed.total_cost_usd,
+        promptTokens: metrics.promptTokens,
+        completionTokens: metrics.completionTokens,
+        totalTokens: metrics.totalTokens,
       }
     }
   } catch {
@@ -49,75 +74,118 @@ export function parseClaudeCompatOutput(raw: string): {
   // Try multi-line JSON — scan for type=result or type=assistant
   const lines = raw.split('\n').filter(line => line.trim())
   let resultLine: ReturnType<typeof parseClaudeCompatOutput> | undefined
+  let accumulatedDelta = ''
   let lastAssistantText = ''
   let lastSessionId = ''
   let lastCostUsd: number | undefined
   let lastDurationApiMs: number | undefined
+  let lastPromptTokens: number | undefined
+  let lastCompletionTokens: number | undefined
+  let lastTotalTokens: number | undefined
+  let lastError: string | undefined
 
   for (const line of lines) {
     try {
       const parsed = JSON.parse(line) as Record<string, unknown>
+      const metrics = extractEventMetrics(parsed)
+      const eventSessionId = extractEventSessionId(parsed)
 
-      // type=result: classic non-streaming / older stream-json format
-      if (isClaudeCompatJsonOutput(parsed) && parsed.type === 'result') {
+      if (eventSessionId) {
+        lastSessionId = eventSessionId
+      }
+      if (metrics.costUsd != null) {
+        lastCostUsd = metrics.costUsd
+      }
+      if (metrics.durationApiMs != null) {
+        lastDurationApiMs = metrics.durationApiMs
+      }
+      if (metrics.promptTokens != null) {
+        lastPromptTokens = metrics.promptTokens
+      }
+      if (metrics.completionTokens != null) {
+        lastCompletionTokens = metrics.completionTokens
+      }
+      if (metrics.totalTokens != null) {
+        lastTotalTokens = metrics.totalTokens
+      }
+
+      // Accumulate incremental text deltas (OpenCode text events / Claude stream deltas)
+      const deltaText = extractEventTextDelta(parsed)
+      if (deltaText) {
+        accumulatedDelta += deltaText
+      }
+
+      // Extract error events
+      const errorMsg = extractEventError(parsed)
+      if (errorMsg) {
+        lastError = errorMsg
+      }
+
+      // type=result or type=step_finish: structured result with cost/session info
+      if (
+        isClaudeCompatJsonOutput(parsed) &&
+        (parsed.type === 'result' || parsed.type === 'step_finish')
+      ) {
         resultLine = {
           response: parsed.result,
-          sessionId: parsed.session_id ?? '',
-          durationApiMs: parsed.duration_api_ms,
-          costUsd: parsed.total_cost_usd,
+          sessionId: parsed.session_id ?? lastSessionId,
+          durationApiMs: metrics.durationApiMs ?? parsed.duration_api_ms,
+          costUsd: metrics.costUsd ?? parsed.total_cost_usd,
+          promptTokens: metrics.promptTokens,
+          completionTokens: metrics.completionTokens,
+          totalTokens: metrics.totalTokens,
         }
       }
 
       // type=assistant: stream-json with --include-partial-messages
       // Contains the complete message in message.content[]
       if (parsed.type === 'assistant' && parsed.message) {
-        const msg = parsed.message as { content?: Array<{ type: string; text?: string }>; id?: string }
-        if (msg.content) {
-          const text = msg.content
-            .filter(b => b.type === 'text' && b.text)
-            .map(b => b.text)
-            .join('')
-          if (text) lastAssistantText = text
+        const text = extractAssistantTextFromEvent(parsed as unknown as StreamJsonEvent)
+        if (text) {
+          lastAssistantText = text
         }
-      }
-
-      // Extract session_id from any event that carries it
-      if (typeof parsed.session_id === 'string' && parsed.session_id) {
-        lastSessionId = parsed.session_id
-      }
-      if (typeof parsed.total_cost_usd === 'number') {
-        lastCostUsd = parsed.total_cost_usd
-      }
-      if (typeof parsed.duration_api_ms === 'number') {
-        lastDurationApiMs = parsed.duration_api_ms
       }
     } catch {
       // Continue to next line
     }
   }
 
+  // Best response: prefer result line > accumulated deltas > assistant text > raw
+  const bestResponse = resultLine?.response || accumulatedDelta || lastAssistantText
+
   // Prefer type=result if found (has structured cost/session info)
   if (resultLine) {
-    // If result has empty response but assistant had text, use assistant text
-    if (!resultLine.response && lastAssistantText) {
-      resultLine.response = lastAssistantText
+    if (!resultLine.response && bestResponse) {
+      resultLine.response = bestResponse
     }
+    if (resultLine.promptTokens == null) resultLine.promptTokens = lastPromptTokens
+    if (resultLine.completionTokens == null) resultLine.completionTokens = lastCompletionTokens
+    if (resultLine.totalTokens == null) resultLine.totalTokens = lastTotalTokens
+    if (resultLine.costUsd == null) resultLine.costUsd = lastCostUsd
+    if (resultLine.durationApiMs == null) resultLine.durationApiMs = lastDurationApiMs
+    if (!resultLine.sessionId) resultLine.sessionId = lastSessionId
+    if (lastError) resultLine.error = lastError
     return resultLine
   }
 
-  // Fall back to last assistant event text
-  if (lastAssistantText) {
+  // Fall back to accumulated delta text or last assistant event text
+  if (bestResponse) {
     return {
-      response: lastAssistantText,
+      response: bestResponse,
       sessionId: lastSessionId,
       costUsd: lastCostUsd,
       durationApiMs: lastDurationApiMs,
+      promptTokens: lastPromptTokens,
+      completionTokens: lastCompletionTokens,
+      totalTokens: lastTotalTokens,
+      error: lastError,
     }
   }
 
   // Final fallback: return raw text
   return {
     response: raw.trim(),
-    sessionId: '',
+    sessionId: lastSessionId,
+    error: lastError,
   }
 }

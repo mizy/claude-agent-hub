@@ -51,7 +51,7 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
         id: 'node-1',
         name: 'Build Project',
         type: 'task',
-        task: { persona: 'Pragmatist', prompt: 'Build it' },
+        task: { agent: 'Pragmatist', prompt: 'Build it' },
       },
     ],
     edges: [],
@@ -108,7 +108,7 @@ describe('analyzeFailure', () => {
 
     expect(result).not.toBeNull()
     expect(result!.taskId).toBe('task-test-001')
-    expect(result!.personaName).toBe('Pragmatist')
+    expect(result!.agentName).toBe('Pragmatist')
     expect(result!.versionId).toBe('pv-001')
     expect(result!.rootCause).toContain('prompt_unclear')
     expect(result!.failedNodes).toHaveLength(1)

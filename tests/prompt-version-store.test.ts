@@ -21,15 +21,15 @@ import {
 import { PROMPT_VERSIONS_DIR } from '../src/store/paths.js'
 import type { PromptVersion, PromptVersionStats } from '../src/types/promptVersion.js'
 
-const TEST_PERSONA = `test-persona-${Date.now()}`
-const createdPersonas: string[] = [TEST_PERSONA]
+const TEST_AGENT = `test-agent-${Date.now()}`
+const createdAgents: string[] = [TEST_AGENT]
 
 function createTestVersion(overrides: Partial<PromptVersion> = {}): PromptVersion {
   return {
     id: generateVersionId(),
-    personaName: TEST_PERSONA,
+    agentName: TEST_AGENT,
     version: 1,
-    systemPrompt: 'You are a test persona.',
+    systemPrompt: 'You are a test agent.',
     changelog: 'Initial version',
     stats: {
       totalTasks: 0,
@@ -46,9 +46,9 @@ function createTestVersion(overrides: Partial<PromptVersion> = {}): PromptVersio
 
 describe('PromptVersionStore', () => {
   afterAll(() => {
-    // Clean up test persona directories
-    for (const persona of createdPersonas) {
-      const dir = join(PROMPT_VERSIONS_DIR, persona)
+    // Clean up test agent directories
+    for (const agent of createdAgents) {
+      const dir = join(PROMPT_VERSIONS_DIR, agent)
       if (existsSync(dir)) {
         rmSync(dir, { recursive: true, force: true })
       }
@@ -73,96 +73,96 @@ describe('PromptVersionStore', () => {
       const version = createTestVersion()
       savePromptVersion(version)
 
-      const retrieved = getPromptVersion(TEST_PERSONA, version.id)
+      const retrieved = getPromptVersion(TEST_AGENT, version.id)
       expect(retrieved).toEqual(version)
     })
 
     it('should return null for non-existent version', () => {
-      const result = getPromptVersion(TEST_PERSONA, 'pv-nonexistent')
+      const result = getPromptVersion(TEST_AGENT, 'pv-nonexistent')
       expect(result).toBe(null)
     })
 
-    it('should return null for non-existent persona', () => {
-      const result = getPromptVersion('nonexistent-persona', 'pv-nonexistent')
+    it('should return null for non-existent agent', () => {
+      const result = getPromptVersion('nonexistent-agent', 'pv-nonexistent')
       expect(result).toBe(null)
     })
   })
 
   describe('getAllVersions', () => {
     it('should return versions sorted by version number descending', () => {
-      const persona = `test-list-${Date.now()}`
-      createdPersonas.push(persona)
+      const agent = `test-list-${Date.now()}`
+      createdAgents.push(agent)
 
-      const v1 = createTestVersion({ personaName: persona, version: 1 })
-      const v2 = createTestVersion({ personaName: persona, version: 2 })
-      const v3 = createTestVersion({ personaName: persona, version: 3 })
+      const v1 = createTestVersion({ agentName: agent, version: 1 })
+      const v2 = createTestVersion({ agentName: agent, version: 2 })
+      const v3 = createTestVersion({ agentName: agent, version: 3 })
 
       savePromptVersion(v1)
       savePromptVersion(v3) // save out of order
       savePromptVersion(v2)
 
-      const versions = getAllVersions(persona)
+      const versions = getAllVersions(agent)
       expect(versions).toHaveLength(3)
       expect(versions[0]!.version).toBe(3)
       expect(versions[1]!.version).toBe(2)
       expect(versions[2]!.version).toBe(1)
     })
 
-    it('should return empty array for persona with no versions', () => {
-      const versions = getAllVersions('nonexistent-persona-xyz')
+    it('should return empty array for agent with no versions', () => {
+      const versions = getAllVersions('nonexistent-agent-xyz')
       expect(versions).toEqual([])
     })
   })
 
   describe('getActiveVersion', () => {
     it('should return the active version', () => {
-      const persona = `test-active-${Date.now()}`
-      createdPersonas.push(persona)
+      const agent = `test-active-${Date.now()}`
+      createdAgents.push(agent)
 
-      const active = createTestVersion({ personaName: persona, status: 'active' })
-      const retired = createTestVersion({ personaName: persona, version: 2, status: 'retired' })
+      const active = createTestVersion({ agentName: agent, status: 'active' })
+      const retired = createTestVersion({ agentName: agent, version: 2, status: 'retired' })
 
       savePromptVersion(active)
       savePromptVersion(retired)
 
-      const result = getActiveVersion(persona)
+      const result = getActiveVersion(agent)
       expect(result).not.toBe(null)
       expect(result!.id).toBe(active.id)
       expect(result!.status).toBe('active')
     })
 
     it('should return null when no active version exists', () => {
-      const persona = `test-no-active-${Date.now()}`
-      createdPersonas.push(persona)
+      const agent = `test-no-active-${Date.now()}`
+      createdAgents.push(agent)
 
-      const retired = createTestVersion({ personaName: persona, status: 'retired' })
+      const retired = createTestVersion({ agentName: agent, status: 'retired' })
       savePromptVersion(retired)
 
-      const result = getActiveVersion(persona)
+      const result = getActiveVersion(agent)
       expect(result).toBe(null)
     })
   })
 
   describe('getLatestVersion', () => {
     it('should return the version with highest version number', () => {
-      const persona = `test-latest-${Date.now()}`
-      createdPersonas.push(persona)
+      const agent = `test-latest-${Date.now()}`
+      createdAgents.push(agent)
 
-      const v1 = createTestVersion({ personaName: persona, version: 1 })
-      const v5 = createTestVersion({ personaName: persona, version: 5 })
-      const v3 = createTestVersion({ personaName: persona, version: 3 })
+      const v1 = createTestVersion({ agentName: agent, version: 1 })
+      const v5 = createTestVersion({ agentName: agent, version: 5 })
+      const v3 = createTestVersion({ agentName: agent, version: 3 })
 
       savePromptVersion(v1)
       savePromptVersion(v5)
       savePromptVersion(v3)
 
-      const latest = getLatestVersion(persona)
+      const latest = getLatestVersion(agent)
       expect(latest).not.toBe(null)
       expect(latest!.version).toBe(5)
     })
 
-    it('should return null for persona with no versions', () => {
-      expect(getLatestVersion('nonexistent-persona-xyz')).toBe(null)
+    it('should return null for agent with no versions', () => {
+      expect(getLatestVersion('nonexistent-agent-xyz')).toBe(null)
     })
   })
 
@@ -180,10 +180,10 @@ describe('PromptVersionStore', () => {
         lastUsedAt: new Date().toISOString(),
       }
 
-      const updated = updatePromptVersionStats(TEST_PERSONA, version.id, newStats)
+      const updated = updatePromptVersionStats(TEST_AGENT, version.id, newStats)
       expect(updated).toBe(true)
 
-      const retrieved = getPromptVersion(TEST_PERSONA, version.id)
+      const retrieved = getPromptVersion(TEST_AGENT, version.id)
       expect(retrieved!.stats).toEqual(newStats)
       // Other fields should be unchanged
       expect(retrieved!.systemPrompt).toBe(version.systemPrompt)
@@ -193,17 +193,17 @@ describe('PromptVersionStore', () => {
 
   describe('rollbackToVersion', () => {
     it('should retire current active and activate target', () => {
-      const persona = `test-rollback-${Date.now()}`
-      createdPersonas.push(persona)
+      const agent = `test-rollback-${Date.now()}`
+      createdAgents.push(agent)
 
       const v1 = createTestVersion({
-        personaName: persona,
+        agentName: agent,
         version: 1,
         status: 'retired',
         systemPrompt: 'Version 1 prompt',
       })
       const v2 = createTestVersion({
-        personaName: persona,
+        agentName: agent,
         version: 2,
         status: 'active',
         systemPrompt: 'Version 2 prompt',
@@ -213,33 +213,33 @@ describe('PromptVersionStore', () => {
       savePromptVersion(v2)
 
       // Rollback to v1
-      const result = rollbackToVersion(persona, v1.id)
+      const result = rollbackToVersion(agent, v1.id)
       expect(result).not.toBe(null)
       expect(result!.status).toBe('active')
       expect(result!.version).toBe(1)
 
       // v2 should now be retired
-      const v2After = getPromptVersion(persona, v2.id)
+      const v2After = getPromptVersion(agent, v2.id)
       expect(v2After!.status).toBe('retired')
 
       // Active version should be v1
-      const active = getActiveVersion(persona)
+      const active = getActiveVersion(agent)
       expect(active!.id).toBe(v1.id)
     })
 
     it('should return null for non-existent target version', () => {
-      const result = rollbackToVersion(TEST_PERSONA, 'pv-nonexistent')
+      const result = rollbackToVersion(TEST_AGENT, 'pv-nonexistent')
       expect(result).toBe(null)
     })
 
     it('should handle rollback when target is already active', () => {
-      const persona = `test-rollback-same-${Date.now()}`
-      createdPersonas.push(persona)
+      const agent = `test-rollback-same-${Date.now()}`
+      createdAgents.push(agent)
 
-      const v1 = createTestVersion({ personaName: persona, status: 'active' })
+      const v1 = createTestVersion({ agentName: agent, status: 'active' })
       savePromptVersion(v1)
 
-      const result = rollbackToVersion(persona, v1.id)
+      const result = rollbackToVersion(agent, v1.id)
       expect(result).not.toBe(null)
       expect(result!.status).toBe('active')
     })

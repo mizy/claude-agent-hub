@@ -9,13 +9,13 @@ import type { Task } from '../../src/types/task.js'
 /**
  * 创建简单的任务节点
  */
-export function createTaskNode(id: string, name: string, persona: string = 'coder'): WorkflowNode {
+export function createTaskNode(id: string, name: string, agent: string = 'coder'): WorkflowNode {
   return {
     id,
     type: 'task',
     name,
     task: {
-      persona,
+      agent,
       prompt: `执行 ${name}`,
       timeout: 60000,
       retries: 2,
@@ -174,7 +174,7 @@ export function createRetryWorkflow(taskId?: string): Workflow {
       type: 'task',
       name: '可能失败的任务',
       task: {
-        persona: 'coder',
+        agent: 'coder',
         prompt: '执行可能失败的操作',
         timeout: 30000,
         retries: 3, // 允许重试 3 次

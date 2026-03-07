@@ -69,13 +69,13 @@ describe('CLI 简化命令', () => {
       expect(stdout).toContain('...')
     })
 
-    it('should support --agent option (persona)', async () => {
+    it('should support --agent option (agent)', async () => {
       const { stdout } = await execa('node', [CLI_PATH, '优化数据库', '-a', 'architect'], {
         cwd: TEST_DIR,
         reject: false,
       })
 
-      // -a 选项指定 persona，任务仍应成功创建
+      // -a 选项指定 agent，任务仍应成功创建
       expect(stdout).toContain('Created task')
     })
   })
@@ -99,7 +99,7 @@ describe('CLI 简化命令', () => {
       })
 
       expect(exitCode).toBe(0)
-      // Should list at least one built-in persona
+      // Should list at least one built-in agent
       expect(stdout).toContain('Pragmatist')
     })
   })

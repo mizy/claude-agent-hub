@@ -366,9 +366,9 @@ export function registerTaskLifecycleCommands(task: Command) {
     .description('在当前执行节点后动态注入新节点')
     .argument('<id>', '任务 ID')
     .argument('<prompt>', '节点执行内容')
-    .option('--persona <name>', '指定 persona', 'Pragmatist')
+    .option('--agent <name>', '指定 agent', 'Pragmatist')
     .action((id, prompt, options) => {
-      const result = injectNode(id, prompt, options.persona)
+      const result = injectNode(id, prompt, options.agent)
       if (result.success) {
         success(`节点已注入`)
         console.log(chalk.gray(`  Node ID: ${result.nodeId}`))

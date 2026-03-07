@@ -16,17 +16,17 @@ export function registerPromptCommands(program: Command) {
 
   prompt
     .command('versions')
-    .description('列出 persona 的 prompt 版本')
-    .argument('<persona>', 'Persona 名称 (如 Pragmatist)')
-    .action(personaName => {
-      const versions = getAllVersions(personaName)
+    .description('列出 agent 的 prompt 版本')
+    .argument('<agent>', 'Agent 名称 (如 Pragmatist)')
+    .action(agentName => {
+      const versions = getAllVersions(agentName)
 
       if (versions.length === 0) {
-        info(`${personaName} 暂无 prompt 版本`)
+        info(`${agentName} 暂无 prompt 版本`)
         return
       }
 
-      console.log(chalk.bold(`\n${personaName} Prompt 版本 (${versions.length})\n`))
+      console.log(chalk.bold(`\n${agentName} Prompt 版本 (${versions.length})\n`))
 
       table(
         versions.map(v => ({
@@ -53,12 +53,12 @@ export function registerPromptCommands(program: Command) {
   prompt
     .command('rollback')
     .description('回滚到指定版本')
-    .argument('<persona>', 'Persona 名称')
+    .argument('<agent>', 'Agent 名称')
     .argument('<version-id>', '目标版本 ID')
-    .action((personaName, versionId) => {
-      const result = rollbackVersion(personaName, versionId)
+    .action((agentName, versionId) => {
+      const result = rollbackVersion(agentName, versionId)
       if (result) {
-        success(`已回滚 ${personaName} 到 v${result.version} (${result.id})`)
+        success(`已回滚 ${agentName} 到 v${result.version} (${result.id})`)
       } else {
         error(`回滚失败: 版本 ${versionId} 不存在`)
       }
@@ -67,12 +67,12 @@ export function registerPromptCommands(program: Command) {
   prompt
     .command('diff')
     .description('对比两个版本的 prompt')
-    .argument('<persona>', 'Persona 名称')
+    .argument('<agent>', 'Agent 名称')
     .argument('<v1>', '版本 1 ID')
     .argument('<v2>', '版本 2 ID')
-    .action((personaName, v1Id, v2Id) => {
-      const v1 = getPromptVersion(personaName, v1Id)
-      const v2 = getPromptVersion(personaName, v2Id)
+    .action((agentName, v1Id, v2Id) => {
+      const v1 = getPromptVersion(agentName, v1Id)
+      const v2 = getPromptVersion(agentName, v2Id)
 
       if (!v1) {
         error(`版本不存在: ${v1Id}`)
@@ -83,7 +83,7 @@ export function registerPromptCommands(program: Command) {
         return
       }
 
-      console.log(chalk.bold(`\n${personaName} Prompt Diff: v${v1.version} → v${v2.version}\n`))
+      console.log(chalk.bold(`\n${agentName} Prompt Diff: v${v1.version} → v${v2.version}\n`))
 
       console.log(chalk.cyan('--- v' + v1.version + ' (' + v1.id + ')'))
       console.log(chalk.green('+++ v' + v2.version + ' (' + v2.id + ')'))
@@ -124,21 +124,21 @@ export function registerPromptCommands(program: Command) {
   prompt
     .command('compare')
     .description('对比两个版本的效果指标')
-    .argument('<persona>', 'Persona 名称')
+    .argument('<agent>', 'Agent 名称')
     .argument('<v1>', '版本 1 ID')
     .argument('<v2>', '版本 2 ID')
-    .action((personaName, v1Id, v2Id) => {
-      const result = compareVersions(personaName, v1Id, v2Id)
+    .action((agentName, v1Id, v2Id) => {
+      const result = compareVersions(agentName, v1Id, v2Id)
 
       if (!result) {
-        error('版本不存在，请检查 persona 和版本 ID')
+        error('版本不存在，请检查 agent 和版本 ID')
         return
       }
 
       const { version1, version2, diff, recommendation } = result
 
       console.log(
-        chalk.bold(`\n${personaName} 效果对比: v${version1.version} vs v${version2.version}\n`)
+        chalk.bold(`\n${agentName} 效果对比: v${version1.version} vs v${version2.version}\n`)
       )
 
       const formatDelta = (delta: number, suffix: string, invertColor = false) => {
@@ -192,20 +192,20 @@ export function registerPromptCommands(program: Command) {
 
   prompt
     .command('test')
-    .description('对 persona 启动 A/B 测试')
-    .argument('<persona>', 'Persona 名称')
+    .description('对 agent 启动 A/B 测试')
+    .argument('<agent>', 'Agent 名称')
     .option('-s, --min-samples <n>', '最小样本数', '5')
-    .action((personaName, opts) => {
-      const versions = getAllVersions(personaName)
+    .action((agentName, opts) => {
+      const versions = getAllVersions(agentName)
       const candidate = versions.find(v => v.status === 'candidate')
 
       if (!candidate) {
-        error(`${personaName} 没有 candidate 版本。请先生成改进版 prompt`)
+        error(`${agentName} 没有 candidate 版本。请先生成改进版 prompt`)
         return
       }
 
       try {
-        const test = createABTest(personaName, candidate.id, parseInt(opts.minSamples, 10))
+        const test = createABTest(agentName, candidate.id, parseInt(opts.minSamples, 10))
         success(`A/B 测试已创建`)
         console.log()
         console.log(`  测试 ID:   ${chalk.cyan(test.id)}`)

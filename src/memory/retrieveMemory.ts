@@ -27,7 +27,7 @@ interface RetrieveOptions {
 // Backend names and other domain-specific terms get higher match weight
 const HIGH_VALUE_KEYWORDS = new Set([
   'iflow', 'opencode', 'codebuddy', 'local', 'openai', 'claude',
-  'backend', 'daemon', 'workflow', 'persona', 'memory', 'lark', 'telegram',
+  'backend', 'daemon', 'workflow', 'agent', 'memory', 'lark', 'telegram',
 ])
 
 /** Strip @, punctuation, and normalize for matching */

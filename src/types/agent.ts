@@ -1,22 +1,22 @@
-export interface PersonaTraits {
+export interface AgentTraits {
   codeStyle: 'minimal' | 'abstract' | 'strict' | 'modern'
   commentLevel: 'sparse' | 'moderate' | 'detailed' | 'comprehensive'
   errorHandling: 'essential' | 'standard' | 'comprehensive' | 'exhaustive'
   namingConvention: 'concise' | 'descriptive' | 'explicit'
 }
 
-export interface PersonaPreferences {
+export interface AgentPreferences {
   preferAbstraction: boolean
   preferPatterns: boolean
   preferDocumentation: boolean
 }
 
-export interface PersonaConfig {
+export interface AgentConfig {
   name: string
   description: string
-  traits: PersonaTraits
-  preferences: PersonaPreferences
+  traits: AgentTraits
+  preferences: AgentPreferences
   systemPrompt: string
-  /** Preferred model tier for this persona (e.g. 'sonnet' for tool-heavy personas) */
+  /** Preferred model tier for this agent (e.g. 'sonnet' for tool-heavy agents) */
   preferredModel?: string
 }

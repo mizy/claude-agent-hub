@@ -26,7 +26,7 @@ import { formatFailureKnowledgeForPrompt } from '../prompt-optimization/failureK
 import { getAllMemories } from '../store/MemoryStore.js'
 import { migrateMemoryEntry } from '../memory/migrateMemory.js'
 import { calculateStrength } from '../memory/forgettingEngine.js'
-import { BUILTIN_PERSONAS } from '../persona/builtinPersonas.js'
+import { BUILTIN_AGENTS } from '../agents/builtinAgents.js'
 import type { Task } from '../types/task.js'
 import type { Workflow } from './types.js'
 
@@ -45,7 +45,7 @@ function formatSuccessPatternForPrompt(pattern: SuccessPattern): string {
 
   const agents = Object.entries(pattern.agentAssignments)
   if (agents.length > 0) {
-    lines.push(`Agent 分配: ${agents.map(([, persona]) => persona).join(', ')}`)
+    lines.push(`Agent 分配: ${agents.map(([, agentName]) => agentName).join(', ')}`)
   }
 
   lines.push('\n> 此模式来自历史成功任务，可作为节点设计参考。')
@@ -86,8 +86,8 @@ function createDirectAnswerWorkflow(
  * 集成项目上下文和历史学习
  */
 export async function generateWorkflow(task: Task): Promise<Workflow> {
-  // 获取可用 persona 列表
-  const availablePersonas = Object.values(BUILTIN_PERSONAS)
+  // 获取可用 agent 列表
+  const availableAgents = Object.values(BUILTIN_AGENTS)
 
   // 智能化增强：并行获取项目上下文、历史学习和记忆
   logger.info('分析项目上下文和历史记录...')
@@ -168,7 +168,7 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
     .join('\n\n')
   const prompt = buildJsonWorkflowPrompt(
     task,
-    availablePersonas,
+    availableAgents,
     projectContextPrompt,
     learningPrompt,
     useAgentTeams,
@@ -176,7 +176,7 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   )
   logger.debug(`Prompt 长度: ${prompt.length} 字符`)
 
-  // 调用 Claude (不传 persona，因为模板中已定义"软件架构师"角色)
+  // 调用 Claude (不传 agent，因为模板中已定义"软件架构师"角色)
   logger.info('调用 Claude 生成执行计划...')
   const model = task.model ?? backendConfig.model
 

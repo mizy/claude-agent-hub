@@ -1,5 +1,5 @@
 /**
- * Load SOUL.md — user-customizable persona for chat
+ * Load SOUL.md — user-customizable agent for chat
  *
  * Reads DATA_DIR/SOUL.md if it exists, returns its content.
  * Falls back to null if file doesn't exist or can't be read.

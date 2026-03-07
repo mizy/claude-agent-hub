@@ -31,6 +31,8 @@ export interface StreamJsonEvent {
   message?: {
     content?: StreamContentBlock[]
   }
+  content?: StreamContentBlock[]
+  tool_use_id?: string
   tool_use_result?: {
     stdout?: string
     stderr?: string
@@ -39,6 +41,161 @@ export interface StreamJsonEvent {
     type: string
     delta?: { type: string; text?: string }
   }
+  session_id?: string
+  sessionId?: string
+  sessionID?: string
+  duration_api_ms?: number
+  durationApiMs?: number
+  duration_ms?: number
+  total_cost_usd?: number
+  totalCostUsd?: number
+  cost?: number
+  usage?: Record<string, unknown>
+  tokenUsage?: Record<string, unknown>
+  tokens?: Record<string, unknown>
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  error?: unknown
+}
+
+export interface ExtractedEventMetrics {
+  durationApiMs?: number
+  costUsd?: number
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+}
+
+const EMPTY_RECORD: Record<string, unknown> = {}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined
+}
+
+function pickString(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value
+  }
+  return undefined
+}
+
+function pickNumber(record: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+  return undefined
+}
+
+/**
+ * Extract incremental text from a single JSON event line.
+ * Supports both Claude stream_event and OpenCode step/text style payloads.
+ */
+export function extractEventTextDelta(event: Record<string, unknown>): string | undefined {
+  // Claude stream-json delta event
+  const streamEvent = asRecord(event.event)
+  const delta = asRecord(streamEvent?.delta)
+  if (
+    event.type === 'stream_event' &&
+    streamEvent?.type === 'content_block_delta' &&
+    delta?.type === 'text_delta' &&
+    typeof delta.text === 'string'
+  ) {
+    return delta.text
+  }
+
+  // OpenCode text event: { type: "text", part: { text: "..." } }
+  if (event.type === 'text') {
+    const part = asRecord(event.part)
+    if (typeof part?.text === 'string') return part.text
+    const text = event.text ?? event.content ?? event.result
+    if (typeof text === 'string') return text
+  }
+
+  return undefined
+}
+
+export function extractAssistantTextFromEvent(event: StreamJsonEvent): string {
+  if (event.type !== 'assistant' || !event.message?.content) return ''
+  return event.message.content
+    .filter(block => block.type === 'text' && block.text)
+    .map(block => block.text)
+    .join('')
+}
+
+/** Extract session ID from common event field variants */
+export function extractEventSessionId(event: Record<string, unknown>): string | undefined {
+  return pickString(event, ['sessionID', 'session_id', 'sessionId'])
+}
+
+function extractTokenUsage(record: Record<string, unknown>): {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+} {
+  const promptTokens = pickNumber(record, ['input_tokens', 'inputTokens', 'prompt_tokens', 'promptTokens'])
+  const completionTokens = pickNumber(record, [
+    'output_tokens',
+    'outputTokens',
+    'completion_tokens',
+    'completionTokens',
+  ])
+  const totalTokens = pickNumber(record, ['total_tokens', 'totalTokens'])
+  return { promptTokens, completionTokens, totalTokens }
+}
+
+/** Extract API duration/cost/token usage from one event line */
+export function extractEventMetrics(event: Record<string, unknown>): ExtractedEventMetrics {
+  const metrics: ExtractedEventMetrics = {
+    durationApiMs: pickNumber(event, ['duration_api_ms', 'durationApiMs', 'duration_ms']),
+    costUsd: pickNumber(event, ['total_cost_usd', 'totalCostUsd', 'cost', 'total_cost']),
+  }
+
+  const directUsage = extractTokenUsage(event)
+  metrics.promptTokens = directUsage.promptTokens
+  metrics.completionTokens = directUsage.completionTokens
+  metrics.totalTokens = directUsage.totalTokens
+
+  for (const key of ['usage', 'tokenUsage', 'tokens']) {
+    const nested = asRecord(event[key])
+    if (!nested) continue
+    const nestedUsage = extractTokenUsage(nested)
+    if (metrics.promptTokens == null && nestedUsage.promptTokens != null) {
+      metrics.promptTokens = nestedUsage.promptTokens
+    }
+    if (metrics.completionTokens == null && nestedUsage.completionTokens != null) {
+      metrics.completionTokens = nestedUsage.completionTokens
+    }
+    if (metrics.totalTokens == null && nestedUsage.totalTokens != null) {
+      metrics.totalTokens = nestedUsage.totalTokens
+    }
+  }
+
+  if (metrics.totalTokens == null && metrics.promptTokens != null && metrics.completionTokens != null) {
+    metrics.totalTokens = metrics.promptTokens + metrics.completionTokens
+  }
+
+  return metrics
+}
+
+/** Extract human-readable error from event line */
+export function extractEventError(event: Record<string, unknown>): string | undefined {
+  if (event.type !== 'error' && event.is_error !== true) return undefined
+
+  const errorRecord = asRecord(event.error)
+  const nestedData = asRecord(errorRecord?.data)
+  const msg =
+    pickString(event, ['message']) ??
+    pickString(nestedData ?? EMPTY_RECORD, ['message']) ??
+    pickString(errorRecord ?? EMPTY_RECORD, ['message'])
+
+  if (msg) return msg
+  if (errorRecord) return JSON.stringify(errorRecord)
+  return 'Unknown backend error event'
 }
 
 // ============ MCP Config ============
@@ -99,7 +256,10 @@ export function saveBase64Image(data: string, mediaType?: string): string {
  * (e.g. built-in Read tool reading user images should not be echoed back).
  */
 export function extractImagesFromEvent(event: StreamJsonEvent, mcpToolUseIds: Set<string>): string[] {
-  if (event.type !== 'user' || !event.message?.content) return []
+  if (event.type !== 'user' && event.type !== 'tool_result') return []
+  const rootBlocks = event.message?.content ?? (Array.isArray(event.content) ? event.content : undefined)
+  if (!rootBlocks) return []
+
   const paths: string[] = []
 
   function extractFromBlocks(blocks: StreamContentBlock[], insideMcpResult: boolean) {
@@ -120,7 +280,12 @@ export function extractImagesFromEvent(event: StreamJsonEvent, mcpToolUseIds: Se
     }
   }
 
-  extractFromBlocks(event.message.content, false)
+  const initialInsideMcp =
+    event.type === 'tool_result'
+      ? !!(event.tool_use_id && mcpToolUseIds.has(event.tool_use_id))
+      : false
+
+  extractFromBlocks(rootBlocks, initialInsideMcp)
   return paths
 }
 
@@ -141,20 +306,45 @@ export function createClaudeCompatStreamProcessor(options: {
 
   return (line: string, cb?: (chunk: string) => void) => {
     try {
-      const event = JSON.parse(line) as StreamJsonEvent
+      const rawEvent = JSON.parse(line) as Record<string, unknown>
+      const event = rawEvent as unknown as StreamJsonEvent
 
-      // Incremental text deltas (--include-partial-messages)
-      if (
-        event.type === 'stream_event' &&
-        event.event?.type === 'content_block_delta' &&
-        event.event.delta?.type === 'text_delta' &&
-        event.event.delta.text
-      ) {
+      const errorMsg = extractEventError(rawEvent)
+      if (errorMsg) {
+        logger.warn(`backend stream error event: ${errorMsg}`)
+      }
+
+      // Incremental text deltas (--include-partial-messages or OpenCode text events)
+      const deltaText = extractEventTextDelta(rawEvent)
+      if (deltaText) {
         if (perf && startTime && perf.firstDelta === 0) {
           perf.firstDelta = Date.now() - startTime
         }
-        if (cb) cb(event.event.delta.text)
-        else fallbackWrite?.(event.event.delta.text)
+        if (cb) cb(deltaText)
+        else fallbackWrite?.(deltaText)
+        return
+      }
+
+      if (event.type === 'tool_call') {
+        const toolName =
+          typeof rawEvent.name === 'string'
+            ? rawEvent.name
+            : pickString(asRecord(rawEvent.tool) ?? EMPTY_RECORD, ['name'])
+        const toolId =
+          pickString(rawEvent, ['id', 'tool_use_id', 'toolUseId']) ??
+          pickString(asRecord(rawEvent.tool) ?? EMPTY_RECORD, ['id', 'tool_use_id', 'toolUseId'])
+        const input =
+          asRecord(rawEvent.input) ??
+          asRecord(asRecord(rawEvent.tool)?.input) ??
+          asRecord(asRecord(rawEvent.tool_call)?.input)
+
+        if (toolId) {
+          if (toolName?.startsWith('mcp__')) {
+            mcpToolUseIds.add(toolId)
+          } else if (toolName === 'Read' && isScreenshotPath(input?.file_path)) {
+            mcpToolUseIds.add(toolId)
+          }
+        }
       } else if (event.type === 'assistant' && event.message?.content) {
         for (const block of event.message.content) {
           if (block.type === 'tool_use' && block.id) {
@@ -167,13 +357,10 @@ export function createClaudeCompatStreamProcessor(options: {
           }
         }
         if (!cb && fallbackWrite) {
-          let assistantText = ''
-          for (const block of event.message.content) {
-            if (block.type === 'text' && block.text) assistantText += block.text
-          }
+          const assistantText = extractAssistantTextFromEvent(event)
           if (assistantText) fallbackWrite(assistantText + '\n')
         }
-      } else if (event.type === 'user') {
+      } else if (event.type === 'user' || event.type === 'tool_result') {
         const imgPaths = extractImagesFromEvent(event, mcpToolUseIds)
         extractedImagePaths.push(...imgPaths)
 

@@ -10,7 +10,7 @@
  * - saveNewVersion / getActivePrompt / rollbackVersion / recordUsage: 版本管理
  * - compareVersions(): 版本对比
  * - extractSuccessPatterns / findMatchingPattern / savePattern / getAllPatterns: 成功模式提取
- * - recordFailure / getAllFailures / getFailuresByCategory / getFailuresByPersona
+ * - recordFailure / getAllFailures / getFailuresByCategory / getFailuresByAgent
  *   getRecentFailures / computeFailureStats / formatFailureKnowledgeForPrompt: 失败知识库
  * - createABTest / selectVariant / evaluateABTest / concludeABTest
  *   calculateFitness / getRunningTest: A/B 测试
@@ -60,7 +60,7 @@ export {
   recordFailure,
   getAllFailures,
   getFailuresByCategory,
-  getFailuresByPersona,
+  getFailuresByAgent,
   getRecentFailures,
   computeFailureStats,
   formatFailureKnowledgeForPrompt,

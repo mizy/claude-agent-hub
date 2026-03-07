@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const agentConfigSchema = z.object({
   name: z.string(),
-  persona: z.string().default('Pragmatist'),
+  profile: z.string().default('Pragmatist').describe('Built-in agent profile name'),
   role: z.enum(['developer', 'reviewer', 'both']).default('developer'),
   schedule: z
     .object({
@@ -29,6 +29,8 @@ export const sessionConfigSchema = z.object({
   timeoutMinutes: z.number().default(60),
   /** Max concurrent sessions in memory (LRU eviction, default 200) */
   maxSessions: z.number().default(200),
+  /** Max messages per web chat session (oldest truncated, default 200) */
+  maxWebMessages: z.number().default(200),
 })
 
 export const chatConfigSchema = z.object({
@@ -162,7 +164,7 @@ export const configSchema = z.object({
   scheduledTasks: z.array(scheduledTaskConfigSchema).default([]),
 })
 
-export type AgentConfig = z.infer<typeof agentConfigSchema>
+export type ConfigAgentEntry = z.infer<typeof agentConfigSchema>
 export type TaskConfig = z.infer<typeof taskConfigSchema>
 export type GitConfig = z.infer<typeof gitConfigSchema>
 export type BackendConfig = z.infer<typeof backendConfigSchema>

@@ -67,12 +67,12 @@ function extractNodeSequence(workflow: Workflow): string[] {
     .map(n => n.name)
 }
 
-/** Extract agent (persona) assignments from workflow task nodes */
+/** Extract agent agent assignments from workflow task nodes */
 function extractAgentAssignments(workflow: Workflow): Record<string, string> {
   const assignments: Record<string, string> = {}
   for (const node of workflow.nodes) {
-    if (node.task?.persona) {
-      assignments[node.id] = node.task.persona
+    if (node.task?.agent) {
+      assignments[node.id] = node.task.agent
     }
   }
   return assignments

@@ -75,7 +75,7 @@ const STATIC_PROMPTS: Record<string, string> = {
 - 扫描最近任务的 conversation.jsonl / conversation.log，关注 AI 回复质量
 - 检查回复是否冗长、偏题、格式不佳（如飞书 markdown 兼容性）
 - 分析用户追问模式（连续追问暗示首次回答不满意）
-- 检查各 persona 提示词的实际效果
+- 检查各 agent 提示词的实际效果
 
 **3. 功能缺口**
 - 识别用户频繁手动重复的操作，评估自动化价值
@@ -83,7 +83,7 @@ const STATIC_PROMPTS: Record<string, string> = {
 - 优先选择可在单个 workflow 内完成的小型增强
 
 改进目标可以是：
-- 提示词优化（persona、workflow 生成、记忆提取、chat 回复格式等）
+- 提示词优化（agent、workflow 生成、记忆提取、chat 回复格式等）
 - 代码逻辑改进（错误处理、性能、健壮性）
 - 配置调整（调度频率、阈值、超时等）
 - 新能力补全
@@ -147,11 +147,11 @@ function getGoalPrompt(goalType: string, ctx: EvolveContext): string | undefined
 - 扫描最近任务的 conversation.jsonl / conversation.log，关注 AI 回复质量
 - 检查回复是否冗长、偏题、格式不佳（如 markdown 在飞书卡片中不兼容）
 - 分析用户追问模式 — 连续追问同一话题暗示首次回答不满意
-- 检查各 persona 提示词的实际效果，与期望行为对比
+- 检查各 agent 提示词的实际效果，与期望行为对比
 - 关注飞书/Telegram 交互中的体验问题
 
 改进方向：
-- 优化 persona 提示词（更精准的角色定义、更好的回复格式指引）
+- 优化 agent 提示词（更精准的角色定义、更好的回复格式指引）
 - 改进 chat 回复风格（简洁度、准确度、格式适配）
 - 调整交互流程中的摩擦点
 

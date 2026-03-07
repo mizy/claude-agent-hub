@@ -52,7 +52,7 @@ export async function applyImprovements(improvements: Improvement[]): Promise<Ap
 }
 
 async function applySingle(improvement: Improvement): Promise<ApplyResult> {
-  if (improvement.source === 'prompt' && improvement.personaName) {
+  if (improvement.source === 'prompt' && improvement.agentName) {
     return applyPromptImprovement(improvement)
   }
 
@@ -71,15 +71,15 @@ async function applySingle(improvement: Improvement): Promise<ApplyResult> {
  * 3. Generate an improved prompt version (candidate)
  */
 async function applyPromptImprovement(improvement: Improvement): Promise<ApplyResult> {
-  const personaName = improvement.personaName!
+  const agentName = improvement.agentName!
 
-  // Get active version for this persona
-  const activeVersion = getActiveVersion(personaName)
+  // Get active version for this agent
+  const activeVersion = getActiveVersion(agentName)
   if (!activeVersion) {
     return {
       improvementId: improvement.id,
       applied: false,
-      message: `No active version found for persona "${personaName}"`,
+      message: `No active version found for agent "${agentName}"`,
     }
   }
 
@@ -110,7 +110,7 @@ async function applyPromptImprovement(improvement: Improvement): Promise<ApplyRe
     const classification = classifyFailure(failedNodes)
     recordFailure({
       taskId,
-      personaName,
+      agentName,
       versionId: activeVersion.id,
       category: classification.category,
       confidence: classification.confidence,
@@ -140,12 +140,12 @@ async function applyPromptImprovement(improvement: Improvement): Promise<ApplyRe
   }
 
   logger.info(
-    `Generated candidate version v${newVersion.version} for ${personaName} (improvement: ${improvement.id})`
+    `Generated candidate version v${newVersion.version} for ${agentName} (improvement: ${improvement.id})`
   )
 
   return {
     improvementId: improvement.id,
     applied: true,
-    message: `Generated candidate prompt v${newVersion.version} for ${personaName}`,
+    message: `Generated candidate prompt v${newVersion.version} for ${agentName}`,
   }
 }

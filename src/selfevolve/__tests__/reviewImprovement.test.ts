@@ -16,7 +16,7 @@ function makeImprovement(id: string): Improvement {
     id,
     source: 'prompt',
     description: 'Fix JSON parsing in planning',
-    personaName: 'Pragmatist',
+    agentName: 'Pragmatist',
     detail: 'Improve prompt clarity for JSON output',
     triggeredBy: 'task-1',
   }

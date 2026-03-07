@@ -95,7 +95,7 @@ function buildReviewPrompt(improvement: Improvement, context: ReviewContext): st
 - 类型: ${improvement.source}
 - 描述: ${improvement.description}
 - 具体变更: ${improvement.detail}
-- 目标人格: ${improvement.personaName ?? '无'}
+- 目标人格: ${improvement.agentName ?? '无'}
 
 ## 触发背景
 ### 失败模式

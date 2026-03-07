@@ -2,7 +2,7 @@
  * Failure Knowledge Base
  *
  * Persists classified failures as structured records.
- * Enables querying failure patterns by category, persona, or time range
+ * Enables querying failure patterns by category, agent, or time range
  * to inform prompt evolution decisions.
  */
 
@@ -21,7 +21,7 @@ const logger = createLogger('failure-kb')
 export interface FailureRecord {
   id: string
   taskId: string
-  personaName: string
+  agentName: string
   versionId: string
   category: FailureCategory
   confidence: number
@@ -67,7 +67,7 @@ export function resetStore(clean = false): void {
 /** Record a failure into the knowledge base */
 export function recordFailure(params: {
   taskId: string
-  personaName: string
+  agentName: string
   versionId: string
   category: FailureCategory
   confidence: number
@@ -99,9 +99,9 @@ export function getFailuresByCategory(category: FailureCategory): FailureRecord[
   return getAllFailures().filter(r => r.category === category)
 }
 
-/** Get failures for a specific persona */
-export function getFailuresByPersona(personaName: string): FailureRecord[] {
-  return getAllFailures().filter(r => r.personaName === personaName)
+/** Get failures for a specific agent */
+export function getFailuresByAgent(agentName: string): FailureRecord[] {
+  return getAllFailures().filter(r => r.agentName === agentName)
 }
 
 /** Get recent failures (last N days) */
@@ -114,8 +114,8 @@ export function getRecentFailures(days = 7): FailureRecord[] {
  * Compute failure statistics for informed evolution decisions.
  * Analyzes category distribution, top patterns, and trend.
  */
-export function computeFailureStats(personaName?: string): FailureStats {
-  const all = personaName ? getFailuresByPersona(personaName) : getAllFailures()
+export function computeFailureStats(agentName?: string): FailureStats {
+  const all = agentName ? getFailuresByAgent(agentName) : getAllFailures()
 
   // Category distribution
   const byCategory: Record<string, number> = {}
@@ -164,8 +164,8 @@ export function computeFailureStats(personaName?: string): FailureStats {
  * Format failure knowledge for injection into workflow generation prompt.
  * Returns a concise summary of known failure patterns to help AI avoid them.
  */
-export function formatFailureKnowledgeForPrompt(personaName?: string): string {
-  const stats = computeFailureStats(personaName)
+export function formatFailureKnowledgeForPrompt(agentName?: string): string {
+  const stats = computeFailureStats(agentName)
   if (stats.totalFailures === 0) return ''
 
   const lines: string[] = ['## 已知失败模式（基于历史数据）\n']

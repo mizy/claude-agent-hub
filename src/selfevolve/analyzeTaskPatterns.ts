@@ -37,8 +37,8 @@ export interface TaskAnalysisResult {
   totalExamined: number
   /** Grouped patterns (from failures and optimization opportunities) */
   patterns: FailurePattern[]
-  /** Per-persona breakdown with success and failure counts */
-  personaBreakdown: Record<
+  /** Per-agent breakdown with success and failure counts */
+  agentBreakdown: Record<
     string,
     { failures: number; successes: number; topCategory: string }
   >
@@ -61,12 +61,12 @@ function mapCategory(category: string): ImprovementSource {
   }
 }
 
-/** Get persona name from a task's workflow */
-function getPersonaFromWorkflow(taskId: string): string {
+/** Get agent name from a task's workflow */
+function getAgentFromWorkflow(taskId: string): string {
   const workflow = getTaskWorkflow(taskId)
   if (!workflow) return 'unknown'
-  const taskNode = workflow.nodes.find(n => n.type === 'task' && n.task?.persona)
-  return taskNode?.task?.persona ?? 'Pragmatist'
+  const taskNode = workflow.nodes.find(n => n.type === 'task' && n.task?.agent)
+  return taskNode?.task?.agent ?? 'Pragmatist'
 }
 
 /**
@@ -131,7 +131,7 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
 
   if (tasks.length === 0) {
     logger.info('No tasks found for pattern analysis')
-    return { totalExamined: 0, patterns: [], personaBreakdown: {} }
+    return { totalExamined: 0, patterns: [], agentBreakdown: {} }
   }
 
   // Build fingerprint set from historical patterns for dedup
@@ -147,14 +147,14 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
   logger.info(`Analyzing ${tasks.length} tasks for patterns (${knownPatternFingerprints.size} known pattern fingerprints)`)
 
   const patternMap = new Map<string, FailurePattern>()
-  const personaMap = new Map<
+  const agentMap = new Map<
     string,
     { failures: number; successes: number; categories: Map<string, number> }
   >()
 
   for (const task of tasks) {
-    const persona = getPersonaFromWorkflow(task.id)
-    const personaStats = personaMap.get(persona) ?? {
+    const agent = getAgentFromWorkflow(task.id)
+    const agentStats = agentMap.get(agent) ?? {
       failures: 0,
       successes: 0,
       categories: new Map(),
@@ -162,20 +162,20 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
 
     if (task.status === 'failed') {
       // Failure analysis (original logic)
-      personaStats.failures++
+      agentStats.failures++
       const classification = classifyTaskFailure(task)
       if (classification) {
         const source = mapCategory(classification.category)
         const key = `failure:${source}:${classification.category}`
         addToPatternMap(patternMap, key, source, classification, task.id)
-        personaStats.categories.set(
+        agentStats.categories.set(
           classification.category,
-          (personaStats.categories.get(classification.category) ?? 0) + 1
+          (agentStats.categories.get(classification.category) ?? 0) + 1
         )
       }
     } else if (task.status === 'completed') {
       // Optimization: detect retried-but-succeeded nodes
-      personaStats.successes++
+      agentStats.successes++
       const retryPattern = detectRetryInstability(task.id)
       if (retryPattern) {
         const key = 'optimization:retry_instability'
@@ -195,14 +195,14 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
             sampleErrors: [retryPattern],
           })
         }
-        personaStats.categories.set(
+        agentStats.categories.set(
           'retry_instability',
-          (personaStats.categories.get('retry_instability') ?? 0) + 1
+          (agentStats.categories.get('retry_instability') ?? 0) + 1
         )
       }
     }
 
-    personaMap.set(persona, personaStats)
+    agentMap.set(agent, agentStats)
   }
 
   // Sort patterns by occurrence and mark isNew
@@ -213,12 +213,12 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
     p.isNew = !knownPatternFingerprints.has(`${p.category}:${p.description}`)
   }
 
-  // Build persona breakdown
-  const personaBreakdown: Record<
+  // Build agent breakdown
+  const agentBreakdown: Record<
     string,
     { failures: number; successes: number; topCategory: string }
   > = {}
-  for (const [persona, stats] of personaMap) {
+  for (const [agent, stats] of agentMap) {
     let topCategory = 'unknown'
     let topCount = 0
     for (const [cat, count] of stats.categories) {
@@ -227,7 +227,7 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
         topCount = count
       }
     }
-    personaBreakdown[persona] = {
+    agentBreakdown[agent] = {
       failures: stats.failures,
       successes: stats.successes,
       topCategory,
@@ -238,7 +238,7 @@ export function analyzeTaskPatterns(options?: AnalyzeOptions): TaskAnalysisResul
     `Found ${patterns.length} patterns across ${tasks.length} tasks`
   )
 
-  return { totalExamined: tasks.length, patterns, personaBreakdown }
+  return { totalExamined: tasks.length, patterns, agentBreakdown }
 }
 
 /** Backward-compatible alias */

@@ -3,15 +3,15 @@
  * 提取输出、解析配置、构建上下文等辅助功能
  */
 
-import { BUILTIN_PERSONAS, getBuiltinPersona } from '../persona/builtinPersonas.js'
+import { BUILTIN_AGENTS, getBuiltinAgent } from '../agents/builtinAgents.js'
 import { createLogger } from '../shared/logger.js'
-import type { PersonaConfig } from '../types/persona.js'
+import type { AgentConfig } from '../types/agent.js'
 import type { WorkflowInstance, EvalContext } from './types.js'
 
 const logger = createLogger('result-processor')
 
-/** 默认 Persona 名称 */
-const DEFAULT_PERSONA_NAME = 'Pragmatist'
+/** 默认 Agent 名称 */
+const DEFAULT_AGENT_NAME = 'Pragmatist'
 
 /**
  * 从 Claude 响应中提取结构化输出
@@ -81,30 +81,30 @@ export function extractStructuredOutput(
 }
 
 /**
- * 解析 Persona
+ * 解析 Agent
  *
  * 选择逻辑：
- * 1. 指定具体 persona 名字 → 使用该 persona
+ * 1. 指定具体 agent 名字 → 使用该 agent
  * 2. 空值或 'auto' → 使用默认 Pragmatist
- * 3. 找不到指定的 persona → 回退到默认
+ * 3. 找不到指定的 agent → 回退到默认
  */
-export function resolvePersona(personaName?: string): PersonaConfig {
-  // 默认 persona 一定存在（在 builtinPersonas.ts 中定义）
-  const defaultPersona = BUILTIN_PERSONAS[DEFAULT_PERSONA_NAME]!
+export function resolveAgent(agentName?: string): AgentConfig {
+  // 默认 agent 一定存在（在 builtinAgents.ts 中定义）
+  const defaultAgent = BUILTIN_AGENTS[DEFAULT_AGENT_NAME]!
 
   // 未指定或 auto，使用默认
-  if (!personaName || personaName === 'auto') {
-    return defaultPersona
+  if (!agentName || agentName === 'auto') {
+    return defaultAgent
   }
 
-  // 尝试获取指定的 persona
-  const persona = getBuiltinPersona(personaName)
-  if (persona) {
-    return persona
+  // 尝试获取指定的 agent
+  const agent = getBuiltinAgent(agentName)
+  if (agent) {
+    return agent
   }
 
-  logger.warn(`Persona "${personaName}" not found, falling back to ${DEFAULT_PERSONA_NAME}`)
-  return defaultPersona
+  logger.warn(`Agent "${agentName}" not found, falling back to ${DEFAULT_AGENT_NAME}`)
+  return defaultAgent
 }
 
 const MAX_CONTEXT_OUTPUT_LENGTH = 3000

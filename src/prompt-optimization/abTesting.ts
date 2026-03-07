@@ -24,7 +24,7 @@ const logger = createLogger('ab-testing')
 
 export interface ABTest {
   id: string
-  personaName: string
+  agentName: string
   controlVersionId: string // active version
   candidateVersionId: string // candidate version
   status: 'running' | 'concluded'
@@ -70,23 +70,23 @@ export function resetStore(clean = false): void {
 
 /** Create a new A/B test between active and candidate versions */
 export function createABTest(
-  personaName: string,
+  agentName: string,
   candidateVersionId: string,
   minSamples = 5
 ): ABTest {
-  const active = getActiveVersion(personaName)
+  const active = getActiveVersion(agentName)
   if (!active) {
-    throw new Error(`No active version found for persona "${personaName}"`)
+    throw new Error(`No active version found for agent "${agentName}"`)
   }
 
-  const candidate = getPromptVersion(personaName, candidateVersionId)
+  const candidate = getPromptVersion(agentName, candidateVersionId)
   if (!candidate) {
     throw new Error(`Candidate version "${candidateVersionId}" not found`)
   }
 
   const test: ABTest = {
     id: `ab-${Date.now()}-${generateShortId()}`,
-    personaName,
+    agentName,
     controlVersionId: active.id,
     candidateVersionId,
     status: 'running',
@@ -100,12 +100,12 @@ export function createABTest(
 }
 
 /**
- * Select a variant for a persona with a running A/B test.
+ * Select a variant for an agent with a running A/B test.
  * Returns the versionId to use, or null if no test is running.
  * 50/50 random split.
  */
-export function selectVariant(personaName: string): string | null {
-  const test = getRunningTest(personaName)
+export function selectVariant(agentName: string): string | null {
+  const test = getRunningTest(agentName)
   if (!test) return null
 
   const useCandidate = Math.random() < 0.5
@@ -124,8 +124,8 @@ export function evaluateABTest(testId: string): ABTestResult | null {
   const test = getStore().getSync(testId)
   if (!test || test.status !== 'running') return null
 
-  const controlVersion = getPromptVersion(test.personaName, test.controlVersionId)
-  const candidateVersion = getPromptVersion(test.personaName, test.candidateVersionId)
+  const controlVersion = getPromptVersion(test.agentName, test.controlVersionId)
+  const candidateVersion = getPromptVersion(test.agentName, test.candidateVersionId)
   if (!controlVersion || !candidateVersion) return null
 
   const controlStats = controlVersion.stats
@@ -181,7 +181,7 @@ export function concludeABTest(testId: string): void {
 
   if (result?.winner === 'candidate') {
     logger.info(`A/B test ${testId}: promoting candidate ${test.candidateVersionId}`)
-    rollbackToVersion(test.personaName, test.candidateVersionId)
+    rollbackToVersion(test.agentName, test.candidateVersionId)
   } else {
     logger.info(`A/B test ${testId}: keeping control (winner=${result?.winner ?? 'inconclusive'})`)
   }
@@ -205,8 +205,8 @@ export function calculateFitness(stats: PromptVersionStats): number {
 
 // ============ Helpers ============
 
-/** Get the running A/B test for a persona (at most one) */
-export function getRunningTest(personaName: string): ABTest | null {
+/** Get the running A/B test for an agent (at most one) */
+export function getRunningTest(agentName: string): ABTest | null {
   const tests = getStore().getAllSync()
-  return tests.find(t => t.personaName === personaName && t.status === 'running') ?? null
+  return tests.find(t => t.agentName === agentName && t.status === 'running') ?? null
 }

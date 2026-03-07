@@ -17,7 +17,7 @@ function makeVersion(
 ): PromptVersion {
   return {
     id,
-    personaName: 'Pragmatist',
+    agentName: 'Pragmatist',
     version,
     systemPrompt: 'test prompt',
     changelog: 'test',

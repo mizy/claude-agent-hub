@@ -13,19 +13,19 @@ import type { PromptVersion, PromptVersionStats } from '../../types/promptVersio
 vi.mock('../../store/PromptVersionStore.js', () => {
   const versions = new Map<string, PromptVersion>()
   return {
-    getActiveVersion: vi.fn((persona: string) => {
+    getActiveVersion: vi.fn((agent: string) => {
       for (const v of versions.values()) {
-        if (v.personaName === persona && v.status === 'active') return v
+        if (v.agentName === agent && v.status === 'active') return v
       }
       return null
     }),
-    getPromptVersion: vi.fn((_persona: string, id: string) => versions.get(id) ?? null),
-    rollbackToVersion: vi.fn((_persona: string, targetId: string) => {
+    getPromptVersion: vi.fn((_agent: string, id: string) => versions.get(id) ?? null),
+    rollbackToVersion: vi.fn((_agent: string, targetId: string) => {
       const target = versions.get(targetId)
       if (!target) return null
       // Retire current active, activate target
       for (const v of versions.values()) {
-        if (v.personaName === target.personaName && v.status === 'active') {
+        if (v.agentName === target.agentName && v.status === 'active') {
           v.status = 'retired'
         }
       }
@@ -49,13 +49,13 @@ function makeStats(overrides: Partial<PromptVersionStats> = {}): PromptVersionSt
 
 function makeVersion(
   id: string,
-  persona: string,
+  agent: string,
   status: 'active' | 'candidate' | 'retired',
   stats?: Partial<PromptVersionStats>
 ): PromptVersion {
   return {
     id,
-    personaName: persona,
+    agentName: agent,
     version: 1,
     systemPrompt: `prompt-${id}`,
     changelog: 'test',
@@ -87,7 +87,7 @@ describe('abTesting', () => {
 
       const test = createABTest('Pragmatist', 'v-candidate')
       expect(test.id).toMatch(/^ab-/)
-      expect(test.personaName).toBe('Pragmatist')
+      expect(test.agentName).toBe('Pragmatist')
       expect(test.controlVersionId).toBe('v-active')
       expect(test.candidateVersionId).toBe('v-candidate')
       expect(test.status).toBe('running')

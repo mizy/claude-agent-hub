@@ -26,7 +26,7 @@ function makeTask(id: string, status: 'completed' | 'failed' = 'completed'): Tas
   }
 }
 
-function makeWorkflow(nodes: Array<{ id: string; name: string; type: string; persona?: string }>) {
+function makeWorkflow(nodes: Array<{ id: string; name: string; type: string; agent?: string }>) {
   return {
     id: 'wf-1',
     name: 'Test',
@@ -35,7 +35,7 @@ function makeWorkflow(nodes: Array<{ id: string; name: string; type: string; per
       id: n.id,
       type: n.type as 'start' | 'end' | 'task',
       name: n.name,
-      ...(n.persona ? { task: { persona: n.persona, prompt: 'do it' } } : {}),
+      ...(n.agent ? { task: { agent: n.agent, prompt: 'do it' } } : {}),
     })),
     edges: [],
     variables: {},
@@ -79,8 +79,8 @@ describe('extractSuccessPatterns', () => {
     mockGetWorkflow.mockReturnValue(
       makeWorkflow([
         { id: 'start', name: 'Start', type: 'start' },
-        { id: 'n1', name: '分析代码', type: 'task', persona: 'Analyst' },
-        { id: 'n2', name: '实现功能', type: 'task', persona: 'Pragmatist' },
+        { id: 'n1', name: '分析代码', type: 'task', agent: 'Analyst' },
+        { id: 'n2', name: '实现功能', type: 'task', agent: 'Pragmatist' },
         { id: 'end', name: 'End', type: 'end' },
       ])
     )
@@ -101,8 +101,8 @@ describe('extractSuccessPatterns', () => {
     mockGetWorkflow.mockImplementation((_taskId: string) =>
       makeWorkflow([
         { id: 'start', name: 'Start', type: 'start' },
-        { id: 'n1', name: '分析', type: 'task', persona: 'A' },
-        { id: 'n2', name: '实现', type: 'task', persona: 'B' },
+        { id: 'n1', name: '分析', type: 'task', agent: 'A' },
+        { id: 'n2', name: '实现', type: 'task', agent: 'B' },
         { id: 'end', name: 'End', type: 'end' },
       ])
     )
@@ -120,7 +120,7 @@ describe('extractSuccessPatterns', () => {
     const tasks1 = [makeTask('t1')]
     mockGetWorkflow.mockReturnValue(
       makeWorkflow([
-        { id: 'n1', name: 'A', type: 'task', persona: 'X' },
+        { id: 'n1', name: 'A', type: 'task', agent: 'X' },
       ])
     )
     mockGetInstance.mockReturnValue(makeInstance())
@@ -132,7 +132,7 @@ describe('extractSuccessPatterns', () => {
     vi.clearAllMocks()
     const tasks5 = Array.from({ length: 6 }, (_, i) => makeTask(`t${i}`))
     mockGetWorkflow.mockReturnValue(
-      makeWorkflow([{ id: 'n1', name: 'A', type: 'task', persona: 'X' }])
+      makeWorkflow([{ id: 'n1', name: 'A', type: 'task', agent: 'X' }])
     )
     mockGetInstance.mockReturnValue(makeInstance())
 
@@ -145,15 +145,15 @@ describe('extractSuccessPatterns', () => {
 
     mockGetWorkflow.mockReturnValueOnce(
       makeWorkflow([
-        { id: 'n1', name: 'A', type: 'task', persona: 'X' },
-        { id: 'n2', name: 'B', type: 'task', persona: 'Y' },
+        { id: 'n1', name: 'A', type: 'task', agent: 'X' },
+        { id: 'n2', name: 'B', type: 'task', agent: 'Y' },
       ])
     )
     mockGetWorkflow.mockReturnValueOnce(
       makeWorkflow([
-        { id: 'n1', name: 'X', type: 'task', persona: 'A' },
-        { id: 'n2', name: 'Y', type: 'task', persona: 'B' },
-        { id: 'n3', name: 'Z', type: 'task', persona: 'C' },
+        { id: 'n1', name: 'X', type: 'task', agent: 'A' },
+        { id: 'n2', name: 'Y', type: 'task', agent: 'B' },
+        { id: 'n3', name: 'Z', type: 'task', agent: 'C' },
       ])
     )
     mockGetInstance.mockReturnValue(makeInstance())

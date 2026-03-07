@@ -187,7 +187,7 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
       'node.type': node.type,
       'node.name': node.name,
       'node.attempt': currentAttempt,
-      'node.persona': node.task?.persona,
+      'node.agent': node.task?.agent,
     }
 
     // Reconstruct workflow span from instance variables to create child span

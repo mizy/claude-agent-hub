@@ -22,11 +22,11 @@ describe('workflow factory', () => {
   })
 
   it('createTaskNode returns task-type node', () => {
-    const node = createTaskNode('n1', 'Code', { persona: 'coder', prompt: 'do stuff' })
+    const node = createTaskNode('n1', 'Code', { agent: 'coder', prompt: 'do stuff' })
     expect(node.id).toBe('n1')
     expect(node.type).toBe('task')
     expect(node.name).toBe('Code')
-    expect(node.task?.persona).toBe('coder')
+    expect(node.task?.agent).toBe('coder')
   })
 
   it('createHumanNode returns human-type node', () => {

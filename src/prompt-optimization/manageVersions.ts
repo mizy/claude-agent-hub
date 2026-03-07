@@ -3,7 +3,7 @@
  *
  * Wraps PromptVersionStore with higher-level operations:
  * - saveNewVersion: create and persist a new prompt version
- * - getActivePrompt: get the active prompt for a persona
+ * - getActivePrompt: get the active prompt for an agent
  * - rollbackVersion: rollback to a previous version
  * - recordUsage: record task execution result and update stats
  */
@@ -22,12 +22,12 @@ import type { PromptVersion } from '../types/promptVersion.js'
 const logger = createLogger('prompt-optimization')
 
 /**
- * Create and save a new prompt version (as 'active' — first version for a persona).
+ * Create and save a new prompt version (as 'active' — first version for an agent).
  *
  * For candidate versions created via optimization, use generateImprovement() instead.
  */
 export function saveNewVersion(
-  personaName: string,
+  agentName: string,
   systemPrompt: string,
   changelog: string,
   parentVersionId?: string,
@@ -35,7 +35,7 @@ export function saveNewVersion(
 ): PromptVersion {
   const newVersion: PromptVersion = {
     id: generateVersionId(),
-    personaName,
+    agentName,
     parentVersionId,
     version: version ?? 1,
     systemPrompt,
@@ -52,35 +52,35 @@ export function saveNewVersion(
   }
 
   savePromptVersion(newVersion)
-  logger.info(`Saved new version ${personaName} v${newVersion.version}`)
+  logger.info(`Saved new version ${agentName} v${newVersion.version}`)
   return newVersion
 }
 
 /**
- * Get the active prompt content for a persona.
+ * Get the active prompt content for an agent.
  *
  * Returns the systemPrompt string of the active version, or null if no version exists.
  */
-export function getActivePrompt(personaName: string): string | null {
-  const version = getActiveVersion(personaName)
+export function getActivePrompt(agentName: string): string | null {
+  const version = getActiveVersion(agentName)
   return version?.systemPrompt ?? null
 }
 
 /**
- * Rollback a persona to a specific version.
+ * Rollback a agent to a specific version.
  *
  * Delegates to PromptVersionStore.rollbackToVersion which handles
  * retiring the current active version.
  */
 export function rollbackVersion(
-  personaName: string,
+  agentName: string,
   targetVersionId: string
 ): PromptVersion | null {
-  const result = rollbackToVersion(personaName, targetVersionId)
+  const result = rollbackToVersion(agentName, targetVersionId)
   if (result) {
-    logger.info(`Rolled back ${personaName} to version ${result.version} (${result.id})`)
+    logger.info(`Rolled back ${agentName} to version ${result.version} (${result.id})`)
   } else {
-    logger.warn(`Rollback failed: version ${targetVersionId} not found for ${personaName}`)
+    logger.warn(`Rollback failed: version ${targetVersionId} not found for ${agentName}`)
   }
   return result
 }
@@ -91,14 +91,14 @@ export function rollbackVersion(
  * Updates the version's aggregated stats (success count, failure count, rate, avg duration).
  */
 export function recordUsage(
-  personaName: string,
+  agentName: string,
   versionId: string,
   success: boolean,
   durationMs: number
 ): void {
-  const version = getPromptVersion(personaName, versionId)
+  const version = getPromptVersion(agentName, versionId)
   if (!version) {
-    logger.warn(`Cannot record usage: version ${versionId} not found for ${personaName}`)
+    logger.warn(`Cannot record usage: version ${versionId} not found for ${agentName}`)
     return
   }
 
@@ -121,9 +121,9 @@ export function recordUsage(
   }
   stats.lastUsedAt = new Date().toISOString()
 
-  updatePromptVersionStats(personaName, versionId, stats)
+  updatePromptVersionStats(agentName, versionId, stats)
   logger.debug(
-    `Recorded usage for ${personaName} ${versionId}: ${success ? 'success' : 'failure'} ` +
+    `Recorded usage for ${agentName} ${versionId}: ${success ? 'success' : 'failure'} ` +
       `(${stats.successRate.toFixed(2)} rate, ${stats.totalTasks} tasks)`
   )
 }

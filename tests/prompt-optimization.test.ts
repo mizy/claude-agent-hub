@@ -40,11 +40,11 @@ import {
 
 const mockedInvoke = vi.mocked(invokeBackend)
 
-// Test personas for cleanup
-const testPersonas: string[] = []
+// Test agents for cleanup
+const testAgents: string[] = []
 
-function trackPersona(name: string): string {
-  if (!testPersonas.includes(name)) testPersonas.push(name)
+function trackAgent(name: string): string {
+  if (!testAgents.includes(name)) testAgents.push(name)
   return name
 }
 
@@ -62,7 +62,7 @@ function createMockTask(overrides: Partial<Task> = {}): Task {
   }
 }
 
-function createMockWorkflow(personaName = 'Pragmatist'): Workflow {
+function createMockWorkflow(agentName = 'Pragmatist'): Workflow {
   return {
     id: 'wf-test',
     name: 'Test Workflow',
@@ -73,7 +73,7 @@ function createMockWorkflow(personaName = 'Pragmatist'): Workflow {
         id: 'node-1',
         type: 'task',
         name: 'Implement Feature',
-        task: { persona: personaName, prompt: 'Do something' },
+        task: { agent: agentName, prompt: 'Do something' },
       },
       { id: 'end', type: 'end', name: 'End' },
     ],
@@ -114,12 +114,12 @@ function createMockInstance(failed = true): WorkflowInstance {
 }
 
 function createMockVersion(
-  persona: string,
+  agent: string,
   overrides: Partial<PromptVersion> = {}
 ): PromptVersion {
   return {
     id: generateVersionId(),
-    personaName: persona,
+    agentName: agent,
     version: 1,
     systemPrompt: 'You are a pragmatic developer. Focus on simple solutions.',
     changelog: 'Initial version',
@@ -137,8 +137,8 @@ function createMockVersion(
 }
 
 afterAll(() => {
-  for (const persona of testPersonas) {
-    const dir = join(PROMPT_VERSIONS_DIR, persona)
+  for (const agent of testAgents) {
+    const dir = join(PROMPT_VERSIONS_DIR, agent)
     if (existsSync(dir)) {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -307,13 +307,13 @@ describe('analyzeFailure', () => {
           id: 'node-1',
           type: 'task',
           name: 'Step 1',
-          task: { persona: 'Pragmatist', prompt: 'Step 1' },
+          task: { agent: 'Pragmatist', prompt: 'Step 1' },
         },
         {
           id: 'node-2',
           type: 'task',
           name: 'Step 2',
-          task: { persona: 'Pragmatist', prompt: 'Step 2' },
+          task: { agent: 'Pragmatist', prompt: 'Step 2' },
         },
         { id: 'end', type: 'end', name: 'End' },
       ],
@@ -342,8 +342,8 @@ describe('generateImprovement', () => {
   })
 
   it('should return null when no failures provided', async () => {
-    const persona = trackPersona(`test-gen-empty-${Date.now()}`)
-    const version = createMockVersion(persona)
+    const agent = trackAgent(`test-gen-empty-${Date.now()}`)
+    const version = createMockVersion(agent)
 
     const result = await generateImprovement(version, [])
     expect(result).toBe(null)
@@ -351,8 +351,8 @@ describe('generateImprovement', () => {
   })
 
   it('should generate improved version from failure analysis', async () => {
-    const persona = trackPersona(`test-gen-${Date.now()}`)
-    const version = createMockVersion(persona)
+    const agent = trackAgent(`test-gen-${Date.now()}`)
+    const version = createMockVersion(agent)
     savePromptVersion(version)
 
     mockedInvoke.mockResolvedValueOnce({
@@ -371,7 +371,7 @@ describe('generateImprovement', () => {
     const failures: FailureAnalysis[] = [
       {
         taskId: 'task-1',
-        personaName: persona,
+        agentName: agent,
         versionId: version.id,
         failedNodes: [
           { nodeId: 'node-1', nodeName: 'Build', error: 'Missing import', attempts: 3 },
@@ -386,7 +386,7 @@ describe('generateImprovement', () => {
 
     expect(result).not.toBe(null)
     expect(result!.status).toBe('candidate')
-    expect(result!.personaName).toBe(persona)
+    expect(result!.agentName).toBe(agent)
     expect(result!.parentVersionId).toBe(version.id)
     expect(result!.version).toBe(2) // version incremented from 1
     expect(result!.systemPrompt).toContain('Always check imports')
@@ -399,14 +399,14 @@ describe('generateImprovement', () => {
     )
 
     // Should have been saved to store
-    const saved = getPromptVersion(persona, result!.id)
+    const saved = getPromptVersion(agent, result!.id)
     expect(saved).not.toBe(null)
     expect(saved!.systemPrompt).toBe(result!.systemPrompt)
   })
 
   it('should return null when backend fails', async () => {
-    const persona = trackPersona(`test-gen-fail-${Date.now()}`)
-    const version = createMockVersion(persona)
+    const agent = trackAgent(`test-gen-fail-${Date.now()}`)
+    const version = createMockVersion(agent)
     savePromptVersion(version)
 
     mockedInvoke.mockResolvedValueOnce({
@@ -417,7 +417,7 @@ describe('generateImprovement', () => {
     const failures: FailureAnalysis[] = [
       {
         taskId: 'task-1',
-        personaName: persona,
+        agentName: agent,
         versionId: version.id,
         failedNodes: [],
         rootCause: 'test',
@@ -431,8 +431,8 @@ describe('generateImprovement', () => {
   })
 
   it('should return null when response is unparseable', async () => {
-    const persona = trackPersona(`test-gen-parse-${Date.now()}`)
-    const version = createMockVersion(persona)
+    const agent = trackAgent(`test-gen-parse-${Date.now()}`)
+    const version = createMockVersion(agent)
     savePromptVersion(version)
 
     mockedInvoke.mockResolvedValueOnce({
@@ -448,7 +448,7 @@ describe('generateImprovement', () => {
     const failures: FailureAnalysis[] = [
       {
         taskId: 'task-1',
-        personaName: persona,
+        agentName: agent,
         versionId: version.id,
         failedNodes: [],
         rootCause: 'test',
@@ -469,25 +469,25 @@ describe('generateImprovement', () => {
 describe('manageVersions', () => {
   describe('saveNewVersion', () => {
     it('should create and save a new active version', () => {
-      const persona = trackPersona(`test-save-${Date.now()}`)
+      const agent = trackAgent(`test-save-${Date.now()}`)
 
-      const result = saveNewVersion(persona, 'You are a test persona.', 'Initial version')
+      const result = saveNewVersion(agent, 'You are a test agent.', 'Initial version')
 
-      expect(result.personaName).toBe(persona)
+      expect(result.agentName).toBe(agent)
       expect(result.status).toBe('active')
       expect(result.version).toBe(1)
-      expect(result.systemPrompt).toBe('You are a test persona.')
+      expect(result.systemPrompt).toBe('You are a test agent.')
       expect(result.stats.totalTasks).toBe(0)
 
       // Should be persisted
-      const saved = getPromptVersion(persona, result.id)
+      const saved = getPromptVersion(agent, result.id)
       expect(saved).not.toBe(null)
     })
 
     it('should accept custom version number and parentVersionId', () => {
-      const persona = trackPersona(`test-save-custom-${Date.now()}`)
+      const agent = trackAgent(`test-save-custom-${Date.now()}`)
 
-      const result = saveNewVersion(persona, 'Prompt v3', 'Changelog', 'pv-parent', 3)
+      const result = saveNewVersion(agent, 'Prompt v3', 'Changelog', 'pv-parent', 3)
 
       expect(result.version).toBe(3)
       expect(result.parentVersionId).toBe('pv-parent')
@@ -496,50 +496,50 @@ describe('manageVersions', () => {
 
   describe('getActivePrompt', () => {
     it('should return systemPrompt of active version', () => {
-      const persona = trackPersona(`test-getprompt-${Date.now()}`)
-      saveNewVersion(persona, 'Active prompt content', 'test')
+      const agent = trackAgent(`test-getprompt-${Date.now()}`)
+      saveNewVersion(agent, 'Active prompt content', 'test')
 
-      const prompt = getActivePrompt(persona)
+      const prompt = getActivePrompt(agent)
       expect(prompt).toBe('Active prompt content')
     })
 
     it('should return null when no version exists', () => {
-      const prompt = getActivePrompt('nonexistent-persona-xyz')
+      const prompt = getActivePrompt('nonexistent-agent-xyz')
       expect(prompt).toBe(null)
     })
   })
 
   describe('rollbackVersion', () => {
     it('should rollback to target version', () => {
-      const persona = trackPersona(`test-rb-${Date.now()}`)
+      const agent = trackAgent(`test-rb-${Date.now()}`)
 
-      const v1 = createMockVersion(persona, { version: 1, status: 'retired' })
-      const v2 = createMockVersion(persona, { version: 2, status: 'active' })
+      const v1 = createMockVersion(agent, { version: 1, status: 'retired' })
+      const v2 = createMockVersion(agent, { version: 2, status: 'active' })
       savePromptVersion(v1)
       savePromptVersion(v2)
 
-      const result = rollbackVersion(persona, v1.id)
+      const result = rollbackVersion(agent, v1.id)
       expect(result).not.toBe(null)
       expect(result!.status).toBe('active')
       expect(result!.version).toBe(1)
     })
 
     it('should return null for non-existent target', () => {
-      const persona = trackPersona(`test-rb-null-${Date.now()}`)
-      const result = rollbackVersion(persona, 'pv-nonexistent')
+      const agent = trackAgent(`test-rb-null-${Date.now()}`)
+      const result = rollbackVersion(agent, 'pv-nonexistent')
       expect(result).toBe(null)
     })
   })
 
   describe('recordUsage', () => {
     it('should increment success count on success', () => {
-      const persona = trackPersona(`test-usage-s-${Date.now()}`)
-      const version = createMockVersion(persona)
+      const agent = trackAgent(`test-usage-s-${Date.now()}`)
+      const version = createMockVersion(agent)
       savePromptVersion(version)
 
-      recordUsage(persona, version.id, true, 5000)
+      recordUsage(agent, version.id, true, 5000)
 
-      const updated = getPromptVersion(persona, version.id)
+      const updated = getPromptVersion(agent, version.id)
       expect(updated!.stats.totalTasks).toBe(1)
       expect(updated!.stats.successCount).toBe(1)
       expect(updated!.stats.failureCount).toBe(0)
@@ -549,13 +549,13 @@ describe('manageVersions', () => {
     })
 
     it('should increment failure count on failure', () => {
-      const persona = trackPersona(`test-usage-f-${Date.now()}`)
-      const version = createMockVersion(persona)
+      const agent = trackAgent(`test-usage-f-${Date.now()}`)
+      const version = createMockVersion(agent)
       savePromptVersion(version)
 
-      recordUsage(persona, version.id, false, 3000)
+      recordUsage(agent, version.id, false, 3000)
 
-      const updated = getPromptVersion(persona, version.id)
+      const updated = getPromptVersion(agent, version.id)
       expect(updated!.stats.totalTasks).toBe(1)
       expect(updated!.stats.successCount).toBe(0)
       expect(updated!.stats.failureCount).toBe(1)
@@ -563,29 +563,29 @@ describe('manageVersions', () => {
     })
 
     it('should calculate rolling average duration', () => {
-      const persona = trackPersona(`test-usage-avg-${Date.now()}`)
-      const version = createMockVersion(persona)
+      const agent = trackAgent(`test-usage-avg-${Date.now()}`)
+      const version = createMockVersion(agent)
       savePromptVersion(version)
 
-      recordUsage(persona, version.id, true, 4000) // avg = 4000
-      recordUsage(persona, version.id, true, 6000) // avg = (4000 + 6000) / 2 = 5000
+      recordUsage(agent, version.id, true, 4000) // avg = 4000
+      recordUsage(agent, version.id, true, 6000) // avg = (4000 + 6000) / 2 = 5000
 
-      const updated = getPromptVersion(persona, version.id)
+      const updated = getPromptVersion(agent, version.id)
       expect(updated!.stats.totalTasks).toBe(2)
       expect(updated!.stats.avgDurationMs).toBe(5000)
       expect(updated!.stats.successRate).toBe(1)
     })
 
     it('should handle mixed success/failure correctly', () => {
-      const persona = trackPersona(`test-usage-mix-${Date.now()}`)
-      const version = createMockVersion(persona)
+      const agent = trackAgent(`test-usage-mix-${Date.now()}`)
+      const version = createMockVersion(agent)
       savePromptVersion(version)
 
-      recordUsage(persona, version.id, true, 2000)
-      recordUsage(persona, version.id, false, 3000)
-      recordUsage(persona, version.id, true, 4000)
+      recordUsage(agent, version.id, true, 2000)
+      recordUsage(agent, version.id, false, 3000)
+      recordUsage(agent, version.id, true, 4000)
 
-      const updated = getPromptVersion(persona, version.id)
+      const updated = getPromptVersion(agent, version.id)
       expect(updated!.stats.totalTasks).toBe(3)
       expect(updated!.stats.successCount).toBe(2)
       expect(updated!.stats.failureCount).toBe(1)
@@ -593,8 +593,8 @@ describe('manageVersions', () => {
     })
 
     it('should not throw for non-existent version', () => {
-      const persona = trackPersona(`test-usage-ne-${Date.now()}`)
-      expect(() => recordUsage(persona, 'pv-nonexistent', true, 1000)).not.toThrow()
+      const agent = trackAgent(`test-usage-ne-${Date.now()}`)
+      expect(() => recordUsage(agent, 'pv-nonexistent', true, 1000)).not.toThrow()
     })
   })
 })
@@ -609,17 +609,17 @@ describe('Prompt Optimization Integration', () => {
   })
 
   it('should complete the full flow: fail → analyze → improve → use new version', async () => {
-    const persona = trackPersona(`test-integ-${Date.now()}`)
+    const agent = trackAgent(`test-integ-${Date.now()}`)
 
     // Step 1: Create initial active version
-    const v1 = saveNewVersion(persona, 'You are a developer. Write code.', 'Initial')
+    const v1 = saveNewVersion(agent, 'You are a developer. Write code.', 'Initial')
 
     // Step 2: Record some failures
-    recordUsage(persona, v1.id, false, 5000)
-    recordUsage(persona, v1.id, false, 6000)
-    recordUsage(persona, v1.id, false, 7000)
+    recordUsage(agent, v1.id, false, 5000)
+    recordUsage(agent, v1.id, false, 6000)
+    recordUsage(agent, v1.id, false, 7000)
 
-    const v1Updated = getPromptVersion(persona, v1.id)!
+    const v1Updated = getPromptVersion(agent, v1.id)!
     expect(v1Updated.stats.failureCount).toBe(3)
     expect(v1Updated.stats.successRate).toBe(0)
 
@@ -640,7 +640,7 @@ describe('Prompt Optimization Integration', () => {
     } as any)
 
     const task = createMockTask()
-    const workflow = createMockWorkflow(persona)
+    const workflow = createMockWorkflow(agent)
     const instance = createMockInstance(true)
 
     const analysis = await analyzeFailure(task, workflow, instance, v1.id)
@@ -669,15 +669,15 @@ describe('Prompt Optimization Integration', () => {
     expect(improved!.parentVersionId).toBe(v1.id)
 
     // Step 5: Verify the active version is still v1 (candidate hasn't been promoted)
-    const activePrompt = getActivePrompt(persona)
+    const activePrompt = getActivePrompt(agent)
     expect(activePrompt).toBe('You are a developer. Write code.')
 
     // Step 6: Verify both versions exist
-    const allVersions = getAllVersions(persona)
+    const allVersions = getAllVersions(agent)
     expect(allVersions).toHaveLength(2)
 
     // Step 7: Rollback would work (here we just verify the candidate exists)
-    const candidate = getPromptVersion(persona, improved!.id)
+    const candidate = getPromptVersion(agent, improved!.id)
     expect(candidate).not.toBe(null)
     expect(candidate!.systemPrompt).toContain('error handling')
   })

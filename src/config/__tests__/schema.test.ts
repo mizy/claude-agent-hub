@@ -27,7 +27,7 @@ describe('configSchema', () => {
 
   it('should parse full valid config', () => {
     const input = {
-      agents: [{ name: 'test-agent', persona: 'Architect', role: 'developer' }],
+      agents: [{ name: 'test-agent', profile: 'Architect', role: 'developer' }],
       tasks: { default_priority: 'high', max_retries: 5, timeout: '1h' },
       git: { base_branch: 'develop', branch_prefix: 'feat/', auto_push: true },
       backends: {
@@ -63,14 +63,14 @@ describe('agentConfigSchema', () => {
   it('should parse minimal agent config', () => {
     const result = agentConfigSchema.parse({ name: 'my-agent' })
     expect(result.name).toBe('my-agent')
-    expect(result.persona).toBe('Pragmatist')
+    expect(result.profile).toBe('Pragmatist')
     expect(result.role).toBe('developer')
   })
 
   it('should parse full agent config', () => {
     const result = agentConfigSchema.parse({
       name: 'reviewer',
-      persona: 'Reviewer',
+      profile: 'Reviewer',
       role: 'reviewer',
       schedule: { poll_interval: '10m', work_hours: '09:00-18:00' },
     })

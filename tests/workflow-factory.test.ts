@@ -55,20 +55,20 @@ describe('createWorkflow', () => {
 describe('createTaskNode', () => {
   it('should create a task node', () => {
     const node = createTaskNode('task-1', 'Build Feature', {
-      persona: 'coder',
+      agent: 'coder',
       prompt: 'Write the code',
     })
 
     expect(node.id).toBe('task-1')
     expect(node.type).toBe('task')
     expect(node.name).toBe('Build Feature')
-    expect(node.task?.persona).toBe('coder')
+    expect(node.task?.agent).toBe('coder')
     expect(node.task?.prompt).toBe('Write the code')
   })
 
   it('should include optional task config fields', () => {
     const node = createTaskNode('t-2', 'Review', {
-      persona: 'reviewer',
+      agent: 'reviewer',
       prompt: 'Review the code',
       timeout: 60000,
       retries: 5,
@@ -151,7 +151,7 @@ describe('createInitialInstance', () => {
       description: 'test',
       nodes: [
         { id: 'start', type: 'start', name: 'Start' },
-        { id: 'task1', type: 'task', name: 'Task 1', task: { persona: 'c', prompt: 'p' } },
+        { id: 'task1', type: 'task', name: 'Task 1', task: { agent: 'c', prompt: 'p' } },
         { id: 'end', type: 'end', name: 'End' },
       ],
       edges: [],

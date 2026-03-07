@@ -46,7 +46,7 @@ export function createTestWorkflow(taskId?: string): Workflow {
       name: '执行测试任务',
       description: '这是一个简单的测试任务节点',
       task: {
-        persona: 'coder',
+        agent: 'coder',
         prompt: '执行一个简单的测试操作',
         timeout: 60000,
         retries: 2,
@@ -146,7 +146,7 @@ export function createComplexTestWorkflow(taskId?: string): Workflow {
       type: 'task',
       name: '任务1',
       task: {
-        persona: 'coder',
+        agent: 'coder',
         prompt: '执行编码任务',
         timeout: 60000,
       },
@@ -156,7 +156,7 @@ export function createComplexTestWorkflow(taskId?: string): Workflow {
       type: 'task',
       name: '任务2',
       task: {
-        persona: 'reviewer',
+        agent: 'reviewer',
         prompt: '执行代码审查',
         timeout: 60000,
       },

@@ -192,23 +192,23 @@ async function trackPromptOptimization(
   success: boolean,
   durationMs: number
 ): Promise<void> {
-  // Find persona used in this workflow
-  const taskNode = workflow.nodes.find(n => n.type === 'task' && n.task?.persona)
-  const personaName = taskNode?.task?.persona ?? 'Pragmatist'
+  // Find agent used in this workflow
+  const taskNode = workflow.nodes.find(n => n.type === 'task' && n.task?.agent)
+  const agentName = taskNode?.task?.agent ?? 'Pragmatist'
 
-  // Get active version for this persona (if any)
-  const activeVersion = getActiveVersion(personaName)
+  // Get active version for this agent (if any)
+  const activeVersion = getActiveVersion(agentName)
   if (!activeVersion) {
-    logger.debug(`No active prompt version for ${personaName}, skipping optimization tracking`)
+    logger.debug(`No active prompt version for ${agentName}, skipping optimization tracking`)
     return
   }
 
   // Record usage metrics
-  recordUsage(personaName, activeVersion.id, success, durationMs)
+  recordUsage(agentName, activeVersion.id, success, durationMs)
 
   if (success) {
     // On success: check if there's a running AB test that can be concluded
-    checkAndConcludeABTest(task.id, personaName, instance.id)
+    checkAndConcludeABTest(task.id, agentName, instance.id)
     return
   }
 
@@ -231,7 +231,7 @@ async function trackPromptOptimization(
     // Record to knowledge base even for non-prompt failures
     recordFailure({
       taskId: task.id,
-      personaName,
+      agentName,
       versionId: activeVersion.id,
       category: classification.category,
       confidence: classification.confidence,
@@ -247,7 +247,7 @@ async function trackPromptOptimization(
   // Record to knowledge base with LLM analysis results
   recordFailure({
     taskId: task.id,
-    personaName,
+    agentName,
     versionId: activeVersion.id,
     category: analysis ? 'prompt' : classification.category,
     confidence: analysis ? 0.9 : classification.confidence,
@@ -259,7 +259,7 @@ async function trackPromptOptimization(
 
   if (analysis) {
     logger.info(
-      `Prompt-related failure detected for ${personaName}: ${analysis.rootCause}`
+      `Prompt-related failure detected for ${agentName}: ${analysis.rootCause}`
     )
 
     // Check if we should generate an improvement (consecutive failures >= 3)
@@ -271,12 +271,12 @@ async function trackPromptOptimization(
           timestamp: new Date().toISOString(),
           event: 'prompt:improvement_generated',
           instanceId: instance.id,
-          details: `Generated candidate v${improved.version} for ${personaName}: ${improved.changelog}`,
+          details: `Generated candidate v${improved.version} for ${agentName}: ${improved.changelog}`,
         })
 
         // Auto-create A/B test for the new candidate
         try {
-          const abTest = createABTest(personaName, improved.id)
+          const abTest = createABTest(agentName, improved.id)
           appendTimelineEvent(task.id, {
             timestamp: new Date().toISOString(),
             event: 'prompt:ab_test_created',
@@ -292,9 +292,9 @@ async function trackPromptOptimization(
 }
 
 /** Check running AB test and auto-conclude if ready */
-function checkAndConcludeABTest(taskId: string, personaName: string, instanceId: string): void {
+function checkAndConcludeABTest(taskId: string, agentName: string, instanceId: string): void {
   try {
-    const runningTest = getRunningTest(personaName)
+    const runningTest = getRunningTest(agentName)
     if (!runningTest) return
 
     const result = evaluateABTest(runningTest.id)

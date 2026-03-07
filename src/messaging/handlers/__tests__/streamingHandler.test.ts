@@ -82,10 +82,11 @@ describe('sendFinalResponse', () => {
     expect(messenger.reply).toHaveBeenCalledWith('c1', 'hello')
   })
 
-  it('should fallback to reply when placeholder edit fails', async () => {
+  it('should NOT fallback to reply when placeholder edit fails (user saw streaming)', async () => {
     vi.mocked(messenger.editMessage).mockResolvedValueOnce(false)
     await sendFinalResponse('c1', 'hello', 4096, 'ph-1', messenger)
-    expect(messenger.reply).toHaveBeenCalledWith('c1', 'hello')
+    // Should silently skip — no reply() to avoid duplicate messages
+    expect(messenger.reply).not.toHaveBeenCalled()
   })
 
   it('should send multiple parts as separate replies', async () => {
@@ -116,21 +117,23 @@ describe('sendFinalResponse', () => {
       expect(m.reply).not.toHaveBeenCalled()
     })
 
-    it('should fallback to edit when deleteMessage fails', async () => {
+    it('should fallback to edit when sendCard returns null', async () => {
       const m = createCardMessenger(false, null)
       await sendFinalResponse('c1', tableText, 4096, 'ph-1', m)
-      expect(m.deleteMessage).toHaveBeenCalled()
-      expect(m.sendCard).not.toHaveBeenCalled()
-      // Should fall through to normal edit path since placeholder still exists
+      // New logic: send card first → card returns null → placeholder still exists → edit path
+      expect(m.sendCard).toHaveBeenCalled()
+      expect(m.deleteMessage).not.toHaveBeenCalled()
       expect(m.editMessage).toHaveBeenCalledWith('c1', 'ph-1', tableText)
     })
 
-    it('should fallback to reply when delete succeeds but sendCard fails', async () => {
+    it('should fallback to edit when sendCard throws', async () => {
       const m = createCardMessenger(true, null)
+      m.sendCard = vi.fn().mockRejectedValue(new Error('network error'))
       await sendFinalResponse('c1', tableText, 4096, 'ph-1', m)
-      // Deleted + card failed → placeholderId nulled → reply path
-      expect(m.reply).toHaveBeenCalledWith('c1', tableText)
-      expect(m.editMessage).not.toHaveBeenCalled()
+      // Card threw → placeholder still exists → edit path (no reply, no delete)
+      expect(m.editMessage).toHaveBeenCalledWith('c1', 'ph-1', tableText)
+      expect(m.deleteMessage).not.toHaveBeenCalled()
+      expect(m.reply).not.toHaveBeenCalled()
     })
 
     it('should not trigger card upgrade for tables inside code blocks', async () => {

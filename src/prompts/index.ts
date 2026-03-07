@@ -2,7 +2,7 @@
  * @entry Prompts 提示词模块
  *
  * 任务执行 / 对话相关的提示词模板
- * 注意：Agent 人格的 prompt 定义在 src/persona/builtinPersonas.ts
+ * 注意：Agent 人格的 prompt 定义在 src/agents/builtinAgents.ts
  *
  * 公共 API:
  * - TASK_PROMPTS: 任务提示词常量

@@ -21,7 +21,7 @@ export function registerScheduleCommand(program: Command) {
     .description('创建定时任务（自动构建 schedule-wait workflow）')
     .argument('<cron>', 'Cron 表达式（如 "0 9 * * 1-5"）')
     .argument('<description>', '任务描述')
-    .option('-a, --agent <agent>', '指定执行 Agent (persona)', 'coder')
+    .option('-a, --agent <agent>', '指定执行 Agent agent', 'coder')
     .option('-b, --backend <type>', '指定 backend')
     .option('-m, --model <model>', '指定模型')
     .action(async (cron: string, description: string, options) => {
@@ -55,7 +55,7 @@ export function registerScheduleCommand(program: Command) {
         const { parseJson } = await import('../../workflow/parser/parseJson.js')
         const { saveTaskWorkflow } = await import('../../store/TaskWorkflowStore.js')
 
-        const persona = options.agent || 'coder'
+        const agent = options.agent || 'coder'
         const workflowInput = {
           name: `定时任务: ${truncateText(description, 40)}`,
           description,
@@ -71,7 +71,7 @@ export function registerScheduleCommand(program: Command) {
               id: 'action',
               type: 'task' as const,
               name: truncateText(description, 30),
-              task: { persona, prompt: description },
+              task: { agent, prompt: description },
             },
             {
               id: 'notify',
