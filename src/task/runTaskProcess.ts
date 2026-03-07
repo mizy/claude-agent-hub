@@ -32,7 +32,10 @@ function handleFatalError(type: string, error: unknown): void {
 
   if (currentTaskId) {
     try {
-      updateTask(currentTaskId, { status: 'failed' })
+      const currentTask = getTask(currentTaskId)
+      if (currentTask?.status !== 'cancelled') {
+        updateTask(currentTaskId, { status: 'failed' })
+      }
       updateProcessInfo(currentTaskId, {
         status: 'crashed',
         error: `${type}: ${message}`,
@@ -123,7 +126,12 @@ async function main(): Promise<void> {
   }, MAX_TASK_DURATION_MS)
 
   // Handle process termination
+  let stopping = false
+  const GRACEFUL_TIMEOUT = 5000
+
   const cleanup = (signal: string) => {
+    if (stopping) return // Prevent re-entry
+    stopping = true
     logger.info(`Received ${signal}, cleaning up...`)
     clearInterval(heartbeat)
     clearTimeout(timeoutTimer)
@@ -132,6 +140,11 @@ async function main(): Promise<void> {
       stopReason: 'killed',
       exitCode: 0,
     })
+    // Give ongoing async work a short window to finish, then force exit
+    setTimeout(() => {
+      logger.warn(`Graceful timeout reached, forcing exit`)
+      process.exit(0)
+    }, GRACEFUL_TIMEOUT).unref()
   }
 
   process.on('SIGTERM', () => cleanup('SIGTERM'))
@@ -170,14 +183,17 @@ async function main(): Promise<void> {
 
     logger.error(`Task failed: ${errorMessage}`)
 
-    // Update task status
-    updateTask(taskId, { status: 'failed' })
+    // Don't overwrite cancelled status with failed
+    const currentTask = getTask(taskId)
+    if (currentTask?.status !== 'cancelled') {
+      updateTask(taskId, { status: 'failed' })
+    }
 
     // Update process info
     updateProcessInfo(taskId, {
       status: 'crashed',
       error: errorMessage,
-      stopReason: 'error',
+      stopReason: currentTask?.status === 'cancelled' ? 'killed' : 'error',
       exitCode: 1,
     })
 

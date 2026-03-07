@@ -117,6 +117,10 @@ export const chatMemoryConfigSchema = z.object({
 
 export const episodicMemoryConfigSchema = z.object({
   enabled: z.boolean().default(true),
+  /** Idle timeout in ms before triggering episode extraction (default 5 min) */
+  idleTimeoutMs: z.number().default(5 * 60 * 1000),
+  /** Min conversation turns required for explicit-end trigger (default 3) */
+  minTurnsForExplicitEnd: z.number().default(3),
 })
 
 export const memoryConfigSchema = z.object({

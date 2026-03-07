@@ -4,7 +4,7 @@
  * 统一所有 JSON 文件操作，支持原子写入。
  */
 
-import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, appendFileSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, appendFileSync, unlinkSync, statSync } from 'fs'
 import { dirname } from 'path'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
@@ -61,8 +61,9 @@ export function writeJson(filepath: string, data: unknown, options?: JsonWriteOp
   }
 
   if (atomic) {
-    // 原子写入：先写临时文件，再 rename
-    const tempPath = `${filepath}.tmp`
+    // 原子写入：先写临时文件，再 rename（pid+随机后缀避免多进程冲突）
+    const suffix = Math.random().toString(36).slice(2, 8)
+    const tempPath = `${filepath}.${process.pid}.${suffix}.tmp`
     writeFileSync(tempPath, content, 'utf-8')
     renameSync(tempPath, filepath)
   } else {
@@ -83,6 +84,43 @@ export function appendToFile(filepath: string, content: string): void {
     mkdirSync(dir, { recursive: true })
   }
   appendFileSync(filepath, content, 'utf-8')
+}
+
+/**
+ * Synchronous file lock for protecting read-modify-write operations.
+ * Uses exclusive file creation (wx flag) with stale lock detection.
+ */
+const LOCK_TIMEOUT_MS = 10_000
+const LOCK_RETRY_COUNT = 20
+const LOCK_RETRY_DELAY_MS = 50
+
+export function withFileLock<T>(lockPath: string, fn: () => T): T {
+  for (let i = 0; i < LOCK_RETRY_COUNT; i++) {
+    try {
+      writeFileSync(lockPath, process.pid.toString(), { flag: 'wx' })
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
+        // Check if lock is stale (holder crashed)
+        try {
+          const age = Date.now() - statSync(lockPath).mtimeMs
+          if (age >= LOCK_TIMEOUT_MS) {
+            try { unlinkSync(lockPath) } catch { /* race ok */ }
+          }
+        } catch { /* lock removed between check */ }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, LOCK_RETRY_DELAY_MS)
+        continue
+      }
+      throw e
+    }
+
+    try {
+      return fn()
+    } finally {
+      try { unlinkSync(lockPath) } catch { /* already removed */ }
+    }
+  }
+
+  throw new Error(`File lock timeout after ${LOCK_RETRY_COUNT} retries: ${lockPath}`)
 }
 
 /**

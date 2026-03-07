@@ -117,7 +117,8 @@ function detectContentTrigger(userText: string, extraKeywords?: string[]): strin
 
   // Check extra configured keywords
   if (extraKeywords?.length) {
-    const pattern = new RegExp(`(?:${extraKeywords.join('|')})`, 'i')
+    const escaped = extraKeywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    const pattern = new RegExp(`(?:${escaped.join('|')})`, 'i')
     if (pattern.test(userText)) return 'config-keyword'
   }
 

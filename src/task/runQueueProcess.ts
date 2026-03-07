@@ -11,6 +11,7 @@ import {
   getAllTasks,
   getTask,
   updateTask,
+  claimTask,
   saveProcessInfo,
   updateProcessInfo,
 } from '../store/TaskStore.js'
@@ -114,6 +115,12 @@ async function main(): Promise<void> {
           logger.info('No pending tasks, exiting')
         }
         break
+      }
+
+      // Atomic CAS: pending → planning (prevents duplicate claim by concurrent runners)
+      if (!claimTask(pendingTask.id, 'planning')) {
+        logger.info(`Task ${pendingTask.id} already claimed by another runner, skipping`)
+        continue
       }
 
       const task = getTask(pendingTask.id)

@@ -18,9 +18,7 @@ import { getErrorMessage } from '../../shared/assertError.js'
 const logger = createLogger('episode-extractor')
 
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
-const MIN_TURNS_FOR_EXPLICIT_END = 3
-
-const idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS
+const DEFAULT_MIN_TURNS_FOR_EXPLICIT_END = 3
 
 // Patterns that signal conversation end
 const END_PATTERNS = /^(?:好的|谢谢|就这样|ok|OK|Ok|thanks|thank you|收到|明白了|了解|done|\/done)[!！。.~～]*$/i
@@ -55,12 +53,23 @@ function clearTimer(tracker: ConversationTracker): void {
   }
 }
 
-async function isEpisodicEnabled(): Promise<boolean> {
+interface EpisodicConfig {
+  enabled: boolean
+  idleTimeoutMs: number
+  minTurnsForExplicitEnd: number
+}
+
+async function getEpisodicConfig(): Promise<EpisodicConfig> {
   try {
     const config = await loadConfig()
-    return config.memory.episodic.enabled
+    const e = config.memory.episodic
+    return {
+      enabled: e.enabled,
+      idleTimeoutMs: e.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+      minTurnsForExplicitEnd: e.minTurnsForExplicitEnd ?? DEFAULT_MIN_TURNS_FOR_EXPLICIT_END,
+    }
   } catch {
-    return false
+    return { enabled: false, idleTimeoutMs: DEFAULT_IDLE_TIMEOUT_MS, minTurnsForExplicitEnd: DEFAULT_MIN_TURNS_FOR_EXPLICIT_END }
   }
 }
 
@@ -77,8 +86,6 @@ function findRecentMemoryIds(chatId: string): string[] {
 
 async function doExtract(chatId: string, tracker: ConversationTracker, trigger: string): Promise<void> {
   if (tracker.extracted || tracker.messages.length < 4) return
-  tracker.extracted = true
-  extractedSet.add(chatId)
 
   logger.info(`Episode extraction triggered: ${trigger} [${chatId.slice(0, 8)}] (${tracker.turnCount} turns)`)
 
@@ -96,6 +103,9 @@ async function doExtract(chatId: string, tracker: ConversationTracker, trigger: 
     if (episode) {
       logger.info(`Episode saved: ${episode.id} [${chatId.slice(0, 8)}]`)
     }
+    // Mark as extracted only on success — failed extractions can be retried
+    tracker.extracted = true
+    extractedSet.add(chatId)
   } catch (err) {
     logger.debug(`Episode extraction failed: ${getErrorMessage(err)}`)
   }
@@ -103,13 +113,14 @@ async function doExtract(chatId: string, tracker: ConversationTracker, trigger: 
 
 function startIdleTimer(chatId: string, tracker: ConversationTracker): void {
   clearTimer(tracker)
-  tracker.timer = setTimeout(() => {
-    isEpisodicEnabled().then(enabled => {
-      if (enabled && !tracker.extracted) {
+  getEpisodicConfig().then(({ enabled, idleTimeoutMs }) => {
+    if (!enabled) return
+    tracker.timer = setTimeout(() => {
+      if (!tracker.extracted) {
         doExtract(chatId, tracker, 'idle-timeout').catch(() => {})
       }
-    }).catch(() => {})
-  }, idleTimeoutMs)
+    }, idleTimeoutMs)
+  }).catch(() => {})
 }
 
 /**
@@ -145,13 +156,11 @@ export function trackEpisodeTurn(
   startIdleTimer(chatId, tracker)
 
   // Check explicit end patterns (only if enough turns)
-  if (tracker.turnCount >= MIN_TURNS_FOR_EXPLICIT_END && END_PATTERNS.test(userText.trim())) {
-    isEpisodicEnabled().then(enabled => {
-      if (enabled) {
-        doExtract(chatId, tracker, 'explicit-end').catch(() => {})
-      }
-    }).catch(() => {})
-  }
+  getEpisodicConfig().then(({ enabled, minTurnsForExplicitEnd }) => {
+    if (enabled && tracker.turnCount >= minTurnsForExplicitEnd && END_PATTERNS.test(userText.trim())) {
+      doExtract(chatId, tracker, 'explicit-end').catch(() => {})
+    }
+  }).catch(() => {})
 }
 
 /**
@@ -163,7 +172,7 @@ export function triggerEpisodeOnTaskCreation(chatId: string): void {
   if (!tracker || tracker.extracted || tracker.messages.length < 4) return
 
   clearTimer(tracker)
-  isEpisodicEnabled().then(enabled => {
+  getEpisodicConfig().then(({ enabled }) => {
     if (enabled) {
       doExtract(chatId, tracker, 'task-creation').catch(() => {})
     }
@@ -178,7 +187,7 @@ export function flushEpisode(chatId: string): void {
   if (!tracker || tracker.extracted || tracker.messages.length < 4) return
 
   clearTimer(tracker)
-  isEpisodicEnabled().then(enabled => {
+  getEpisodicConfig().then(({ enabled }) => {
     if (enabled) {
       doExtract(chatId, tracker, 'session-clear').catch(() => {})
     }

@@ -14,7 +14,7 @@
 import { generateId } from '../shared/generateId.js'
 import type { TaskMessage, TaskMessageSource } from '../types/taskMessage.js'
 import { getMessagesFilePath } from './paths.js'
-import { readJson, writeJson } from './readWriteJson.js'
+import { readJson, writeJson, withFileLock } from './readWriteJson.js'
 
 function getMessages(taskId: string): TaskMessage[] {
   return readJson<TaskMessage[]>(getMessagesFilePath(taskId), { defaultValue: [] }) ?? []
@@ -24,13 +24,14 @@ function saveMessages(taskId: string, messages: TaskMessage[]): void {
   writeJson(getMessagesFilePath(taskId), messages)
 }
 
-/** Add a message to a task's message queue */
+/** Add a message to a task's message queue (file-locked to prevent concurrent write loss) */
 export function addTaskMessage(
   taskId: string,
   content: string,
   source: TaskMessageSource
 ): TaskMessage {
-  const messages = getMessages(taskId)
+  const filePath = getMessagesFilePath(taskId)
+  const lockPath = `${filePath}.lock`
   const msg: TaskMessage = {
     id: generateId(),
     taskId,
@@ -39,8 +40,11 @@ export function addTaskMessage(
     timestamp: new Date().toISOString(),
     consumed: false,
   }
-  messages.push(msg)
-  saveMessages(taskId, messages)
+  withFileLock(lockPath, () => {
+    const messages = getMessages(taskId)
+    messages.push(msg)
+    saveMessages(taskId, messages)
+  })
   return msg
 }
 
@@ -49,16 +53,20 @@ export function getUnconsumedMessages(taskId: string): TaskMessage[] {
   return getMessages(taskId).filter(m => !m.consumed)
 }
 
-/** Mark messages as consumed */
+/** Mark messages as consumed (file-locked to prevent concurrent write loss) */
 export function markMessagesConsumed(taskId: string, messageIds: string[]): void {
-  const messages = getMessages(taskId)
-  const idSet = new Set(messageIds)
-  for (const msg of messages) {
-    if (idSet.has(msg.id)) {
-      msg.consumed = true
+  const filePath = getMessagesFilePath(taskId)
+  const lockPath = `${filePath}.lock`
+  withFileLock(lockPath, () => {
+    const messages = getMessages(taskId)
+    const idSet = new Set(messageIds)
+    for (const msg of messages) {
+      if (idSet.has(msg.id)) {
+        msg.consumed = true
+      }
     }
-  }
-  saveMessages(taskId, messages)
+    saveMessages(taskId, messages)
+  })
 }
 
 /** Get all messages for a task */

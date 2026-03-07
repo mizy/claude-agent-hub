@@ -5,6 +5,10 @@
 import { loadConfig } from '../../config/loadConfig.js'
 import { getRegisteredBackends } from '../../backend/resolveBackend.js'
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 // Cached backend override regex (invalidated when backend list changes)
 let cachedBackendPattern: RegExp | null = null
 let cachedBackendList: string | null = null
@@ -25,7 +29,7 @@ export async function parseBackendOverride(
   // Reuse cached regex if backend list hasn't changed
   if (backendListKey !== cachedBackendList) {
     cachedBackendPattern = new RegExp(
-      `^[@/](?:backend:|use\\s+)?(${allBackends.join('|')})(?:\\s|\\n)`,
+      `^[@/](?:backend:|use\\s+)?(${allBackends.map(escapeRegExp).join('|')})(?:\\s|\\n)`,
       's'
     )
     cachedBackendList = backendListKey

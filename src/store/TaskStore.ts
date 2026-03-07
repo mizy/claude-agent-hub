@@ -25,7 +25,7 @@ import {
   getTaskLogsDir,
   getTaskOutputsDir,
 } from './paths.js'
-import { readJson, writeJson, ensureDirs } from './readWriteJson.js'
+import { readJson, writeJson, ensureDirs, withFileLock } from './readWriteJson.js'
 import { FileStore } from './GenericFileStore.js'
 
 const logger = createLogger('task-store')
@@ -221,6 +221,28 @@ export function updateTask(taskId: string, updates: Partial<Task>): void {
 
   const updated = { ...task, ...updates }
   saveTask(updated)
+}
+
+/**
+ * Atomically claim a pending task (CAS: pending → expectedStatus).
+ * Uses file lock to prevent multiple runners from claiming the same task.
+ * Returns true if claim succeeded, false if task was already claimed by another runner.
+ */
+export function claimTask(taskId: string, expectedStatus: TaskStatus = 'planning'): boolean {
+  const lockPath = join(TASKS_DIR, `claim-${taskId}.lock`)
+  return withFileLock(lockPath, () => {
+    const taskDir = getTaskDir(taskId)
+    const taskFile = join(taskDir, TASK_FILE)
+    const task = readJson<Task>(taskFile)
+    if (!task || task.status !== 'pending') {
+      return false
+    }
+    task.status = expectedStatus
+    task.updatedAt = new Date().toISOString()
+    writeJson(taskFile, task)
+    logger.info(`[STATUS] ${task.id.slice(0, 8)} pending → ${expectedStatus}`)
+    return true
+  })
 }
 
 // Delete task

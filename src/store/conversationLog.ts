@@ -7,7 +7,7 @@
  */
 
 import { join } from 'path'
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync, openSync, readSync, closeSync, statSync } from 'fs'
 import { DATA_DIR } from './paths.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
@@ -55,6 +55,52 @@ export interface ConversationEntry {
   taskId?: string
 }
 
+/** Read the last N lines from a file by seeking from the end. */
+function readTailLines(filePath: string, maxLines: number): string[] {
+  const CHUNK_SIZE = 8192
+  let fd: number
+  let fileSize: number
+  try {
+    fileSize = statSync(filePath).size
+    fd = openSync(filePath, 'r')
+  } catch {
+    return []
+  }
+
+  try {
+    const lines: string[] = []
+    let carryBuf = Buffer.alloc(0) // bytes carried from previous chunk (incomplete UTF-8)
+    let position = fileSize
+
+    while (position > 0 && lines.length < maxLines) {
+      const readSize = Math.min(CHUNK_SIZE, position)
+      position -= readSize
+      const buf = Buffer.alloc(readSize)
+      readSync(fd, buf, 0, readSize, position)
+      // Concat raw bytes with carry to avoid splitting multi-byte chars
+      const combined = carryBuf.length > 0 ? Buffer.concat([buf, carryBuf]) : buf
+      const chunk = combined.toString('utf-8')
+      const parts = chunk.split('\n')
+      // The first part may start mid-character at the chunk boundary;
+      // keep its raw bytes as carry for the next iteration
+      carryBuf = Buffer.from(parts[0]!, 'utf-8')
+      // parts[1..] are complete lines, add from the end
+      for (let i = parts.length - 1; i >= 1 && lines.length < maxLines; i--) {
+        const line = parts[i]!.trim()
+        if (line) lines.unshift(line)
+      }
+    }
+    // Handle the very first line of the file
+    const remaining = carryBuf.toString('utf-8').trim()
+    if (remaining && lines.length < maxLines) {
+      lines.unshift(remaining)
+    }
+    return lines
+  } finally {
+    closeSync(fd)
+  }
+}
+
 let initialized = false
 
 function ensureDir(): void {
@@ -75,19 +121,18 @@ export function logConversation(entry: ConversationEntry): void {
 /**
  * Read recent conversation entries for a chatId.
  * Returns the last N entries (both in and out) in chronological order.
+ * Uses tail-read to avoid loading the entire file into memory.
  */
 export function getRecentConversations(chatId: string, limit = 10): ConversationEntry[] {
   try {
-    const content = readFileSync(CONVERSATION_LOG_PATH, 'utf-8')
-    const lines = content.trim().split('\n').filter(Boolean)
+    const lines = readTailLines(CONVERSATION_LOG_PATH, limit * 20) // read more lines to account for filtering
 
-    // Parse from the end to find matching entries efficiently
     const matched: ConversationEntry[] = []
     for (let i = lines.length - 1; i >= 0 && matched.length < limit; i--) {
       try {
         const entry = JSON.parse(lines[i]!) as ConversationEntry
         if (entry.chatId === chatId) {
-          matched.unshift(entry) // maintain chronological order
+          matched.unshift(entry)
         }
       } catch {
         // skip malformed lines

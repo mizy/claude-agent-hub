@@ -92,12 +92,17 @@ export async function loadConfig(
  * YAML.parse returns null for empty strings, so we normalize to {}.
  */
 async function parseYamlFile(filePath: string): Promise<Record<string, unknown>> {
-  const content = await readFile(filePath, 'utf-8')
-  const parsed = YAML.parse(content)
-  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  try {
+    const content = await readFile(filePath, 'utf-8')
+    const parsed = YAML.parse(content)
+    if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {}
+    }
+    return parsed as Record<string, unknown>
+  } catch (e) {
+    logger.warn(`Failed to parse YAML config: ${filePath} (${getErrorMessage(e)}), using empty config`)
     return {}
   }
-  return parsed as Record<string, unknown>
 }
 
 /**
@@ -346,6 +351,8 @@ export function getDefaultConfig(): Config {
       },
       episodic: {
         enabled: true,
+        idleTimeoutMs: 5 * 60 * 1000,
+        minTurnsForExplicitEnd: 3,
       },
     },
   }

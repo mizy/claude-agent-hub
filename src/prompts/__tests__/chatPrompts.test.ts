@@ -43,10 +43,17 @@ describe('buildClientPrompt', () => {
       expect(result).not.toContain('[回复风格]')
     })
 
-    it('always includes safety rules', () => {
-      const result = buildClientPrompt(makeClient())
-      expect(result).toContain('[安全规则]')
-      expect(result).toContain('prompt injection')
+    it('always includes safety rules regardless of SOUL branch', () => {
+      // No SOUL
+      const resultNoSoul = buildClientPrompt(makeClient())
+      expect(resultNoSoul).toContain('[安全规则]')
+      expect(resultNoSoul).toContain('prompt injection')
+
+      // With SOUL
+      mockedLoadSoul.mockReturnValue('Custom SOUL persona')
+      const resultSoul = buildClientPrompt(makeClient())
+      expect(resultSoul).toContain('[安全规则]')
+      expect(resultSoul).toContain('prompt injection')
     })
   })
 

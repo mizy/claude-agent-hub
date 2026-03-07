@@ -33,7 +33,7 @@ export interface OrphanedTask {
   task: Task
   pid: number
   lastHeartbeat?: string
-  reason: 'process_not_found' | 'heartbeat_timeout'
+  reason: 'process_not_found'
 }
 
 // 孤立任务检测宽限期（秒）- 新任务在此时间内不算孤立
@@ -396,10 +396,10 @@ export function resumeAllOrphanedTasks(): Array<{ taskId: string; pid: number }>
 export function getOrphanedTasksSummary(): string[] {
   const orphaned = detectOrphanedTasks()
 
-  return orphaned.map(({ task, pid, reason }) => {
+  return orphaned.map(({ task, pid }) => {
     const title = truncateText(task.title, 40)
     const status = task.status
-    const reasonText = reason === 'process_not_found' ? 'process dead' : 'heartbeat timeout'
+    const reasonText = 'process dead'
     return `[${status}] ${title} (PID: ${pid}, ${reasonText})`
   })
 }

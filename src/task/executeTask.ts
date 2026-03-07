@@ -239,6 +239,13 @@ export async function executeTask(
       throw error
     }
 
+    // If task was already cancelled (by stopTask), don't overwrite with 'failed'
+    const currentTask = getTask(task.id)
+    if (currentTask?.status === 'cancelled') {
+      logger.info(`Task already cancelled, skipping failed status update: ${task.id}`)
+      throw error
+    }
+
     // Save error details to execution.log and task.json
     // Skip logging if already logged by prepareExecution (avoid duplicate log entries)
     const alreadyLogged = isError(error) && loggedErrors.has(error)

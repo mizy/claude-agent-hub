@@ -622,12 +622,15 @@ export async function processMessageEvent(
   const larkConfig = await getLarkConfig()
   if (!checkLarkAccess(chatId, senderOpenId, larkConfig?.accessControl)) return
 
-  const rawContent = message.content || ''
-  if (isDuplicateContent(chatId, rawContent)) {
-    logger.info(
-      `Duplicate content ignored (WS replay): chatId=${chatId.slice(0, 12)} msgId=${messageId}`
-    )
-    return
+  // Content hash dedup only when message_id is unavailable (message_id is more reliable)
+  if (!messageId) {
+    const rawContent = message.content || ''
+    if (isDuplicateContent(chatId, rawContent)) {
+      logger.info(
+        `Duplicate content ignored (no msgId, hash dedup): chatId=${chatId.slice(0, 12)}`
+      )
+      return
+    }
   }
 
   // In group chats, only treat as mentioned if the bot itself is @-ed.

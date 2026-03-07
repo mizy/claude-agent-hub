@@ -14,16 +14,33 @@ let activeCalls = 0
 const waitQueue: Array<() => void> = []
 
 /** 获取调用许可 */
-export async function acquireSlot(): Promise<void> {
+export async function acquireSlot(signal?: AbortSignal): Promise<void> {
   if (activeCalls < MAX_CONCURRENT_CALLS) {
     activeCalls++
     return
   }
-  return new Promise(resolve => {
-    waitQueue.push(() => {
+  if (signal?.aborted) {
+    throw new DOMException('Slot acquisition aborted', 'AbortError')
+  }
+  return new Promise<void>((resolve, reject) => {
+    let onAbort: (() => void) | undefined
+    const waiter = () => {
+      if (signal && onAbort) signal.removeEventListener('abort', onAbort)
       activeCalls++
       resolve()
-    })
+    }
+    waitQueue.push(waiter)
+
+    if (signal) {
+      onAbort = () => {
+        const idx = waitQueue.indexOf(waiter)
+        if (idx !== -1) {
+          waitQueue.splice(idx, 1)
+          reject(new DOMException('Slot acquisition aborted', 'AbortError'))
+        }
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
   })
 }
 

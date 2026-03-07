@@ -150,7 +150,7 @@ export function buildClientPrompt(
     lines.push('', DEFAULT_PERSONA)
   }
 
-  // Safety rules — always included
+  // Safety rules — always included regardless of SOUL/non-SOUL branch
   lines.push('', SAFETY_FULL)
 
   return lines.join('\n')

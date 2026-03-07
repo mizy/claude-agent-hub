@@ -7,6 +7,7 @@ import { readFileSync, existsSync } from 'fs'
 import { resolve, isAbsolute } from 'path'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
+import { DATA_DIR } from '../../store/paths.js'
 import type { MessengerAdapter } from './types.js'
 
 const logger = createLogger('image-extractor')
@@ -26,6 +27,12 @@ const RELATIVE_RE = new RegExp(
   'gim'
 )
 
+/** Returns true if path is within the allowed .cah-data/ directory */
+function isAllowedPath(filePath: string): boolean {
+  const resolved = resolve(filePath)
+  return resolved === DATA_DIR || resolved.startsWith(DATA_DIR + '/')
+}
+
 /** Extract local image file paths from text */
 export function extractImagePaths(text: string): string[] {
   const paths: string[] = []
@@ -35,7 +42,7 @@ export function extractImagePaths(text: string): string[] {
   ABSOLUTE_RE.lastIndex = 0
   while ((match = ABSOLUTE_RE.exec(text)) !== null) {
     const filePath = match[1]!
-    if (existsSync(filePath)) paths.push(filePath)
+    if (isAllowedPath(filePath) && existsSync(filePath)) paths.push(filePath)
   }
 
   // Pattern 2: Markdown image syntax ![alt](path)
@@ -43,7 +50,7 @@ export function extractImagePaths(text: string): string[] {
   while ((match = MARKDOWN_RE.exec(text)) !== null) {
     const filePath = match[1]!
     const resolved = resolveImagePath(filePath)
-    if (resolved && existsSync(resolved)) paths.push(resolved)
+    if (resolved && isAllowedPath(resolved) && existsSync(resolved)) paths.push(resolved)
   }
 
   // Pattern 3: Relative paths mentioned in text (./image.png or image.png)
@@ -51,7 +58,7 @@ export function extractImagePaths(text: string): string[] {
   while ((match = RELATIVE_RE.exec(text)) !== null) {
     const filePath = match[1]!
     const resolved = resolveImagePath(filePath)
-    if (resolved && existsSync(resolved)) paths.push(resolved)
+    if (resolved && isAllowedPath(resolved) && existsSync(resolved)) paths.push(resolved)
   }
 
   return [...new Set(paths)] // dedupe
