@@ -8,6 +8,7 @@
 import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { buildMemoryExtractionPrompt, type TaskSummary } from '../prompts/memoryPrompts.js'
 import { addMemory } from './manageMemory.js'
+import { shouldConsolidate, consolidateMemories } from './consolidateMemories.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { Task } from '../types/task.js'
@@ -131,6 +132,14 @@ export async function extractMemoryFromTask(
     }
 
     logger.info(`Extracted ${entries.length} memories from task ${task.id}`)
+
+    // Fire-and-forget: consolidate if enough new memories were added
+    if (shouldConsolidate(entries.length)) {
+      consolidateMemories().catch(e =>
+        logger.warn(`Post-extraction consolidation failed: ${getErrorMessage(e)}`),
+      )
+    }
+
     return entries
   } catch (error) {
     logger.warn(`Memory extraction failed: ${getErrorMessage(error)}`)

@@ -13,6 +13,8 @@
  * - 遗忘引擎: calculateStrength / reinforceMemory / cleanupFadingMemories / getMemoryHealth
  * - 关联引擎: buildAssociations / spreadActivation / updateAssociationStrength
  *   associativeRetrieve / rebuildAllAssociations
+ * - 整合引擎: consolidateMemories / shouldConsolidate（A-MEM 去重合并）
+ * - 实体索引: extractEntities / indexMemoryEntities / queryEntityIndex / rebuildEntityIndex（HippoRAG-lite）
  */
 
 // Types
@@ -61,3 +63,16 @@ export {
   associativeRetrieve,
   rebuildAllAssociations,
 } from './associationEngine.js'
+
+// Consolidation engine — A-MEM inspired dedup and merge
+export { consolidateMemories, shouldConsolidate } from './consolidateMemories.js'
+export type { ConsolidationResult } from './consolidateMemories.js'
+
+// Entity index — HippoRAG-lite entity-anchored retrieval
+export {
+  extractEntities,
+  indexMemoryEntities,
+  removeFromEntityIndex,
+  queryEntityIndex,
+  rebuildEntityIndex,
+} from './entityIndex.js'

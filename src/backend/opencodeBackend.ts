@@ -14,6 +14,7 @@ import { toInvokeError } from '../shared/toInvokeError.js'
 import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from './types.js'
 import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
 import { collectStderr, probeCliVersion } from './processHelpers.js'
+import { stripAnsi } from '../shared/logger.js'
 import { collectStream } from './collectStream.js'
 import { createClaudeCompatStreamProcessor } from './claudeCompatHelpers.js'
 import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
@@ -117,7 +118,8 @@ export function createOpencodeBackend(): BackendAdapter {
         }
 
         if (!parsed.response && stderrOutput) {
-          const stderrParsed = parseClaudeCompatOutput(stderrOutput)
+          const cleanStderr = stripAnsi(stderrOutput)
+          const stderrParsed = parseClaudeCompatOutput(cleanStderr)
           if (stderrParsed.response) {
             logger.warn(
               `opencode returned error via stderr: ${stderrParsed.response.slice(0, 200)}`

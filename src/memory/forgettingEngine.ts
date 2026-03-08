@@ -153,6 +153,7 @@ export async function cleanupFadingMemories(): Promise<{ archived: number; delet
 
 /**
  * Get health status of all memories — current strength and estimated days until fade.
+ * Processes in batches of 500 to avoid memory pressure with large memory stores.
  */
 export async function getMemoryHealth(): Promise<
   Array<{ id: string; title: string; strength: number; daysUntilFade: number }>
@@ -162,33 +163,37 @@ export async function getMemoryHealth(): Promise<
 
   const all = getAllMemories()
   const now = new Date()
+  const thresholdRatio = archiveThreshold / 100
+  const BATCH_SIZE = 500
+  const results: Array<{ id: string; title: string; strength: number; daysUntilFade: number }> = []
 
-  return all.map(raw => {
-    const entry = migrateMemoryEntry(raw)
-    const strength = calculateStrength(entry, now)
+  for (let i = 0; i < all.length; i += BATCH_SIZE) {
+    const batch = all.slice(i, i + BATCH_SIZE)
+    for (const raw of batch) {
+      const entry = migrateMemoryEntry(raw)
+      const strength = calculateStrength(entry, now)
 
-    // Estimate days until strength drops below archiveThreshold
-    // From R = e^(-t/S), solve for t when R = threshold/100:
-    // t = -S * ln(threshold/100)
-    const effectiveStability = entry.stability! / entry.decayRate!
-    const thresholdRatio = archiveThreshold / 100
-    let daysUntilFade: number
+      const effectiveStability = entry.stability! / entry.decayRate!
+      let daysUntilFade: number
 
-    if (strength <= archiveThreshold) {
-      daysUntilFade = 0
-    } else {
-      // Hours from lastReinforcedAt until fade
-      const hoursUntilFade = -effectiveStability * Math.log(thresholdRatio)
-      // Subtract hours already elapsed
-      const hoursElapsed =
-        (now.getTime() - new Date(entry.lastReinforcedAt!).getTime()) / 3600000
-      const hoursRemaining = hoursUntilFade - hoursElapsed
-      daysUntilFade = Math.max(0, Math.round((hoursRemaining / 24) * 10) / 10)
+      if (strength <= archiveThreshold) {
+        daysUntilFade = 0
+      } else {
+        const hoursUntilFade = -effectiveStability * Math.log(thresholdRatio)
+        const hoursElapsed =
+          (now.getTime() - new Date(entry.lastReinforcedAt!).getTime()) / 3600000
+        const hoursRemaining = hoursUntilFade - hoursElapsed
+        daysUntilFade = Math.max(0, Math.round((hoursRemaining / 24) * 10) / 10)
+      }
+
+      const title = (entry.content.split('\n')[0] ?? '').slice(0, 60)
+      results.push({ id: entry.id, title, strength, daysUntilFade })
     }
+    // Yield to event loop between batches to avoid blocking
+    if (i + BATCH_SIZE < all.length) {
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+  }
 
-    // Use first line of content as title (truncated)
-    const title = (entry.content.split('\n')[0] ?? '').slice(0, 60)
-
-    return { id: entry.id, title, strength, daysUntilFade }
-  })
+  return results
 }

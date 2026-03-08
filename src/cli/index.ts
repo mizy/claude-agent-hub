@@ -138,7 +138,7 @@ program
   .argument('[input]', '任务描述')
   .option('-p, --priority <priority>', '优先级 (low/medium/high)', 'medium')
   .option('-a, --agent <agent>', '指定执行的 Agent')
-  .option('-b, --backend <type>', '指定 backend（如 claude-code, opencode, iflow, codebuddy）')
+  .option('-b, --backend <type>', '指定 backend（如 claude-code, opencode, iflow, codebuddy, cursor）')
   .option('-m, --model <model>', '指定模型')
   .option('-S, --schedule <cron>', '定时执行（cron 表达式，如 "0 9 * * *"）')
   .option('-F, --foreground', '前台执行（默认后台运行）')

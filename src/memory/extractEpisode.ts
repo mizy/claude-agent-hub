@@ -15,6 +15,9 @@ import type { Episode, EpisodeTone, EpisodePlatform } from './types.js'
 
 const logger = createLogger('episodic-memory')
 
+// In-process mutex to prevent concurrent extractEpisode from racing on dedup check + save
+let extractLock = Promise.resolve()
+
 const VALID_TONES: EpisodeTone[] = ['technical', 'casual', 'urgent', 'exploratory']
 
 export interface EpisodeMessage {
@@ -174,31 +177,46 @@ export async function extractEpisode(params: ExtractEpisodeParams): Promise<Epis
       ? extraction.keyDecisions.filter((d): d is string => typeof d === 'string')
       : []
 
-    // Dedup: skip if a very similar episode was recently created
-    if (isDuplicateEpisode(triggerKeywords)) {
-      return null
-    }
+    // Serialize dedup check + save to prevent race condition between concurrent calls.
+    // The AI invocation above is the slow part and runs concurrently — only this
+    // critical section needs mutual exclusion.
+    const episode = await new Promise<Episode | null>((resolve) => {
+      extractLock = extractLock.then(() => {
+        try {
+          // Dedup: skip if a very similar episode was recently created
+          if (isDuplicateEpisode(triggerKeywords)) {
+            resolve(null)
+            return
+          }
 
-    // Find previous related episode
-    const previousEpisode = findPreviousEpisode(conversationId, triggerKeywords)
+          // Find previous related episode
+          const previousEpisode = findPreviousEpisode(conversationId, triggerKeywords)
 
-    const episode: Episode = {
-      id: generateEpisodeId(),
-      timestamp: new Date().toISOString(),
-      participants,
-      conversationId,
-      turnCount: messages.length,
-      summary: extraction.summary,
-      keyDecisions,
-      tone,
-      relatedMemories: relatedMemoryIds,
-      previousEpisode,
-      platform,
-      triggerKeywords,
-    }
+          const ep: Episode = {
+            id: generateEpisodeId(),
+            timestamp: new Date().toISOString(),
+            participants,
+            conversationId,
+            turnCount: messages.length,
+            summary: extraction.summary,
+            keyDecisions,
+            tone,
+            relatedMemories: relatedMemoryIds,
+            previousEpisode,
+            platform,
+            triggerKeywords,
+          }
 
-    saveEpisode(episode)
-    logger.info(`Extracted episode ${episode.id} (${platform}, ${messages.length} turns)`)
+          saveEpisode(ep)
+          logger.info(`Extracted episode ${ep.id} (${platform}, ${messages.length} turns)`)
+          resolve(ep)
+        } catch (err) {
+          logger.warn(`Episode mutex critical section error: ${getErrorMessage(err)}`)
+          resolve(null)
+        }
+      })
+    })
+
     return episode
   } catch (error) {
     logger.warn(`Episode extraction error: ${getErrorMessage(error)}`)

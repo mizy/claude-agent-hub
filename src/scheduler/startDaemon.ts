@@ -263,8 +263,14 @@ async function runDaemon(): Promise<void> {
     process.exit(exitCode)
   }
 
-  process.on('SIGINT', () => cleanup(0))
-  process.on('SIGTERM', () => cleanup(0))
+  process.on('SIGINT', () => {
+    console.log(`[daemon] Received SIGINT (ppid=${process.ppid}, time=${new Date().toISOString()})`)
+    cleanup(0)
+  })
+  process.on('SIGTERM', () => {
+    console.log(`[daemon] Received SIGTERM (ppid=${process.ppid}, time=${new Date().toISOString()})`)
+    cleanup(0)
+  })
 
   // Crash handlers: do as much cleanup as possible synchronously,
   // then attempt async cleanup with a timeout to avoid hanging

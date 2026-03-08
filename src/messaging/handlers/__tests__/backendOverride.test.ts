@@ -7,7 +7,7 @@ import type { MessengerAdapter, ClientContext } from '../types.js'
 
 // Mock getRegisteredBackends — must be before any import that uses it
 vi.mock('../../../backend/resolveBackend.js', () => ({
-  getRegisteredBackends: () => ['claude-code', 'opencode', 'iflow', 'codebuddy'],
+  getRegisteredBackends: () => ['claude-code', 'opencode', 'iflow', 'codebuddy', 'cursor'],
 }))
 
 // Mock backend

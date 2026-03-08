@@ -160,9 +160,44 @@ export function extractEventMetrics(event: Record<string, unknown>): ExtractedEv
   metrics.completionTokens = directUsage.completionTokens
   metrics.totalTokens = directUsage.totalTokens
 
-  for (const key of ['usage', 'tokenUsage', 'tokens']) {
+  // Check nested objects: usage, tokenUsage, tokens (Claude), and part (OpenCode step_finish)
+  for (const key of ['usage', 'tokenUsage', 'tokens', 'part']) {
     const nested = asRecord(event[key])
     if (!nested) continue
+
+    // OpenCode step_finish: part.cost holds cost, part.tokens holds token counts
+    if (key === 'part') {
+      if (metrics.costUsd == null) {
+        metrics.costUsd = pickNumber(nested, ['cost', 'total_cost', 'total_cost_usd'])
+      }
+      // Try part.tokens sub-object first (opencode v1.x structure)
+      const partTokens = asRecord(nested.tokens)
+      if (partTokens) {
+        const partUsage = extractTokenUsage(partTokens)
+        if (metrics.promptTokens == null && partUsage.promptTokens != null) {
+          metrics.promptTokens = partUsage.promptTokens
+        }
+        if (metrics.completionTokens == null && partUsage.completionTokens != null) {
+          metrics.completionTokens = partUsage.completionTokens
+        }
+        if (metrics.totalTokens == null && partUsage.totalTokens != null) {
+          metrics.totalTokens = partUsage.totalTokens
+        }
+      }
+      // Fallback: part may directly have input_tokens/output_tokens at top level
+      const partDirectUsage = extractTokenUsage(nested)
+      if (metrics.promptTokens == null && partDirectUsage.promptTokens != null) {
+        metrics.promptTokens = partDirectUsage.promptTokens
+      }
+      if (metrics.completionTokens == null && partDirectUsage.completionTokens != null) {
+        metrics.completionTokens = partDirectUsage.completionTokens
+      }
+      if (metrics.totalTokens == null && partDirectUsage.totalTokens != null) {
+        metrics.totalTokens = partDirectUsage.totalTokens
+      }
+      continue
+    }
+
     const nestedUsage = extractTokenUsage(nested)
     if (metrics.promptTokens == null && nestedUsage.promptTokens != null) {
       metrics.promptTokens = nestedUsage.promptTokens

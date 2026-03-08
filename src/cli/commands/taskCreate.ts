@@ -14,7 +14,7 @@ export function registerTaskCreateCommands(task: Command) {
     .option('-d, --description <desc>', '任务描述')
     .option('-p, --priority <priority>', '优先级 (low/medium/high)', 'medium')
     .option('-a, --assignee <agent>', '指定 Agent')
-    .option('-b, --backend <type>', '指定 backend（如 claude-code, opencode, iflow）')
+    .option('-b, --backend <type>', '指定 backend（如 claude-code, opencode, iflow, codebuddy, cursor）')
     .option('-m, --model <model>', '指定模型')
     .option('-S, --schedule <cron>', '定时执行（cron 表达式，如 "0 9 * * *"）')
     .action(async options => {

@@ -29,7 +29,7 @@ export function migrateMemoryEntry(entry: MemoryEntry): MemoryEntry {
     ...entry,
     strength: entry.strength ?? 50,
     stability: entry.stability ?? computeInitialStability(entry),
-    lastReinforcedAt: entry.lastReinforcedAt ?? entry.updatedAt ?? entry.createdAt,
+    lastReinforcedAt: entry.lastReinforcedAt ?? entry.createdAt,
     reinforceCount: entry.reinforceCount ?? 0,
     decayRate: entry.decayRate ?? 1.0,
     associations: entry.associations ?? [],

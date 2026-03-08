@@ -108,7 +108,7 @@ describe('backendConfigSchema', () => {
   })
 
   it('should accept all valid backend types', () => {
-    for (const type of ['claude-code', 'opencode', 'iflow', 'codebuddy']) {
+    for (const type of ['claude-code', 'opencode', 'iflow', 'codebuddy', 'cursor']) {
       const result = backendConfigSchema.parse({ type })
       expect(result.type).toBe(type)
     }

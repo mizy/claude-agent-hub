@@ -23,23 +23,49 @@ function truncateContent(content: string, maxLen: number): string {
   return content.slice(0, maxLen - 3) + '...'
 }
 
-/** Simple word-set overlap ratio for dedup */
-function contentSimilarity(a: string, b: string): number {
-  const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(w => w.length >= 2))
-  const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(w => w.length >= 2))
-  if (wordsA.size === 0 || wordsB.size === 0) return 0
-  let overlap = 0
-  for (const w of wordsA) {
-    if (wordsB.has(w)) overlap++
+/** CJK character range test */
+function isCJK(ch: string): boolean {
+  const code = ch.charCodeAt(0)
+  return (code >= 0x4e00 && code <= 0x9fff) || (code >= 0x3400 && code <= 0x4dbf)
+}
+
+/** Tokenize text into words (space-split for Latin) + 2-gram for CJK */
+function tokenize(text: string): Set<string> {
+  const tokens = new Set<string>()
+  const lower = text.toLowerCase()
+
+  // Extract space-separated words (Latin, numbers, mixed)
+  for (const w of lower.split(/\s+/)) {
+    if (w.length >= 2) tokens.add(w)
   }
-  return overlap / Math.max(wordsA.size, wordsB.size)
+
+  // Extract CJK 2-grams
+  for (let i = 0; i < lower.length - 1; i++) {
+    if (isCJK(lower[i]!) && isCJK(lower[i + 1]!)) {
+      tokens.add(lower[i]! + lower[i + 1]!)
+    }
+  }
+
+  return tokens
+}
+
+/** Word-set + CJK n-gram overlap ratio for dedup */
+function contentSimilarity(a: string, b: string): number {
+  const tokensA = tokenize(a)
+  const tokensB = tokenize(b)
+  if (tokensA.size === 0 || tokensB.size === 0) return 0
+  let overlap = 0
+  for (const t of tokensA) {
+    if (tokensB.has(t)) overlap++
+  }
+  return overlap / Math.max(tokensA.size, tokensB.size)
 }
 
 /** Remove memories with >70% content overlap, keeping higher-scored (earlier in list) */
 function deduplicateMemories(memories: MemoryEntry[]): MemoryEntry[] {
   const result: MemoryEntry[] = []
   for (const m of memories) {
-    const isDup = result.some(existing => contentSimilarity(existing.content, m.content) > 0.5)
+    const isDup = result.some(existing => contentSimilarity(existing.content, m.content) > 0.7)
     if (!isDup) result.push(m)
   }
   return result

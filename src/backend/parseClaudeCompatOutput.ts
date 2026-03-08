@@ -122,15 +122,15 @@ export function parseClaudeCompatOutput(raw: string): {
       }
 
       // type=result or type=step_finish: structured result with cost/session info
-      if (
-        isClaudeCompatJsonOutput(parsed) &&
-        (parsed.type === 'result' || parsed.type === 'step_finish')
-      ) {
+      if (parsed.type === 'result' || parsed.type === 'step_finish') {
+        const hasResult = isClaudeCompatJsonOutput(parsed)
         resultLine = {
-          response: parsed.result,
-          sessionId: parsed.session_id ?? lastSessionId,
-          durationApiMs: metrics.durationApiMs ?? parsed.duration_api_ms,
-          costUsd: metrics.costUsd ?? parsed.total_cost_usd,
+          // response='' when hasResult is false (e.g. opencode step_finish without result field);
+          // will be backfilled from accumulatedDelta at line 152 via bestResponse fallback
+          response: hasResult ? parsed.result : '',
+          sessionId: (hasResult ? parsed.session_id : undefined) ?? lastSessionId,
+          durationApiMs: metrics.durationApiMs ?? (hasResult ? parsed.duration_api_ms : undefined),
+          costUsd: metrics.costUsd ?? (hasResult ? parsed.total_cost_usd : undefined),
           promptTokens: metrics.promptTokens,
           completionTokens: metrics.completionTokens,
           totalTokens: metrics.totalTokens,

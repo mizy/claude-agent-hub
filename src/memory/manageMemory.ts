@@ -9,6 +9,7 @@ import {
   saveMemory,
   deleteMemory as deleteMemoryFromStore,
 } from '../store/MemoryStore.js'
+import { indexMemoryEntities, removeFromEntityIndex } from './entityIndex.js'
 import type { MemoryCategory, MemoryEntry, MemorySource } from './types.js'
 
 interface AddMemoryOptions {
@@ -40,6 +41,8 @@ export function addMemory(
   }
 
   saveMemory(entry)
+  // Index entities for HippoRAG-lite retrieval
+  indexMemoryEntities(entry)
   return entry
 }
 
@@ -60,6 +63,7 @@ export function listMemories(filter?: ListMemoriesFilter): MemoryEntry[] {
 }
 
 export function removeMemory(id: string): boolean {
+  removeFromEntityIndex(id)
   return deleteMemoryFromStore(id)
 }
 
@@ -71,8 +75,8 @@ export function searchMemories(query: string): MemoryEntry[] {
   return all.filter(entry => {
     // Match if any query keyword appears in entry keywords or content
     return queryKeywords.some(
-      qk => entry.keywords.some(ek => ek.includes(qk) || qk.includes(ek)) ||
-        entry.content.toLowerCase().includes(qk),
+      qk => (entry.keywords ?? []).some(ek => ek.includes(qk) || qk.includes(ek)) ||
+        (entry.content ?? '').toLowerCase().includes(qk),
     )
   })
 }

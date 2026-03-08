@@ -11,7 +11,7 @@ const DEFAULT_CONFIG = `# Claude Agent Hub 配置文件
 
 # 后端配置
 backend:
-  type: claude-code          # claude-code | opencode | iflow | codebuddy
+  type: claude-code          # claude-code | opencode | iflow | codebuddy | cursor
   model: opus
 
 # Agent 配置

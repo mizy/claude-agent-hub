@@ -214,7 +214,7 @@ export function SettingsPage() {
                           update('backends', backends)
                         }}
                       >
-                        {['claude-code', 'opencode', 'iflow', 'codebuddy', 'openai-compatible'].map((t) => (
+                        {['claude-code', 'opencode', 'iflow', 'codebuddy', 'cursor', 'openai-compatible'].map((t) => (
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </select>

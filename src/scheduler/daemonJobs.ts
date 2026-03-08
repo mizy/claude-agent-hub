@@ -19,7 +19,7 @@ import { withProcessTracking } from '../task/processTracking.js'
 import { getTasksByStatus, updateTask, getProcessInfo, updateProcessInfo } from '../store/TaskStore.js'
 import { getTaskInstance, saveTaskInstance } from '../store/TaskWorkflowStore.js'
 import { updateInstanceVariables } from '../store/WorkflowStore.js'
-import { resumeTask } from '../task/resumeTask.js'
+import { resumeTask, detectOrphanedTasks } from '../task/resumeTask.js'
 import { detectSignals, tryAutoRepair } from '../selfevolve/index.js'
 import { runEvolutionCycle } from '../prompt-optimization/index.js'
 import { BUILTIN_AGENTS } from '../agents/builtinAgents.js'
@@ -144,6 +144,29 @@ export function registerDaemonJobs(pollCronExpr: string): void {
     }
   })
   scheduledJobs.push(waitingRecoveryJob)
+
+  // Orphan recovery — every 5 minutes, detect and resume stuck/orphaned tasks
+  // Covers tasks that were running in-process when daemon was interrupted,
+  // or tasks stuck in developing with no active process.
+  const orphanRecoveryJob = cron.schedule('*/5 * * * *', () => {
+    try {
+      const orphaned = detectOrphanedTasks()
+      if (orphaned.length === 0) return
+
+      logger.info(`Orphan recovery: found ${orphaned.length} orphaned task(s)`)
+      for (const { task } of orphaned) {
+        const pid = resumeTask(task.id)
+        if (pid) {
+          logger.info(`Orphan recovery: resumed task ${task.id} (PID ${pid})`)
+        } else {
+          logger.warn(`Orphan recovery: skipped task ${task.id} (already active or completed)`)
+        }
+      }
+    } catch (error) {
+      logger.error(`Orphan recovery cron error: ${error}`)
+    }
+  })
+  scheduledJobs.push(orphanRecoveryJob)
 
   // Tmp file cleanup — every hour, delete files older than 24h
   const tmpCleanupJob = cron.schedule('0 * * * *', () => {

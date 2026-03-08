@@ -10,6 +10,7 @@ import { getAllMemories, updateMemory } from '../store/MemoryStore.js'
 import { migrateMemoryEntry } from './migrateMemory.js'
 import { calculateStrength, reinforceMemory } from './forgettingEngine.js'
 import { spreadActivation } from './associationEngine.js'
+import { queryEntityIndex } from './entityIndex.js'
 import { retrieveEpisodes } from './retrieveEpisode.js'
 import { shouldRetrieveEpisode, formatEpisodeContext } from './injectEpisode.js'
 import { formatMemoriesForPrompt } from './formatMemory.js'
@@ -18,6 +19,39 @@ import { loadConfig } from '../config/loadConfig.js'
 import type { MemoryEntry } from './types.js'
 
 const logger = createLogger('memory')
+
+// Simple in-memory retry queue for reinforce operations
+const reinforceRetryQueue: Array<{ entryId: string; retries: number }> = []
+const MAX_REINFORCE_RETRIES = 2
+let retryTimerActive = false
+
+function enqueueReinforceRetry(entryId: string): void {
+  reinforceRetryQueue.push({ entryId, retries: 0 })
+  if (!retryTimerActive) {
+    retryTimerActive = true
+    setTimeout(processReinforceRetries, 5000)
+  }
+}
+
+async function processReinforceRetries(): Promise<void> {
+  const batch = reinforceRetryQueue.splice(0, reinforceRetryQueue.length)
+  for (const item of batch) {
+    try {
+      await reinforceMemory(item.entryId, 'access')
+    } catch (e) {
+      if (item.retries < MAX_REINFORCE_RETRIES) {
+        reinforceRetryQueue.push({ entryId: item.entryId, retries: item.retries + 1 })
+      } else {
+        logger.warn(`Reinforce permanently failed for ${item.entryId} after ${MAX_REINFORCE_RETRIES + 1} attempts: ${e}`)
+      }
+    }
+  }
+  if (reinforceRetryQueue.length > 0) {
+    setTimeout(processReinforceRetries, 5000)
+  } else {
+    retryTimerActive = false
+  }
+}
 
 interface RetrieveOptions {
   maxResults?: number
@@ -43,10 +77,10 @@ function keywordMatch(queryKw: string, entryKw: string): number {
 
   // Exact match after normalization
   if (nq === ne) return 1.0
-  // Substring containment (e.g. 'iflow' matches 'iflow_backend')
-  if (ne.includes(nq) || nq.includes(ne)) return 0.8
-  // Prefix match (e.g. 'config' matches 'configuration')
-  if (ne.startsWith(nq) || nq.startsWith(ne)) return 0.6
+  // Entry contains query keyword (e.g. query 'iflow' matches entry 'iflow_backend')
+  if (ne.includes(nq)) return 0.8
+  // Query contains entry keyword (weaker: entry is a substring of query)
+  if (nq.includes(ne)) return 0.5
 
   return 0
 }
@@ -73,6 +107,9 @@ export async function retrieveRelevantMemories(
 
   // Filter out very weak memories (strength < 10 = effectively forgotten)
   const active = all.filter(entry => calculateStrength(entry, now) >= 10)
+
+  // HippoRAG-lite: entity-based retrieval boost
+  const entityHits = queryEntityIndex(query)
 
   const scored = active.map(entry => {
     let score = 0
@@ -110,7 +147,13 @@ export async function retrieveRelevantMemories(
     // Access frequency boost
     score += Math.log(1 + entry.accessCount) * 0.2
 
-    return { entry, score, keywordScore }
+    // Entity match boost (HippoRAG-lite): entities like API paths, config keys
+    const entityMatchCount = entityHits.get(entry.id) ?? 0
+    if (entityMatchCount > 0) {
+      score += Math.min(entityMatchCount * 0.5, 1.5)
+    }
+
+    return { entry, score, keywordScore: keywordScore + entityMatchCount }
   })
 
   // Filter out entries with no keyword overlap, sort descending, take top N
@@ -179,8 +222,8 @@ export async function retrieveRelevantMemories(
       accessCount: entry.accessCount + 1,
       lastAccessedAt: now.toISOString(),
     })
-    // Fire-and-forget reinforcement (async but we don't need to wait)
-    reinforceMemory(entry.id, 'access').catch(e => logger.warn(`Memory reinforce failed for ${entry.id}: ${e}`))
+    // Fire-and-forget reinforcement with retry queue on failure
+    reinforceMemory(entry.id, 'access').catch(() => enqueueReinforceRetry(entry.id))
   }
 
   return results
