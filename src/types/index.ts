@@ -9,7 +9,6 @@
  * - workflow: Workflow/WorkflowNode/WorkflowEdge/WorkflowInstance/NodeState + 配置类型
  * - nodeStatus: 10 个节点/工作流状态判断函数（isNodeDone/isWorkflowTerminal/...）
  * - agent: AgentConfig/AgentTraits/AgentPreferences
- * - output: ExecutionTiming
  * - taskMessage: TaskMessage/TaskMessageSource
  * - promptVersion: PromptVersion/FailureAnalysis/PromptVersionStats
  * - trace: Span/SpanKind/Trace/TraceContext/OTLP 映射类型
@@ -91,9 +90,6 @@ export {
 // Agent types
 export type { AgentConfig, AgentTraits, AgentPreferences } from './agent.js'
 
-// Output types
-export type { ExecutionTiming } from './output.js'
-
 // Task message types
 export type { TaskMessage, TaskMessageSource } from './taskMessage.js'
 
@@ -107,10 +103,6 @@ export type {
   SpanStatus,
   SpanAttributes,
   Trace,
-  TraceFile,
-  OTLPSpanMapping,
-  OTLPSpanKind,
-  OTLPStatus,
   OTLPAttribute,
   TraceContext,
 } from './trace.js'

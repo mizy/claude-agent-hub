@@ -209,24 +209,3 @@ export interface TraceContext {
   currentSpan: Span
 }
 
-// ============ 辅助函数 ============
-
-export function isSpanRunning(status: SpanStatus): boolean {
-  return status === 'running'
-}
-
-export function isSpanTerminal(status: SpanStatus): boolean {
-  return status === 'ok' || status === 'error'
-}
-
-export function isSpanError(status: SpanStatus): boolean {
-  return status === 'error'
-}
-
-export function isLLMSpan(span: Span): boolean {
-  return span.kind === 'llm'
-}
-
-export function isNodeSpan(span: Span): boolean {
-  return span.kind === 'node'
-}

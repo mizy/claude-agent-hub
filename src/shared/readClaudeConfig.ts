@@ -1,4 +1,6 @@
 /**
+ * @internal Not part of public API — use via specific importers only.
+ *
  * Read Claude Code configuration context (CLAUDE.md, memory, skills)
  *
  * Provides functions to read Claude's various config files and assemble

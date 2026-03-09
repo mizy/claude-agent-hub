@@ -1,4 +1,8 @@
-import type { ExecutionTiming } from './output.js'
+/** Timing info for task execution (start/end timestamps) */
+export interface ExecutionTiming {
+  startedAt: string
+  completedAt: string
+}
 
 export type TaskPriority = 'low' | 'medium' | 'high'
 export type TaskStatus =
