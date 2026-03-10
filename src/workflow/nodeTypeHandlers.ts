@@ -280,7 +280,6 @@ async function executeTaskNode(
   success: boolean
   output?: unknown
   error?: string
-  sessionId?: string
   costUsd?: number
 }> {
   if (!node.task) {
@@ -325,9 +324,6 @@ async function executeTaskNode(
   // taskId 用于日志写入（复用上面已声明的 taskId）
   const logTaskId = taskId
 
-  // 会话复用已禁用 — 每个节点使用独立会话以保证稳定性
-  const existingSessionId = undefined
-
   // 读取任务级 backend/model 覆盖（存储在 workflow variables 中）
   const taskBackend = instance.variables?.taskBackend as string | undefined
   const taskModel = instance.variables?.taskModel as string | undefined
@@ -347,7 +343,6 @@ async function executeTaskNode(
         'llm.backend': taskBackend ?? 'claude-code',
         'llm.model': model,
         'llm.prompt_length': prompt.length,
-        'llm.session_id': existingSessionId,
       })
     : undefined
   if (llmSpan && traceCtx) {
@@ -360,7 +355,7 @@ async function executeTaskNode(
     agent,
     stream: true,
     disableMcp,
-    sessionId: existingSessionId,
+    sessionId: undefined,
     model,
     backendType: taskBackend,
     timeoutMs: 30 * 60 * 1000, // 30 分钟超时
@@ -402,13 +397,6 @@ async function executeTaskNode(
     }
   }
 
-  // 保存 sessionId 供后续节点复用
-  const newSessionId = result.value.sessionId
-  if (newSessionId && newSessionId !== existingSessionId) {
-    await updateInstanceVariables(instance.id, { claudeSessionId: newSessionId })
-    logger.debug(`Saved Claude session: ${newSessionId.slice(0, 8)}...`)
-  }
-
   // 记录 AI 对话到任务日志
   if (taskId) {
     appendConversation(taskId, {
@@ -430,7 +418,6 @@ async function executeTaskNode(
   return {
     success: true,
     output,
-    sessionId: newSessionId,
     costUsd: result.value.costUsd,
   }
 }

@@ -58,8 +58,7 @@ function formatSuccessPatternForPrompt(pattern: SuccessPattern): string {
  */
 function createDirectAnswerWorkflow(
   task: { id: string; title: string },
-  answer: string,
-  claudeSessionId?: string
+  answer: string
 ): Workflow {
   return {
     id: `workflow-direct-${Date.now()}`,
@@ -74,9 +73,8 @@ function createDirectAnswerWorkflow(
     variables: {
       taskId: task.id,
       taskTitle: task.title,
-      claudeSessionId,
-      directAnswer: answer, // 保存直接回答
-      isDirectAnswer: true, // 标记为直接回答类型
+      directAnswer: answer,
+      isDirectAnswer: true,
     },
   }
 }
@@ -209,12 +207,6 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
   })
   logger.debug('对话已保存到任务日志')
 
-  // 保存 Claude 会话 ID，供后续节点复用（加速执行）
-  const claudeSessionId = invokeResult.sessionId
-  if (claudeSessionId) {
-    logger.debug(`Claude session: ${claudeSessionId.slice(0, 8)}...`)
-  }
-
   // 提取 JSON 内容
   logger.info('解析 JSON Workflow...')
   let jsonContent
@@ -226,7 +218,7 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
     const isParseError = errMsg.includes('Invalid JSON')
     if (!isParseError) {
       logger.info(`JSON 提取失败 (${errMsg})，创建简单回答 workflow`)
-      return createDirectAnswerWorkflow(task, invokeResult.response, claudeSessionId)
+      return createDirectAnswerWorkflow(task, invokeResult.response)
     }
 
     // JSON found but malformed — retry backend call once
@@ -260,7 +252,7 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
         throw new Error(`Workflow JSON parse failed after retry: ${retryErrMsg}`)
       }
       logger.info(`重试后 JSON 提取失败 (${retryErrMsg})，创建简单回答 workflow`)
-      return createDirectAnswerWorkflow(task, retryInvoke.response, claudeSessionId)
+      return createDirectAnswerWorkflow(task, retryInvoke.response)
     }
     if (retryInvoke.sessionId) {
       // Update session ID from retry
@@ -276,20 +268,24 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
     logger.error(`JSON 验证失败: ${validation.errors.join(', ')}`)
     throw new Error(`Invalid workflow JSON: ${validation.errors.join(', ')}`)
   }
+  if (validation.warnings?.length) {
+    for (const w of validation.warnings) {
+      logger.warn(w)
+    }
+  }
   logger.debug('JSON 格式验证通过')
 
   // 解析为 Workflow
   const workflow = parseJson(jsonContent)
   logger.info(`Workflow 解析完成: ${workflow.nodes.length} 个节点`)
 
-  // 关联任务信息和 Claude 会话
+  // 关联任务信息
   workflow.variables = {
     ...workflow.variables,
     taskId: task.id,
     taskTitle: task.title,
     taskBackend: task.backend,
     taskModel: task.model,
-    claudeSessionId, // 复用会话加速后续执行
   }
 
   // 打印节点摘要
