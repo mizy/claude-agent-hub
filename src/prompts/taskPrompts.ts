@@ -227,14 +227,16 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
 \`\`\`
 implement → review → end (APPROVED)
-                ↓ (!APPROVED)
+                ↓ (fallback)
                fix → review (maxLoops=5)
 \`\`\`
 
 规则：
 - review（代码评审）节点同时负责构建验证和代码审查，先跑 build/test 再评审
-- review → end 是 APPROVED 条件边；review → fix 是 !APPROVED 条件边
-- **APPROVED 边放前，!APPROVED 边放后**（后者作为 fallback）
+- review → end/后续节点 是 APPROVED 条件边；review → fix 是**无条件 fallback 边**（不设 condition 字段）
+- **APPROVED 边放前，fallback 边放后**（引擎按顺序匹配，有条件边都不满足时走无条件边）
+- **同一节点只能有一条 APPROVED 出边**，不能对同一条件有多条出边指向不同目标
+- 如果 APPROVED 后还有后续节点（如 generate_report），APPROVED 边必须指向该后续节点，不能同时有 review→end 和 review→后续节点 两条 APPROVED 边
 - fix → review 设 maxLoops=5
 - 不需要单独的构建验证节点，review 节点内先验证再评审
 
@@ -251,10 +253,28 @@ implement → review → end (APPROVED)
     { "from": "start", "to": "implement" },
     { "from": "implement", "to": "review" },
     { "from": "review", "to": "end", "condition": "outputs.review._raw.includes('APPROVED')" },
-    { "from": "review", "to": "fix", "condition": "!outputs.review._raw.includes('APPROVED')" },
+    { "from": "review", "to": "fix" },
     { "from": "fix", "to": "review", "maxLoops": 5 }
   ]
 }
+\`\`\`
+
+带后续节点的变体（APPROVED 后还有步骤）：
+
+\`\`\`
+implement → review → generate_report → end (APPROVED)
+                ↓ (fallback)
+               fix → review (maxLoops=5)
+\`\`\`
+
+此时 APPROVED 边指向 generate_report（不是 end），fallback 边指向 fix：
+\`\`\`json
+"edges": [
+  { "from": "review", "to": "generate_report", "condition": "outputs.review._raw.includes('APPROVED')" },
+  { "from": "review", "to": "fix" },
+  { "from": "fix", "to": "review", "maxLoops": 5 },
+  { "from": "generate_report", "to": "end" }
+]
 \`\`\`
 
 何时使用：核心功能开发、重构、涉及安全/性能的修改

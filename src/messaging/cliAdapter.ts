@@ -73,6 +73,22 @@ export function createCliAdapter(format: CliOutputFormat = 'text'): CliAdapterRe
       capturedResponse = clean
       return true
     },
+
+    async sendFile(_chatId, filePath) {
+      if (format === 'text') {
+        process.stdout.write(`📎 File: ${filePath}\n`)
+      } else if (format === 'stream-json') {
+        process.stdout.write(JSON.stringify({ type: 'file', path: filePath }) + '\n')
+      }
+    },
+
+    async sendImage(_chatId, imagePath) {
+      if (format === 'text') {
+        process.stdout.write(`🖼️ Image: ${imagePath}\n`)
+      } else if (format === 'stream-json') {
+        process.stdout.write(JSON.stringify({ type: 'image', path: imagePath }) + '\n')
+      }
+    },
   }
 
   return {

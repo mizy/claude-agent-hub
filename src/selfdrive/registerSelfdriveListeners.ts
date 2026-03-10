@@ -8,6 +8,7 @@
 import { taskEventBus, type TaskCompletionPayload } from '../shared/events/index.js'
 import { markGoalRun } from './goals.js'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 
 const logger = createLogger('selfdrive-listener')
 
@@ -27,7 +28,7 @@ export function registerSelfdriveListeners(): void {
       logger.info(`Goal ${goalId} task ${payload.task.id} ${result}`)
       markGoalRun(goalId, result, error)
     } catch (err) {
-      logger.error(`Failed to mark goal ${goalId} run: ${err}`)
+      logger.error(`Failed to mark goal ${goalId} run: ${getErrorMessage(err)}`)
     }
   })
 }

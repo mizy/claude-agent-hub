@@ -406,7 +406,7 @@ export function createClaudeCompatStreamProcessor(options: {
           if (toolOutput && !cb) fallbackWrite?.(toolOutput + '\n')
         }
       }
-    } catch (e) {
+    } catch {
       logger.debug(`Stream event parse failed: ${line.slice(0, 120)}`)
       if (!cb) fallbackWrite?.(line + '\n')
     }

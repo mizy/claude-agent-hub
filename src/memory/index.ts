@@ -68,6 +68,9 @@ export {
 export { consolidateMemories, shouldConsolidate } from './consolidateMemories.js'
 export type { ConsolidationResult } from './consolidateMemories.js'
 
+// Query expansion — LLM-based synonym/related term expansion
+export { expandQueryForRetrieval, clearExpandCache } from './expandQuery.js'
+
 // Entity index — HippoRAG-lite entity-anchored retrieval
 export {
   extractEntities,

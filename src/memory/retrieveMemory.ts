@@ -14,6 +14,7 @@ import { queryEntityIndex } from './entityIndex.js'
 import { retrieveEpisodes } from './retrieveEpisode.js'
 import { shouldRetrieveEpisode, formatEpisodeContext } from './injectEpisode.js'
 import { formatMemoriesForPrompt } from './formatMemory.js'
+import { expandQueryForRetrieval } from './expandQuery.js'
 import { createLogger } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { invokeBackend } from '../backend/index.js'
@@ -57,6 +58,7 @@ async function processReinforceRetries(): Promise<void> {
 interface RetrieveOptions {
   maxResults?: number
   projectPath?: string
+  tags?: string[]
 }
 
 // Backend names and other domain-specific terms get higher match weight
@@ -182,8 +184,22 @@ export async function retrieveRelevantMemories(
 ): Promise<MemoryEntry[]> {
   const maxResults = Math.min(options?.maxResults ?? 8, 8)
   const projectPath = options?.projectPath
+  const filterTags = options?.tags?.map(t => t.trim().toLowerCase()).filter(Boolean)
   const queryKeywords = extractKeywords(query)
   if (queryKeywords.length === 0) return []
+
+  // LLM query expansion: add synonyms/related terms for better recall
+  let expandedTerms: string[] = []
+  try {
+    expandedTerms = await expandQueryForRetrieval(query)
+  } catch (e) {
+    logger.debug(`Query expansion failed, skipping: ${e}`)
+  }
+  for (const term of expandedTerms) {
+    for (const kw of extractKeywords(term)) {
+      if (!queryKeywords.includes(kw)) queryKeywords.push(kw)
+    }
+  }
 
   const now = new Date()
   const all = getAllMemories().map(migrateMemoryEntry)
@@ -210,9 +226,9 @@ export async function retrieveRelevantMemories(
         keywordScore += bestMatch * weight
       }
     }
-    // Normalize: use max of query length and entry keywords length to prevent
-    // short queries from getting inflated scores
-    const normalizer = Math.max(queryKeywords.length, entry.keywords.length, 1)
+    // Normalize by query keywords count (incl. expanded terms) to prevent
+    // score inflation when expanded terms hit on small-keyword entries
+    const normalizer = Math.max(queryKeywords.length, 1)
     score += (keywordScore / normalizer) * 2
 
     // Project path match bonus
@@ -236,16 +252,34 @@ export async function retrieveRelevantMemories(
       score += Math.min(entityMatchCount * 0.5, 1.5)
     }
 
-    return { entry, score, keywordScore: keywordScore + entityMatchCount }
+    // Tag match boost: entries with matching tags get a bonus
+    let tagMatch = false
+    if (filterTags && filterTags.length > 0 && entry.tags && entry.tags.length > 0) {
+      const entryTagSet = new Set(entry.tags)
+      const matchCount = filterTags.filter(t => entryTagSet.has(t)).length
+      if (matchCount > 0) {
+        score += matchCount * 0.4
+        tagMatch = true
+      }
+    }
+
+    return { entry, score, keywordScore: keywordScore + entityMatchCount, tagMatch }
   })
 
   // Filter out entries with no keyword overlap, sort descending
+  // When tags filter is active: exclude entries that have tags but none match
+  // (entries without tags are kept for backward compatibility)
+  const hasTagFilter = filterTags && filterTags.length > 0
   const config = await loadConfig()
   const rerankConfig = config.memory.rerank
   const candidateSize = rerankConfig.enabled ? rerankConfig.candidateSize : maxResults
 
   const rankedCandidates = scored
-    .filter(s => s.keywordScore > 0)
+    .filter(s => {
+      if (s.keywordScore <= 0) return false
+      if (hasTagFilter && s.entry.tags && s.entry.tags.length > 0 && !s.tagMatch) return false
+      return true
+    })
     .sort((a, b) => b.score - a.score)
     .slice(0, candidateSize)
 

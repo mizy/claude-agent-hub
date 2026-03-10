@@ -3,6 +3,7 @@
  */
 
 import { existsSync, readFileSync } from 'fs'
+import { basename } from 'path'
 import { tmpdir } from 'os'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
@@ -11,6 +12,7 @@ import { logConversation } from '../../store/conversationLog.js'
 import { addMemory } from '../../memory/index.js'
 import { sendFinalResponse } from './streamingHandler.js'
 import { sendDetectedImages } from './imageExtractor.js'
+import { extractMediaTags, processMediaTags } from './mediaTagExtractor.js'
 import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
 import { trackEpisodeTurn } from './episodeExtractor.js'
 import { setSession, incrementTurn } from './sessionManager.js'
@@ -145,13 +147,26 @@ export async function processSuccessResult(
   if (newSessionId) setSession(chatId, newSessionId, backendOverride)
   incrementTurn(chatId, text, response)
 
+  // Extract media tags ([SEND_FILE: ...] / [SEND_IMAGE: ...]) before building final text
+  const { tags: mediaTags, cleanedText: responseWithoutTags } = extractMediaTags(response)
+
+  // When text is empty after removing media tags, generate file/image description
+  let displayText = responseWithoutTags
+  if (!displayText && mediaTags.length > 0) {
+    const labels = mediaTags.map((t) => {
+      const icon = t.type === 'file' ? '📎' : '🖼️'
+      return `${icon} ${basename(t.path)}`
+    })
+    displayText = labels.join('\n')
+  }
+
   // Build and send final response with completion marker
   const elapsedSec = ((Date.now() - bench.start) / 1000).toFixed(1)
   const backendName = backendOverride ?? config.defaultBackend ?? 'claude-code'
   const configModel = config.backends[backendName]?.model
   const displayModel = model ?? configModel
   const modelLabel = displayModel ? ` (${displayModel})` : ''
-  const finalText = response + `\n\n⏱️ ${elapsedSec}s | ${backendName}${modelLabel}`
+  const finalText = displayText + `\n\n⏱️ ${elapsedSec}s | ${backendName}${modelLabel}`
 
   await stopStreaming()
   await sendFinalResponse(chatId, finalText, maxLen, placeholderId, messenger)
@@ -172,9 +187,14 @@ export async function processSuccessResult(
     })
   }
 
+  // Media tags: send files/images extracted from [SEND_FILE:] / [SEND_IMAGE:] tags
+  if (mediaTags.length > 0) {
+    await processMediaTags(mediaTags, chatId, messenger)
+  }
+
   // Images: MCP-generated + detected from response text (exclude user-sent images)
   await sendMcpImages(chatId, mcpImagePaths, messenger)
-  await sendDetectedImages(chatId, response, messenger, ctx.userImages)
+  await sendDetectedImages(chatId, responseWithoutTags, messenger, ctx.userImages)
 
   // Memory extraction
   if (config.memory.chatMemory.enabled) {

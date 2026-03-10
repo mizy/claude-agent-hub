@@ -34,6 +34,39 @@ import type { SuccessPattern } from '../prompt-optimization/extractSuccessPatter
 
 const logger = createLogger('workflow-gen')
 
+/** Infer memory tags from task description via simple keyword matching */
+const TAG_KEYWORD_MAP: Record<string, string[]> = {
+  workflow: ['workflow', '工作流', 'node', '节点'],
+  memory: ['memory', '记忆', '检索', 'retriev'],
+  selfdrive: ['selfdrive', '自驱', 'self-drive'],
+  consciousness: ['consciousness', '意识'],
+  statistics: ['statistics', '统计', 'stats'],
+  backend: ['backend', '后端', 'claude-code', 'opencode', 'iflow'],
+  dashboard: ['dashboard', '面板', '可视化'],
+  cli: ['cli', '命令行', 'command'],
+  messaging: ['messaging', '消息', 'lark', '飞书', 'telegram'],
+  lark: ['lark', '飞书'],
+  task: ['task', '任务'],
+  agent: ['agent', '代理'],
+  config: ['config', '配置'],
+  'bug-fix': ['fix', 'bug', '修复', '修正'],
+  feature: ['feature', '功能', '新增', '添加', '支持'],
+  refactor: ['refactor', '重构'],
+  performance: ['performance', '性能', '性能优化'],
+  test: ['test', '测试', 'vitest'],
+}
+
+function inferTagsFromQuery(query: string): string[] | undefined {
+  const lower = query.toLowerCase()
+  const tags: string[] = []
+  for (const [tag, keywords] of Object.entries(TAG_KEYWORD_MAP)) {
+    if (keywords.some(kw => lower.includes(kw))) {
+      tags.push(tag)
+    }
+  }
+  return tags.length > 0 ? tags : undefined
+}
+
 /** Format a matching success pattern as prompt context */
 function formatSuccessPatternForPrompt(pattern: SuccessPattern): string {
   const lines = ['## 推荐执行模式（基于历史成功经验）\n']
@@ -100,8 +133,10 @@ export async function generateWorkflow(task: Task): Promise<Workflow> {
       analyzeProjectContext(),
       learnFromHistory(query),
       (async () => {
+        // Infer tags from task description for targeted retrieval
+        const tags = inferTagsFromQuery(query)
         // Keyword-based retrieval + associative expansion (existing)
-        const keywordResults = await retrieveRelevantMemories(query, { projectPath: process.cwd() })
+        const keywordResults = await retrieveRelevantMemories(query, { projectPath: process.cwd(), tags })
         // Associative retrieval (hybrid keyword + activation spreading)
         const assocResults = await associativeRetrieve(query, activeEntries, 5)
         // Merge: deduplicate by id, keyword results first

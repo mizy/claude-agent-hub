@@ -188,7 +188,7 @@ export const useStore = create<DashboardStore>((set, get) => ({
     if (window.innerWidth <= 768) get().closeMobilePanels()
   },
 
-  selectNode: id => set({ selectedNodeId: id, ...(id ? { activeTab: 'details' } : {}) }),
+  selectNode: id => set({ selectedNodeId: id }),
   setActiveTab: tab => set({ activeTab: tab }),
 
   refreshTasks: async () => {

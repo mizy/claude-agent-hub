@@ -26,6 +26,28 @@ export interface JsonWorkflowInput {
 }
 
 /**
+ * Remove duplicate condition edges from the same source node.
+ * Keeps the first occurrence, removes subsequent edges with identical condition strings.
+ */
+export function deduplicateConditionEdges(
+  edges: Array<Omit<WorkflowEdge, 'id'> & { id?: string }>
+): Array<Omit<WorkflowEdge, 'id'> & { id?: string }> {
+  const seen = new Map<string, Set<string>>() // from -> set of conditions
+  return edges.filter(edge => {
+    if (!edge.condition) return true
+    const key = String(edge.condition).trim()
+    const fromSet = seen.get(edge.from) || new Set()
+    if (fromSet.has(key)) {
+      logger.warn(`Dedup: removed duplicate edge ${edge.from}→${edge.to} (condition: '${key}')`)
+      return false
+    }
+    fromSet.add(key)
+    seen.set(edge.from, fromSet)
+    return true
+  })
+}
+
+/**
  * 解析 JSON 内容为 Workflow
  */
 export function parseJson(input: JsonWorkflowInput | string, sourceFile?: string): Workflow {
@@ -53,8 +75,9 @@ export function parseJson(input: JsonWorkflowInput | string, sourceFile?: string
     logger.debug('Auto-added end node')
   }
 
-  // 自动生成边 ID
-  const edges: WorkflowEdge[] = (data.edges || []).map((e, i) => ({
+  // Deduplicate condition edges, then auto-generate edge IDs
+  const dedupedEdges = deduplicateConditionEdges(data.edges || [])
+  const edges: WorkflowEdge[] = dedupedEdges.map((e, i) => ({
     ...e,
     id: e.id || `e${i + 1}`,
   }))
@@ -122,11 +145,12 @@ export function parseJson(input: JsonWorkflowInput | string, sourceFile?: string
 /**
  * 验证 JSON 工作流格式
  */
-export function validateJsonWorkflow(input: unknown): { valid: boolean; errors: string[] } {
+export function validateJsonWorkflow(input: unknown): { valid: boolean; errors: string[]; warnings: string[] } {
   const errors: string[] = []
+  const warnings: string[] = []
 
   if (typeof input !== 'object' || input === null) {
-    return { valid: false, errors: ['Input must be an object'] }
+    return { valid: false, errors: ['Input must be an object'], warnings: [] }
   }
 
   const data = input as Record<string, unknown>
@@ -191,7 +215,25 @@ export function validateJsonWorkflow(input: unknown): { valid: boolean; errors: 
     }
   }
 
-  return { valid: errors.length === 0, errors }
+  // Detect duplicate condition edges from the same source node (warning only, no mutation)
+  if (Array.isArray(data.edges)) {
+    const condByFrom = new Map<string, Set<string>>()
+    for (const edge of data.edges as Array<Record<string, unknown>>) {
+      if (edge.condition && edge.from) {
+        const from = String(edge.from)
+        const cond = String(edge.condition).trim()
+        const seen = condByFrom.get(from) || new Set()
+        if (seen.has(cond)) {
+          warnings.push(`节点 '${from}' 存在重复条件边 (condition: '${cond}')`)
+        } else {
+          seen.add(cond)
+          condByFrom.set(from, seen)
+        }
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings }
 }
 
 /**

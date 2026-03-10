@@ -56,6 +56,7 @@ interface RawExtraction {
   keywords: string[]
   confidence: number
   importance?: number
+  tags?: string[]
 }
 
 function parseExtractions(text: string): RawExtraction[] {
@@ -74,15 +75,22 @@ function parseExtractions(text: string): RawExtraction[] {
 }
 
 function isValidExtraction(item: RawExtraction): boolean {
-  return (
-    typeof item.content === 'string' &&
-    item.content.length > 0 &&
-    VALID_CATEGORIES.includes(item.category as MemoryCategory) &&
-    Array.isArray(item.keywords) &&
-    typeof item.confidence === 'number' &&
-    item.confidence >= 0 &&
-    item.confidence <= 1
-  )
+  if (
+    typeof item.content !== 'string' ||
+    item.content.length === 0 ||
+    !VALID_CATEGORIES.includes(item.category as MemoryCategory) ||
+    !Array.isArray(item.keywords) ||
+    typeof item.confidence !== 'number' ||
+    item.confidence < 0 ||
+    item.confidence > 1
+  ) return false
+
+  // Validate tags if present: must be string[]
+  if (item.tags !== undefined) {
+    if (!Array.isArray(item.tags) || !item.tags.every(t => typeof t === 'string')) return false
+  }
+
+  return true
 }
 
 export async function extractMemoryFromTask(
@@ -149,6 +157,7 @@ export async function extractMemoryFromTask(
         importance,
         initialStability,
         supersedesId: supersededIds[0],
+        tags: item.tags,
       })
 
       entries.push(entry)

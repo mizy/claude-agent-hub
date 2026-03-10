@@ -145,7 +145,9 @@ export function workflowToSchema(
     const st = ns[n.id]
     let status = STATUS_MAP[st?.status || 'pending'] || 'pending'
     if (taskDone && status === 'pending') {
-      status = loopExecutedNodes.has(n.id) ? 'loop-completed' : 'skipped'
+      // Nodes that participated in a loop iteration → mark completed (they did run)
+      // Nodes never reached → mark skipped
+      status = loopExecutedNodes.has(n.id) ? 'completed' : 'skipped'
     }
     const loopInfo = loopMap.get(n.id)
     return {

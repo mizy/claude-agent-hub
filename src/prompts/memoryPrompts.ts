@@ -43,6 +43,10 @@ ${nodeLines}
 - keywords: 关键词数组（3-5 个，用于后续检索）
 - confidence: 置信度 0-1（这条经验的可靠程度）
 - importance: 重要性 1-10（10=关键教训/反复踩坑，7-9=有价值的模式，4-6=一般经验，1-3=琐碎/低价值）
+- tags: 可选，结构化标签数组（1-5 个），用于精确过滤。建议标签：
+  - 技术领域：workflow, memory, selfdrive, consciousness, statistics, backend, dashboard, cli, messaging, lark, task, agent, config
+  - 操作类型：bug-fix, feature, refactor, performance, security, test
+  - 重要性：critical, warning, note
 
 示例：
 \`\`\`json
@@ -52,7 +56,8 @@ ${nodeLines}
     "category": "pitfall",
     "keywords": ["vitest", "测试隔离", "数据目录"],
     "confidence": 0.9,
-    "importance": 9
+    "importance": 9,
+    "tags": ["test", "critical", "config"]
   }
 ]
 \`\`\`

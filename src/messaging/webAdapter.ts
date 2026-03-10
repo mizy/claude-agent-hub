@@ -44,6 +44,14 @@ export function createWebAdapter(res: Response): WebAdapter {
         safeSend({ content: text, replace: true })
         return true
       },
+
+      async sendFile(_chatId, filePath) {
+        safeSend({ type: 'file', path: filePath })
+      },
+
+      async sendImage(_chatId, imagePath) {
+        safeSend({ type: 'image', path: imagePath })
+      },
     },
     getLastResponse: () => lastResponse,
   }

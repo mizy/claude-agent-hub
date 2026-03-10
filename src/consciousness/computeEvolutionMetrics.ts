@@ -8,6 +8,7 @@
 import { getAllTasks } from '../store/TaskStore.js'
 import type { Task } from '../types/task.js'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 
 const logger = createLogger('consciousness:evolution-metrics')
 
@@ -88,7 +89,7 @@ export function computeTaskMetrics(fromDate: Date, toDate: Date): EvolutionMetri
     metricsCache.set(cacheKey, { result, expiresAt: Date.now() + CACHE_TTL_MS })
     return result
   } catch (e) {
-    logger.warn(`Failed to compute task metrics: ${e}`)
+    logger.warn(`Failed to compute task metrics: ${getErrorMessage(e)}`)
     return null
   }
 }

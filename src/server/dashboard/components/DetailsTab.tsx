@@ -186,7 +186,7 @@ export function DetailsTab() {
         {output != null && (
           <div className="panel-section">
             <div className="panel-section-title">Output</div>
-            <NodeOutputMarkdown output={output} />
+            <NodeOutputMarkdown key={selectedNodeId} output={output} />
           </div>
         )}
       </div>

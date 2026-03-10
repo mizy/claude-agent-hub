@@ -44,6 +44,9 @@ export interface MemoryEntry {
   superseded?: boolean // true if replaced by a newer memory
   supersedesId?: string // id of the older memory this one replaces
 
+  // Structured tags for categorized retrieval
+  tags?: string[]
+
   // Association engine fields
   associations?: Association[]
 }

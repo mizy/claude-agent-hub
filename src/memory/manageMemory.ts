@@ -13,6 +13,14 @@ import {
 import { indexMemoryEntities, removeFromEntityIndex } from './entityIndex.js'
 import type { MemoryCategory, MemoryEntry, MemorySource } from './types.js'
 
+const MAX_TAGS = 8
+
+function normalizeTags(tags: string[] | undefined): string[] | undefined {
+  if (!tags || tags.length === 0) return undefined
+  const unique = [...new Set(tags.map(t => t.trim().toLowerCase()).filter(Boolean))]
+  return unique.slice(0, MAX_TAGS)
+}
+
 interface AddMemoryOptions {
   keywords?: string[]
   confidence?: number
@@ -20,6 +28,7 @@ interface AddMemoryOptions {
   importance?: number
   initialStability?: number
   supersedesId?: string
+  tags?: string[]
 }
 
 export function addMemory(
@@ -45,6 +54,7 @@ export function addMemory(
     importance: options?.importance,
     stability: options?.initialStability,
     supersedesId: options?.supersedesId,
+    tags: normalizeTags(options?.tags),
   }
 
   saveMemory(entry)
