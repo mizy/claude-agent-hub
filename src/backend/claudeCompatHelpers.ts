@@ -336,8 +336,9 @@ export function createClaudeCompatStreamProcessor(options: {
   perf?: { spawn: number; firstStdout: number; firstDelta: number }
   startTime?: number
   fallbackWrite?: (text: string) => void
+  onToolUse?: () => void
 }): (line: string, cb?: (chunk: string) => void) => void {
-  const { mcpToolUseIds, extractedImagePaths, perf, startTime, fallbackWrite } = options
+  const { mcpToolUseIds, extractedImagePaths, perf, startTime, fallbackWrite, onToolUse } = options
 
   return (line: string, cb?: (chunk: string) => void) => {
     try {
@@ -361,6 +362,9 @@ export function createClaudeCompatStreamProcessor(options: {
       }
 
       if (event.type === 'tool_call') {
+        // Tool call detected — reset streaming display to discard intermediate reasoning text
+        onToolUse?.()
+
         const toolName =
           typeof rawEvent.name === 'string'
             ? rawEvent.name
@@ -377,17 +381,17 @@ export function createClaudeCompatStreamProcessor(options: {
           if (toolName?.startsWith('mcp__')) {
             mcpToolUseIds.add(toolId)
           } else if (toolName === 'Read' && isScreenshotPath(input?.file_path)) {
-            // Read tool viewing images is internal process — skip forwarding to user
             logger.debug(`Skipping Read tool image (internal): ${input?.file_path}`)
           }
         }
       } else if (event.type === 'assistant' && event.message?.content) {
+        // Note: onToolUse reset already handled by tool_call event (arrives before assistant).
+        // Only register MCP tool IDs here for image extraction.
         for (const block of event.message.content) {
           if (block.type === 'tool_use' && block.id) {
             if (block.name?.startsWith('mcp__')) {
               mcpToolUseIds.add(block.id)
             } else if (block.name === 'Read' && isScreenshotPath(block.input?.file_path)) {
-              // Read tool viewing images is internal process — don't forward to user
               logger.debug(`Skipping Read tool image (internal): ${block.input?.file_path}`)
             }
           }

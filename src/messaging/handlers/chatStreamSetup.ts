@@ -12,6 +12,7 @@ const logger = createLogger('chat-stream-setup')
 
 export interface StreamSetup {
   onChunk: ((chunk: string) => void) | undefined
+  onToolUse: () => void
   stopStreaming: () => void | Promise<void>
   placeholderPromise: Promise<string | null>
   getPlaceholderId: () => string | null
@@ -31,7 +32,7 @@ export function setupStreamingAndPlaceholder(
 ): StreamSetup {
   let placeholderId: string | null = null
   const streamState = { placeholderId: null as string | null }
-  const { onChunk, stop: stopStreaming, getAccumulated } = createStreamHandler(
+  const { onChunk, stop: stopStreaming, getAccumulated, resetForNewTurn } = createStreamHandler(
     chatId, streamState, maxLen, messenger, bench, streamOptions
   )
   signal.addEventListener('abort', () => stopStreaming(), { once: true })
@@ -39,8 +40,14 @@ export function setupStreamingAndPlaceholder(
   const placeholderText = hasImages ? '🖼️ 已收到图片，分析中...' : hasFiles ? '📎 已收到文件，分析中...' : '🤔 思考中...'
   const placeholderPromise = messenger
     .sendAndGetId(chatId, placeholderText)
-    .then(pId => { placeholderId = pId; streamState.placeholderId = pId; return pId })
+    .then(pId => {
+      placeholderId = pId
+      streamState.placeholderId = pId
+      // Flush any content accumulated while placeholder was being sent
+      if (onChunk && getAccumulated().length > 0) onChunk('')
+      return pId
+    })
     .catch(e => { logger.debug(`placeholder send failed: ${getErrorMessage(e)}`); return null })
 
-  return { onChunk, stopStreaming, placeholderPromise, getPlaceholderId: () => placeholderId, getAccumulated }
+  return { onChunk, onToolUse: resetForNewTurn, stopStreaming, placeholderPromise, getPlaceholderId: () => placeholderId, getAccumulated }
 }

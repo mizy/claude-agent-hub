@@ -143,8 +143,11 @@ export async function processSuccessResult(
     backendType: backendOverride,
   })
 
-  // Update session
-  if (newSessionId) setSession(chatId, newSessionId, backendOverride)
+  // Update session; keep cached summary for fast new-session startup.
+  // Summary is only regenerated when cache is missing (first time or manually cleared).
+  if (newSessionId) {
+    setSession(chatId, newSessionId, backendOverride)
+  }
   incrementTurn(chatId, text, response)
 
   // Extract media tags ([SEND_FILE: ...] / [SEND_IMAGE: ...]) before building final text

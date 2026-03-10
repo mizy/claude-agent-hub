@@ -43,6 +43,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
         skipPermissions = true,
         timeoutMs = 30 * 60 * 1000,
         onChunk,
+        onToolUse,
         disableMcp = false,
         mcpServers,
         sessionId,
@@ -94,7 +95,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
         let mcpImagePaths: string[] = []
         if (stream) {
           collectStderr(subprocess, () => {})
-          const streamResult = await streamOutput(subprocess, onChunk, startTime, perf)
+          const streamResult = await streamOutput(subprocess, onChunk, startTime, perf, onToolUse)
           rawOutput = streamResult.rawOutput
           mcpImagePaths = streamResult.extractedImagePaths
         } else {
@@ -244,7 +245,8 @@ async function streamOutput(
   subprocess: ResultPromise,
   onChunk?: (chunk: string) => void,
   startTime?: number,
-  perf?: { spawn: number; firstStdout: number; firstDelta: number }
+  perf?: { spawn: number; firstStdout: number; firstDelta: number },
+  onToolUse?: () => void,
 ): Promise<{ rawOutput: string; extractedImagePaths: string[] }> {
   const extractedImagePaths: string[] = []
   const mcpToolUseIds = new Set<string>()
@@ -255,6 +257,7 @@ async function streamOutput(
     perf,
     startTime,
     fallbackWrite: (text) => process.stdout.write(chalk.dim(text)),
+    onToolUse,
   })
 
   const rawOutput = await collectStream(subprocess, {

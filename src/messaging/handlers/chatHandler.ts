@@ -131,12 +131,15 @@ interface SessionState {
   willStartNewSession: boolean
 }
 
+/** Max turns before auto-rotating session to avoid bloated CLI context */
+const SESSION_MAX_TURNS = 30
+
 function resolveSessionState(
   chatId: string,
   inlineBackend: string | undefined,
 ): SessionState {
   const session = getSession(chatId)
-  const sessionId = session?.sessionId
+  let sessionId = session?.sessionId
   const sessionBackend = getBackendOverride(chatId)
   const backendOverride = inlineBackend ?? sessionBackend
 
@@ -155,6 +158,16 @@ function resolveSessionState(
     logger.info(`🔄 session backend changed, starting new session`)
     logConversationEvent('后端切换', `${previousBackend} → ${currentBackend}`)
     flushEpisode(chatId)
+  }
+
+  // Auto-rotate session when turn count exceeds threshold to prevent CLI context bloat
+  const turnRotation = !!(sessionId && !backendChanged && session && session.turnCount >= SESSION_MAX_TURNS)
+  if (turnRotation) {
+    logger.info(`🔄 session auto-rotated after ${session.turnCount} turns [${chatId.slice(0, 8)}]`)
+    logConversationEvent('会话自动轮换', `${session.turnCount} turns, 清理上下文`)
+    flushEpisode(chatId)
+    clearSession(chatId)
+    sessionId = undefined
   }
 
   const willStartNewSession = !sessionId || backendChanged
@@ -229,7 +242,7 @@ async function handleChatInternal(
       stream.placeholderPromise,
       invokeBackend({
         prompt, stream: true, skipPermissions: true,
-        sessionId: effectiveSessionId, onChunk: stream.onChunk,
+        sessionId: effectiveSessionId, onChunk: stream.onChunk, onToolUse: stream.onToolUse,
         disableMcp: chatMcp.length === 0,
         mcpServers: chatMcp.length > 0 ? chatMcp : undefined,
         model, backendType: ss.backendOverride, signal,

@@ -101,9 +101,16 @@ async function main(): Promise<void> {
       )
 
       // 找第一个不与运行中任务冲突的 pending 任务
-      const pendingTask = allTasks.find(
+      // 优先执行曾经开始但被中断的任务（orphanResumeCount > 0），避免新任务插队
+      const eligibleTasks = allTasks.filter(
         t => t.status === 'pending' && (!t.cwd || !runningCwds.has(t.cwd))
       )
+      eligibleTasks.sort((a, b) => {
+        const aResumes = a.metadata?.orphanResumeCount ? parseInt(a.metadata.orphanResumeCount, 10) : 0
+        const bResumes = b.metadata?.orphanResumeCount ? parseInt(b.metadata.orphanResumeCount, 10) : 0
+        return bResumes - aResumes // 恢复次数多的排前面
+      })
+      const pendingTask = eligibleTasks[0]
 
       if (!pendingTask) {
         // 可能还有 pending 但全部与运行中任务冲突

@@ -7,6 +7,8 @@ import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { buildClientPrompt, wrapMemoryContext, wrapHistoryContext, type PromptMode } from '../../prompts/chatPrompts.js'
 import { getRecentConversations } from '../../store/conversationLog.js'
+import { saveChatSummary, loadChatSummary } from '../../store/chatSummaryStore.js'
+import { generateChatContextSummary } from '../../consciousness/generateSummary.js'
 import { retrieveAllMemoryContext } from '../../memory/index.js'
 import { getRecentEntries, formatForPrompt, loadSelfModel } from '../../consciousness/index.js'
 import { getTopThoughts, formatActiveThoughts } from '../../consciousness/activeThoughts.js'
@@ -40,24 +42,54 @@ export async function buildFullPrompt(
 ): Promise<string> {
   const clientPrefix = client ? buildClientPrompt(client, runtime, mode) + '\n\n' : ''
 
-  // Inject recent history for new sessions (only in/out, deduplicated)
-  // Skip in minimal mode
+  // Inject conversation context for new sessions (e.g. after daemon restart).
+  // Claude Code session handles in-session context; we only need this on fresh start.
+  // Strategy: recent 8 messages verbatim + LLM summary of older history (cached per chatId).
+  const RECENT_RAW_COUNT = 8
+  const OLDER_HISTORY_COUNT = 30
+  let historySummary = ''
   let historyRaw = ''
+
+  // Prepare async tasks to run in parallel: summary generation + memory retrieval
+  let summaryPromise: Promise<string | null> | undefined
+  let memoryPromise: Promise<string | null> | undefined
+
   if (mode === 'full' && willStartNewSession) {
-    const recent = getRecentConversations(chatId, 4)
+    const allRecent = getRecentConversations(chatId, OLDER_HISTORY_COUNT)
       .filter(e => e.dir === 'in' || e.dir === 'out')
-    if (recent.length > 0) {
-      // Deduplicate consecutive entries with same dir+text
-      const deduped = recent.filter((e, i) =>
-        i === 0 || e.dir !== recent[i - 1]!.dir || e.text !== recent[i - 1]!.text
-      )
-      historyRaw = deduped
-        .map(e => {
-          const role = e.dir === 'in' ? '用户' : 'AI'
-          const content = e.text.length > 400 ? e.text.slice(0, 397) + '...' : e.text
-          return `[${role}] ${content}`
-        })
-        .join('\n')
+
+    if (allRecent.length > 0) {
+      const cached = loadChatSummary(chatId)
+      if (cached) {
+        // Cache hit: inject summary + all messages AFTER the summary was generated
+        historySummary = cached.summary
+        const summaryTime = new Date(cached.updatedAt).getTime()
+        const gapMessages = allRecent.filter(e => new Date(e.ts).getTime() > summaryTime)
+        if (gapMessages.length > 0) {
+          historyRaw = gapMessages
+            .map(e => `[${e.dir === 'in' ? '用户' : 'AI'}] ${e.text}`)
+            .join('\n')
+        }
+        logger.debug(`injected cached summary (${cached.summary.length} chars) + ${gapMessages.length} gap messages [${chatId.slice(0, 8)}]`)
+      } else {
+        // No cache: inject last 8 raw + generate summary for older messages
+        const recentRaw = allRecent.slice(-RECENT_RAW_COUNT)
+        historyRaw = recentRaw
+          .map(e => `[${e.dir === 'in' ? '用户' : 'AI'}] ${e.text}`)
+          .join('\n')
+
+        const olderMessages = allRecent.slice(0, -RECENT_RAW_COUNT)
+        if (olderMessages.length >= 2) {
+          const msgs = olderMessages.map(e => ({
+            role: (e.dir === 'in' ? 'user' : 'assistant') as 'user' | 'assistant',
+            text: e.text,
+          }))
+          summaryPromise = generateChatContextSummary(msgs).catch(e => {
+            logger.debug(`on-demand summary failed: ${getErrorMessage(e)}`)
+            return null
+          })
+        }
+      }
     }
   }
 
@@ -65,26 +97,41 @@ export async function buildFullPrompt(
   const currentTurnCount = getSession(chatId)?.turnCount ?? 0
   const shouldRefreshMemory = willStartNewSession ||
     (currentTurnCount > 0 && currentTurnCount % MEMORY_REFRESH_INTERVAL === 0)
-  let memoryRaw = ''
   if (mode === 'full' && effectiveText && shouldRefreshMemory) {
-    try {
-      const cached = memoryCache.get(chatId)
-      if (cached && Date.now() - cached.fetchedAt < MEMORY_CACHE_TTL_MS) {
-        memoryRaw = cached.result
-        logger.debug(`reused cached memory context (${memoryRaw.length} chars) [${chatId.slice(0, 8)}]`)
-      } else {
-        const context = await retrieveAllMemoryContext(effectiveText, {
-          maxResults: config.memory.chatMemory.maxMemories,
-        })
-        if (context) {
-          memoryRaw = context
-          memoryCache.set(chatId, { result: context, fetchedAt: Date.now() })
-          logger.debug(`injected memory context (${context.length} chars) [${chatId.slice(0, 8)}]`)
-        }
-      }
-    } catch (e) {
-      logger.debug(`memory retrieval failed: ${getErrorMessage(e)}`)
+    const cached = memoryCache.get(chatId)
+    if (cached && Date.now() - cached.fetchedAt < MEMORY_CACHE_TTL_MS) {
+      memoryPromise = Promise.resolve(cached.result)
+      logger.debug(`reused cached memory context (${cached.result.length} chars) [${chatId.slice(0, 8)}]`)
+    } else {
+      // Start memory retrieval in parallel (don't await yet)
+      memoryPromise = retrieveAllMemoryContext(effectiveText, {
+        maxResults: config.memory.chatMemory.maxMemories,
+      }).catch(e => {
+        logger.debug(`memory retrieval failed: ${getErrorMessage(e)}`)
+        return null
+      })
     }
+  }
+
+  // Await parallel tasks together
+  const [summaryResult, memoryResult] = await Promise.all([
+    summaryPromise ?? Promise.resolve(null),
+    memoryPromise ?? Promise.resolve(null),
+  ])
+
+  if (summaryResult) {
+    saveChatSummary(chatId, summaryResult)
+    historySummary = summaryResult
+    logger.debug(`generated on-demand history summary (${summaryResult.length} chars) [${chatId.slice(0, 8)}]`)
+  }
+
+  let memoryRaw = ''
+  if (memoryResult) {
+    memoryRaw = memoryResult
+    if (!memoryCache.has(chatId) || Date.now() - (memoryCache.get(chatId)?.fetchedAt ?? 0) >= MEMORY_CACHE_TTL_MS) {
+      memoryCache.set(chatId, { result: memoryResult, fetchedAt: Date.now() })
+    }
+    logger.debug(`injected memory context (${memoryResult.length} chars) [${chatId.slice(0, 8)}]`)
   }
 
   // Inject consciousness stream for new sessions: recent session-end entries + other activity
@@ -176,9 +223,14 @@ export async function buildFullPrompt(
     consciousnessTotal = consciousnessTotal.slice(0, MAX_CONSCIOUSNESS_TOTAL) + '\n…(truncated)\n\n'
   }
 
-  // Assemble: system context → consciousness block → memory → history → user message → images → files
+  // Assemble: system context → consciousness block → memory → history/summary → user message → images → files
+  // historyBlock = optional summary of older history + recent raw messages
+  let historyBlock = ''
+  if (historySummary) historyBlock += `## 历史对话摘要\n${historySummary}\n\n`
+  if (historyRaw) historyBlock += `## 最近对话\n${historyRaw}\n\n`
+  if (!historyBlock && historyRaw) historyBlock = wrapHistoryContext(historyRaw)
   let prompt =
-    clientPrefix + consciousnessTotal + wrapMemoryContext(memoryRaw) + wrapHistoryContext(historyRaw) + effectiveText
+    clientPrefix + consciousnessTotal + wrapMemoryContext(memoryRaw) + historyBlock + effectiveText
   if (images?.length) {
     // Use →path← delimiters so ABSOLUTE_RE (lookbehind: \s|["'`(]) won't match
     // and imageExtractor won't re-send the user's original image in the response

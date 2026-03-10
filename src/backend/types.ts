@@ -23,6 +23,8 @@ export interface InvokeOptions {
   timeoutMs?: number
   /** 流式输出回调 */
   onChunk?: (chunk: string) => void
+  /** 工具调用开始时回调（用于重置流式显示，只显示最新一轮 assistant 文本） */
+  onToolUse?: () => void
   /** 禁用 MCP 服务器，加速启动，默认 false */
   disableMcp?: boolean
   /** 选择性启用的 MCP 服务器列表（与 disableMcp 配合：disableMcp=true 时只加载这些） */

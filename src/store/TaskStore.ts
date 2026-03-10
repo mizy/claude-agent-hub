@@ -178,8 +178,19 @@ export function getTask(taskId: string): Task | null {
 export function getAllTasks(): Task[] {
   const tasks = taskStore.getAllSync()
 
-  // 按创建时间倒序
-  tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  // 活跃状态优先（waiting/running/pending/planning/developing），再按创建时间倒序
+  const ACTIVE_STATUS_PRIORITY: Record<string, number> = {
+    running: 0, developing: 0, planning: 0,
+    pending: 1,
+    waiting: 2,
+    completed: 3, failed: 3, cancelled: 3,
+  }
+  tasks.sort((a, b) => {
+    const ap = ACTIVE_STATUS_PRIORITY[a.status] ?? 3
+    const bp = ACTIVE_STATUS_PRIORITY[b.status] ?? 3
+    if (ap !== bp) return ap - bp
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  })
 
   return tasks
 }

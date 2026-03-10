@@ -10,8 +10,8 @@ import type { MessengerAdapter } from './types.js'
 
 const logger = createLogger('streaming-handler')
 
-const STREAM_THROTTLE_MS = 800
-const STREAM_MIN_DELTA = 50 // chars
+const STREAM_THROTTLE_MS = 400
+const STREAM_MIN_DELTA = 20 // chars
 const DEFAULT_MAX_LENGTH = 4096
 
 export interface StreamHandlerOptions {
@@ -30,7 +30,7 @@ export function createStreamHandler(
   messenger: MessengerAdapter,
   bench: { firstChunk: number },
   options?: StreamHandlerOptions,
-): { onChunk: ((chunk: string) => void) | undefined; getAccumulated: () => string; stop: () => void } {
+): { onChunk: ((chunk: string) => void) | undefined; getAccumulated: () => string; stop: () => void; resetForNewTurn: () => void } {
   const throttleMs = options?.throttleMs ?? STREAM_THROTTLE_MS
   const minDelta = options?.minDelta ?? STREAM_MIN_DELTA
   let accumulated = ''
@@ -71,8 +71,15 @@ export function createStreamHandler(
       return
     }
 
-    // Subsequent chunks: throttle
-    if (now - lastEditAt > throttleMs && deltaLen > minDelta) {
+    // Subsequent chunks: throttle-based or paragraph-break trigger
+    const newContent = accumulated.slice(lastEditLength)
+    const hasParagraphBreak = newContent.includes('\n\n')
+    const timeOk = now - lastEditAt > throttleMs
+    const shouldUpdate =
+      (timeOk && deltaLen > minDelta) ||
+      (hasParagraphBreak && deltaLen > minDelta * 4 && now - lastEditAt > throttleMs * 0.4)
+
+    if (shouldUpdate) {
       lastEditAt = now
       lastEditLength = accumulated.length
       const preview =
@@ -88,8 +95,22 @@ export function createStreamHandler(
     getAccumulated: () => accumulated,
     stop: async () => {
       stopped = true
+      // Final flush: push remaining accumulated content (without ⏳) if there's unsent text
+      const placeholderId = placeholderIdRef.placeholderId
+      if (placeholderId && accumulated.length > lastEditLength) {
+        const preview = accumulated.length > maxLen
+          ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
+          : accumulated
+        scheduleEdit(preview, placeholderId)
+      }
       // Wait for all pending edits to complete
       await editChain
+    },
+    /** Reset accumulated text when a new assistant turn starts (after tool use) */
+    resetForNewTurn: () => {
+      accumulated = ''
+      lastEditLength = 0
+      isFirstChunk = true
     },
   }
 }
@@ -168,11 +189,14 @@ export async function sendFinalResponse(
   )
 
   if (placeholderId && markedParts.length > 0) {
-    const editOk = await messenger.editMessage(chatId, placeholderId, markedParts[0]!)
+    let editOk = await messenger.editMessage(chatId, placeholderId, markedParts[0]!)
     if (!editOk) {
-      // Placeholder edit failed — do NOT fallback to reply() as user already saw streaming content.
-      // Silently skip; the last streamed edit is the best the user gets.
-      logger.warn('final edit failed, skipping (user saw streaming content)')
+      // Retry once after delay — Lark may rate-limit if streaming edit was too recent
+      await new Promise(r => setTimeout(r, 500))
+      editOk = await messenger.editMessage(chatId, placeholderId, markedParts[0]!)
+      if (!editOk) {
+        logger.warn('final edit failed after retry, skipping (user saw streaming content)')
+      }
     }
     for (const part of markedParts.slice(1)) {
       await messenger.reply(chatId, part)

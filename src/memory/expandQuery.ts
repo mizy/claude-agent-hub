@@ -50,8 +50,8 @@ Rules:
 
 Example: query "workflow 节点执行失败" → ["workflow","节点","node","执行","失败","task","failed","error","执行报错","工作流"]`
 
-    const backendTimeoutMs = 3000
-    const raceTimeoutMs = 4000
+    const backendTimeoutMs = 1200
+    const raceTimeoutMs = 1500
 
     const backendCall = invokeBackend({
       prompt,

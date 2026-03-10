@@ -16,6 +16,7 @@ import type { ChatSession } from './types.js'
 import type { SessionConfig } from '../../config/schema.js'
 import { appendEntry } from '../../consciousness/index.js'
 import { generateSessionEndInsight } from '../../consciousness/generateSummary.js'
+import type { ConversationMessage } from '../../consciousness/generateSummary.js'
 import { addActiveThought } from '../../consciousness/activeThoughts.js'
 
 const logger = createLogger('session-manager')
@@ -92,6 +93,7 @@ function writeSessionEndConsciousness(chatId: string, session: ChatSession, reas
         },
       })
     }
+
   } catch {
     // Best-effort — never throw
   }
@@ -191,7 +193,9 @@ function evictIfNeeded(): void {
 
 // ── Public API ──
 
-/** Load sessions from disk. Call on daemon startup to restore chat continuity. */
+/** Load sessions from disk. Call on daemon startup to restore chat continuity.
+ *  Clears sessionId so next message starts a fresh CLI session — avoids loading
+ *  bloated compact context. Our own history summary + memory provides enough context. */
 export function loadSessions(): void {
   const data = readJson<Record<string, ChatSession>>(SESSIONS_FILE)
   if (!data) return
@@ -204,17 +208,20 @@ export function loadSessions(): void {
     // Backward compat: old sessions lack turnCount/estimatedTokens
     session.turnCount ??= 0
     session.estimatedTokens ??= 0
-    // Keep sessionId intact — backends like Claude Code persist conversations on disk,
-    // so --resume with the old sessionId can restore full multi-turn context.
-    // If the backend session has expired or been cleaned up, chatHandler's error handling
-    // (detecting "session"/"conversation not found") will auto-clear and start fresh.
+    // Clear sessionId — always start fresh CLI session after restart.
+    // Claude CLI --resume loads full compact context (often MB-sized),
+    // which causes massive TTFT for simple messages.
+    // Our history summary + memory retrieval provides sufficient context.
+    session.sessionId = ''
+    session.turnCount = 0
+    session.estimatedTokens = 0
     sessions.set(chatId, session)
     restored++
   }
   if (restored > 0) {
     evictIfNeeded()
     ensureCleanupTimer()
-    logger.info(`Restored ${restored} chat session(s) from disk`)
+    logger.info(`Restored ${restored} chat session(s) from disk (sessionIds cleared for fresh start)`)
   }
 }
 

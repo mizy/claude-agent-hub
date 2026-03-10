@@ -27,7 +27,6 @@ export function registerTaskRoutes(app: Express): void {
   app.get('/api/tasks', (_req: Request, res: Response) => {
     try {
       const tasks = getAllTasks()
-      tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       res.json(tasks)
     } catch (err) {
       logger.error('Failed to get tasks', err)

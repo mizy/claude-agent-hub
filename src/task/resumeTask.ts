@@ -193,6 +193,37 @@ export function detectOrphanedTasks(): OrphanedTask[] {
             : false
 
           if (instance && !hasFailedNodes) {
+            // Schedule-wait orphan: task was cleanly waiting for a scheduled trigger.
+            // Restore to 'waiting' so daemon's waitingRecoveryJob can trigger it normally.
+            // Do NOT requeue for resume — the schedule-wait node handles timing itself.
+            const scheduleWaitNodeId = instance.variables?._scheduleWaitNodeId as string | undefined
+            const scheduleWaitResumeAt = instance.variables?._scheduleWaitResumeAt as string | undefined
+            const isScheduleWaitOrphan = !!(
+              scheduleWaitNodeId &&
+              (instance.nodeStates[scheduleWaitNodeId]?.status === 'waiting' ||
+                instance.nodeStates[scheduleWaitNodeId]?.status === 'pending')
+            )
+
+            if (isScheduleWaitOrphan) {
+              // Ensure the schedule-wait node is in 'waiting' state
+              if (instance.nodeStates[scheduleWaitNodeId!]?.status !== 'waiting') {
+                instance.nodeStates[scheduleWaitNodeId!] = {
+                  ...instance.nodeStates[scheduleWaitNodeId!]!,
+                  status: 'waiting',
+                  error: 'WAITING_FOR_SCHEDULE',
+                }
+                saveTaskInstance(task.id, instance)
+              }
+              updateTask(task.id, {
+                status: 'waiting',
+                error: undefined,
+                // Reset orphanResumeCount since this is expected behavior
+                metadata: { ...task.metadata, orphanResumeCount: '0' },
+              })
+              logger.info(
+                `Task ${task.id} restored to waiting state (schedule-wait orphan, resumeAt: ${scheduleWaitResumeAt ?? 'unknown'})`
+              )
+            } else {
             // Check orphan resume count to prevent infinite bounce
             const orphanResumeCount = (task.metadata?.orphanResumeCount ? parseInt(task.metadata.orphanResumeCount, 10) : 0) + 1
             if (orphanResumeCount > MAX_ORPHAN_RESUME_COUNT) {
@@ -225,6 +256,7 @@ export function detectOrphanedTasks(): OrphanedTask[] {
                 metadata: { ...task.metadata, orphanResumeCount: String(orphanResumeCount) },
               })
               logger.info(`Task ${task.id} requeued (${resetCount} running nodes reset to pending, orphanResumeCount: ${orphanResumeCount})`)
+            }
             }
           } else {
             // Has failed nodes or no instance — mark as failed
