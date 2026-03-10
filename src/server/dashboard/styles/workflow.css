@@ -26,11 +26,13 @@
 .canvas-container .ve-node.wf-status-completed .ve-node-shape rect { stroke: var(--wf-completed); }
 .canvas-container .ve-node.wf-status-failed .ve-node-shape rect { stroke: var(--wf-failed); }
 .canvas-container .ve-node.wf-status-skipped .ve-node-shape rect { stroke: var(--wf-skipped); }
+.canvas-container .ve-node.wf-status-loop-completed .ve-node-shape rect { stroke: var(--wf-loop-completed); }
 .canvas-container .ve-node.wf-status-pending .ve-node-shape circle { fill: var(--wf-pending); }
 .canvas-container .ve-node.wf-status-running .ve-node-shape circle { fill: var(--wf-running); }
 .canvas-container .ve-node.wf-status-completed .ve-node-shape circle { fill: var(--wf-completed); }
 .canvas-container .ve-node.wf-status-failed .ve-node-shape circle { fill: var(--wf-failed); }
 .canvas-container .ve-node.wf-status-skipped .ve-node-shape circle { fill: var(--wf-skipped); }
+.canvas-container .ve-node.wf-status-loop-completed .ve-node-shape circle { fill: var(--wf-loop-completed); }
 .canvas-container .ve-node.active .ve-link-points { display: none; }
 .canvas-container .ve-node .ve-link-points { display: none; }
 .canvas-container .ve-line-shape { stroke: var(--text-muted); stroke-width: 2; }

@@ -272,8 +272,8 @@ function isScreenshotPath(filePath: unknown): boolean {
   if (typeof filePath !== 'string') return false
   if (!IMAGE_EXT_RE.test(filePath)) return false
   // Must be in a system temp dir
-  const tempDirs = ['/tmp/', '/var/tmp/', process.env['TMPDIR'] ?? '']
-  return tempDirs.some(dir => dir && filePath.startsWith(dir))
+  const tempDirs = ['/tmp/', '/var/tmp/', process.env['TMPDIR']].filter(Boolean) as string[]
+  return tempDirs.some(dir => filePath.startsWith(dir))
 }
 
 /** Save base64-encoded image data to a temp file and return the path */
@@ -377,7 +377,8 @@ export function createClaudeCompatStreamProcessor(options: {
           if (toolName?.startsWith('mcp__')) {
             mcpToolUseIds.add(toolId)
           } else if (toolName === 'Read' && isScreenshotPath(input?.file_path)) {
-            mcpToolUseIds.add(toolId)
+            // Read tool viewing images is internal process — skip forwarding to user
+            logger.debug(`Skipping Read tool image (internal): ${input?.file_path}`)
           }
         }
       } else if (event.type === 'assistant' && event.message?.content) {
@@ -386,8 +387,8 @@ export function createClaudeCompatStreamProcessor(options: {
             if (block.name?.startsWith('mcp__')) {
               mcpToolUseIds.add(block.id)
             } else if (block.name === 'Read' && isScreenshotPath(block.input?.file_path)) {
-              // Read tool on a temp/screenshot image — treat as sendable image
-              mcpToolUseIds.add(block.id)
+              // Read tool viewing images is internal process — don't forward to user
+              logger.debug(`Skipping Read tool image (internal): ${block.input?.file_path}`)
             }
           }
         }
@@ -405,7 +406,8 @@ export function createClaudeCompatStreamProcessor(options: {
           if (toolOutput && !cb) fallbackWrite?.(toolOutput + '\n')
         }
       }
-    } catch {
+    } catch (e) {
+      logger.debug(`Stream event parse failed: ${line.slice(0, 120)}`)
       if (!cb) fallbackWrite?.(line + '\n')
     }
   }

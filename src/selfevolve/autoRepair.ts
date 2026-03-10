@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process'
 import { TASKS_DIR, FILE_NAMES } from '../store/paths.js'
 import { getPidLock, isServiceRunning } from '../scheduler/pidLock.js'
 import { createLogger } from '../shared/logger.js'
+import { getTasksByStatus } from '../store/TaskStore.js'
 import type { SignalEvent } from './signalDetector.js'
 
 const logger = createLogger('selfevolve:repair')
@@ -31,7 +32,24 @@ function isRunningAsDaemon(): boolean {
 
 async function repairStaleDaemon(): Promise<string | null> {
   if (isRunningAsDaemon()) {
-    // Daemon detected it's running stale code — spawn a fresh daemon and schedule self-exit
+    // Daemon detected it's running stale code — wait for running tasks to finish, then hand off
+    const MAX_WAIT_MS = 2 * 60 * 1000 // 2 minutes max wait
+    const POLL_INTERVAL_MS = 5000
+
+    const waitForRunningTasks = async (): Promise<void> => {
+      const start = Date.now()
+      while (Date.now() - start < MAX_WAIT_MS) {
+        const developing = getTasksByStatus('developing')
+        const planning = getTasksByStatus('planning')
+        if (developing.length === 0 && planning.length === 0) return
+        logger.info(
+          `Waiting for ${developing.length + planning.length} running task(s) to finish before restart...`
+        )
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
+      }
+      logger.warn('Max wait exceeded, proceeding with restart despite running tasks')
+    }
+
     logger.info('Stale code detected inside daemon, spawning fresh daemon and exiting...')
     const binPath = resolveBinPath()
     const child = spawn(process.execPath, [binPath, 'start', '-D'], {
@@ -45,13 +63,12 @@ async function repairStaleDaemon(): Promise<string | null> {
       })(),
     })
     child.unref()
-    // Give the new daemon a moment to start, then exit this stale process.
-    // Use setTimeout so current signal detection cycle can finish logging.
-    setTimeout(() => {
+    // Wait for running tasks, then exit to hand off to fresh process.
+    waitForRunningTasks().then(() => {
       logger.info('Stale daemon exiting to hand off to fresh process')
       process.exit(0)
-    }, 3000)
-    return 'Stale daemon auto-restarting: spawned fresh process, will exit shortly'
+    })
+    return 'Stale daemon auto-restarting: waiting for running tasks, then will exit'
   }
 
   const { stopDaemon } = await import('../scheduler/stopDaemon.js')

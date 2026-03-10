@@ -15,6 +15,7 @@ export interface StreamSetup {
   stopStreaming: () => void | Promise<void>
   placeholderPromise: Promise<string | null>
   getPlaceholderId: () => string | null
+  getAccumulated: () => string
 }
 
 /** Setup streaming handler and send placeholder message */
@@ -30,7 +31,7 @@ export function setupStreamingAndPlaceholder(
 ): StreamSetup {
   let placeholderId: string | null = null
   const streamState = { placeholderId: null as string | null }
-  const { onChunk, stop: stopStreaming } = createStreamHandler(
+  const { onChunk, stop: stopStreaming, getAccumulated } = createStreamHandler(
     chatId, streamState, maxLen, messenger, bench, streamOptions
   )
   signal.addEventListener('abort', () => stopStreaming(), { once: true })
@@ -41,5 +42,5 @@ export function setupStreamingAndPlaceholder(
     .then(pId => { placeholderId = pId; streamState.placeholderId = pId; return pId })
     .catch(e => { logger.debug(`placeholder send failed: ${getErrorMessage(e)}`); return null })
 
-  return { onChunk, stopStreaming, placeholderPromise, getPlaceholderId: () => placeholderId }
+  return { onChunk, stopStreaming, placeholderPromise, getPlaceholderId: () => placeholderId, getAccumulated }
 }

@@ -62,6 +62,13 @@ export interface ClearTasksResult {
 function killTaskProcess(taskId: string): boolean {
   const processInfo = getProcessInfo(taskId)
   if (processInfo && isProcessRunning(processInfo.pid)) {
+    // Safety: never send SIGTERM to current process (daemon running in-process task)
+    if (processInfo.pid === process.pid) {
+      logger.warn(
+        `Task ${taskId} processInfo.pid (${processInfo.pid}) matches current process — skipping kill to avoid daemon self-termination`
+      )
+      return false
+    }
     try {
       process.kill(processInfo.pid, 'SIGTERM')
       logger.info(`Killed process: ${processInfo.pid} (task: ${taskId})`)

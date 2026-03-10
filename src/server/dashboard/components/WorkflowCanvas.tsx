@@ -164,6 +164,7 @@ export function WorkflowCanvas() {
               <div className="legend-item"><div className="legend-dot dot-done" /> Done</div>
               <div className="legend-item"><div className="legend-dot dot-failed" /> Failed</div>
               <div className="legend-item"><div className="legend-dot dot-skipped" /> Skipped</div>
+              <div className="legend-item"><div className="legend-dot dot-loop-completed" /> Looped</div>
             </div>
           </div>
         </>

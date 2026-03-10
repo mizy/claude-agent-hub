@@ -39,6 +39,11 @@ export interface MemoryEntry {
   reinforceCount?: number // times reinforced (different from accessCount)
   decayRate?: number // decay rate factor 0.5-2.0 (higher = faster decay)
 
+  // Importance & supersession fields
+  importance?: number // 1-10, how valuable this memory is
+  superseded?: boolean // true if replaced by a newer memory
+  supersedesId?: string // id of the older memory this one replaces
+
   // Association engine fields
   associations?: Association[]
 }

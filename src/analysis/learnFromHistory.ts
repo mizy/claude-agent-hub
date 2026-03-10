@@ -147,7 +147,7 @@ async function buildHistoryEntry(summary: TaskSummary): Promise<TaskHistoryEntry
  * 分析与当前任务相似的历史任务，提取成功模式和失败教训
  */
 export async function learnFromHistory(taskDescription: string): Promise<LearningInsights> {
-  const history = await getTaskHistory(50)
+  const history = await getTaskHistory(25)
 
   logger.debug(`分析 ${history.length} 条历史任务`)
 

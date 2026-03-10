@@ -7,7 +7,7 @@
 ```bash
 # 任务（必须在目标项目目录下运行，cwd 用于同项目冲突检测和自动串行）
 cah "任务描述"           # 创建并执行（-p priority, -a agent, -b backend, -m model, -S schedule, -F 前台, --no-run 仅创建, -v verbose, -d data-dir）
-cah list                 # 任务列表（-s status, -w watch, --no-progress）
+cah list                 # 任务列表（-s status, -w watch, --no-progress, -a agent, --source, --cwd, --project, -i interval）
 cah logs <id>            # 任务日志（-f follow, -n tail）
 cah run                  # 手动执行队列中下一个 pending 任务
 cah chat <message>       # 与 AI 对话（一次性）
@@ -26,9 +26,9 @@ cah schedule create|list|stop  # 定时任务
 cah backend list|current      # 后端
 cah prompt versions|rollback|diff|compare|test|evaluate|extract  # Prompt 管理
 cah agent list|show           # Agent 管理
+cah stats overview|chat|task|growth  # 统计（--json）
 cah init                 # 初始化
-cah trace                # 链路追踪
-cah dashboard            # 可视化面板
+cah dashboard start|stop|status  # 可视化面板
 ```
 
 ## 分层架构
@@ -37,7 +37,7 @@ cah dashboard            # 可视化面板
 CLI (cli/) → Server/Report/Messaging  表现层
 Task (task/) → Scheduler/Workflow/Analysis/Output/SelfEvolve/SelfDrive  业务层
 Backend (backend/)  集成层（claude-code/opencode/iflow/codebuddy/cursor）
-Memory/Persona/Prompts/PromptOptimization/Config  领域层
+Memory/Agents/Prompts/PromptOptimization/Config/Consciousness/Statistics  领域层
 Store (store/)  持久层（GenericFileStore）
 Shared (shared/) / Types (types/)  基础设施
 ```
@@ -80,6 +80,15 @@ cah "描述" → createTask(cwd, pending)
 └── tmp/                 # 临时文件
 ```
 
+## 配置
+
+**唯一配置文件：`~/.claude-agent-hub.yaml`**（全局，不使用 config.json 或其他格式）
+
+- 环境变量可覆盖部分字段：`CAH_LARK_APP_ID`、`CAH_BACKEND_TYPE` 等
+- 加载逻辑：`config/loadConfig.ts`，schema + 默认值：`config/schema.ts`
+- 支持 file watch 热加载（500ms debounce），修改即生效
+- Backend 配置只需写 `type` 和 `model`，其余字段走 schema 默认值
+
 ## 开发
 
 ```bash
@@ -108,4 +117,4 @@ pnpm run clean          # 清理 dist
 
 - 文件/函数: 动词+名词，类: PascalCase，`@entry` 标记入口
 - 单文件 ≤ 500 行，代码注释英文，CLI 输出中文
-- rebuild 后必须 `cah restart` 或 `/reload` 重启 daemon
+- rebuild 后由用户手动 `cah restart` 或 `/reload` 重启 daemon（**任务/Agent 内部严禁执行 `cah restart`/`cah stop`/`kill`，否则会终止正在运行的 daemon**；stale_daemon 检测机制会在安全时机自动重启）

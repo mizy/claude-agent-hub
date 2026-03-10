@@ -1,11 +1,42 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // Mock dependencies before importing module
-vi.mock('../../../store/readWriteJson.js', () => ({
-  readJson: vi.fn(),
-  writeJson: vi.fn(),
-}))
-vi.mock('../../../store/paths.js', () => ({ DATA_DIR: '/tmp/test-cah' }))
+vi.mock('../../../store/readWriteJson.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../store/readWriteJson.js')>()
+  return { ...actual, readJson: vi.fn(), writeJson: vi.fn() }
+})
+vi.mock('../../../store/paths.js', async () => {
+  const { join } = await import('path')
+  const DATA_DIR = '/tmp/test-cah'
+  const TASKS_DIR = join(DATA_DIR, 'tasks')
+  return {
+    DATA_DIR,
+    TASKS_DIR,
+    MEMORY_DIR: join(DATA_DIR, 'memory'),
+    EPISODES_DIR: join(DATA_DIR, 'episodes'),
+    PROMPT_VERSIONS_DIR: join(DATA_DIR, 'prompt-versions'),
+    SELF_MODEL_PATH: join(DATA_DIR, 'self-model.json'),
+    CONSCIOUSNESS_LOG_PATH: join(DATA_DIR, 'consciousness.jsonl'),
+    REFLECTIONS_LOG_PATH: join(DATA_DIR, 'reflections.jsonl'),
+    GROWTH_JOURNAL_PATH: join(DATA_DIR, 'consciousness', 'growth-journal.jsonl'),
+    VALUE_SYSTEM_PATH: join(DATA_DIR, 'consciousness', 'value-system.json'),
+    INTENTS_PATH: join(DATA_DIR, 'consciousness', 'intents.json'),
+    QUEUE_FILE: join(DATA_DIR, 'queue.json'),
+    RUNNER_LOCK_FILE: join(DATA_DIR, 'runner.lock'),
+    RUNNER_LOG_FILE: join(DATA_DIR, 'runner.log'),
+    TASK_FILE: 'task.json',
+    WORKFLOW_FILE: 'workflow.json',
+    INSTANCE_FILE: 'instance.json',
+    PROCESS_FILE: 'process.json',
+    FILE_NAMES: { TASK: 'task.json', META: 'meta.json', TASKS_INDEX: 'tasks-index.json' },
+    DIR_NAMES: { LOGS: 'logs', OUTPUTS: 'outputs' },
+    META_FILE: join(DATA_DIR, 'meta.json'),
+    TASKS_INDEX_FILE: join(TASKS_DIR, 'tasks-index.json'),
+    getTaskDir: (id: string) => join(TASKS_DIR, id),
+    getTaskFilePath: (id: string) => join(TASKS_DIR, id, 'task.json'),
+    TASK_PATHS: {},
+  }
+})
 
 import {
   configureSession,

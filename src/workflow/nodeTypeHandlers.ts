@@ -13,9 +13,8 @@ import { getTask, updateTask } from '../store/TaskStore.js'
 import { createChildSpan, endSpan } from '../store/createSpan.js'
 import { appendSpan } from '../store/TraceStore.js'
 import { createLogger } from '../shared/logger.js'
-import { getLarkConfig, getBackendConfig } from '../config/index.js'
-// Note: sendReviewNotification is dynamically imported to avoid
-// static dependency on the messaging/ layer (workflow should not depend on messaging)
+import { getBackendConfig } from '../config/index.js'
+import { sendApprovalRequest, sendLarkMarkdownNotification } from '../notification/index.js'
 import {
   executeDelayNode,
   executeScheduleNode,
@@ -244,25 +243,19 @@ async function executeHumanNode(
 ): Promise<{ success: boolean; error?: string }> {
   logger.info(`Human node ${node.id} waiting for approval`)
 
-  // 发送飞书通知 (dynamic import to avoid static dependency on messaging/ layer)
   try {
-    const larkConfig = await getLarkConfig()
-    const webhookUrl = larkConfig?.webhookUrl
-
-    if (webhookUrl) {
-      const { sendReviewNotification } = await import('../messaging/index.js')
-      await sendReviewNotification({
-        webhookUrl,
-        taskTitle: workflow.name,
-        workflowName: workflow.name,
-        workflowId: workflow.id,
-        instanceId: instance.id,
-        nodeId: node.id,
-        nodeName: node.name,
-      })
+    const sent = await sendApprovalRequest({
+      taskTitle: workflow.name,
+      workflowName: workflow.name,
+      workflowId: workflow.id,
+      instanceId: instance.id,
+      nodeId: node.id,
+      nodeName: node.name,
+    })
+    if (sent) {
       logger.info(`Sent Lark notification for human node ${node.id}`)
     } else {
-      logger.warn('Lark webhook URL not configured, skipping notification')
+      logger.warn('Approval notification skipped')
     }
   } catch (notifyError) {
     // 通知失败不影响节点执行
@@ -482,58 +475,24 @@ async function executeLarkNotifyNode(
     return { success: false, error: 'lark-notify: no content to send' }
   }
 
-  // 解析 chatId
-  let chatId = config.chatId
-  if (!chatId) {
-    const larkConfig = await getLarkConfig()
-    chatId = larkConfig?.chatId
-  }
-  if (!chatId) {
-    try {
-      const { getDefaultLarkChatId } = await import('../messaging/larkWsClient.js')
-      chatId = getDefaultLarkChatId() ?? undefined
-    } catch {
-      // larkWsClient not available
-    }
-  }
-  if (!chatId) {
-    return { success: false, error: 'lark-notify: no chatId configured' }
-  }
+  const requestedChatId = config.chatId
 
   // 截断过长消息
   if (text.length > 4000) {
     text = text.slice(0, 4000) + '\n\n...(truncated)'
   }
 
-  // 发送卡片消息（支持 markdown 渲染）
   try {
-    const { sendLarkCardViaApi, normalizeLarkMarkdown, buildCard } =
-      await import('../messaging/index.js')
-
-    // 将 markdown 文本按 --- 分段，构建卡片 elements
-    const sections = text.split(/^(?:---+|\*\*\*+|___+)\s*$/m)
-    const elements: Array<{ tag: 'markdown'; content: string } | { tag: 'hr' }> = []
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i]!.trim()
-      if (section) {
-        elements.push({ tag: 'markdown', content: normalizeLarkMarkdown(section) })
-      }
-      if (i < sections.length - 1) {
-        elements.push({ tag: 'hr' })
-      }
-    }
-    if (elements.length === 0) {
-      elements.push({ tag: 'markdown', content: text })
-    }
-
-    const title = config.title || '任务通知'
-    const card = buildCard(title, 'blue', elements)
-    const sent = await sendLarkCardViaApi(chatId, card)
+    const sent = await sendLarkMarkdownNotification({
+      title: config.title,
+      text,
+      chatId: requestedChatId,
+    })
     if (!sent) {
       return { success: false, error: 'lark-notify: failed to send card' }
     }
-    logger.info(`Lark notify card sent to ${chatId}, length=${text.length}`)
-    return { success: true, output: { sent: true, chatId, length: text.length } }
+    logger.info(`Lark notify card sent, length=${text.length}`)
+    return { success: true, output: { sent: true, chatId: requestedChatId, length: text.length } }
   } catch (err) {
     logger.error(`Lark notify failed: ${err}`)
     return { success: false, error: 'lark-notify: failed to send card' }

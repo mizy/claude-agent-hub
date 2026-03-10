@@ -51,17 +51,24 @@ export function stopTask(id: string): StopTaskResult {
   // Kill the process if running
   const processInfo = getProcessInfo(task.id)
   if (processInfo && processInfo.status === 'running' && isProcessRunning(processInfo.pid)) {
-    try {
-      process.kill(processInfo.pid, 'SIGTERM')
-      logger.info(`Killed process: ${processInfo.pid}`)
-      // Update process info - the process may not have time to update itself
-      updateProcessInfo(task.id, {
-        status: 'stopped',
-        stopReason: 'killed',
-      })
-    } catch {
-      // Process may have already exited
+    // Safety: never send SIGTERM to the current process (daemon running in-process task)
+    if (processInfo.pid === process.pid) {
+      logger.warn(
+        `Task ${task.id} processInfo.pid (${processInfo.pid}) matches current process — skipping kill to avoid daemon self-termination`
+      )
+    } else {
+      try {
+        process.kill(processInfo.pid, 'SIGTERM')
+        logger.info(`Killed process: ${processInfo.pid}`)
+      } catch {
+        // Process may have already exited
+      }
     }
+    // Update process info regardless
+    updateProcessInfo(task.id, {
+      status: 'stopped',
+      stopReason: 'killed',
+    })
   }
 
   // Get current execution state for logging

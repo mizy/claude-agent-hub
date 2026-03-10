@@ -90,6 +90,7 @@ export function logNodeCompleted(params: {
       instanceId,
       nodeId,
       nodeName: node.name,
+      durationMs,
     })
 
     appendJsonlLog(taskId, {

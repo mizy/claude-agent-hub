@@ -51,6 +51,8 @@ export const TASK_PROMPTS = {
 {{context}}
 
 请执行这个节点的任务，直接修改相关文件。
+
+⚠️ **严禁执行 cah restart、cah stop 或任何 kill/终止进程的命令** — 这些操作会直接终止正在运行的 daemon，破坏整个执行环境。代码构建后由 stale_daemon 检测机制在安全时机自动重启。
 `,
 
   /**
@@ -224,35 +226,33 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 ### Review-Fix 循环（功能开发/重构必用）
 
 \`\`\`
-implement → verify → review → end (APPROVED)
-                       ↓ (!APPROVED)
-                      fix → verify (maxLoops=3)
+implement → review → end (APPROVED)
+                ↓ (!APPROVED)
+               fix → review (maxLoops=5)
 \`\`\`
 
 规则：
-- verify（构建验证）在 review（代码评审）之前，先确保 build 通过
+- review（代码评审）节点同时负责构建验证和代码审查，先跑 build/test 再评审
 - review → end 是 APPROVED 条件边；review → fix 是 !APPROVED 条件边
 - **APPROVED 边放前，!APPROVED 边放后**（后者作为 fallback）
-- fix → verify 设 maxLoops=3；fix 只回 verify，不直接回 review
-- build 失败由 verify 节点 retry 处理，不需要 verify → fix 的条件分支
+- fix → review 设 maxLoops=5
+- 不需要单独的构建验证节点，review 节点内先验证再评审
 
 \`\`\`json
 {
   "nodes": [
     { "id": "start", "type": "start", "name": "开始" },
     { "id": "implement", "type": "task", "name": "实现功能", "task": { "agent": "Pragmatist", "prompt": "实现 xxx 功能" } },
-    { "id": "verify", "type": "task", "name": "构建验证", "task": { "agent": "Tester", "prompt": "运行 typecheck、lint、build、test，有失败先修复再验证。" } },
-    { "id": "review", "type": "task", "name": "代码评审", "task": { "agent": "Reviewer", "prompt": "严格评审代码变更，逐项检查正确性、代码质量、架构、错误处理、性能、安全。\\n\\n输出结论：APPROVED（零🔴问题）、NEEDS_CHANGES（有🔴必须修复项）或 REJECTED（架构性问题需重写）。按 🔴/🟡/🟢 分级列出问题。" } },
+    { "id": "review", "type": "task", "name": "代码评审", "task": { "agent": "Reviewer", "prompt": "先运行构建验证（typecheck、lint、build、test），有失败先修复再继续。\\n\\n构建通过后，严格评审代码变更，逐项检查正确性、代码质量、架构、错误处理、性能、安全。\\n\\n输出结论：APPROVED（零🔴问题）、NEEDS_CHANGES（有🔴必须修复项）或 REJECTED（架构性问题需重写）。按 🔴/🟡/🟢 分级列出问题。" } },
     { "id": "fix", "type": "task", "name": "修复问题", "task": { "agent": "Pragmatist", "prompt": "根据评审意见修复代码问题" } },
     { "id": "end", "type": "end", "name": "结束" }
   ],
   "edges": [
     { "from": "start", "to": "implement" },
-    { "from": "implement", "to": "verify" },
-    { "from": "verify", "to": "review" },
+    { "from": "implement", "to": "review" },
     { "from": "review", "to": "end", "condition": "outputs.review._raw.includes('APPROVED')" },
     { "from": "review", "to": "fix", "condition": "!outputs.review._raw.includes('APPROVED')" },
-    { "from": "fix", "to": "verify", "maxLoops": 3 }
+    { "from": "fix", "to": "review", "maxLoops": 5 }
   ]
 }
 \`\`\`

@@ -5,7 +5,7 @@ import { extractNodeOutputText } from '../utils/extractNodeOutput'
 
 const STATUS_COLORS: Record<string, string> = {
   pending: '#6b7280', ready: '#6b7280', running: '#3b82f6', waiting: '#3b82f6',
-  done: '#22c55e', failed: '#ef4444', skipped: '#eab308',
+  done: '#22c55e', failed: '#ef4444', skipped: '#eab308', 'loop-completed': '#a78bfa',
 }
 
 const TASK_STATUS_COLORS: Record<string, string> = {

@@ -84,9 +84,12 @@ export async function executeTask(
     setLogMode('foreground')
   }
 
-  // Redirect console output to task's execution.log
-  // This ensures task logs are captured even when running inside daemon process
-  const restoreConsole = redirectConsoleToTaskLog(task.id)
+  // Redirect console output to task's execution.log — but only when running
+  // inside the daemon process (not spawned). Spawned processes already have
+  // stdout/stderr piped to execution.log by spawnTaskProcess, so enabling
+  // redirect there would duplicate every log line.
+  const isSpawnedProcess = !!process.env.CAH_TASK_ID
+  const restoreConsole = isSpawnedProcess ? () => {} : redirectConsoleToTaskLog(task.id)
 
   logger.info(`${resume ? '恢复任务' : '开始执行任务'}: ${task.title}`)
 
@@ -169,7 +172,12 @@ export async function executeTask(
     unsubscribeStats = setupIncrementalStatsSaving(task.id, instance.id)
 
     if (resume) {
-      await enqueueReadyNodesForResume(task.id, workflow, instance)
+      const enqueuedCount = await enqueueReadyNodesForResume(task.id, workflow, instance)
+      if (enqueuedCount === 0) {
+        // Sync instance status to failed to prevent re-resume with stale "running" instance
+        await updateInstanceStatus(instance.id, 'failed')
+        throw new Error('Resume failed: no ready nodes found after recovery. Check instance node states.')
+      }
     }
 
     // Phase 3: Wait for completion and finalize
@@ -207,9 +215,13 @@ export async function executeTask(
     // Emit events, save stats, send notifications
     await emitWorkflowCompleted({ workflow, finalInstance, task, startedAt, completedAt })
 
-    // Update task status
+    // Update task status (include error message for failed tasks)
+    const failError = success
+      ? undefined
+      : finalInstance.error || collectNodeErrors(finalInstance) || `Workflow ${finalInstance.status} (no error details captured)`
     updateTask(task.id, {
       status: success ? 'completed' : 'failed',
+      error: failError,
       output: {
         workflowId: workflow.id,
         instanceId: finalInstance.id,
@@ -225,9 +237,8 @@ export async function executeTask(
       return { success, workflow, instance: finalInstance, outputPath, timing: { startedAt, completedAt } }
     } else {
       logger.error(`任务失败: ${task.title}`)
-      const errorMsg = finalInstance.error || collectNodeErrors(finalInstance) || `Workflow ${finalInstance.status} (no error details captured)`
-      logger.error(`错误: ${errorMsg}`)
-      throw new Error(errorMsg)
+      logger.error(`错误: ${failError}`)
+      throw new Error(failError)
     }
   } catch (error) {
     logErrorFn(logger, '执行出错', isError(error) ? error : String(error), {
@@ -311,13 +322,15 @@ export async function executeTask(
   }
 }
 
-/** Collect first failed node error from instance as fallback when instance.error is empty */
+/** Collect failed node errors from instance as fallback when instance.error is empty */
 function collectNodeErrors(instance: WorkflowInstance): string | undefined {
   if (!instance.nodeStates) return undefined
+  const errors: string[] = []
   for (const [nodeId, state] of Object.entries(instance.nodeStates)) {
     if (state.status === 'failed' && state.error) {
-      return `Node ${nodeId} failed: ${state.error}`
+      errors.push(`Node ${nodeId}: ${state.error}`)
     }
   }
-  return undefined
+  if (errors.length === 0) return undefined
+  return errors.length === 1 ? errors[0] : errors.join('; ')
 }

@@ -15,11 +15,11 @@ import {
   saveProcessInfo,
   updateProcessInfo,
 } from '../store/TaskStore.js'
-import { registerTaskEventListeners } from '../messaging/registerTaskEventListeners.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import { releaseRunnerLock } from './spawnTask.js'
 import { isRunningStatus } from '../types/taskStatus.js'
+import { bootstrapRuntime } from '../runtime/bootstrap.js'
 
 const logger = createLogger('queue-runner')
 
@@ -85,8 +85,7 @@ setupSignalHandlers()
 async function main(): Promise<void> {
   logger.info('Queue runner started')
 
-  // Register task event → notification bridge (so completion notifications are sent)
-  registerTaskEventListeners()
+  bootstrapRuntime()
 
   try {
     // 循环执行所有 pending 任务

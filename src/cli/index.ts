@@ -45,6 +45,7 @@ import { registerBackendCommands } from './commands/backend.js'
 import { registerSelfCommand } from './commands/self.js'
 import { registerScheduleCommand } from './commands/schedule.js'
 import { registerChatCommand } from './commands/chat.js'
+import { registerStatsCommand } from './commands/stats.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask, getAllTasks, listTasks } from '../task/queryTask.js'
@@ -60,7 +61,7 @@ import { isRunningStatus, isPendingStatus } from '../types/taskStatus.js'
 import { findClosestMatch } from '../shared/levenshtein.js'
 import { truncateText } from '../shared/truncateText.js'
 import { getErrorMessage } from '../shared/assertError.js'
-import { registerTaskEventListeners } from '../messaging/registerTaskEventListeners.js'
+import { bootstrapRuntime } from '../runtime/bootstrap.js'
 
 /** Options that consume the next argv as value (for positional counting) */
 const OPTIONS_WITH_VALUE = new Set([
@@ -125,8 +126,7 @@ const KNOWN_COMMANDS = [
   'chat',
 ]
 
-// Bridge task lifecycle events to messaging notifications
-registerTaskEventListeners()
+bootstrapRuntime()
 
 const program = new Command()
 
@@ -325,6 +325,7 @@ registerBackendCommands(program)
 registerSelfCommand(program)
 registerScheduleCommand(program)
 registerChatCommand(program)
+registerStatsCommand(program)
 
 // cah list - 查看任务列表的快捷命令
 program

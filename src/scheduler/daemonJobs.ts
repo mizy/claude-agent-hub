@@ -23,14 +23,19 @@ import { resumeTask, detectOrphanedTasks } from '../task/resumeTask.js'
 import { detectSignals, tryAutoRepair } from '../selfevolve/index.js'
 import { runEvolutionCycle } from '../prompt-optimization/index.js'
 import { BUILTIN_AGENTS } from '../agents/builtinAgents.js'
+import { cleanupFadingMemories, consolidateMemories, rebuildAllAssociations } from '../memory/index.js'
+import { loadConfig } from '../config/loadConfig.js'
 import { createLogger } from '../shared/logger.js'
 
 const logger = createLogger('daemon-jobs')
 
+const MAX_WAITING_RESUME_ATTEMPTS = 5
+const waitingResumeAttempts = new Map<string, number>()
+
 let scheduledJobs: cron.ScheduledTask[] = []
 
 /** Register all daemon cron jobs */
-export function registerDaemonJobs(pollCronExpr: string): void {
+export async function registerDaemonJobs(pollCronExpr: string): Promise<void> {
   // Task polling
   const job = cron.schedule(pollCronExpr, async () => {
     try {
@@ -98,12 +103,20 @@ export function registerDaemonJobs(pollCronExpr: string): void {
         if (typeof resumeAt !== 'string') continue
         const resumeTime = new Date(resumeAt).getTime()
         if (Date.now() >= resumeTime) {
-          logger.info(`Recovering waiting task ${task.id} (resumeAt=${resumeAt} has passed)`)
+          const attempts = (waitingResumeAttempts.get(task.id) ?? 0) + 1
+          waitingResumeAttempts.set(task.id, attempts)
+          if (attempts > MAX_WAITING_RESUME_ATTEMPTS) {
+            logger.warn(`Task ${task.id} exceeded max waiting resume attempts (${MAX_WAITING_RESUME_ATTEMPTS}), marking as failed`)
+            updateTask(task.id, { status: 'failed', error: `Exceeded max waiting resume attempts (${MAX_WAITING_RESUME_ATTEMPTS}). Schedule-wait node could not recover.` })
+            waitingResumeAttempts.delete(task.id)
+            continue
+          }
+          logger.info(`Recovering waiting task ${task.id} (resumeAt=${resumeAt} has passed, attempt ${attempts}/${MAX_WAITING_RESUME_ATTEMPTS})`)
           // Reset the schedule-wait node from "running" to "pending" so
           // recoverWorkflowInstance can properly re-execute it on resume.
           const waitNodeId = instance.variables?._scheduleWaitNodeId as string | undefined
           const waitNodeStatus = waitNodeId ? instance.nodeStates[waitNodeId]?.status : undefined
-          if (waitNodeId && (waitNodeStatus === 'running' || waitNodeStatus === 'waiting')) {
+          if (waitNodeId && (waitNodeStatus === 'running' || waitNodeStatus === 'waiting' || waitNodeStatus === 'failed')) {
             instance.nodeStates[waitNodeId] = {
               ...instance.nodeStates[waitNodeId],
               status: 'pending',
@@ -136,11 +149,12 @@ export function registerDaemonJobs(pollCronExpr: string): void {
           }
 
           updateTask(task.id, { status: 'developing' })
+          waitingResumeAttempts.delete(task.id)
           resumeTask(task.id)
         }
       }
     } catch (error) {
-      logger.debug(`Waiting task recovery error: ${error}`)
+      logger.warn(`Waiting task recovery error: ${error}`)
     }
   })
   scheduledJobs.push(waitingRecoveryJob)
@@ -167,6 +181,43 @@ export function registerDaemonJobs(pollCronExpr: string): void {
     }
   })
   scheduledJobs.push(orphanRecoveryJob)
+
+  // Memory fading cleanup — configurable interval (default every hour)
+  const config = await loadConfig()
+  const cleanupHours = config.memory?.forgetting?.cleanupIntervalHours ?? 1
+  const memoryCleanupJob = cron.schedule(`0 */${cleanupHours} * * *`, async () => {
+    try {
+      const result = await cleanupFadingMemories()
+      if (result.archived > 0 || result.deleted > 0) {
+        logger.info(`Memory cleanup: archived=${result.archived}, deleted=${result.deleted}`)
+      }
+    } catch (error) {
+      logger.error(`Memory cleanup cron error: ${error}`)
+    }
+  })
+  scheduledJobs.push(memoryCleanupJob)
+
+  // Memory consolidation — daily at 3:00 AM
+  const memoryConsolidationJob = cron.schedule('0 3 * * *', async () => {
+    try {
+      const result = await consolidateMemories()
+      logger.info(`Memory consolidation: merged=${result.merged}, kept=${result.kept}`)
+    } catch (error) {
+      logger.error(`Memory consolidation cron error: ${error}`)
+    }
+  })
+  scheduledJobs.push(memoryConsolidationJob)
+
+  // Association graph rebuild — weekly on Sunday at 4:00 AM
+  const associationRebuildJob = cron.schedule('0 4 * * 0', async () => {
+    try {
+      const result = await rebuildAllAssociations()
+      logger.info(`Association rebuild: total=${result.total}, newLinks=${result.newLinks}`)
+    } catch (error) {
+      logger.error(`Association rebuild cron error: ${error}`)
+    }
+  })
+  scheduledJobs.push(associationRebuildJob)
 
   // Tmp file cleanup — every hour, delete files older than 24h
   const tmpCleanupJob = cron.schedule('0 * * * *', () => {

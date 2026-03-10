@@ -8,6 +8,7 @@
  */
 
 import { Command } from 'commander'
+import type { Proposal } from '../../selfevolve/proposal.js'
 import chalk from 'chalk'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { formatDuration } from '../../shared/formatTime.js'
@@ -238,6 +239,130 @@ export function registerSelfEvolveCommand(parent: Command) {
             console.log(chalk.gray(`\n  共 ${evolutions.length} 条，显示最近 ${limit} 条`))
           }
         }
+      } catch (err) {
+        console.log(chalk.red(`查询失败: ${getErrorMessage(err)}`))
+      }
+
+      console.log()
+    })
+
+  evolve
+    .command('intents')
+    .description('查看用户隐含意图信号')
+    .option('-m, --mine', '重新挖掘（默认只读缓存）')
+    .option('--json', '输出 JSON 格式')
+    .action(async (options: { mine?: boolean; json?: boolean }) => {
+      console.log()
+      console.log(chalk.bold('🔮 用户意图信号'))
+      console.log()
+
+      try {
+        const { mineIntentSignals, loadIntentSignals } = await import('../../consciousness/intentMining.js')
+        const signals = options.mine ? mineIntentSignals() : loadIntentSignals()
+        const pending = signals.filter(s => s.status === 'pending')
+
+        if (options.json) {
+          console.log(JSON.stringify(signals, null, 2))
+          return
+        }
+
+        if (signals.length === 0) {
+          console.log(chalk.gray('  暂无意图信号，使用 --mine 重新挖掘'))
+          console.log()
+          return
+        }
+
+        console.log(chalk.dim(`  共 ${signals.length} 条信号，${pending.length} 条待处理`))
+        console.log()
+
+        for (const s of pending.slice(0, 20)) {
+          const date = new Date(s.timestamp).toLocaleDateString()
+          const kws = s.keywords.join(', ')
+          const msg = s.message.length > 80 ? s.message.slice(0, 80) + '...' : s.message
+          console.log(`  ${chalk.yellow('○')} ${chalk.dim(date)} ${msg}`)
+          console.log(`    ${chalk.gray(`关键词: ${kws}`)}`)
+        }
+
+        if (pending.length > 20) {
+          console.log(chalk.gray(`\n  ... 还有 ${pending.length - 20} 条`))
+        }
+      } catch (err) {
+        console.log(chalk.red(`查询失败: ${getErrorMessage(err)}`))
+      }
+
+      console.log()
+    })
+
+  evolve
+    .command('proposals')
+    .description('查看外部灵感提案')
+    .option('-a, --all', '显示所有提案（含已处理）')
+    .action(async (options: { all?: boolean }) => {
+      console.log()
+      console.log(chalk.bold('💡 灵感提案'))
+      console.log()
+
+      try {
+        const { readFileSync, existsSync } = await import('fs')
+        const { join } = await import('path')
+        const { DATA_DIR } = await import('../../store/paths.js')
+        const filePath = join(DATA_DIR, 'evolution', 'proposals.json')
+
+        if (!existsSync(filePath)) {
+          console.log(chalk.gray('  暂无提案，运行 cah self drive 触发灵感采集'))
+          console.log()
+          return
+        }
+
+        let proposals: Proposal[] = []
+        try {
+          const parsed = JSON.parse(readFileSync(filePath, 'utf-8'))
+          proposals = Array.isArray(parsed) ? parsed : []
+        } catch {
+          console.log(chalk.gray('  暂无提案，运行 cah self drive 触发灵感采集'))
+          console.log()
+          return
+        }
+
+        if (!options.all) {
+          proposals = proposals.filter(p => p.status === 'pending')
+        }
+
+        if (proposals.length === 0) {
+          const msg = options.all
+            ? '暂无提案，运行 cah self drive 触发灵感采集'
+            : '暂无待处理提案（用 --all 查看全部）'
+          console.log(chalk.gray(`  ${msg}`))
+          console.log()
+          return
+        }
+
+        const statusLabel: Record<string, string> = {
+          pending: chalk.yellow('待处理'),
+          accepted: chalk.green('已采纳'),
+          rejected: chalk.red('已拒绝'),
+          implemented: chalk.blue('已实现'),
+        }
+
+        const difficultyLabel: Record<string, string> = {
+          low: chalk.green('低'),
+          medium: chalk.yellow('中'),
+          high: chalk.red('高'),
+        }
+
+        proposals.forEach((p, i) => {
+          const idx = chalk.gray(`${i + 1}.`)
+          const status = statusLabel[p.status] || p.status
+          const diff = difficultyLabel[p.difficulty] || p.difficulty
+          console.log(`${idx} ${chalk.bold(p.title)}`)
+          console.log(`   来源: ${p.source}  难度: ${diff}  状态: ${status}`)
+          if (p.idea) {
+            console.log(`   ${chalk.gray(p.idea.length > 80 ? p.idea.slice(0, 80) + '...' : p.idea)}`)
+          }
+          console.log()
+        })
+
+        console.log(chalk.gray(`  共 ${proposals.length} 条提案`))
       } catch (err) {
         console.log(chalk.red(`查询失败: ${getErrorMessage(err)}`))
       }

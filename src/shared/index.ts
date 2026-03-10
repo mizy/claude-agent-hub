@@ -11,7 +11,6 @@
  * - 错误守卫: isError/getErrorMessage/getErrorStack/getErrorCause/ensureError
  * - 错误转换: toInvokeError
  * - 文本: truncateText
- * - Claude 配置: readGlobalClaudeMd/readProjectClaudeMd/readProjectMemory/readAllSkills/buildClaudeSystemPrompt
  * - 事件总线: taskEventBus（task ↔ messaging 解耦的核心机制）
  * - 时间: now/formatTime/formatRelative/timeDiff/formatDuration/parseInterval/intervalToCron/formatTimeRange
  */
@@ -84,17 +83,6 @@ export { isError, getErrorMessage, getErrorStack, getErrorCause, ensureError } f
 
 // 文本截断
 export { truncateText } from './truncateText.js'
-
-// Claude Code 配置读取
-export {
-  type SkillEntry,
-  type BuildSystemPromptOptions,
-  readGlobalClaudeMd,
-  readProjectClaudeMd,
-  readProjectMemory,
-  readAllSkills,
-  buildClaudeSystemPrompt,
-} from './readClaudeConfig.js'
 
 // 事件总线
 export { taskEventBus, type TaskCompletionPayload, type TaskNodeInfo } from './events/index.js'

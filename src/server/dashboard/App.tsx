@@ -4,6 +4,7 @@ import { WorkflowCanvas } from './components/WorkflowCanvas'
 import { RightPanel } from './components/RightPanel'
 import { SettingsPage } from './components/SettingsPage'
 import { ChatPage } from './components/ChatPage'
+import { StatisticsPage } from './components/StatisticsPage'
 import { Toast } from './components/Toast'
 import { useAutoRefresh } from './hooks/useAutoRefresh'
 import { useStore, type PageId } from './store/useStore'
@@ -11,6 +12,7 @@ import { useStore, type PageId } from './store/useStore'
 const NAV_ITEMS: { id: PageId; icon: string; label: string }[] = [
   { id: 'tasks', icon: '\u2630', label: 'Tasks' },
   { id: 'chat', icon: '\u{1F4AC}', label: 'Chat' },
+  { id: 'statistics', icon: '\u{1F4CA}', label: 'Stats' },
   { id: 'settings', icon: '\u2699', label: 'Settings' },
 ]
 
@@ -19,11 +21,13 @@ const PATH_TO_PAGE: Record<string, PageId> = {
   '/tasks': 'tasks',
   '/chat': 'chat',
   '/settings': 'settings',
+  '/statistics': 'statistics',
 }
 
 const PAGE_TO_PATH: Record<PageId, string> = {
   tasks: '/tasks',
   chat: '/chat',
+  statistics: '/statistics',
   settings: '/settings',
 }
 
@@ -143,6 +147,7 @@ export function App() {
 
         {currentPage === 'settings' && <SettingsPage />}
         {currentPage === 'chat' && <ChatPage />}
+        {currentPage === 'statistics' && <StatisticsPage />}
       </div>
 
       <NewTaskModal />

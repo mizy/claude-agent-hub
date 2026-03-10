@@ -3,7 +3,8 @@
  * 作为 NodeWorker 的 processor 使用
  */
 
-import { markNodeRunning, markNodeFailed, handleNodeResult } from './index.js'
+import { handleNodeResult } from './engine/WorkflowExecution.js'
+import { markNodeRunning, markNodeFailed } from './engine/StateManager.js'
 import { getWorkflow, getInstance, saveInstance } from '../store/WorkflowStore.js'
 import { getTask, updateTask } from '../store/TaskStore.js'
 import { createLogger, logError as logErrorHelper } from '../shared/logger.js'
@@ -12,6 +13,7 @@ import { logNodeStarted, logNodeCompleted, logNodeFailed } from './logNodeExecut
 import { executeNodeByType } from './nodeTypeHandlers.js'
 import { createRootSpan, createChildSpan, endSpan } from '../store/createSpan.js'
 import { appendSpan } from '../store/TraceStore.js'
+import { sendAutoWaitPause } from '../notification/index.js'
 import type { NodeJobData, NodeJobResult, WorkflowNode } from './types.js'
 import type { TraceContext } from '../types/trace.js'
 
@@ -46,57 +48,6 @@ function shouldAutoWait(node: WorkflowNode): boolean {
   }
 
   return false
-}
-
-/**
- * Send Lark notification for autoWait pause (fire-and-forget)
- */
-async function notifyAutoWaitPause(
-  workflowName: string,
-  nodeName: string,
-  taskId?: string,
-  nodeDescription?: string
-): Promise<void> {
-  try {
-    const { getLarkConfig } = await import('../config/index.js')
-    const larkConfig = await getLarkConfig()
-    const { getDefaultLarkChatId } = await import('../messaging/larkWsClient.js')
-    const larkChatId = larkConfig?.chatId || getDefaultLarkChatId()
-
-    if (!larkChatId || !taskId) {
-      // Fallback to webhook if no chat ID
-      const webhookUrl = larkConfig?.webhookUrl
-      if (!webhookUrl) {
-        logger.warn(`autoWait notification skipped: no Lark chatId or webhook configured`)
-        return
-      }
-
-      const { sendReviewNotification } = await import('../messaging/index.js')
-      await sendReviewNotification({
-        webhookUrl,
-        taskTitle: workflowName,
-        workflowName,
-        workflowId: '',
-        instanceId: '',
-        nodeId: '',
-        nodeName: `[autoWait] ${nodeName}`,
-      })
-      logger.info(`Sent autoWait notification for node ${nodeName}`)
-      return
-    }
-
-    const { sendLarkCardViaApi, buildAutoWaitCard } = await import('../messaging/index.js')
-    const card = buildAutoWaitCard({
-      taskId,
-      taskTitle: workflowName,
-      nodeName,
-      nodeDescription,
-    })
-    await sendLarkCardViaApi(larkChatId, card)
-    logger.info(`Sent autoWait card for node ${nodeName}`)
-  } catch (err) {
-    logger.warn(`Failed to send autoWait notification: ${err}`)
-  }
 }
 
 /**
@@ -149,7 +100,12 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     }
 
     // Send Lark notification asynchronously (fire-and-forget)
-    notifyAutoWaitPause(workflow.name, node.name, taskId, node.description || node.task?.prompt).catch(e => logger.debug(`Auto-wait-pause notify failed: ${e}`))
+    sendAutoWaitPause({
+      workflowName: workflow.name,
+      nodeName: node.name,
+      taskId,
+      nodeDescription: node.description || node.task?.prompt,
+    }).catch(e => logger.debug(`Auto-wait-pause notify failed: ${e}`))
 
     // Return special result — the NodeWorker will re-queue this node
     // when the user resumes (the node stays in pending/ready state)
@@ -229,6 +185,18 @@ export async function executeNode(data: NodeJobData): Promise<NodeJobResult> {
     }
 
     if (result.success) {
+      // Check if node was reset to pending while we were running (loop-back race condition).
+      // e.g. lark-notify's resetLoopPath ran while analyze_holdings was still executing.
+      // Discarding the stale result prevents the node from being left in 'done' state
+      // when it should be 'pending' for the next loop cycle.
+      const currentState = getInstance(instanceId)?.nodeStates[nodeId]
+      if (currentState?.status === 'pending' || currentState?.status === 'ready') {
+        logger.warn(
+          `Node ${nodeId} was reset to '${currentState.status}' while running — discarding stale result`
+        )
+        return { success: true, output: result.output, nextNodes: [] }
+      }
+
       // 记录节点完成
       logNodeCompleted({
         taskId,

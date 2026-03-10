@@ -60,6 +60,7 @@ const EDGE_COLORS: Record<string, string> = {
   completed: '#22c55e',
   failed: '#ef4444',
   skipped: '#eab308',
+  'loop-completed': '#a78bfa',
 }
 
 /** Detect back-edges via DFS to handle cycles in layout */
@@ -126,10 +127,26 @@ export function workflowToSchema(
 
   const NODE_W = 220, NODE_H = 64
 
+  // Build set of nodes that participated in executed loops
+  const loopExecutedNodes = new Set<string>()
+  edges.forEach(e => {
+    const key = `${e.from}->${e.to}`
+    if (backEdges.has(key) && (loopCounts[e.id] ?? 0) > 0) {
+      loopExecutedNodes.add(e.from)
+    }
+  })
+  loopMap.forEach(({ bodyNodes }, loopId) => {
+    if ((loopCounts[loopId] ?? 0) > 0) {
+      bodyNodes.forEach(id => loopExecutedNodes.add(id))
+    }
+  })
+
   const schemaNodes: WfNodeData[] = nodes.map(n => {
     const st = ns[n.id]
     let status = STATUS_MAP[st?.status || 'pending'] || 'pending'
-    if (taskDone && status === 'pending') status = 'skipped'
+    if (taskDone && status === 'pending') {
+      status = loopExecutedNodes.has(n.id) ? 'loop-completed' : 'skipped'
+    }
     const loopInfo = loopMap.get(n.id)
     return {
       uuid: n.id,

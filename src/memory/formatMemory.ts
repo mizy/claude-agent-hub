@@ -79,7 +79,8 @@ function deduplicateMemories(memories: MemoryEntry[]): MemoryEntry[] {
 export function formatMemoriesForPrompt(memories: MemoryEntry[]): string {
   if (memories.length === 0) return ''
 
-  // Deduplicate before formatting (input is already sorted by relevance score)
+  // Filter out superseded memories, then deduplicate
+  memories = memories.filter(m => !m.superseded)
   memories = deduplicateMemories(memories)
 
   // Group by category

@@ -20,7 +20,6 @@ import {
   stopLarkWsClient,
   startTelegramClient,
   stopTelegramClient,
-  registerTaskEventListeners,
 } from '../messaging/index.js'
 import { destroyChatHandler, loadSessions, configureSession } from '../messaging/index.js'
 import { acquirePidLock, releasePidLock, isServiceRunning } from './pidLock.js'
@@ -29,6 +28,9 @@ import { resolveEvolveContext } from '../selfevolve/resolveEvolveContext.js'
 import { intervalToCron } from '../shared/formatTime.js'
 import { registerDaemonJobs, stopAllJobs } from './daemonJobs.js'
 import { startSleepPrevention, stopSleepPrevention } from './sleepPrevention.js'
+import { appendLifecycleEvent } from './lifecycleLog.js'
+import { appendEntry } from '../consciousness/index.js'
+import { bootstrapRuntime } from '../runtime/bootstrap.js'
 
 interface DaemonOptions {
   detach?: boolean
@@ -161,8 +163,7 @@ async function runDaemon(): Promise<void> {
   // Warn if dist/ is older than src/ — likely forgot to rebuild
   warnIfStaleBuild()
 
-  // Register task event → notification bridge
-  registerTaskEventListeners()
+  bootstrapRuntime()
 
   // 启用配置文件监听（自动重载）
   const config = await loadConfig({ watch: true })
@@ -176,7 +177,7 @@ async function runDaemon(): Promise<void> {
   console.log(chalk.gray(`  轮询间隔: ${pollInterval}`))
 
   // Register all cron jobs
-  registerDaemonJobs(cronExpr)
+  await registerDaemonJobs(cronExpr)
 
   // Configure and restore chat sessions from disk before starting notification platforms
   const defaultBackendConfig = config.backends[config.defaultBackend]
@@ -208,6 +209,12 @@ async function runDaemon(): Promise<void> {
   }
 
   store.setDaemonPid(process.pid)
+  appendLifecycleEvent({ type: 'start', pid: process.pid })
+  appendEntry({
+    ts: new Date().toISOString(),
+    type: 'daemon_event',
+    content: `daemon 启动，PID ${process.pid}`,
+  })
   startSleepPrevention()
 
   // Auto-activate self-evolution when daemon starts in CAH project directory
@@ -217,7 +224,7 @@ async function runDaemon(): Promise<void> {
       console.log(chalk.yellow('  ⚠ 检测到 CAH 项目目录，但自驱已被永久禁用'))
       console.log(chalk.gray('    使用 cah self drive enable 重新启用'))
     } else {
-      // Ensure new builtin goals (evolve-conversation, evolve-feature) are registered
+      // Ensure builtin goals are registered
       const { ensureBuiltinGoals, listEnabledGoals } = await import('../selfdrive/goals.js')
       ensureBuiltinGoals()
       const goals = listEnabledGoals()
@@ -241,8 +248,16 @@ async function runDaemon(): Promise<void> {
   }
 
   // Full async cleanup for graceful shutdown
+  const startTime = Date.now()
   const cleanup = async (exitCode: number) => {
     console.log(chalk.yellow('\n停止守护进程...'))
+    appendLifecycleEvent({ type: 'stop', pid: process.pid, uptimeMs: Date.now() - startTime })
+    const uptimeMin = Math.round((Date.now() - startTime) / 60_000)
+    appendEntry({
+      ts: new Date().toISOString(),
+      type: 'daemon_event',
+      content: `daemon 停止，PID ${process.pid}，运行${uptimeMin}分钟`,
+    })
     stopSelfDrive()
     stopSleepPrevention()
     stopAllJobs()

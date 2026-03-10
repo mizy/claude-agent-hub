@@ -3,6 +3,7 @@
  */
 
 import { existsSync, readFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
@@ -35,11 +36,14 @@ export interface PostResponseContext {
 export async function notifyInterrupted(
   chatId: string,
   placeholderId: string | null,
-  messenger: MessengerAdapter
+  messenger: MessengerAdapter,
+  partialContent?: string
 ): Promise<void> {
   if (placeholderId) {
+    const suffix = '已中断，处理新消息...'
+    const content = partialContent ? `${partialContent}\n\n${suffix}` : suffix
     await messenger
-      .editMessage(chatId, placeholderId, '⚡ 已中断，处理新消息...')
+      .editMessage(chatId, placeholderId, content)
       .catch(e => logger.debug(`Edit placeholder failed: ${e}`))
   }
 }
@@ -67,8 +71,18 @@ export async function sendMcpImages(
   messenger: MessengerAdapter
 ): Promise<void> {
   if (mcpImagePaths.length === 0 || !messenger.replyImage) return
-  for (const imgPath of mcpImagePaths) {
+
+  // Dedup: same file path should only be sent once
+  const uniquePaths = [...new Set(mcpImagePaths)]
+
+  // Only allow images from temp directories (MCP screenshots are saved there)
+  const allowedPrefixes = ['/tmp/', '/var/tmp/', tmpdir()].filter(Boolean)
+  for (const imgPath of uniquePaths) {
     try {
+      if (!allowedPrefixes.some(prefix => imgPath.startsWith(prefix))) {
+        logger.warn(`Refusing to send non-temp MCP image: ${imgPath}`)
+        continue
+      }
       if (!existsSync(imgPath)) {
         logger.warn(`MCP image not found: ${imgPath}`)
         continue

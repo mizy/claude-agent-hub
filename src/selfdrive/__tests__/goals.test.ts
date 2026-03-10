@@ -43,7 +43,7 @@ describe('goals', () => {
     it('respects enabled=false', () => {
       const goal = addGoal({
         description: 'Disabled',
-        type: 'cleanup',
+        type: 'cleanup-code',
         priority: 'low',
         schedule: '6h',
         enabled: false,
@@ -89,7 +89,7 @@ describe('goals', () => {
 
   describe('removeGoal', () => {
     it('removes an existing goal', () => {
-      const goal = addGoal({ description: 'Delete me', type: 'cleanup', priority: 'low', schedule: '6h' })
+      const goal = addGoal({ description: 'Delete me', type: 'cleanup-code', priority: 'low', schedule: '6h' })
       const removed = removeGoal(goal.id)
       expect(removed).toBe(true)
       expect(getGoal(goal.id)).toBeNull()
@@ -99,7 +99,7 @@ describe('goals', () => {
   describe('listEnabledGoals', () => {
     it('only returns enabled goals', () => {
       addGoal({ description: 'Enabled', type: 'evolve', priority: 'high', schedule: '30m', enabled: true })
-      addGoal({ description: 'Disabled', type: 'cleanup', priority: 'low', schedule: '6h', enabled: false })
+      addGoal({ description: 'Disabled', type: 'cleanup-code', priority: 'low', schedule: '6h', enabled: false })
       const enabled = listEnabledGoals()
       expect(enabled).toHaveLength(1)
       expect(enabled[0]!.description).toBe('Enabled')
@@ -110,11 +110,14 @@ describe('goals', () => {
     it('creates built-in goals on first call', () => {
       ensureBuiltinGoals()
       const goals = listGoals()
-      expect(goals.length).toBeGreaterThanOrEqual(3)
+      expect(goals.length).toBeGreaterThanOrEqual(5)
       const types = goals.map(g => g.type)
       expect(types).toContain('evolve')
       expect(types).toContain('cleanup-code')
       expect(types).toContain('update-docs')
+      expect(types).toContain('introspection')
+      // Two introspection goals
+      expect(goals.filter(g => g.type === 'introspection')).toHaveLength(2)
     })
 
     it('is idempotent — does not duplicate on second call', () => {

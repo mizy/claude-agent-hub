@@ -9,7 +9,6 @@ import {
   getInstance,
   incrementLoopCount,
   resetNodeState,
-  updateNodeState,
   saveInstance,
 } from '../../store/WorkflowStore.js'
 import {
@@ -84,6 +83,17 @@ export async function getNextNodes(
 
         logger.debug(`Loop edge ${edge.id}: count ${currentLoops + 1}/${maxLoops}`)
         loopBackFollowed = true
+      } else {
+        // Non-loop edge entering a loop body: check if the downstream loop-back
+        // is on its last iteration. If so, skip this edge entirely to avoid
+        // wasting AI calls on fix/verify nodes that would just loop back one
+        // final time. e.g. review→fix when fix→review is at maxLoops-1.
+        if (wouldEnterExhaustedLoop(edge.to, currentNodeId, workflow, instance)) {
+          logger.info(
+            `Skipping edge ${edge.from}→${edge.to}: downstream loop-back is at last iteration`
+          )
+          continue
+        }
       }
 
       nextNodes.push(edge.to)
@@ -97,6 +107,52 @@ export async function getNextNodes(
   }
 
   return nextNodes
+}
+
+/**
+ * Check if following an edge into `targetNodeId` would enter a loop body
+ * whose loop-back edge is on its last iteration (i.e. after this round of
+ * fix nodes, the loop-back to `sourceNodeId` would be exhausted).
+ *
+ * This lets us skip the entire loop body (fix, verify, etc.) on the final
+ * iteration, saving AI calls — the workflow will follow the non-loop path
+ * (e.g. APPROVED → end) instead.
+ */
+function wouldEnterExhaustedLoop(
+  targetNodeId: string,
+  sourceNodeId: string,
+  workflow: Workflow,
+  instance: WorkflowInstance
+): boolean {
+  // Walk forward from targetNodeId through the loop body to find a loop-back
+  // edge that returns to sourceNodeId (BFS, max depth to avoid infinite walk).
+  const visited = new Set<string>()
+  const queue = [targetNodeId]
+  const MAX_DEPTH = 20
+
+  for (let depth = 0; depth < MAX_DEPTH && queue.length > 0; depth++) {
+    const nodeId = queue.shift()!
+    if (visited.has(nodeId)) continue
+    visited.add(nodeId)
+
+    for (const edge of workflow.edges.filter(e => e.from === nodeId)) {
+      const isLoopBack = edge.maxLoops !== undefined || isTopologicalLoopBack(edge, workflow)
+      if (isLoopBack && edge.to === sourceNodeId) {
+        // Found the loop-back edge — check if it's at its last iteration
+        const maxLoops = edge.maxLoops ?? DEFAULT_MAX_LOOPS
+        const currentLoops = instance.loopCounts[edge.id] || 0
+        if (currentLoops >= maxLoops - 1) {
+          return true
+        }
+      }
+      // Continue BFS through non-loop-back edges
+      if (!isLoopBack && !visited.has(edge.to)) {
+        queue.push(edge.to)
+      }
+    }
+  }
+
+  return false
 }
 
 /**
@@ -175,11 +231,52 @@ export function canExecuteNode(
 
   // 所有非 loop-back 入边的源节点必须完成（join 节点和并行汇聚点均需全部完成）
   // Loop-back 边（如 notify → wait 循环回路）不应阻塞目标节点的首次执行
+  //
+  // Stale-dep guard: if a schedule-wait node completed MORE RECENTLY than a dep,
+  // that dep belongs to a previous schedule cycle and must not gate the current node.
+  // Root cause: when a process exits during an in-flight analysis run (after lark-notify
+  // triggered resetLoopPath), the analysis nodes complete post-exit and write 'done' status.
+  // On the next schedule wake-up, getReadyNodes finds downstream nodes "ready" with stale deps.
+  const latestScheduleMs = getMostRecentScheduleWaitMs(workflow, instance)
+
   return inEdges.every(edge => {
     if (edge.maxLoops !== undefined || isTopologicalLoopBack(edge, workflow)) return true
     const sourceState = instance.nodeStates[edge.from]
-    return sourceState != null && isNodeCompleted(sourceState)
+    if (sourceState == null || !isNodeCompleted(sourceState)) return false
+
+    // If a schedule-wait gate completed more recently than this dep, the dep is stale.
+    if (latestScheduleMs !== null && sourceState.completedAt) {
+      const depMs = new Date(sourceState.completedAt).getTime()
+      if (depMs < latestScheduleMs) {
+        logger.debug(
+          `Node ${nodeId} blocked: dep ${edge.from} completedAt (${sourceState.completedAt}) is before schedule-wait gate — stale from previous cycle`
+        )
+        return false
+      }
+    }
+
+    return true
   })
+}
+
+/**
+ * Returns the timestamp (ms) of the most recently completed schedule-wait node,
+ * or null if no schedule-wait node has completed yet.
+ * Used to detect stale deps from a previous schedule cycle.
+ */
+function getMostRecentScheduleWaitMs(
+  workflow: Workflow,
+  instance: WorkflowInstance
+): number | null {
+  let latest: number | null = null
+  for (const node of workflow.nodes) {
+    if (node.type !== 'schedule-wait') continue
+    const state = instance.nodeStates[node.id]
+    if (!state?.completedAt) continue
+    const t = new Date(state.completedAt).getTime()
+    if (latest === null || t > latest) latest = t
+  }
+  return latest
 }
 
 /**
@@ -528,9 +625,10 @@ function resetLoopPath(
     }
   }
 
-  // Reset attempts for the loop-back trigger node to prevent
-  // loop iterations from being counted as error retries
-  updateNodeState(instanceId, stopBeforeNodeId, { attempts: 0 })
+  // Reset the loop-back trigger node (e.g. lark-notify) so it can re-execute
+  // in the next cycle. Without this, the trigger stays "done" and downstream
+  // handleNodeResult's readyNextNodes filter skips it, causing the workflow to hang.
+  resetNodeState(instanceId, stopBeforeNodeId)
 
   // Also reset "exit path" nodes reachable from stopBeforeNodeId via non-loop-back edges.
   // Without this, nodes like "end" remain "pending" with their predecessor (stopBeforeNodeId)

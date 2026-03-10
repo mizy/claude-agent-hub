@@ -8,6 +8,7 @@
 import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { buildMemoryExtractionPrompt, type TaskSummary } from '../prompts/memoryPrompts.js'
 import { addMemory } from './manageMemory.js'
+import { resolveContradictions } from './detectContradiction.js'
 import { shouldConsolidate, consolidateMemories } from './consolidateMemories.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
@@ -54,6 +55,7 @@ interface RawExtraction {
   category: string
   keywords: string[]
   confidence: number
+  importance?: number
 }
 
 function parseExtractions(text: string): RawExtraction[] {
@@ -120,12 +122,33 @@ export async function extractMemoryFromTask(
         continue
       }
 
+      const importance = Math.max(1, Math.min(10, Math.round(item.importance ?? 5)))
+
+      // Drop low-importance memories (1-3)
+      if (importance <= 3) {
+        logger.info(`Dropping low-importance memory (${importance}): ${item.content.slice(0, 60)}`)
+        continue
+      }
+
+      // importance 4-6: halve initial stability (faster decay)
+      // importance 7-10: boost stability proportionally
+      const DEFAULT_STABILITY = 168 // 7 days in hours
+      const initialStability = importance <= 6
+        ? DEFAULT_STABILITY / 2
+        : DEFAULT_STABILITY * (importance / 7)
+
+      // Contradiction resolution: check if new memory conflicts with existing ones
+      const supersededIds = await resolveContradictions(item.content, item.keywords)
+
       const entry = addMemory(item.content, item.category as MemoryCategory, {
         type: 'task',
         taskId: task.id,
       }, {
         keywords: item.keywords,
         confidence: item.confidence,
+        importance,
+        initialStability,
+        supersedesId: supersededIds[0],
       })
 
       entries.push(entry)

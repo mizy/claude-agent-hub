@@ -8,6 +8,7 @@ import {
   getAllMemories,
   saveMemory,
   deleteMemory as deleteMemoryFromStore,
+  updateMemory as updateMemoryInStore,
 } from '../store/MemoryStore.js'
 import { indexMemoryEntities, removeFromEntityIndex } from './entityIndex.js'
 import type { MemoryCategory, MemoryEntry, MemorySource } from './types.js'
@@ -16,6 +17,9 @@ interface AddMemoryOptions {
   keywords?: string[]
   confidence?: number
   projectPath?: string
+  importance?: number
+  initialStability?: number
+  supersedesId?: string
 }
 
 export function addMemory(
@@ -38,6 +42,9 @@ export function addMemory(
     updatedAt: now,
     accessCount: 0,
     projectPath: options?.projectPath,
+    importance: options?.importance,
+    stability: options?.initialStability,
+    supersedesId: options?.supersedesId,
   }
 
   saveMemory(entry)
@@ -65,6 +72,15 @@ export function listMemories(filter?: ListMemoriesFilter): MemoryEntry[] {
 export function removeMemory(id: string): boolean {
   removeFromEntityIndex(id)
   return deleteMemoryFromStore(id)
+}
+
+/** Mark a memory as superseded (replaced by a newer, contradicting memory) */
+export function markSuperseded(memoryId: string): boolean {
+  return updateMemoryInStore(memoryId, {
+    superseded: true,
+    strength: 0,
+    updatedAt: new Date().toISOString(),
+  })
 }
 
 export function searchMemories(query: string): MemoryEntry[] {

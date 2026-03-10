@@ -39,11 +39,17 @@ export interface OrphanedTask {
 // 孤立任务检测宽限期（秒）- 新任务在此时间内不算孤立
 const ORPHAN_GRACE_PERIOD_MS = 30 * 1000
 
+// 最大孤立恢复次数 - 超过此次数直接标记为 failed，防止无限 bounce
+const MAX_ORPHAN_RESUME_COUNT = 3
+
 // 进程活跃心跳阈值（毫秒）- 如果心跳在此时间内，认为进程仍在运行
 const HEARTBEAT_ALIVE_THRESHOLD_MS = 30 * 1000
 
 // 进程启动宽限期（毫秒）- 进程刚启动时可能还没写心跳
 const PROCESS_START_GRACE_MS = 10 * 1000
+
+// 无心跳进程的最大存活时间（毫秒）- 进程运行超过此时间却从未写过心跳，视为挂起
+const NO_HEARTBEAT_STALE_MS = 10 * 60 * 1000 // 10 minutes
 
 /**
  * 检查进程是否活跃（基于心跳和启动时间）
@@ -80,6 +86,17 @@ function isProcessActive(processInfo: ProcessInfo | null): boolean {
         `Process heartbeat recent (${Math.round((now - lastHeartbeat) / 1000)}s ago), treating as active`
       )
       return true
+    }
+  }
+
+  // 进程运行了很久但从未写过心跳 — 视为挂起（zombie/hung process）
+  if (!processInfo.lastHeartbeat && processInfo.startedAt) {
+    const runningTime = now - new Date(processInfo.startedAt).getTime()
+    if (runningTime > NO_HEARTBEAT_STALE_MS) {
+      logger.info(
+        `Process ${processInfo.pid} running for ${Math.round(runningTime / 60000)}min without any heartbeat, treating as stale`
+      )
+      return false
     }
   }
 
@@ -176,29 +193,52 @@ export function detectOrphanedTasks(): OrphanedTask[] {
             : false
 
           if (instance && !hasFailedNodes) {
-            // No failed nodes — process was killed mid-execution, requeue the task
-            // Reset running nodes back to pending so workflow can restart them
-            let resetCount = 0
-            for (const [nodeId, ns] of Object.entries(instance.nodeStates)) {
-              if (ns.status === 'running') {
-                instance.nodeStates[nodeId] = { ...ns, status: 'pending', startedAt: undefined, completedAt: undefined }
-                resetCount++
+            // Check orphan resume count to prevent infinite bounce
+            const orphanResumeCount = (task.metadata?.orphanResumeCount ? parseInt(task.metadata.orphanResumeCount, 10) : 0) + 1
+            if (orphanResumeCount > MAX_ORPHAN_RESUME_COUNT) {
+              const errorMsg = `Task exceeded max orphan resume attempts (${MAX_ORPHAN_RESUME_COUNT}). Process keeps crashing before completing any node.`
+              updateTask(task.id, {
+                status: 'failed',
+                error: errorMsg,
+              })
+              // Sync instance status to prevent task/instance inconsistency
+              instance.status = 'failed'
+              instance.error = errorMsg
+              saveTaskInstance(task.id, instance)
+              logger.warn(`Task ${task.id} exceeded max orphan resume count (${orphanResumeCount}), marking as failed`)
+            } else {
+              // No failed nodes — process was killed mid-execution, requeue the task
+              // Reset running nodes back to pending so workflow can restart them
+              let resetCount = 0
+              for (const [nodeId, ns] of Object.entries(instance.nodeStates)) {
+                if (ns.status === 'running' || ns.status === 'waiting') {
+                  instance.nodeStates[nodeId] = { ...ns, status: 'pending', error: undefined, startedAt: undefined, completedAt: undefined }
+                  resetCount++
+                }
               }
-            }
-            instance.status = 'running' // keep instance active for resume
-            saveTaskInstance(task.id, instance)
+              instance.status = 'running' // keep instance active for resume
+              saveTaskInstance(task.id, instance)
 
-            updateTask(task.id, {
-              status: 'pending',
-              error: undefined,
-            })
-            logger.info(`Task ${task.id} requeued (${resetCount} running nodes reset to pending)`)
+              updateTask(task.id, {
+                status: 'pending',
+                error: undefined,
+                metadata: { ...task.metadata, orphanResumeCount: String(orphanResumeCount) },
+              })
+              logger.info(`Task ${task.id} requeued (${resetCount} running nodes reset to pending, orphanResumeCount: ${orphanResumeCount})`)
+            }
           } else {
             // Has failed nodes or no instance — mark as failed
+            const crashError = 'Process crashed or terminated unexpectedly'
             updateTask(task.id, {
               status: 'failed',
-              error: 'Process crashed or terminated unexpectedly',
+              error: crashError,
             })
+            // Sync instance status to prevent task/instance inconsistency
+            if (instance) {
+              instance.status = 'failed'
+              instance.error = crashError
+              saveTaskInstance(task.id, instance)
+            }
             logger.info(`Task ${task.id} marked as failed due to crashed process`)
           }
         }

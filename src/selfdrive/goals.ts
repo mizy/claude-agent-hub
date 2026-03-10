@@ -12,7 +12,7 @@ import { generateShortId } from '../shared/generateId.js'
 
 // ============ Types ============
 
-export type GoalType = 'evolve' | 'cleanup' | 'cleanup-code' | 'update-docs' | 'evolve-conversation' | 'evolve-feature'
+export type GoalType = 'evolve' | 'evolve-feature' | 'cleanup-code' | 'update-docs' | 'introspection'
 
 export interface DriveGoal {
   id: string
@@ -26,6 +26,12 @@ export interface DriveGoal {
   lastRunAt?: string
   lastResult?: 'success' | 'failure'
   lastError?: string
+  /** Retry count for consecutive failures (reset on success) */
+  lastRetryCount?: number
+  /** Handler function name for introspection goals (executed in-process, no task created) */
+  handler?: string
+  /** Stable identifier for built-in goal dedup (survives description changes) */
+  slug?: string
 }
 
 // ============ Store ============
@@ -42,7 +48,7 @@ const goalStore = new FileStore<DriveGoal>({
 
 export function addGoal(
   input: Pick<DriveGoal, 'description' | 'type' | 'priority' | 'schedule'> &
-    Partial<Pick<DriveGoal, 'enabled'>>
+    Partial<Pick<DriveGoal, 'enabled' | 'handler' | 'slug'>>
 ): DriveGoal {
   const goal: DriveGoal = {
     id: `goal-${generateShortId()}`,
@@ -52,6 +58,8 @@ export function addGoal(
     schedule: input.schedule,
     enabled: input.enabled ?? true,
     createdAt: new Date().toISOString(),
+    ...(input.handler ? { handler: input.handler } : {}),
+    ...(input.slug ? { slug: input.slug } : {}),
   }
   goalStore.setSync(goal.id, goal)
   return goal
@@ -83,8 +91,9 @@ export function listEnabledGoals(): DriveGoal[] {
 
 // ============ Built-in Goals ============
 
-const BUILTIN_GOALS: Omit<DriveGoal, 'id' | 'createdAt'>[] = [
+const BUILTIN_GOALS: (Omit<DriveGoal, 'id' | 'createdAt'> & { slug: string })[] = [
   {
+    slug: 'evolve',
     description: 'Periodic self-evolution cycle',
     type: 'evolve',
     priority: 'medium',
@@ -92,6 +101,15 @@ const BUILTIN_GOALS: Omit<DriveGoal, 'id' | 'createdAt'>[] = [
     enabled: true,
   },
   {
+    slug: 'evolve-feature',
+    description: 'Discover external inspiration for new features',
+    type: 'evolve-feature',
+    priority: 'low',
+    schedule: '3d',
+    enabled: true,
+  },
+  {
+    slug: 'cleanup-code',
     description: 'Periodic code and doc cleanup (dead code, unused exports)',
     type: 'cleanup-code',
     priority: 'low',
@@ -99,40 +117,51 @@ const BUILTIN_GOALS: Omit<DriveGoal, 'id' | 'createdAt'>[] = [
     enabled: true,
   },
   {
+    slug: 'update-docs',
     description: 'Periodic project documentation update',
     type: 'update-docs',
     priority: 'low',
     schedule: '2d',
     enabled: true,
   },
+  {
+    slug: 'daily-reflection',
+    description: 'Daily self-reflection and state awareness',
+    type: 'introspection',
+    priority: 'medium',
+    schedule: '24h',
+    enabled: true,
+    handler: 'runDailyReflection',
+  },
+  {
+    slug: 'weekly-narrative',
+    description: 'Weekly self-narrative synthesis',
+    type: 'introspection',
+    priority: 'low',
+    schedule: '7d',
+    enabled: true,
+    handler: 'runWeeklyNarrative',
+  },
 ]
 
-// Goal types that have been merged into 'evolve' — force-disable if they exist
-const DEPRECATED_GOAL_TYPES: GoalType[] = ['evolve-conversation', 'evolve-feature', 'cleanup']
-
-/** Ensure built-in goals exist. Idempotent — skips if goals of each type already present.
- *  Also force-disables deprecated goal types that have been merged into 'evolve'. */
+/** Ensure built-in goals exist. Idempotent — dedup by slug (stable across description changes). */
 export function ensureBuiltinGoals(): void {
   const existing = listGoals()
-  const existingTypes = new Set(existing.map(g => g.type))
+  const existingSlugs = new Set(existing.map(g => g.slug).filter(Boolean))
+  // Fallback: also check description for old goals without slug
+  const existingDescriptions = new Set(existing.map(g => g.description))
 
   for (const builtin of BUILTIN_GOALS) {
-    if (!existingTypes.has(builtin.type)) {
-      addGoal({
-        description: builtin.description,
-        type: builtin.type,
-        priority: builtin.priority,
-        schedule: builtin.schedule,
-        enabled: builtin.enabled,
-      })
-    }
-  }
-
-  // Disable deprecated goals that were merged into 'evolve'
-  for (const goal of existing) {
-    if (DEPRECATED_GOAL_TYPES.includes(goal.type) && goal.enabled) {
-      updateGoal(goal.id, { enabled: false })
-    }
+    if (existingSlugs.has(builtin.slug) || existingDescriptions.has(builtin.description)) continue
+    addGoal({
+      description: builtin.description,
+      type: builtin.type,
+      priority: builtin.priority,
+      schedule: builtin.schedule,
+      enabled: builtin.enabled,
+      handler: builtin.handler,
+      slug: builtin.slug,
+    })
   }
 }
 
@@ -152,9 +181,12 @@ export function updateGoalSchedule(id: string, schedule: string): DriveGoal | nu
 
 /** Mark a goal as just executed */
 export function markGoalRun(id: string, result: 'success' | 'failure', error?: string): void {
+  const goal = getGoal(id)
+  const retryCount = result === 'failure' ? (goal?.lastRetryCount ?? 0) + 1 : 0
   updateGoal(id, {
     lastRunAt: new Date().toISOString(),
     lastResult: result,
     lastError: error,
+    lastRetryCount: retryCount,
   })
 }

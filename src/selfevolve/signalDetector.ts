@@ -53,7 +53,11 @@ export interface DetectSignalOptions {
 
 // ============ Cooldown (persisted to file) ============
 
-const COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24h
+const COOLDOWN_BY_SEVERITY: Record<SignalSeverity, number> = {
+  critical: 6 * 60 * 60 * 1000,  // 6h
+  warning: 24 * 60 * 60 * 1000,  // 24h
+  info: 24 * 60 * 60 * 1000,     // 24h
+}
 const COOLDOWN_FILE = join(DATA_DIR, 'signal-cooldowns.json')
 
 type CooldownData = Record<string, string> // SignalType → ISO timestamp
@@ -79,11 +83,12 @@ export function resetSignalCooldowns(): void {
   saveCooldowns({})
 }
 
-function isOnCooldown(type: SignalType): boolean {
+function isOnCooldown(type: SignalType, severity: SignalSeverity): boolean {
   const data = loadCooldowns()
   const lastFired = data[type]
   if (!lastFired) return false
-  return Date.now() - new Date(lastFired).getTime() < COOLDOWN_MS
+  const cooldownMs = COOLDOWN_BY_SEVERITY[severity]
+  return Date.now() - new Date(lastFired).getTime() < cooldownMs
 }
 
 function markFired(type: SignalType): void {
@@ -273,6 +278,8 @@ function detectCorruptTaskData(): SignalEvent | null {
     taskDirs = readdirSync(TASKS_DIR, { withFileTypes: true })
       .filter(d => d.isDirectory() && d.name.startsWith('task-'))
       .map(d => d.name)
+      .sort()
+      .slice(-50) // Only scan recent 50 task dirs to avoid O(n) full scan
   } catch {
     return null
   }
@@ -350,7 +357,7 @@ export function detectSignals(options?: DetectSignalOptions): SignalEvent[] {
   const signals: SignalEvent[] = []
   for (const signal of candidates) {
     if (!signal) continue
-    if (isOnCooldown(signal.type)) {
+    if (isOnCooldown(signal.type, signal.severity)) {
       logger.debug(`Signal ${signal.type} is on cooldown, skipping`)
       continue
     }

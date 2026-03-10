@@ -356,6 +356,10 @@ export function getDefaultConfig(): Config {
         idleTimeoutMs: 5 * 60 * 1000,
         minTurnsForExplicitEnd: 3,
       },
+      rerank: {
+        enabled: true,
+        candidateSize: 20,
+      },
     },
   }
 }

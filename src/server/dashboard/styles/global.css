@@ -53,6 +53,7 @@
   --wf-completed: #22c55e;
   --wf-failed: #ef4444;
   --wf-skipped: #eab308;
+  --wf-loop-completed: #a78bfa;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -238,6 +239,7 @@ body {
 .dot-done { background: var(--wf-completed); }
 .dot-failed { background: var(--wf-failed); }
 .dot-skipped { background: var(--wf-skipped); }
+.dot-loop-completed { background: var(--wf-loop-completed); }
 
 /* ===== Markdown ===== */
 .markdown-body { font-size: 13px; line-height: 1.6; color: var(--text-primary); word-break: break-word; }

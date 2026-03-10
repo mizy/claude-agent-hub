@@ -262,6 +262,13 @@ export function resetNodeState(instanceId: string, nodeId: string): void {
     error: undefined,
     attempts: 0, // Reset attempts — loop reentry is not a retry
   })
+
+  // Clear stale output so next cycle doesn't read previous data
+  const instance = getInstance(instanceId)
+  if (instance && nodeId in instance.outputs) {
+    delete instance.outputs[nodeId]
+    saveInstance(instance)
+  }
 }
 
 /**

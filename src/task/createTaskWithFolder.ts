@@ -10,6 +10,7 @@ import { generateTaskId, createTaskFolder, saveTask } from '../store/TaskStore.j
 import { parseTaskPriority } from '../types/task.js'
 import { truncateText } from '../shared/truncateText.js'
 import type { Task, TaskPriority } from '../types/task.js'
+import { recordRequestSignal } from '../consciousness/registerValueListeners.js'
 
 const logger = createLogger('task')
 
@@ -79,6 +80,11 @@ export function createTaskWithFolder(options: CreateTaskOptions): Task {
   saveTask(task)
 
   logger.info(`Task created: ${taskId}`)
+
+  // Record value request signal (non-blocking)
+  if (options.source !== 'scheduled' && !options.schedule) {
+    recordRequestSignal(options.description)
+  }
 
   return task
 }

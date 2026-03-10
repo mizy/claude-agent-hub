@@ -125,12 +125,18 @@ export const episodicMemoryConfigSchema = z.object({
   minTurnsForExplicitEnd: z.number().default(3),
 })
 
+export const memoryRerankConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  candidateSize: z.number().min(1).max(50).default(20),
+})
+
 export const memoryConfigSchema = z.object({
   forgetting: memoryForgettingConfigSchema.default({}),
   association: memoryAssociationConfigSchema.default({}),
   reinforce: memoryReinforceConfigSchema.default({}),
   chatMemory: chatMemoryConfigSchema.default({}),
   episodic: episodicMemoryConfigSchema.default({}),
+  rerank: memoryRerankConfigSchema.default({}),
 })
 
 export const daemonConfigSchema = z.object({
@@ -180,5 +186,6 @@ export type MemoryAssociationConfig = z.infer<typeof memoryAssociationConfigSche
 export type MemoryReinforceConfig = z.infer<typeof memoryReinforceConfigSchema>
 export type ChatMemoryConfig = z.infer<typeof chatMemoryConfigSchema>
 export type EpisodicMemoryConfig = z.infer<typeof episodicMemoryConfigSchema>
+export type MemoryRerankConfig = z.infer<typeof memoryRerankConfigSchema>
 export type MemoryConfig = z.infer<typeof memoryConfigSchema>
 export type Config = z.infer<typeof configSchema>

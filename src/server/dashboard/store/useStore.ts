@@ -116,7 +116,7 @@ export interface TaskMessage {
   createdAt: string
 }
 
-export type PageId = 'tasks' | 'settings' | 'chat'
+export type PageId = 'tasks' | 'settings' | 'chat' | 'statistics'
 
 interface DashboardStore {
   currentPage: PageId

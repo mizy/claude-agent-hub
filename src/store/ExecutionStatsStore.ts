@@ -49,6 +49,7 @@ export interface ExecutionTimeline {
   instanceId: string // 关联到具体的执行实例，用于过滤不同执行的事件（必填）
   nodeId?: string
   nodeName?: string
+  durationMs?: number
   details?: string
 }
 
@@ -291,7 +292,7 @@ export function formatTimeline(timeline: ExecutionTimeline[]): string {
         eventStr = `[${event.nodeId}] Started: ${event.nodeName || 'unnamed'}`
         break
       case 'node:completed':
-        eventStr = `[${event.nodeId}] Completed: ${event.nodeName || 'unnamed'}`
+        eventStr = `[${event.nodeId}] Completed: ${event.nodeName || 'unnamed'}${event.durationMs ? ` (${formatDuration(event.durationMs)})` : ''}`
         break
       case 'node:failed':
         eventStr = `[${event.nodeId}] Failed: ${event.nodeName || 'unnamed'} - ${event.details || 'Unknown error'}`

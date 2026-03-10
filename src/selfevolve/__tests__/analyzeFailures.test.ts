@@ -74,7 +74,7 @@ describe('analyzeRecentFailures (backward compat)', () => {
     expect(result.totalExamined).toBe(3)
     expect(result.patterns.length).toBeGreaterThan(0)
     expect(result.patterns[0]!.occurrences).toBe(3)
-    expect(result.patterns[0]!.taskIds).toEqual(['t1', 't2', 't3'])
+    expect([...result.patterns[0]!.taskIds].sort()).toEqual(['t1', 't2', 't3'])
   })
 
   it('respects limit option', () => {

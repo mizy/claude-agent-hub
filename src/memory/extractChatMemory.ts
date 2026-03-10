@@ -8,6 +8,7 @@
 
 import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { addMemory } from './manageMemory.js'
+import { resolveContradictions } from './detectContradiction.js'
 import { buildAssociations } from './associationEngine.js'
 import { getAllMemories } from '../store/MemoryStore.js'
 import { migrateMemoryEntry } from './migrateMemory.js'
@@ -57,6 +58,7 @@ ${conversation}
 - category: 分类，只能是 "pattern" | "lesson" | "preference" | "pitfall" | "tool"
 - keywords: 关键词数组（3-5 个）
 - confidence: 置信度 0-1
+- importance: 重要性 1-10（10=用户明确要求记住/关键纠错，7-9=重要技术决策，4-6=一般偏好，1-3=琐碎信息）
 
 如果没有值得记录的信息，返回空数组 \`[]\`。
 只返回 JSON，不要其他内容。`
@@ -67,6 +69,7 @@ interface RawExtraction {
   category: string
   keywords: string[]
   confidence: number
+  importance?: number
 }
 
 function parseExtractions(text: string): RawExtraction[] {
@@ -128,12 +131,33 @@ export async function extractChatMemory(
     for (const item of extractions.slice(0, MAX_MEMORIES_PER_CHAT)) {
       if (!isValidExtraction(item)) continue
 
+      const importance = Math.max(1, Math.min(10, Math.round(item.importance ?? 5)))
+
+      // Drop low-importance memories (1-3)
+      if (importance <= 3) {
+        logger.info(`Dropping low-importance chat memory (${importance}): ${item.content.slice(0, 60)}`)
+        continue
+      }
+
+      // importance 4-6: halve initial stability (faster decay)
+      // importance 7-10: boost stability proportionally
+      const DEFAULT_STABILITY = 168 // 7 days in hours
+      const initialStability = importance <= 6
+        ? DEFAULT_STABILITY / 2
+        : DEFAULT_STABILITY * (importance / 7)
+
+      // Contradiction resolution: check if new memory conflicts with existing ones
+      const supersededIds = await resolveContradictions(item.content, item.keywords)
+
       const entry = addMemory(item.content, item.category as MemoryCategory, {
         type: 'chat',
         chatId: context.chatId,
       }, {
         keywords: item.keywords,
         confidence: item.confidence,
+        importance,
+        initialStability,
+        supersedesId: supersededIds[0],
       })
 
       entries.push(entry)

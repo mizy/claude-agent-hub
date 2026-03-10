@@ -9,7 +9,7 @@
 
 import { invokeBackend, resolveBackend } from '../backend/index.js'
 import { buildJsonWorkflowPrompt } from '../prompts/index.js'
-import { parseJson, validateJsonWorkflow, extractJson } from './index.js'
+import { parseJson, validateJsonWorkflow, extractJson } from './parser/parseJson.js'
 import { appendConversation, appendJsonlLog } from '../store/TaskLogStore.js'
 import { getBackendConfig } from '../config/index.js'
 import { createLogger } from '../shared/logger.js'

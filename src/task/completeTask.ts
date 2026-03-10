@@ -6,6 +6,7 @@ import { getStore } from '../store/index.js'
 import { createLogger } from '../shared/logger.js'
 import type { Task } from '../types/task.js'
 import { isReviewingStatus } from '../types/taskStatus.js'
+import { recordApproveSignal, recordRejectSignal } from '../consciousness/registerValueListeners.js'
 
 const logger = createLogger('task')
 
@@ -38,6 +39,9 @@ export function completeTask(id: string): CompleteTaskResult {
   store.updateTask(task.id, { status: 'completed' })
   logger.info(`Completed task: ${task.id}`)
 
+  // Record value approve signal (sync, best-effort)
+  recordApproveSignal(task.description || task.title || '')
+
   const updatedTask = store.getTask(task.id)
   return { success: true, task: updatedTask ?? task }
 }
@@ -68,6 +72,9 @@ export function rejectTask(id: string, reason?: string): CompleteTaskResult {
     lastRejectReason: reason,
   })
   logger.info(`Rejected task: ${task.id}, reason: ${reason || 'not specified'}`)
+
+  // Record value reject signal (sync, best-effort)
+  recordRejectSignal(task.description || task.title || '')
 
   const updatedTask = store.getTask(task.id)
   return { success: true, task: updatedTask ?? task }

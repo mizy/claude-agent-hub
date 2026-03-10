@@ -1,6 +1,6 @@
 ---
 name: cah
-description: Claude Agent Hub - AI task execution system. Use when delegating complex tasks to background AI agents, managing task queues, or running multi-step workflows. Commands include cah "task", cah task list, cah task logs.
+description: "Claude Agent Hub — delegate complex tasks to background AI agents, manage task queues, run multi-step workflows, and chat with AI. Use this skill whenever the user mentions background tasks, task delegation, running something in the background, task queues, workflow execution, cah commands, AI agents, daemon management, or wants to offload work to a separate process. Also trigger when users ask about task status, logs, reports, scheduling recurring jobs, managing AI backends, statistics/stats, dashboard visualization, self-management (evolve/drive/check), memory management, or prompt versioning. Even if they don't say 'cah' explicitly — if they want to run, queue, schedule, or monitor AI-powered tasks, this is the right skill."
 ---
 
 # Claude Agent Hub (CAH) Skill
@@ -124,7 +124,7 @@ cah task msg <task-id> <message>
 
 # 动态注入节点到工作流
 cah task inject-node <task-id> <prompt>
-cah task inject-node <task-id> <prompt> --persona <name>  # 指定 Persona
+cah task inject-node <task-id> <prompt> --agent <name>  # 指定 Agent
 
 # 查看执行追踪（调用树/耗时/错误链）
 cah task trace <task-id>
@@ -242,6 +242,17 @@ cah schedule ls
 cah schedule stop <task-id>
 ```
 
+### 统计
+
+```bash
+# 系统统计
+cah stats overview               # 系统概览统计
+cah stats chat                   # 对话使用统计
+cah stats task                   # 任务执行统计
+cah stats growth                 # 增长趋势统计
+cah stats <subcommand> --json    # JSON 格式输出
+```
+
 ### 对话命令
 
 ```bash
@@ -338,20 +349,20 @@ cah memory cleanup --dry-run     # 预览，不实际删除
 
 ```bash
 # 查看人格提示词版本
-cah prompt versions <persona>
+cah prompt versions <agent>
 
 # 回滚提示词版本
-cah prompt rollback <persona> <version-id>
+cah prompt rollback <agent> <version-id>
 
 # 对比两个版本的 prompt 内容
-cah prompt diff <persona> <v1> <v2>
+cah prompt diff <agent> <v1> <v2>
 
 # 对比两个版本的效果指标
-cah prompt compare <persona> <v1> <v2>
+cah prompt compare <agent> <v1> <v2>
 
 # 启动 A/B 测试
-cah prompt test <persona>
-cah prompt test <persona> -s <n>   # 最小样本数（默认 5）
+cah prompt test <agent>
+cah prompt test <agent> -s <n>   # 最小样本数（默认 5）
 
 # 评估 A/B 测试结果
 cah prompt evaluate <test-id>
@@ -453,7 +464,7 @@ cah self check
 │   ├── timeline.json      # 事件时间线（含 instanceId）
 │   ├── process.json       # 后台进程信息
 │   ├── messages.json      # 任务交互消息队列
-│   ├── logs/              # execution.log + events.jsonl
+│   ├── logs/              # execution.log, conversation.log, events.jsonl, conversation.jsonl
 │   ├── outputs/           # result.md
 │   └── traces/            # trace-{traceId}.jsonl（OTLP 兼容 Span 数据）
 ├── memory/                # 记忆条目
@@ -479,7 +490,7 @@ cah self check
 2. 分析项目上下文
 3. 学习历史经验（Memory 检索相关记忆）
 4. AI 生成 workflow.json（多节点工作流）
-5. 按顺序执行各节点（使用不同 Persona）
+5. 按顺序执行各节点（使用不同 Agent）
 6. 结果写入 instance.json 和 result.md
 7. 提取记忆 → 存入 Memory（供后续任务学习）
 
@@ -537,11 +548,31 @@ cah "添加新功能"
 cah "代码优化" -p low
 ```
 
-## 环境变量
+## 配置
+
+**唯一配置文件：`~/.claude-agent-hub.yaml`**（不使用 config.json 或其他格式）
+
+Backend 只需写 `type` 和 `model`，其余字段（`enableAgentTeams`、`chat`、`session` 等）走 schema 默认值：
+
+```yaml
+backends:
+  claude:
+    type: claude-code
+    model: opus
+  cursor:
+    type: cursor
+  codebuddy:
+    type: codebuddy
+    model: glm-4.7
+defaultBackend: claude
+```
+
+环境变量可覆盖部分字段：
 
 ```bash
-# 指定数据目录
-export CAH_DATA_DIR=/path/to/data
+export CAH_DATA_DIR=/path/to/data    # 数据目录（默认 ~/.cah-data/）
+export CAH_BACKEND_TYPE=cursor       # 后端类型
+export CAH_LARK_APP_ID=xxx           # 飞书 App ID
 ```
 
 ## 故障排查

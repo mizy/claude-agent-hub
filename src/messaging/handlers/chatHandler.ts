@@ -198,27 +198,29 @@ async function handleChatInternal(
     images: options?.images,
   })
 
-  // 4. Build prompt and resolve model
+  // 4. Resolve config + model
   const config = await loadConfig()
   const hasImages = !!options?.images?.length
+  const hasFiles = !!options?.files?.length
   const model = resolveModel(
     effectiveText, hasImages, inlineModel, chatId, ss.backendOverride, config
   )
   const backendName = ss.backendOverride ?? config.defaultBackend ?? 'claude-code'
+  const chatMcp = config.backends[config.defaultBackend]?.chat?.mcpServers ?? []
+
+  // 5. Setup streaming + placeholder — start before prompt build so placeholder appears sooner
+  const streamOpts: StreamHandlerOptions | undefined =
+    platform === 'Web' ? { throttleMs: 150, minDelta: 10 } : undefined
+  const stream = setupStreamingAndPlaceholder(chatId, hasImages, hasFiles, maxLen, messenger, bench, signal, streamOpts)
+  bench.parallelStart = Date.now()
+
+  // Build prompt concurrently with placeholder send
   const prompt = await buildFullPrompt(
     chatId, effectiveText, ss.willStartNewSession, options?.client, options?.images, config,
     { backend: backendName, model: model ?? config.backends[backendName]?.model },
     options?.files
   )
   bench.promptReady = Date.now()
-
-  // 5. Setup streaming + placeholder (Web SSE uses lower throttle)
-  const streamOpts: StreamHandlerOptions | undefined =
-    platform === 'Web' ? { throttleMs: 150, minDelta: 10 } : undefined
-  const hasFiles = !!options?.files?.length
-  const stream = setupStreamingAndPlaceholder(chatId, hasImages, hasFiles, maxLen, messenger, bench, signal, streamOpts)
-  const chatMcp = config.backends[config.defaultBackend]?.chat?.mcpServers ?? []
-  bench.parallelStart = Date.now()
 
   // 6. Invoke backend
   try {
@@ -239,7 +241,7 @@ async function handleChatInternal(
     if (!result.ok) {
       if (result.error.type === 'cancelled') {
         stream.stopStreaming()
-        await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger)
+        await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger, stream.getAccumulated())
         return
       }
       const errMsg = result.error.message.toLowerCase()
@@ -264,7 +266,7 @@ async function handleChatInternal(
     if (activeControllers.get(chatId) === abortController) activeControllers.delete(chatId)
     if (signal.aborted) {
       stream.stopStreaming()
-      await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger)
+      await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger, stream.getAccumulated())
       return
     }
     const msg = getErrorMessage(error)

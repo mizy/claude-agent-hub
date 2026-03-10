@@ -8,6 +8,7 @@ export const STATUS_COLORS: Record<string, string> = {
   completed: '#22c55e',
   failed: '#ef4444',
   skipped: '#eab308',
+  'loop-completed': '#a78bfa',
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -144,6 +145,20 @@ export const workflowNodeShape = {
       })
       failEl.textContent = '!'
       g.appendChild(failEl)
+    }
+
+    // Loop-completed indicator
+    if (status === 'loop-completed') {
+      const loopEl = createSvgEl('text', {
+        x: String(w - 16), y: String(h / 2),
+        fill: '#a78bfa',
+        'font-size': '14',
+        'dominant-baseline': 'middle',
+        'text-anchor': 'middle',
+        'font-family': FONT,
+      })
+      loopEl.textContent = '\u21BB'
+      g.appendChild(loopEl)
     }
 
     // Loop count badge

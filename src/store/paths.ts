@@ -49,6 +49,24 @@ export const EPISODES_DIR = join(DATA_DIR, 'episodes')
 /** Prompt 版本目录 */
 export const PROMPT_VERSIONS_DIR = join(DATA_DIR, 'prompt-versions')
 
+/** 自我模型文件 */
+export const SELF_MODEL_PATH = join(DATA_DIR, 'self-model.json')
+
+/** 每日反思日志（ReflectionEntry） */
+export const REFLECTIONS_LOG_PATH = join(DATA_DIR, 'reflections.jsonl')
+
+/** 意识流日志（ConsciousnessEntry） — 保留兼容别名 */
+export const CONSCIOUSNESS_LOG_PATH = join(DATA_DIR, 'consciousness.jsonl')
+
+/** 成长日志（GrowthJournalEntry） */
+export const GROWTH_JOURNAL_PATH = join(DATA_DIR, 'consciousness', 'growth-journal.jsonl')
+
+/** 价值偏好系统 */
+export const VALUE_SYSTEM_PATH = join(DATA_DIR, 'consciousness', 'value-system.json')
+
+/** 主动意图存储 */
+export const INTENTS_PATH = join(DATA_DIR, 'consciousness', 'intents.json')
+
 // ============ 全局文件常量（直接导出） ============
 
 /** 队列文件 */
