@@ -183,8 +183,25 @@ export function workflowToSchema(
     return 'pending'
   }
 
+  // Detect nodes with multiple outgoing condition edges — spread them to avoid label overlap
+  const conditionEdgesByFrom = new Map<string, WorkflowEdge[]>()
+  edges.forEach(e => {
+    if (e.condition && !backEdges.has(`${e.from}->${e.to}`)) {
+      if (!conditionEdgesByFrom.has(e.from)) conditionEdgesByFrom.set(e.from, [])
+      conditionEdgesByFrom.get(e.from)!.push(e)
+    }
+  })
+  // For nodes with 2+ condition edges: positive condition exits bottom, negative exits right
+  const negativeConditionEdges = new Set<string>()
+  conditionEdgesByFrom.forEach(condEdges => {
+    if (condEdges.length >= 2) {
+      condEdges.filter(e => e.condition?.startsWith('!')).forEach(e => negativeConditionEdges.add(e.id))
+    }
+  })
+
   const schemaLines: WfLineData[] = edges.map(e => {
     const isBack = backEdges.has(`${e.from}->${e.to}`)
+    const isNegCond = negativeConditionEdges.has(e.id)
     const st = edgeStatus(e.from, e.to)
     const curLoops = loopCounts[e.id]
     const classes = ['ve-edge', `ve-edge-${st}`, ...(isBack ? ['ve-back-edge'] : []), ...(st === 'running' ? ['running'] : [])].join(' ')
@@ -192,8 +209,8 @@ export function workflowToSchema(
       uuid: e.id,
       from: e.from,
       to: e.to,
-      fromPoint: isBack ? LP.right : LP.bottom,
-      toPoint: isBack ? LP.right : LP.top,
+      fromPoint: isBack ? LP.right : isNegCond ? LP.right : LP.bottom,
+      toPoint: isBack ? LP.right : isNegCond ? LP.top : LP.top,
       condition: e.condition,
       maxLoops: e.maxLoops,
       curLoops,
