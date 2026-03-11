@@ -41,6 +41,7 @@ function toIndexEntry(ep: Episode): EpisodeIndexEntry {
       ? ep.summary.slice(0, SUMMARY_MAX_LENGTH) + '...'
       : ep.summary,
     platform: ep.platform,
+    ...(ep.valence ? { valence: ep.valence } : {}),
   }
 }
 

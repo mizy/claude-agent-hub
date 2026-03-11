@@ -10,8 +10,8 @@ import type { MessengerAdapter } from './types.js'
 
 const logger = createLogger('streaming-handler')
 
-const STREAM_THROTTLE_MS = 400
-const STREAM_MIN_DELTA = 20 // chars
+const STREAM_THROTTLE_MS = 1000
+const STREAM_MIN_DELTA = 80 // chars — ~1s throttle accumulates more content per update
 const DEFAULT_MAX_LENGTH = 4096
 
 export interface StreamHandlerOptions {
@@ -77,7 +77,7 @@ export function createStreamHandler(
     const timeOk = now - lastEditAt > throttleMs
     const shouldUpdate =
       (timeOk && deltaLen > minDelta) ||
-      (hasParagraphBreak && deltaLen > minDelta * 4 && now - lastEditAt > throttleMs * 0.4)
+      (hasParagraphBreak && deltaLen > minDelta * 2 && now - lastEditAt > throttleMs * 0.6)
 
     if (shouldUpdate) {
       lastEditAt = now
@@ -185,10 +185,12 @@ export async function sendFinalResponse(
   )
 
   if (placeholderId && markedParts.length > 0) {
+    // Wait briefly to avoid Lark rate-limit from the last streaming edit
+    await new Promise(r => setTimeout(r, 300))
     let editOk = await messenger.editMessage(chatId, placeholderId, markedParts[0]!)
     if (!editOk) {
       // Retry once after delay — Lark may rate-limit if streaming edit was too recent
-      await new Promise(r => setTimeout(r, 500))
+      await new Promise(r => setTimeout(r, 800))
       editOk = await messenger.editMessage(chatId, placeholderId, markedParts[0]!)
       if (!editOk) {
         // Edit failed twice — try delete + reply, but only reply if delete succeeds

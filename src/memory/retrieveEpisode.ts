@@ -1,7 +1,7 @@
 /**
  * Episodic memory retrieval — find relevant conversation episodes
  *
- * Scoring: timeRecency * 0.3 + keywordMatch * 0.4 + semanticLink * 0.3
+ * Scoring: (timeRecency * 0.3 + keywordMatch * 0.4 + semanticLink * 0.3) * emotionalBoost
  */
 
 import { listEpisodes, getEpisode, getEpisodesByTimeRange } from '../store/EpisodeStore.js'
@@ -148,7 +148,16 @@ export function retrieveEpisodes(params: RetrieveEpisodesParams): Array<Episode 
     const keywordMatch = calcKeywordScore(queryKeywords, episode.triggerKeywords)
     const semanticLink = calcSemanticLink(episode.relatedMemories, currentMemoryIds)
 
-    const score = timeRecency * 0.3 + keywordMatch * 0.4 + semanticLink * 0.3
+    let score = timeRecency * 0.3 + keywordMatch * 0.4 + semanticLink * 0.3
+
+    // Emotional weight boost: high-intensity episodes (>0.7) get priority
+    // Positive episodes get full boost (0.5x), negative get reduced boost (0.2x)
+    // to avoid persistent negative recall bias
+    const intensity = episode.valence?.intensity ?? 0
+    if (intensity > 0.7) {
+      const boostFactor = episode.valence?.polarity === 'negative' ? 0.2 : 0.5
+      score *= 1 + intensity * boostFactor
+    }
 
     // Skip zero-score episodes unless time-filtered (time filter implies intent)
     if (score < 0.01 && !timeRange) continue

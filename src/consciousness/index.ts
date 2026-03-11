@@ -78,7 +78,7 @@ export {
   formatActiveThoughts,
 } from './activeThoughts.js'
 // InnerState — lightweight real-time state for session awareness
-export type { InnerState, ActiveSession, RecentEvent } from './innerState.js'
+export type { InnerState, ActiveSession, RecentEvent, MoodState } from './innerState.js'
 export {
   loadInnerState,
   flushInnerState,

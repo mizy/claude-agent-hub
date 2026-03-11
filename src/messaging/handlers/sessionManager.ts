@@ -5,9 +5,6 @@
  */
 
 import { join } from 'path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs'
-import { readdir, readFile as readFileAsync } from 'fs/promises'
-import { randomUUID } from 'crypto'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { readJson, writeJson } from '../../store/readWriteJson.js'
@@ -17,6 +14,16 @@ import type { SessionConfig } from '../../config/schema.js'
 import { appendEntry } from '../../consciousness/index.js'
 import { generateSessionEndInsight } from '../../consciousness/generateSummary.js'
 import { addActiveThought } from '../../consciousness/activeThoughts.js'
+import {
+  loadWebSession,
+  saveWebSession,
+  createWebSessionFile,
+  deleteWebSessionFile,
+  appendWebMessage as appendWebMessageFile,
+  listWebSessions,
+  isValidWebSessionId,
+} from './webSessionManager.js'
+export type { WebChatSession, WebChatMessage, WebSessionSummary } from './webSessionManager.js'
 
 const logger = createLogger('session-manager')
 
@@ -71,6 +78,7 @@ function writeSessionEndConsciousness(chatId: string, session: ChatSession, reas
             emotionalShift: insight.emotionalShift,
             unfinishedThoughts: insight.unfinishedThoughts,
             triggerEvent: reason,
+            ...(insight.valence ? { valence: insight.valence } : {}),
           },
         })
         // Extract unfinished thoughts into active thoughts pool
@@ -393,82 +401,14 @@ export function destroySessions(): void {
   chatQueues.clear()
 }
 
-// ── Web chat session management (chat-sessions/ files) ──
+// ── Web chat session management (delegated to webSessionManager.ts) ──
 
-const WEB_SESSIONS_DIR = join(DATA_DIR, 'chat-sessions')
-
-export interface WebChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: string
-}
-
-export interface WebChatSession {
-  id: string
-  title: string
-  messages: WebChatMessage[]
-  backend?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface WebSessionSummary {
-  id: string
-  title: string
-  createdAt: string
-  updatedAt: string
-  backend?: string
-  messageCount: number
-}
-
-function ensureWebSessionsDir(): void {
-  if (!existsSync(WEB_SESSIONS_DIR)) {
-    mkdirSync(WEB_SESSIONS_DIR, { recursive: true })
-  }
-}
-
-function isValidSessionId(id: string): boolean {
-  return /^[a-f0-9-]{36}$/.test(id)
-}
-
-function getWebSessionPath(id: string): string {
-  if (!isValidSessionId(id)) throw new Error('Invalid session ID')
-  return join(WEB_SESSIONS_DIR, `${id}.json`)
-}
-
-/** Load a web chat session from disk by chatId */
-export function loadWebSession(chatId: string): WebChatSession | null {
-  if (!isValidSessionId(chatId)) return null
-  const path = getWebSessionPath(chatId)
-  if (!existsSync(path)) return null
-  try {
-    return JSON.parse(readFileSync(path, 'utf-8'))
-  } catch {
-    return null
-  }
-}
-
-/** Save a web chat session to disk */
-export function saveWebSession(session: WebChatSession): void {
-  ensureWebSessionsDir()
-  writeFileSync(getWebSessionPath(session.id), JSON.stringify(session, null, 2))
-}
+export { loadWebSession, listWebSessions, isValidWebSessionId }
 
 /** Create a new web chat session and register it in the in-memory session map */
-export function createWebSession(title?: string, backend?: string): WebChatSession {
-  const id = randomUUID()
-  const now = new Date().toISOString()
-  const session: WebChatSession = {
-    id,
-    title: title || 'New Chat',
-    messages: [],
-    backend,
-    createdAt: now,
-    updatedAt: now,
-  }
-  saveWebSession(session)
-  // Register in the unified ChatSession map so all channels can see it
-  sessions.set(id, {
+export function createWebSession(title?: string, backend?: string) {
+  const session = createWebSessionFile(title, backend)
+  sessions.set(session.id, {
     sessionId: '',
     lastActiveAt: Date.now(),
     turnCount: 0,
@@ -484,80 +424,19 @@ export function createWebSession(title?: string, backend?: string): WebChatSessi
 
 /** Delete a web chat session file and clear from in-memory map */
 export function deleteWebSession(chatId: string): boolean {
-  if (!isValidSessionId(chatId)) return false
-  const path = getWebSessionPath(chatId)
-  if (!existsSync(path)) return false
-  rmSync(path)
-  sessions.delete(chatId)
-  schedulePersist()
-  return true
+  const deleted = deleteWebSessionFile(chatId)
+  if (deleted) {
+    sessions.delete(chatId)
+    schedulePersist()
+  }
+  return deleted
 }
 
-/** Append a message to a web session, creating the session file if needed.
- *  Truncates oldest messages when exceeding maxWebMessages (keeps first pair + recent). */
+/** Append a message to a web session with truncation */
 export function appendWebMessage(
   chatId: string,
   userMessage: string,
-  assistantResponse: string
+  assistantResponse: string,
 ): void {
-  let session = loadWebSession(chatId)
-  if (!session) {
-    session = {
-      id: chatId,
-      title: userMessage.slice(0, 50),
-      messages: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
-  }
-  const ts = new Date().toISOString()
-  session.messages.push({ role: 'user', content: userMessage, timestamp: ts })
-  if (assistantResponse) {
-    session.messages.push({ role: 'assistant', content: assistantResponse, timestamp: ts })
-  }
-
-  // Truncate old messages when over limit, keeping first 2 (initial context) + recent
-  const maxMessages = sessionConfig.maxWebMessages
-  if (session.messages.length > maxMessages) {
-    const keep = Math.max(maxMessages - 2, 0)
-    session.messages = [
-      ...session.messages.slice(0, 2),
-      ...(keep > 0 ? session.messages.slice(-keep) : []),
-    ]
-    logger.debug(`Web session ${chatId.slice(0, 8)} truncated to ${session.messages.length} messages`)
-  }
-
-  session.updatedAt = ts
-  saveWebSession(session)
+  appendWebMessageFile(chatId, userMessage, assistantResponse, sessionConfig.maxWebMessages)
 }
-
-/** List all web session summaries, sorted by updatedAt desc */
-export async function listWebSessions(): Promise<WebSessionSummary[]> {
-  ensureWebSessionsDir()
-  const files = (await readdir(WEB_SESSIONS_DIR)).filter(f => f.endsWith('.json'))
-  const results = await Promise.all(
-    files.map(async (file) => {
-      try {
-        const content = await readFileAsync(join(WEB_SESSIONS_DIR, file), 'utf-8')
-        return JSON.parse(content) as WebChatSession
-      } catch { return null }
-    })
-  )
-  const summaries: WebSessionSummary[] = []
-  for (const data of results) {
-    if (!data) continue
-    summaries.push({
-      id: data.id,
-      title: data.title,
-      createdAt: data.createdAt,
-      updatedAt: data.updatedAt,
-      backend: data.backend,
-      messageCount: data.messages?.length ?? 0,
-    })
-  }
-  summaries.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-  return summaries
-}
-
-/** Check if a string is a valid UUID session ID */
-export { isValidSessionId as isValidWebSessionId }

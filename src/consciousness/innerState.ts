@@ -10,6 +10,8 @@ import { join, dirname } from 'path'
 import { DATA_DIR } from '../store/paths.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
+import type { EmotionalValence, EpisodeIndexEntry } from '../memory/types.js'
+import { listEpisodes } from '../store/EpisodeStore.js'
 
 const logger = createLogger('innerState')
 
@@ -35,9 +37,18 @@ export interface RecentEvent {
   summary: string
 }
 
+export interface MoodState {
+  positiveScore: number   // 0-1, weighted average of positive episode intensities
+  negativeScore: number   // 0-1, weighted average of negative episode intensities
+  dominantEmotion: string // derived label e.g. '充实感', '挫折感', '平静'
+  recentTriggers: string[] // high-intensity trigger tags from recent episodes
+  updatedAt: string
+}
+
 export interface InnerState {
   activeSessions: ActiveSession[]
   recentEvents: RecentEvent[]
+  mood?: MoodState
   updatedAt: string
 }
 
@@ -65,6 +76,7 @@ function loadFromDisk(): InnerState {
     return {
       activeSessions,
       recentEvents: parsed.recentEvents ?? [],
+      mood: parsed.mood, // optional, undefined for old data
       updatedAt: parsed.updatedAt ?? new Date().toISOString(),
     }
   } catch {
@@ -106,6 +118,87 @@ function persistToDisk(): void {
   }
 }
 
+// ============ Mood Aggregation ============
+
+const MOOD_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+let lastMoodUpdate = 0
+
+/** Aggregate mood from recent episode valences (lazy, cached by TTL) */
+function aggregateMoodFromEpisodes(): MoodState | undefined {
+  try {
+    const allEpisodes = listEpisodes()
+    // Take recent 20 episodes (index is sorted newest-first)
+    const recent = allEpisodes.slice(0, 20)
+    const withValence = recent.filter((e): e is EpisodeIndexEntry & { valence: EmotionalValence } => !!e.valence)
+    if (withValence.length === 0) return undefined
+
+    const positives = withValence.filter(e => e.valence.polarity === 'positive')
+    const negatives = withValence.filter(e => e.valence.polarity === 'negative')
+
+    // Score = avgIntensity * (count / totalWithValence) — weighs both strength and proportion
+    const total = withValence.length
+    const positiveScore = positives.length > 0
+      ? (positives.reduce((sum, e) => sum + e.valence.intensity, 0) / positives.length) * (positives.length / total)
+      : 0
+    const negativeScore = negatives.length > 0
+      ? (negatives.reduce((sum, e) => sum + e.valence.intensity, 0) / negatives.length) * (negatives.length / total)
+      : 0
+
+    // Derive dominant emotion from score difference and ratio
+    const diff = positiveScore - negativeScore
+    const posRatio = positives.length / withValence.length
+    let dominantEmotion: string
+    if (Math.abs(diff) < 0.15 && positiveScore < 0.3) {
+      dominantEmotion = '平静'
+    } else if (diff >= 0.3) {
+      dominantEmotion = posRatio > 0.7 ? '充实感' : '积极偏向'
+    } else if (diff >= 0.1) {
+      dominantEmotion = '轻松'
+    } else if (diff <= -0.3) {
+      dominantEmotion = negatives.length > 3 ? '持续挫折感' : '挫折感'
+    } else if (diff <= -0.1) {
+      dominantEmotion = '些许压力'
+    } else {
+      dominantEmotion = '平稳'
+    }
+
+    // Collect high-intensity triggers (intensity > 0.6)
+    const recentTriggers: string[] = []
+    for (const ep of withValence.slice(0, 10)) {
+      if (ep.valence.intensity > 0.6) {
+        for (const t of ep.valence.triggers) {
+          if (!recentTriggers.includes(t)) recentTriggers.push(t)
+          if (recentTriggers.length >= 5) break
+        }
+      }
+      if (recentTriggers.length >= 5) break
+    }
+
+    return {
+      positiveScore: Math.round(positiveScore * 100) / 100,
+      negativeScore: Math.round(negativeScore * 100) / 100,
+      dominantEmotion,
+      recentTriggers,
+      updatedAt: new Date().toISOString(),
+    }
+  } catch (e) {
+    logger.debug(`mood aggregation failed: ${getErrorMessage(e)}`)
+    return undefined
+  }
+}
+
+/** Update mood on state if cache expired */
+function refreshMoodIfNeeded(state: InnerState): void {
+  const now = Date.now()
+  if (now - lastMoodUpdate < MOOD_CACHE_TTL_MS && state.mood) return
+  const mood = aggregateMoodFromEpisodes()
+  if (mood) {
+    state.mood = mood
+    lastMoodUpdate = now
+    markDirty()
+  }
+}
+
 // ============ Public API ============
 
 /** Load current inner state (returns in-memory cache, with runtime TTL filtering for stale sessions) */
@@ -121,6 +214,8 @@ export function loadInnerState(): InnerState {
     state.activeSessions = filtered
     markDirty()
   }
+  // Refresh mood from episodic memory (cached, TTL-based)
+  refreshMoodIfNeeded(state)
   return state
 }
 
@@ -218,6 +313,16 @@ export function formatInnerStateForPrompt(state: InnerState): string {
     for (const ev of recent) {
       parts.push(`  - ${ev.summary}`)
     }
+  }
+
+  // Mood injection (backward compatible: skip if absent)
+  if (state.mood) {
+    const { dominantEmotion, positiveScore, negativeScore, recentTriggers } = state.mood
+    let moodLine = `当前情绪：${dominantEmotion} [+${positiveScore}/-${negativeScore}]`
+    if (recentTriggers.length > 0) {
+      moodLine += `，源于近期${recentTriggers.length}个触发：${recentTriggers.join('、')}`
+    }
+    parts.push(moodLine)
   }
 
   return parts.join('\n')

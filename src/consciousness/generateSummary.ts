@@ -9,6 +9,9 @@
 import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
+import type { EmotionalValence, EmotionalPolarity } from '../memory/types.js'
+
+const VALID_POLARITIES: EmotionalPolarity[] = ['positive', 'negative', 'neutral']
 
 const logger = createLogger('consciousness:summary')
 
@@ -25,6 +28,7 @@ export interface SessionEndInsight {
   summary: string
   emotionalShift: string
   unfinishedThoughts: string[]
+  valence?: EmotionalValence
 }
 
 function truncate(text: string, maxLen: number): string {
@@ -205,7 +209,12 @@ export async function generateSessionEndInsight(
 {
   "summary": "1-2句话总结主要话题和结论（中文，≤100字）",
   "emotionalShift": "对话情绪变化，格式：起始→结束，如 neutral→engaged, curious→satisfied",
-  "unfinishedThoughts": ["未完成的想法或待办事项，最多3条"]
+  "unfinishedThoughts": ["未完成的想法或待办事项，最多3条"],
+  "valence": {
+    "polarity": "positive 或 negative 或 neutral — 对话整体情感倾向",
+    "intensity": "0-1 浮点数，0=完全中性，1=极强情感",
+    "triggers": ["情感触发标签，如 task_success, user_praise, user_frustration, error_recovery, creative_solution, learning_moment, collaboration, breakthrough, confusion, task_failure 等"]
+  }
 }
 
 ${conversationText}`
@@ -226,6 +235,24 @@ ${conversationText}`
         const fenceMatch = raw.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/)
         if (fenceMatch) raw = fenceMatch[1]!.trim()
         const parsed = JSON.parse(raw) as Record<string, unknown>
+        // Parse emotional valence
+        let valence: EmotionalValence | undefined
+        const rawValence = parsed.valence as Record<string, unknown> | undefined
+        if (rawValence && typeof rawValence === 'object') {
+          const polarity: EmotionalPolarity = VALID_POLARITIES.includes(rawValence.polarity as EmotionalPolarity)
+            ? (rawValence.polarity as EmotionalPolarity)
+            : 'neutral'
+          const intensity = typeof rawValence.intensity === 'number'
+            ? Math.max(0, Math.min(1, rawValence.intensity))
+            : 0
+          const triggers = Array.isArray(rawValence.triggers)
+            ? (rawValence.triggers as unknown[]).filter((t): t is string => typeof t === 'string')
+            : []
+          if (polarity !== 'neutral' || intensity > 0 || triggers.length > 0) {
+            valence = { polarity, intensity, triggers }
+          }
+        }
+
         return {
           summary: truncate(
             typeof parsed.summary === 'string' ? parsed.summary || lastUserText : lastUserText,
@@ -236,6 +263,7 @@ ${conversationText}`
           unfinishedThoughts: Array.isArray(parsed.unfinishedThoughts)
             ? (parsed.unfinishedThoughts as unknown[]).filter((t): t is string => typeof t === 'string').slice(0, 3)
             : [],
+          valence,
         }
       } catch {
         logger.debug('Failed to parse session-end insight JSON, using fallback')

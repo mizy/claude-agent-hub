@@ -11,7 +11,7 @@ import { generateShortId } from '../shared/generateId.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import { saveEpisode, searchEpisodes } from '../store/EpisodeStore.js'
-import type { Episode, EpisodeTone, EpisodePlatform } from './types.js'
+import type { Episode, EpisodeTone, EpisodePlatform, EmotionalValence, EmotionalPolarity } from './types.js'
 
 const logger = createLogger('episodic-memory')
 
@@ -19,6 +19,7 @@ const logger = createLogger('episodic-memory')
 let extractLock = Promise.resolve()
 
 const VALID_TONES: EpisodeTone[] = ['technical', 'casual', 'urgent', 'exploratory']
+const VALID_POLARITIES: EmotionalPolarity[] = ['positive', 'negative', 'neutral']
 
 export interface EpisodeMessage {
   role: 'user' | 'assistant'
@@ -50,6 +51,10 @@ ${conversation}
 2. **keyDecisions**: 对话中做出的关键决策（字符串数组）。每个决策要写清楚"选择了X而非Y，因为Z"的形式。如果没有决策则为空数组。
 3. **tone**: 对话基调，只能是以下之一: "technical" | "casual" | "urgent" | "exploratory"
 4. **triggerKeywords**: 触发关键词（5-10个，用于后续检索此对话）。包含具体的技术术语、工具名、模块名等，不要用"讨论"、"修复"等泛词。
+5. **valence**: 对话的情感色彩，包含：
+   - polarity: "positive" | "negative" | "neutral"
+   - intensity: 0-1 之间的数值（0=完全中性，1=极强情感）
+   - triggers: 情感触发标签数组，可选值包括 task_success, task_failure, user_praise, user_frustration, error_recovery, creative_solution, learning_moment, collaboration, breakthrough, confusion 等
 
 ## 输出格式
 只返回 JSON 对象，不要其他内容：
@@ -57,7 +62,8 @@ ${conversation}
   "summary": "...",
   "keyDecisions": ["...", "..."],
   "tone": "technical",
-  "triggerKeywords": ["...", "..."]
+  "triggerKeywords": ["...", "..."],
+  "valence": { "polarity": "positive", "intensity": 0.7, "triggers": ["task_success"] }
 }`
 }
 
@@ -66,6 +72,11 @@ interface RawEpisodeExtraction {
   keyDecisions: string[]
   tone: string
   triggerKeywords: string[]
+  valence?: {
+    polarity?: string
+    intensity?: number
+    triggers?: string[]
+  }
 }
 
 function parseExtraction(text: string): RawEpisodeExtraction | null {
@@ -177,6 +188,25 @@ export async function extractEpisode(params: ExtractEpisodeParams): Promise<Epis
       ? extraction.keyDecisions.filter((d): d is string => typeof d === 'string')
       : []
 
+    // Parse emotional valence (backward compatible — missing valence = neutral)
+    let valence: EmotionalValence | undefined
+    if (extraction.valence && typeof extraction.valence === 'object') {
+      const rawPolarity = extraction.valence.polarity
+      const polarity: EmotionalPolarity = VALID_POLARITIES.includes(rawPolarity as EmotionalPolarity)
+        ? (rawPolarity as EmotionalPolarity)
+        : 'neutral'
+      const intensity = typeof extraction.valence.intensity === 'number'
+        ? Math.max(0, Math.min(1, extraction.valence.intensity))
+        : 0
+      const triggers = Array.isArray(extraction.valence.triggers)
+        ? extraction.valence.triggers.filter((t): t is string => typeof t === 'string')
+        : []
+      // Only store valence if non-trivial
+      if (polarity !== 'neutral' || intensity > 0 || triggers.length > 0) {
+        valence = { polarity, intensity, triggers }
+      }
+    }
+
     // Serialize dedup check + save to prevent race condition between concurrent calls.
     // The AI invocation above is the slow part and runs concurrently — only this
     // critical section needs mutual exclusion.
@@ -205,6 +235,7 @@ export async function extractEpisode(params: ExtractEpisodeParams): Promise<Epis
             previousEpisode,
             platform,
             triggerKeywords,
+            ...(valence ? { valence } : {}),
           }
 
           saveEpisode(ep)
