@@ -176,25 +176,17 @@ export function applyEnvOverrides(config: Config): Config {
     config = { ...config, notify: { ...config.notify, telegram } }
   }
 
-  // Backend: ensure defaultBackend exists, then apply env overrides
-  if (env.CAH_BACKEND_TYPE || env.CAH_BACKEND_MODEL || !config.backends[config.defaultBackend]) {
+  // Backend: populate defaults when empty, ensure defaultBackend exists
+  const backends = Object.keys(config.backends).length === 0
+    ? structuredClone(DEFAULT_BACKENDS)
+    : { ...config.backends }
+
+  if (env.CAH_BACKEND_TYPE || env.CAH_BACKEND_MODEL || !backends[config.defaultBackend]) {
     const defaultBackendName = config.defaultBackend
-    const backends = { ...config.backends }
-    const defaultBackend: BackendConfig = backends[defaultBackendName]
-      ? { ...backends[defaultBackendName] }
-      : {
-          type: 'claude-code',
-          model: 'opus',
-          enableAgentTeams: false,
-          chat: {
-            mcpServers: [],
-            session: {
-              timeoutMinutes: 60,
-              maxSessions: 200,
-              maxWebMessages: 200,
-            },
-          },
-        }
+    const existing = backends[defaultBackendName]
+    const defaultBackend: BackendConfig = existing
+      ? { ...existing }
+      : structuredClone(DEFAULT_BACKENDS.claude!)
     if (env.CAH_BACKEND_TYPE) {
       defaultBackend.type = env.CAH_BACKEND_TYPE as BackendConfig['type']
     }
@@ -202,8 +194,8 @@ export function applyEnvOverrides(config: Config): Config {
       defaultBackend.model = env.CAH_BACKEND_MODEL
     }
     backends[defaultBackendName] = defaultBackend
-    config = { ...config, backends }
   }
+  config = { ...config, backends }
 
   return config
 }
@@ -289,6 +281,40 @@ function stopWatching(): void {
   logger.debug('Config file watching stopped')
 }
 
+/** Default backend configurations — all supported backends with sensible defaults */
+const DEFAULT_BACKENDS: Record<string, BackendConfig> = {
+  claude: {
+    type: 'claude-code',
+    model: 'opus',
+    enableAgentTeams: false,
+    chat: { mcpServers: [], session: { timeoutMinutes: 60, maxSessions: 200, maxWebMessages: 200 } },
+  },
+  codebuddy: {
+    type: 'codebuddy',
+    model: 'glm-4.7',
+    enableAgentTeams: false,
+    chat: { mcpServers: [], session: { timeoutMinutes: 60, maxSessions: 200, maxWebMessages: 200 } },
+  },
+  opencode: {
+    type: 'opencode',
+    model: 'opencode/minimax-m2.5-free',
+    enableAgentTeams: false,
+    chat: { mcpServers: [], session: { timeoutMinutes: 60, maxSessions: 200, maxWebMessages: 200 } },
+  },
+  iflow: {
+    type: 'iflow',
+    model: 'glm-5',
+    enableAgentTeams: false,
+    chat: { mcpServers: [], session: { timeoutMinutes: 60, maxSessions: 200, maxWebMessages: 200 } },
+  },
+  cursor: {
+    type: 'cursor',
+    model: 'gpt-5.4-medium',
+    enableAgentTeams: false,
+    chat: { mcpServers: [], session: { timeoutMinutes: 60, maxSessions: 200, maxWebMessages: 200 } },
+  },
+}
+
 /**
  * 获取默认配置
  */
@@ -299,28 +325,15 @@ export function getDefaultConfig(): Config {
       default_priority: 'medium',
       max_retries: 3,
       timeout: '30m',
+      concurrency: 3,
     },
     git: {
       base_branch: 'main',
       branch_prefix: 'agent/',
       auto_push: false,
     },
-    backends: {
-      default: {
-        type: 'claude-code',
-        model: 'opus',
-        enableAgentTeams: false,
-        chat: {
-          mcpServers: [],
-          session: {
-            timeoutMinutes: 60,
-            maxSessions: 200,
-            maxWebMessages: 200,
-          },
-        },
-      },
-    },
-    defaultBackend: 'default',
+    backends: structuredClone(DEFAULT_BACKENDS),
+    defaultBackend: 'claude',
     scheduledTasks: [],
     memory: {
       forgetting: {

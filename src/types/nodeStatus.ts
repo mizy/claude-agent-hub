@@ -46,10 +46,10 @@ export function isNodeSkipped(status: NodeStatus): boolean {
 // ============ WorkflowStatus 辅助函数 ============
 
 /**
- * 判断工作流是否已终结（completed, failed, cancelled）
+ * 判断工作流是否已终结（completed, failed, cancelled, stopped）
  */
 export function isWorkflowTerminal(status: WorkflowStatus): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled'
+  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'stopped'
 }
 
 /**

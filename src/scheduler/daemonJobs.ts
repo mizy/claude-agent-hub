@@ -10,7 +10,7 @@
 
 import cron from 'node-cron'
 import chalk from 'chalk'
-import { readdirSync, statSync, unlinkSync } from 'fs'
+import { readdirSync, statSync, unlinkSync, rmSync } from 'fs'
 import { join } from 'path'
 import { DATA_DIR } from '../store/paths.js'
 import { executeTask } from '../task/executeTask.js'
@@ -34,23 +34,29 @@ const waitingResumeAttempts = new Map<string, number>()
 
 let scheduledJobs: cron.ScheduledTask[] = []
 
+/** Poll and execute the next pending task */
+async function pollAndExecute(): Promise<void> {
+  try {
+    const task = await pollPendingTask()
+    if (!task) return
+    console.log(chalk.blue(`[${new Date().toLocaleTimeString()}] 执行任务: ${task.title}`))
+
+    await withProcessTracking(task.id, () =>
+      executeTask(task, { useConsole: false })
+    )
+  } catch (error) {
+    console.error(chalk.red(`执行出错:`), error)
+  }
+}
+
 /** Register all daemon cron jobs */
 export async function registerDaemonJobs(pollCronExpr: string): Promise<void> {
   // Task polling
-  const job = cron.schedule(pollCronExpr, async () => {
-    try {
-      const task = await pollPendingTask()
-      if (!task) return
-      console.log(chalk.blue(`[${new Date().toLocaleTimeString()}] 执行任务: ${task.title}`))
-
-      await withProcessTracking(task.id, () =>
-        executeTask(task, { concurrency: 1, useConsole: false })
-      )
-    } catch (error) {
-      console.error(chalk.red(`执行出错:`), error)
-    }
-  })
+  const job = cron.schedule(pollCronExpr, pollAndExecute)
   scheduledJobs.push(job)
+
+  // Immediately poll once on startup (don't await — run in background)
+  pollAndExecute()
 
   // Signal detection + auto repair — every 30 minutes
   const signalJob = cron.schedule('*/30 * * * *', async () => {
@@ -149,8 +155,8 @@ export async function registerDaemonJobs(pollCronExpr: string): Promise<void> {
           }
 
           updateTask(task.id, { status: 'developing' })
-          waitingResumeAttempts.delete(task.id)
-          resumeTask(task.id)
+          const resumed = resumeTask(task.id)
+          if (resumed) waitingResumeAttempts.delete(task.id)
         }
       }
     } catch (error) {
@@ -228,8 +234,13 @@ export async function registerDaemonJobs(pollCronExpr: string): Promise<void> {
       for (const name of readdirSync(tmpDir)) {
         const filePath = join(tmpDir, name)
         try {
-          if (statSync(filePath).mtimeMs < cutoff) {
-            unlinkSync(filePath)
+          const stat = statSync(filePath)
+          if (stat.mtimeMs < cutoff) {
+            if (stat.isDirectory()) {
+              rmSync(filePath, { recursive: true, force: true })
+            } else {
+              unlinkSync(filePath)
+            }
             deleted++
           }
         } catch { /* skip */ }

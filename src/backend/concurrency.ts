@@ -46,6 +46,7 @@ export async function acquireSlot(signal?: AbortSignal): Promise<void> {
 
 /** 释放调用许可 */
 export function releaseSlot(): void {
+  if (activeCalls <= 0) return
   activeCalls--
   const next = waitQueue.shift()
   if (next) next()

@@ -93,8 +93,8 @@ function writeSessionEndConsciousness(chatId: string, session: ChatSession, reas
       })
     }
 
-  } catch {
-    // Best-effort — never throw
+  } catch (e) {
+    logger.debug(`writeSessionEndConsciousness failed: ${getErrorMessage(e)}`)
   }
 }
 
@@ -111,8 +111,8 @@ function extractActiveThoughts(unfinishedThoughts: string[] | undefined, chatId:
     for (const thought of validThoughts) {
       addActiveThought({ thought, priority: 'medium', source })
     }
-  } catch {
-    // Best-effort
+  } catch (e) {
+    logger.debug(`extractActiveThoughts failed: ${getErrorMessage(e)}`)
   }
 }
 

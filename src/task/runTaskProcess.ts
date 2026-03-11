@@ -33,7 +33,7 @@ function handleFatalError(type: string, error: unknown): void {
   if (currentTaskId) {
     try {
       const currentTask = getTask(currentTaskId)
-      if (currentTask?.status !== 'cancelled') {
+      if (currentTask?.status !== 'cancelled' && currentTask?.status !== 'stopped') {
         updateTask(currentTaskId, { status: 'failed' })
       }
       updateProcessInfo(currentTaskId, {
@@ -182,9 +182,9 @@ async function main(): Promise<void> {
 
     logger.error(`Task failed: ${errorMessage}`)
 
-    // Don't overwrite cancelled status with failed
+    // Don't overwrite cancelled/stopped status with failed
     const currentTask = getTask(taskId)
-    if (currentTask?.status !== 'cancelled') {
+    if (currentTask?.status !== 'cancelled' && currentTask?.status !== 'stopped') {
       updateTask(taskId, { status: 'failed' })
     }
 
@@ -192,7 +192,7 @@ async function main(): Promise<void> {
     updateProcessInfo(taskId, {
       status: 'crashed',
       error: errorMessage,
-      stopReason: currentTask?.status === 'cancelled' ? 'killed' : 'error',
+      stopReason: currentTask?.status === 'cancelled' || currentTask?.status === 'stopped' ? 'killed' : 'error',
       exitCode: 1,
     })
 

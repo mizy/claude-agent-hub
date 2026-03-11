@@ -11,7 +11,7 @@
 
 import { extractKeywords } from '../analysis/index.js'
 import { loadConfig } from '../config/loadConfig.js'
-import { getAllMemories, saveMemory, getMemory } from '../store/MemoryStore.js'
+import { getAllMemories, getMemory, updateMemory } from '../store/MemoryStore.js'
 import { migrateMemoryEntry } from './migrateMemory.js'
 import type { MemoryEntry, Association, AssociationType } from './types.js'
 
@@ -179,8 +179,8 @@ export function updateAssociationStrength(
   boostAssoc(m1, entryId2, boost)
   boostAssoc(m2, entryId1, boost)
 
-  saveMemory(m1)
-  saveMemory(m2)
+  updateMemory(entryId1, { associations: m1.associations })
+  updateMemory(entryId2, { associations: m2.associations })
 }
 
 function boostAssoc(entry: MemoryEntry, targetId: string, boost: number): void {
@@ -265,6 +265,36 @@ export async function associativeRetrieve(
  * Rebuild associations for all memory entries.
  * Returns count of total entries processed and new links created.
  */
+/**
+ * Build bidirectional associations for newly added entries.
+ * For each new entry: compute associations, save, then reverse-link old entries back.
+ */
+export async function linkNewEntries(entries: MemoryEntry[]): Promise<void> {
+  if (entries.length === 0) return
+  const allEntries = getAllMemories().map(migrateMemoryEntry)
+  const newIds = new Set(entries.map(e => e.id))
+
+  for (const entry of entries) {
+    const migrated = migrateMemoryEntry(entry)
+    const associations = await buildAssociations(migrated, allEntries)
+    updateMemory(migrated.id, { associations })
+
+    // Reverse link: update old entries to point back to new entry
+    for (const assoc of associations) {
+      if (newIds.has(assoc.targetId)) continue
+      // Re-read from store to avoid overwriting concurrent updates
+      const current = getMemory(assoc.targetId)
+      if (!current) continue
+      const existing = (current.associations ?? []).find(a => a.targetId === migrated.id)
+      if (!existing) {
+        updateMemory(assoc.targetId, {
+          associations: [...(current.associations ?? []), { targetId: migrated.id, weight: assoc.weight, type: assoc.type }],
+        })
+      }
+    }
+  }
+}
+
 export async function rebuildAllAssociations(): Promise<{ total: number; newLinks: number }> {
   const raw = getAllMemories()
   const allEntries = raw.map(migrateMemoryEntry)
@@ -274,7 +304,7 @@ export async function rebuildAllAssociations(): Promise<{ total: number; newLink
     const oldCount = (entry.associations ?? []).length
     entry.associations = await buildAssociations(entry, allEntries)
     newLinks += Math.max(0, entry.associations.length - oldCount)
-    saveMemory(entry)
+    updateMemory(entry.id, { associations: entry.associations })
   }
 
   return { total: allEntries.length, newLinks }

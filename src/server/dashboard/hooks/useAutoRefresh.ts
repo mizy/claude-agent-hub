@@ -8,6 +8,7 @@ const REFRESH_INTERVAL = 3000
  * Called once in App — drives all polling.
  */
 export function useAutoRefresh() {
+  const currentPage = useStore(s => s.currentPage)
   const refreshTasks = useStore(s => s.refreshTasks)
   const refreshTaskData = useStore(s => s.refreshTaskData)
   const refreshTraceData = useStore(s => s.refreshTraceData)
@@ -16,26 +17,27 @@ export function useAutoRefresh() {
 
   // Initial load + periodic refresh
   useEffect(() => {
+    if (currentPage !== 'tasks') return
     refreshTasks()
     const id = setInterval(refreshTasks, REFRESH_INTERVAL)
     return () => clearInterval(id)
-  }, [refreshTasks])
+  }, [currentPage, refreshTasks])
 
   // Refresh selected task data when selected or periodically
   useEffect(() => {
-    if (!selectedTaskId) return
+    if (currentPage !== 'tasks' || !selectedTaskId) return
 
     refreshTaskData()
     const id = setInterval(refreshTaskData, REFRESH_INTERVAL)
     return () => clearInterval(id)
-  }, [selectedTaskId, refreshTaskData])
+  }, [currentPage, selectedTaskId, refreshTaskData])
 
   // Refresh trace data when trace tab is active
   useEffect(() => {
-    if (!selectedTaskId || activeTab !== 'trace') return
+    if (currentPage !== 'tasks' || !selectedTaskId || activeTab !== 'trace') return
 
     refreshTraceData()
     const id = setInterval(refreshTraceData, REFRESH_INTERVAL)
     return () => clearInterval(id)
-  }, [selectedTaskId, activeTab, refreshTraceData])
+  }, [currentPage, selectedTaskId, activeTab, refreshTraceData])
 }

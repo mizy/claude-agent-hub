@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react'
-import VEditor from 'mmeditor'
+import MMEditor from 'mmeditor'
 import { useStore } from '../store/useStore'
 import { workflowToSchema } from './workflowToSchema'
 import { workflowNodeShape, STATUS_COLORS, fmtDur } from './workflowNodeShape'
@@ -8,9 +8,25 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
+function formatEdgeLabelKind(kind?: string): string {
+  if (kind === 'condition') return 'Condition branch'
+  if (kind === 'condition-negative') return 'Negative condition'
+  if (kind === 'else') return 'Else branch'
+  if (kind === 'loop') return 'Loop edge'
+  return 'Edge'
+}
+
+function formatEdgeStatus(status?: string): string {
+  if (status === 'completed') return 'Completed'
+  if (status === 'running') return 'Running'
+  if (status === 'failed') return 'Failed'
+  if (status === 'skipped') return 'Unreached'
+  return 'Pending'
+}
+
 export function WorkflowCanvas() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const editorRef = useRef<VEditor | null>(null)
+  const editorRef = useRef<MMEditor | null>(null)
   const tipRef = useRef<HTMLDivElement>(null)
   const taskData = useStore((s) => s.taskData)
   const selectedNodeId = useStore((s) => s.selectedNodeId)
@@ -23,7 +39,7 @@ export function WorkflowCanvas() {
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const editor = new VEditor({
+    const editor = new MMEditor({
       dom: el,
       mode: 'view',
       showBackGrid: false,
@@ -76,10 +92,14 @@ export function WorkflowCanvas() {
       const wrap = containerRef.current
       if (!tip || !wrap) return
       const d = line.data
+      const label = d.label as string | undefined
+      const labelKind = d.labelKind as string | undefined
+      const status = d.status as string | undefined
       const condition = d.condition as string | undefined
-      if (!condition) return
-      tip.innerHTML = `<div style="font-size:11px;color:#94a3b8;margin-bottom:2px">Condition</div>` +
-        `<div style="font-family:monospace;font-size:11px;word-break:break-all">${esc(condition)}</div>`
+      if (!condition && !label) return
+      tip.innerHTML = `<div style="font-size:11px;color:#94a3b8;margin-bottom:2px">${esc(formatEdgeLabelKind(labelKind))}${status ? ` · ${esc(formatEdgeStatus(status))}` : ''}</div>` +
+        (label ? `<div style="font-weight:600;margin-bottom:${condition ? 6 : 0}px">${esc(label)}</div>` : '') +
+        (condition ? `<div style="font-family:monospace;font-size:11px;word-break:break-all">${esc(condition)}</div>` : '')
       tip.style.display = 'block'
       const cr = wrap.getBoundingClientRect()
       let tx = event.clientX - cr.left + 12, ty = event.clientY - cr.top + 12
@@ -110,16 +130,28 @@ export function WorkflowCanvas() {
     const taskChanged = currentTaskId !== prevTaskIdRef.current
     prevTaskIdRef.current = currentTaskId
 
-    // Build a key from nodeStates to skip re-render when poll returns identical data
+    // Build a key from rendered state to skip work when poll returns identical data.
     const ns = taskData.instance?.nodeStates || {}
-    const stateKey = Object.keys(ns).sort().map(k => `${k}:${ns[k].status}`).join(',')
+    const loopCounts = taskData.instance?.loopCounts || {}
+    const nodeStateKey = Object.keys(ns)
+      .sort()
+      .map(k => {
+        const state = ns[k]
+        return `${k}:${state.status}:${state.durationMs ?? ''}:${state.attempts}:${state.error ?? ''}`
+      })
+      .join(',')
+    const loopKey = Object.keys(loopCounts)
+      .sort()
+      .map(k => `${k}:${loopCounts[k]}`)
+      .join(',')
+    const stateKey = `${nodeStateKey}|${loopKey}`
     const stateChanged = stateKey !== prevStateKeyRef.current
     prevStateKeyRef.current = stateKey
 
     if (!structureChanged && !taskChanged && !stateChanged) return
 
-    const taskDone = taskData.task.status === 'completed' || taskData.task.status === 'done'
-    const schema = workflowToSchema(nodes, edges || [], taskData.instance, taskDone, taskData.task.model, taskData.task.backend)
+    const taskTerminal = ['completed', 'done', 'failed', 'cancelled', 'stopped', 'paused'].includes(taskData.task.status)
+    const schema = workflowToSchema(nodes, edges || [], taskData.instance, taskTerminal, taskData.task.model, taskData.task.backend)
     editor.schema.setData(schema).then(() => {
       if (structureChanged || taskChanged) {
         requestAnimationFrame(() => {

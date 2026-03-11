@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { fetchApi } from '../api/fetchApi'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts'
 import '../styles/statistics.css'
 
@@ -44,6 +44,11 @@ interface StatsOverview {
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6']
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+interface DistributionDatum {
+  label: string
+  value: number
+}
 
 function formatDuration(ms: number): string {
   if (ms < 60_000) return `${Math.round(ms / 1000)}s`
@@ -102,6 +107,65 @@ function getHeatColor(val: number, max: number): string {
   return 'rgba(59,130,246,0.8)'
 }
 
+function DistributionCard({ title, data }: { title: string; data: DistributionDatum[] }) {
+  if (data.length === 0) {
+    return (
+      <div className="stats-pie-container">
+        <div className="stats-pie-title">{title}</div>
+        <div className="stats-chart-empty">No data</div>
+      </div>
+    )
+  }
+
+  const total = data.reduce((sum, item) => sum + item.value, 0)
+
+  return (
+    <div className="stats-pie-container">
+      <div className="stats-pie-title">{title}</div>
+      <div className="stats-pie-chart">
+        <ResponsiveContainer width="100%" height={180}>
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="label"
+              cx="50%"
+              cy="44%"
+              outerRadius={54}
+              innerRadius={28}
+              paddingAngle={2}
+              stroke="var(--bg-secondary)"
+              strokeWidth={2}
+            >
+              {data.map((_, i) => (
+                <Cell key={i} fill={COLORS[i % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: 8, fontSize: 12 }}
+              formatter={(value: unknown) => Number(value).toLocaleString()}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="stats-distribution-list">
+        {data.map((item, i) => (
+          <div key={item.label} className="stats-distribution-item">
+            <div className="stats-distribution-main">
+              <span className="stats-distribution-dot" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+              <span className="stats-distribution-name">{item.label}</span>
+            </div>
+            <div className="stats-distribution-values">
+              <span>{item.value.toLocaleString()}</span>
+              <span>{total > 0 ? `${Math.round((item.value / total) * 100)}%` : '0%'}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function StatisticsPage() {
   const [stats, setStats] = useState<StatsOverview | null>(null)
   const [loading, setLoading] = useState(true)
@@ -144,6 +208,14 @@ export function StatisticsPage() {
   const { chat, task, lifecycle, growth } = stats
   const weeklyTrend = buildWeeklyTrend(task.weeklySuccessRates)
   const { grid: heatmap, maxVal: heatMax } = buildHeatmap(chat.hourDistribution, chat.weekdayDistribution)
+  const channelData = chat.channelDistribution.map((item) => ({
+    label: item.platform,
+    value: item.messageCount,
+  }))
+  const backendData = task.topBackends.map((item) => ({
+    label: item.name,
+    value: item.count,
+  }))
 
   return (
     <div className="stats-page">
@@ -244,59 +316,8 @@ export function StatisticsPage() {
           <div className="stats-chart-card">
             <h3>Distribution</h3>
             <div className="stats-pie-row">
-              {/* Channel Distribution */}
-              <div className="stats-pie-container">
-                <div className="stats-pie-title">Channels</div>
-                {chat.channelDistribution.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie
-                        data={chat.channelDistribution}
-                        dataKey="messageCount" nameKey="platform"
-                        cx="50%" cy="50%" outerRadius={70} innerRadius={35}
-                        paddingAngle={2}
-                      >
-                        {chat.channelDistribution.map((_, i) => (
-                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: 8, fontSize: 12 }}
-                      />
-                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: 'var(--text-secondary)' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="stats-chart-empty">No data</div>
-                )}
-              </div>
-
-              {/* Backend Distribution */}
-              <div className="stats-pie-container">
-                <div className="stats-pie-title">Backends</div>
-                {task.topBackends.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie
-                        data={task.topBackends}
-                        dataKey="count" nameKey="name"
-                        cx="50%" cy="50%" outerRadius={70} innerRadius={35}
-                        paddingAngle={2}
-                      >
-                        {task.topBackends.map((_, i) => (
-                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: 8, fontSize: 12 }}
-                      />
-                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: 'var(--text-secondary)' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="stats-chart-empty">No data</div>
-                )}
-              </div>
+              <DistributionCard title="Channels" data={channelData} />
+              <DistributionCard title="Backends" data={backendData} />
             </div>
           </div>
         </div>

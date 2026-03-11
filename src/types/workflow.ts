@@ -26,7 +26,7 @@ export type NodeType =
   | 'schedule-wait'
   | 'lark-notify'
 export type NodeStatus = 'pending' | 'ready' | 'running' | 'waiting' | 'done' | 'failed' | 'skipped'
-export type WorkflowStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
+export type WorkflowStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'stopped'
 
 // ============ Workflow 定义 ============
 
@@ -108,6 +108,8 @@ export interface TaskConfig {
    */
   agent: string
   prompt: string // 任务描述
+  backend?: string // 覆盖全局 backend（如 "cursor", "claude-code"）
+  model?: string // 覆盖全局 model
   timeout?: number // 超时（毫秒），默认 30 分钟
   retries?: number // 重试次数，默认 3
 }

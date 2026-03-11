@@ -33,3 +33,16 @@ export function deleteMemory(id: string): boolean {
 export function updateMemory(id: string, updates: Partial<MemoryEntry>): boolean {
   return memoryStore.updateSync(id, updates)
 }
+
+/**
+ * Read-modify-write: reads current state, applies updater fn, writes back.
+ * Prevents lost updates from stale closures (e.g. accessCount += 1 after await).
+ * Safe in Node.js single-threaded model: entire call is synchronous, so no
+ * interleaving between read and write within the same event loop tick.
+ */
+export function atomicUpdateMemory(id: string, updater: (current: MemoryEntry) => Partial<MemoryEntry>): boolean {
+  const current = memoryStore.getSync(id)
+  if (current === null) return false
+  const updates = updater(current)
+  return memoryStore.updateSync(id, updates)
+}

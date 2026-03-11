@@ -238,6 +238,20 @@ async function runDaemon(): Promise<void> {
   console.log(chalk.green(`✓ 守护进程运行中 (PID: ${process.pid})`))
   console.log(chalk.gray('  Ctrl+C 停止'))
 
+  // On startup, immediately recover any orphaned tasks left from previous daemon run.
+  // Wait 3s to let process.json files stabilize before scanning.
+  setTimeout(async () => {
+    try {
+      const { resumeAllOrphanedTasks } = await import('../task/resumeTask.js')
+      const resumed = resumeAllOrphanedTasks()
+      if (resumed.length > 0) {
+        console.log(chalk.yellow(`  ↩ 启动时恢复 ${resumed.length} 个孤儿任务`))
+      }
+    } catch {
+      // Non-critical — orphan cron will catch them later
+    }
+  }, 3000)
+
   // Synchronous cleanup — safe to call from crash handlers (fire-and-forget async parts)
   const cleanupSync = () => {
     stopSelfDrive()
@@ -292,22 +306,17 @@ async function runDaemon(): Promise<void> {
 
   // Crash handlers: do as much cleanup as possible synchronously,
   // then attempt async cleanup with a timeout to avoid hanging
-  process.on('uncaughtException', error => {
-    console.error(chalk.red('Uncaught exception:'), error)
-    cleanupSync()
-    // Attempt async cleanup with a hard timeout
-    stopLarkWsClient()
-      .catch(() => {})
-      .finally(() => process.exit(1))
-    setTimeout(() => process.exit(1), 3000)
-  })
-
-  process.on('unhandledRejection', reason => {
-    console.error(chalk.red('Unhandled rejection:'), reason)
+  let isCrashShuttingDown = false
+  const crashCleanup = (label: string, detail: unknown) => {
+    console.error(chalk.red(`${label}:`), detail)
+    if (isCrashShuttingDown) return
+    isCrashShuttingDown = true
     cleanupSync()
     stopLarkWsClient()
       .catch(() => {})
       .finally(() => process.exit(1))
     setTimeout(() => process.exit(1), 3000)
-  })
+  }
+  process.on('uncaughtException', error => crashCleanup('Uncaught exception', error))
+  process.on('unhandledRejection', reason => crashCleanup('Unhandled rejection', reason))
 }

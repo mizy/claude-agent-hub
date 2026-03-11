@@ -76,21 +76,21 @@ body {
 
 /* ===== Left Nav Bar ===== */
 .nav-bar {
-  width: 56px; flex-shrink: 0;
+  width: 60px; flex-shrink: 0;
   background: var(--bg-primary); border-right: 1px solid var(--border-primary);
   display: flex; flex-direction: column; align-items: center;
   padding: 12px 0; gap: 4px;
 }
 .nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
-  width: 48px; padding: 8px 0; border-radius: 8px;
+  width: 52px; padding: 8px 0; border-radius: 10px;
   background: transparent; border: none; color: var(--text-tertiary);
   cursor: pointer; transition: all 0.15s;
 }
 .nav-item:hover { background: var(--bg-secondary); color: var(--text-primary); }
 .nav-item.active { background: var(--bg-secondary); color: var(--accent); }
 .nav-icon { font-size: 18px; line-height: 1; }
-.nav-label { font-size: 9px; font-weight: 500; }
+.nav-label { font-size: 10px; font-weight: 500; }
 
 /* ===== Page Placeholder ===== */
 .page-placeholder {
@@ -108,7 +108,7 @@ body {
 /* Sidebar wrapper for responsive */
 .sidebar-wrap { flex-shrink: 0; }
 .sidebar {
-  width: 260px;
+  width: 272px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-primary);
   display: flex;
@@ -130,16 +130,24 @@ body {
   padding: 12px;
   margin-bottom: 4px;
   border-radius: 8px;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
   position: relative;
 }
-.task-item:hover { background: var(--border-primary); }
-.task-item.active { background: var(--accent); }
+.task-item:hover {
+  background: rgba(51, 65, 85, 0.6);
+  border-color: rgba(100, 116, 139, 0.45);
+}
+.task-item.active {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(96, 165, 250, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.12);
+}
 .task-title {
-  font-size: 13px; font-weight: 500;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  margin-bottom: 4px;
+  font-size: 13px; font-weight: 600; line-height: 1.35;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; margin-bottom: 6px;
 }
 .task-meta {
   display: flex; align-items: center; gap: 6px;
@@ -181,10 +189,25 @@ body {
 
 /* Task detail action buttons */
 .task-detail-actions {
-  display: flex; gap: 6px; flex-wrap: wrap;
+  display: flex; gap: 8px; flex-wrap: wrap;
 }
 .task-detail-actions .action-btn {
-  padding: 5px 10px; font-size: 11px;
+  padding: 6px 12px; font-size: 12px;
+  background: var(--bg-tertiary);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
+}
+.task-detail-actions .action-btn.primary {
+  background: var(--status-active-bg); border-color: var(--accent); color: var(--info-text);
+}
+.task-detail-actions .action-btn.success {
+  background: var(--success-bg); border-color: var(--wf-completed); color: var(--success-text);
+}
+.task-detail-actions .action-btn.danger {
+  border-color: rgba(239, 68, 68, 0.4); color: var(--error-text);
+}
+.task-detail-actions .action-btn.warning {
+  border-color: rgba(245, 158, 11, 0.45); color: var(--warning-text);
 }
 
 /* Paused status */
@@ -212,10 +235,17 @@ body {
 .main-header {
   padding: 12px 20px; border-bottom: 1px solid var(--border-primary);
   background: var(--bg-secondary); display: flex;
-  justify-content: space-between; align-items: center;
+  justify-content: space-between; align-items: center; gap: 12px;
 }
-.main-header h2 { font-size: 14px; font-weight: 600; }
-.task-id-label { font-size: 11px; color: var(--text-tertiary); }
+.main-header > div:first-child { min-width: 0; }
+.main-header h2 {
+  font-size: 14px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.task-id-label {
+  font-size: 11px; color: var(--text-tertiary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .header-actions { display: flex; gap: 8px; }
 
 .btn {
@@ -337,8 +367,8 @@ body {
 
 /* ===== Tablet: <=1024px ===== */
 @media (max-width: 1024px) {
-  .sidebar { width: 240px; }
-  .right-panel { width: 300px; }
+  .sidebar { width: 248px; }
+  .right-panel { width: 340px; min-width: auto; }
   .panel-toggle { display: flex; }
   .right-panel-wrap.collapsed { display: none; }
 }

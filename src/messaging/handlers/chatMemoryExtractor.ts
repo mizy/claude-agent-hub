@@ -185,12 +185,16 @@ export function triggerChatMemoryExtraction(
 
   // Async: load config and check triggers
   getExtractConfig().then(({ extractEveryNTurns, extraKeywords }) => {
+    // Re-fetch buffer from Map — it may have been cleared between sync and async
+    const currentBuffer = chatBuffers.get(chatId)
+    if (!currentBuffer) return
+
     const triggerReason = detectContentTrigger(userText, extraKeywords)
-    const periodicTrigger = buffer!.turnCount >= extractEveryNTurns
+    const periodicTrigger = currentBuffer.turnCount >= extractEveryNTurns
 
     if (triggerReason || periodicTrigger) {
-      const messagesToExtract = [...buffer!.messages]
-      buffer!.turnCount = 0
+      const messagesToExtract = [...currentBuffer.messages]
+      currentBuffer.turnCount = 0
 
       // Fire-and-forget
       extractChatMemory(messagesToExtract, { chatId, platform }).catch(err => {

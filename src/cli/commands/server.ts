@@ -71,6 +71,19 @@ export function registerDashboardCommand(program: Command) {
       await stopDashboard()
     })
 
+  // cah dashboard restart
+  dashboard
+    .command('restart')
+    .description('重启面板')
+    .option('-p, --port <port>', '服务器端口', '7788')
+    .option('-H, --host <host>', '监听地址', 'localhost')
+    .action(async options => {
+      await stopDashboard()
+      // Wait for process to fully exit before restarting
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await spawnDashboardDetached(options)
+    })
+
   // cah dashboard status
   dashboard
     .command('status')

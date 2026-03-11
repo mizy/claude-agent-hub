@@ -38,12 +38,12 @@ function loadIndex(): EntityIndex {
   }
 }
 
-/** Persist entity index to disk */
+/** Persist entity index to disk, update cache only on success */
 function saveIndex(index: EntityIndex): void {
-  cachedIndex = index
   try {
     mkdirSync(join(DATA_DIR, 'memory'), { recursive: true })
     writeFileSync(ENTITY_INDEX_PATH, JSON.stringify(index, null, 2))
+    cachedIndex = index
   } catch (e) {
     logger.warn(`Failed to save entity index: ${e}`)
   }

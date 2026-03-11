@@ -31,6 +31,9 @@ export interface WfLineData {
   fromPoint: number
   toPoint: number
   condition?: string
+  label?: string
+  labelKind?: string
+  status?: EdgeVisualStatus
   maxLoops?: number
   curLoops?: number
   isBackEdge?: boolean
@@ -52,6 +55,8 @@ const STATUS_MAP: Record<string, string> = {
   done: 'completed', completed: 'completed', // "done" from legacy nodeStates
   failed: 'failed',
   skipped: 'skipped',
+  cancelled: 'skipped',
+  stopped: 'skipped',
 }
 
 const EDGE_COLORS: Record<string, string> = {
@@ -81,10 +86,35 @@ function findBackEdges(nodeIds: string[], adj: Record<string, string[]>): Set<st
   return backEdges
 }
 
-/** Return a minimal icon label for a condition edge; full text shown on hover */
-function summarizeCondition(cond?: string): string | null {
-  if (!cond) return null
-  return cond.startsWith('!') ? '✗' : '✓'
+function isNegativeCondition(cond?: string): boolean {
+  return !!cond && /^\s*!|^\s*not\s/i.test(cond)
+}
+
+type EdgeLabelKind = 'condition' | 'condition-negative' | 'else' | 'loop' | 'neutral'
+type EdgeVisualStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+
+function getEdgeLabelKind(
+  e: WorkflowEdge,
+  isBack: boolean,
+  isImplicitElse: boolean,
+  isNegative: boolean,
+): EdgeLabelKind {
+  if (isBack) return 'loop'
+  if (isImplicitElse) return 'else'
+  if (isNegative) return 'condition-negative'
+  if (e.condition) return 'condition'
+  return 'neutral'
+}
+
+/** Build a human-readable label for an edge */
+function buildEdgeLabel(kind: EdgeLabelKind, curLoops?: number, maxLoops?: number): string | undefined {
+  if (kind === 'loop') {
+    return curLoops != null && maxLoops ? `loop ${curLoops}/${maxLoops}` : 'loop'
+  }
+  if (kind === 'else') return 'else'
+  if (kind === 'condition-negative') return 'if not'
+  if (kind === 'condition') return 'if'
+  return undefined
 }
 
 /** Convert workflow data to mmeditor schema format */
@@ -92,7 +122,7 @@ export function workflowToSchema(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
   instance: Instance | null,
-  taskDone = false,
+  taskTerminal = false,
   taskModel?: string,
   taskBackend?: string,
 ): WfSchemaData {
@@ -144,7 +174,7 @@ export function workflowToSchema(
   const schemaNodes: WfNodeData[] = nodes.map(n => {
     const st = ns[n.id]
     let status = STATUS_MAP[st?.status || 'pending'] || 'pending'
-    if (taskDone && status === 'pending') {
+    if (taskTerminal && status === 'pending') {
       // Nodes that participated in a loop iteration → mark completed (they did run)
       // Nodes never reached → mark skipped
       status = loopExecutedNodes.has(n.id) ? 'completed' : 'skipped'
@@ -159,8 +189,8 @@ export function workflowToSchema(
       nodeType: n.type,
       status,
       agent: n.task?.agent,
-      model: n.config?.model || taskModel,
-      backend: n.config?.backend || taskBackend,
+      model: n.task?.model || n.config?.model || (!(n.task?.backend || n.config?.backend) ? taskModel : undefined),
+      backend: n.task?.backend || n.config?.backend || taskBackend,
       durationMs: st?.durationMs,
       error: st?.error,
       isLoopBody: bodySet.has(n.id),
@@ -175,13 +205,16 @@ export function workflowToSchema(
   const nodeStatusMap = new Map<string, string>()
   schemaNodes.forEach(n => nodeStatusMap.set(n.uuid, n.status))
 
-  function edgeStatus(fromId: string, toId: string): string {
+  function edgeStatus(fromId: string, toId: string): EdgeVisualStatus {
     const fromSt = nodeStatusMap.get(fromId) || 'pending'
     const toSt = nodeStatusMap.get(toId) || 'pending'
     if (toSt === 'running') return 'running'
-    if (fromSt === 'failed') return 'failed'
+    if (toSt === 'failed' || fromSt === 'failed') return 'failed'
+    if (toSt === 'completed') return 'completed'
+    // A skipped target usually means the branch never ran, so keep pending visuals.
+    if (toSt === 'skipped') return 'pending'
     if (fromSt === 'completed') return 'completed'
-    if (fromSt === 'skipped') return 'skipped'
+    if (fromSt === 'skipped') return 'pending'
     return 'pending'
   }
 
@@ -197,29 +230,53 @@ export function workflowToSchema(
   const negativeConditionEdges = new Set<string>()
   conditionEdgesByFrom.forEach(condEdges => {
     if (condEdges.length >= 2) {
-      condEdges.filter(e => e.condition?.startsWith('!')).forEach(e => negativeConditionEdges.add(e.id))
+      condEdges.filter(e => isNegativeCondition(e.condition)).forEach(e => negativeConditionEdges.add(e.id))
+    }
+  })
+
+  // Detect implicit "else" edges: no condition, but sibling edges from same node have conditions
+  // Include back-edges too — e.g. verify→fix (loop-back, no condition) alongside verify→report (APPROVED condition)
+  const implicitElseEdges = new Set<string>()
+  const nodesWithCondEdges = new Set(conditionEdgesByFrom.keys())
+  edges.forEach(e => {
+    if (!e.condition && nodesWithCondEdges.has(e.from)) {
+      implicitElseEdges.add(e.id)
+      if (!backEdges.has(`${e.from}->${e.to}`)) {
+        negativeConditionEdges.add(e.id)
+      }
     }
   })
 
   const schemaLines: WfLineData[] = edges.map(e => {
     const isBack = backEdges.has(`${e.from}->${e.to}`)
-    const isNegCond = negativeConditionEdges.has(e.id)
     const st = edgeStatus(e.from, e.to)
     const curLoops = loopCounts[e.id]
-    const classes = ['ve-edge', `ve-edge-${st}`, ...(isBack ? ['ve-back-edge'] : []), ...(st === 'running' ? ['running'] : [])].join(' ')
+    const isElse = implicitElseEdges.has(e.id)
+    const isNegative = isNegativeCondition(e.condition) || negativeConditionEdges.has(e.id)
+    const labelKind = getEdgeLabelKind(e, isBack, isElse, isNegative)
+    const label = e.label || buildEdgeLabel(labelKind, curLoops, e.maxLoops)
+    const classes = [
+      've-edge',
+      `ve-edge-${st}`,
+      ...(label ? ['ve-label', `ve-label-status-${st}`, `ve-label-kind-${labelKind}`] : []),
+      ...(isBack ? ['ve-back-edge'] : []),
+      ...(st === 'running' ? ['running'] : []),
+    ].join(' ')
     return {
       uuid: e.id,
       from: e.from,
       to: e.to,
-      fromPoint: isBack ? LP.right : isNegCond ? LP.right : LP.bottom,
-      toPoint: isBack ? LP.right : isNegCond ? LP.top : LP.top,
+      fromPoint: isBack ? LP.right : LP.bottom,
+      toPoint: isBack ? LP.right : LP.top,
       condition: e.condition,
       maxLoops: e.maxLoops,
       curLoops,
       isBackEdge: isBack,
       className: classes,
+      status: st,
+      labelKind,
       style: { stroke: EDGE_COLORS[st] || EDGE_COLORS.pending },
-      label: [summarizeCondition(e.condition), curLoops != null && e.maxLoops ? `${curLoops}/${e.maxLoops}` : null].filter(Boolean).join(' ') || undefined,
+      label,
     }
   })
 
@@ -231,7 +288,7 @@ export function workflowToSchema(
     schemaLines.push({
       uuid: `loop-enter-${loopId}`,
       from: loopId, to: bodyNodes[0],
-      fromPoint: LP.right, toPoint: LP.left,
+      fromPoint: LP.bottom, toPoint: LP.top,
       className: ['ve-loop-edge', ...(enterSt === 'running' ? ['running'] : [])].join(' '),
       style: { stroke: EDGE_COLORS[enterSt] || EDGE_COLORS.pending },
     })
@@ -252,13 +309,15 @@ export function workflowToSchema(
     schemaLines.push({
       uuid: `loop-back-${loopId}`,
       from: bodyNodes[bodyNodes.length - 1], to: loopId,
-      fromPoint: LP.left, toPoint: LP.left,
+      fromPoint: LP.right, toPoint: LP.right,
       isBackEdge: true,
-      className: ['ve-back-edge', ...(backSt === 'running' ? ['running'] : [])].join(' '),
+      className: ['ve-edge', `ve-edge-${backSt}`, 've-label', `ve-label-status-${backSt}`, 've-label-kind-loop', 've-back-edge', ...(backSt === 'running' ? ['running'] : [])].join(' '),
       style: { stroke: EDGE_COLORS[backSt] || EDGE_COLORS.pending },
       curLoops,
       maxLoops: maxIterations,
-      label: curLoops != null && maxIterations ? `${curLoops}/${maxIterations}` : undefined,
+      status: backSt,
+      labelKind: 'loop',
+      label: buildEdgeLabel('loop', curLoops, maxIterations),
     })
   })
 

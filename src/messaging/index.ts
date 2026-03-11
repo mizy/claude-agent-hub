@@ -15,7 +15,7 @@
  * - 飞书卡片: buildCard/buildTaskCompletedCard/buildTaskFailedCard/buildApprovalCard/buildAutoWaitCard
  *   buildWelcomeCard/buildTaskListCard/buildTaskDetailCard/buildTaskLogsCard/buildStatusCard/buildHelpCard (11 种)
  * - 飞书事件路由: createLarkAdapter/larkClientContext/handleLarkMessage/handleCardAction/handleP2pChatCreate/processMessageEvent/destroyGroupBuffer
- * - 飞书 Markdown: normalizeLarkMarkdown/buildMarkdownCard/convertMarkdownTables
+ * - 飞书 Markdown: normalizeLarkMarkdown/buildMarkdownCard
  * - Telegram 客户端: startTelegramClient/stopTelegramClient/isTelegramClientRunning/sendTelegramMessage/getDefaultChatId
  * - Telegram 通知: sendTelegramReviewNotification/sendTelegramTextMessage/sendTelegramApprovalResult
  * - 任务通知桥接: sendTaskCreatedNotification/sendTaskCompletionNotify
@@ -138,7 +138,6 @@ export type { LarkMessageEvent, LarkCardActionEvent, LarkP2pChatCreateEvent } fr
 export {
   normalizeLarkMarkdown,
   buildMarkdownCard,
-  convertMarkdownTables,
 } from './larkCardWrapper.js'
 
 // ── Episode extractor ──

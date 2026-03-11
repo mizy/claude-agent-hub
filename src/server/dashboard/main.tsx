@@ -1,3 +1,4 @@
+/** @entry Dashboard bootstrap — mounts React root */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'

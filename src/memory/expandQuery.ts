@@ -90,7 +90,13 @@ Example: query "workflow 节点执行失败" → ["workflow","节点","node","�
       return []
     }
 
-    const parsed = JSON.parse(match[0])
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(match[0])
+    } catch {
+      logger.debug(`Query expansion: JSON parse failed`)
+      return []
+    }
     if (!Array.isArray(parsed)) {
       logger.debug(`Query expansion: parsed result is not an array`)
       return []

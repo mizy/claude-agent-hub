@@ -5,7 +5,6 @@
 
 import { describe, it, expect } from 'vitest'
 import { BUILTIN_AGENTS, getBuiltinAgent, getAvailableAgents } from '../builtinAgents.js'
-import { AGENT_MCP_CONFIG } from '../agentMcpConfig.js'
 
 describe('BUILTIN_AGENTS', () => {
   it('should contain expected agents', () => {
@@ -20,8 +19,8 @@ describe('BUILTIN_AGENTS', () => {
     expect(names).toContain('Documenter')
     expect(names).toContain('Optimizer')
     expect(names).toContain('Mentor')
-    // 14 total: None + 13 named agents
-    expect(names.length).toBe(14)
+    // 15 total: None + 14 named agents
+    expect(names.length).toBe(15)
   })
 
   it('should have valid structure for all agents', () => {
@@ -63,14 +62,6 @@ describe('getBuiltinAgent', () => {
   it('should be case-sensitive', () => {
     expect(getBuiltinAgent('pragmatist')).toBeUndefined()
     expect(getBuiltinAgent('PRAGMATIST')).toBeUndefined()
-  })
-})
-
-describe('AGENT_MCP_CONFIG', () => {
-  it('should have keys matching BUILTIN_AGENTS', () => {
-    expect(Object.keys(AGENT_MCP_CONFIG).sort()).toEqual(
-      Object.keys(BUILTIN_AGENTS).filter(k => k !== 'None').sort()
-    )
   })
 })
 

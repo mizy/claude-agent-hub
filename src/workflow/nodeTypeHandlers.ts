@@ -7,7 +7,6 @@ import { invokeBackend } from '../backend/index.js'
 import { buildExecuteNodePrompt } from '../prompts/index.js'
 import { appendConversation, appendExecutionLog } from '../store/TaskLogStore.js'
 import { getUnconsumedMessages, markMessagesConsumed } from '../store/TaskMessageStore.js'
-import { agentNeedsMcp } from '../agents/agentMcpConfig.js'
 import { updateInstanceVariables } from '../store/WorkflowStore.js'
 import { getTask, updateTask } from '../store/TaskStore.js'
 import { createChildSpan, endSpan } from '../store/createSpan.js'
@@ -317,16 +316,17 @@ async function executeTaskNode(
   // 构建 prompt
   const prompt = buildExecuteNodePrompt(agent, workflow, node.name, taskPrompt, context)
 
-  // 根据角色决定是否启用 MCP
-  // 不需要外部集成的角色禁用 MCP，加速启动
-  const disableMcp = !agentNeedsMcp(agent.name)
+  // Disable MCP to speed up CLI startup (no MCP servers configured)
+  const disableMcp = true
 
   // taskId 用于日志写入（复用上面已声明的 taskId）
   const logTaskId = taskId
 
-  // 读取任务级 backend/model 覆盖（存储在 workflow variables 中）
-  const taskBackend = instance.variables?.taskBackend as string | undefined
-  const taskModel = instance.variables?.taskModel as string | undefined
+  // 读取 backend/model 覆盖：node.task 内 > node 顶层 > 任务级变量 > 全局默认
+  // LLM 有时会把 backend/model 放在 node 顶层而非 task 子对象，兼容两种写法
+  const nodeAny = node as unknown as Record<string, string>
+  const taskBackend = taskConfig.backend ?? nodeAny['backend'] ?? (instance.variables?.taskBackend as string | undefined)
+  const taskModel = taskConfig.model ?? nodeAny['model'] ?? (instance.variables?.taskModel as string | undefined)
 
   // 从配置读取模型（任务级覆盖优先，其次 agent 偏好，最后 backend 默认）
   const { resolveBackendConfig } = await import('../backend/index.js')
@@ -360,11 +360,10 @@ async function executeTaskNode(
     backendType: taskBackend,
     timeoutMs: 30 * 60 * 1000, // 30 分钟超时
     onChunk: chunk => {
-      // 流式输出到执行日志（原始模式，只清理 ANSI 颜色码）
+      // 流式输出到执行日志（带节点标记，便于按节点过滤）
       if (logTaskId) {
-        appendExecutionLog(logTaskId, chunk, { raw: true })
+        appendExecutionLog(logTaskId, chunk, { raw: true, nodeId: node.name })
       }
-      process.stdout.write(chunk)
     },
   })
 

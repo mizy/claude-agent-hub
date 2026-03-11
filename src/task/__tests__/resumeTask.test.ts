@@ -80,7 +80,7 @@ describe('detectOrphanedTasks', () => {
     expect(orphans).toEqual([])
   })
 
-  it('should detect stopped process with active task status as orphan', () => {
+  it('should sync stopped process with active task status to stopped (not orphan)', () => {
     const task = createTaskWithFolder({ description: 'Stopped process test' })
     forceWriteTaskWithOldTime(task.id, 'developing')
 
@@ -92,11 +92,10 @@ describe('detectOrphanedTasks', () => {
 
     const orphans = detectOrphanedTasks()
     const found = orphans.find(o => o.task.id === task.id)
-    expect(found).toBeDefined()
-    expect(found!.reason).toBe('process_not_found')
-
-    // Clean up so this task doesn't affect subsequent tests
-    updateTask(task.id, { status: 'failed' })
+    // User-stopped process: task status synced to 'stopped', not treated as orphan
+    expect(found).toBeUndefined()
+    const updated = getTask(task.id)
+    expect(updated?.status).toBe('stopped')
   })
 
   it('should detect planning tasks as potential orphans', () => {

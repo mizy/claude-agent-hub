@@ -35,16 +35,17 @@ import { waitForWorkflowCompletion } from './ExecutionProgress.js'
 import { setupIncrementalStatsSaving } from './ExecutionStats.js'
 import { prepareNewExecution, prepareResume, ResumeConflictError } from './prepareExecution.js'
 import { enqueueReadyNodesForResume } from './taskRecovery.js'
+import { getTaskWorkflow, getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { emitWorkflowStarted, emitWorkflowCompleted } from './taskNotifications.js'
 import { loggedErrors } from './loggedErrors.js'
 import { redirectConsoleToTaskLog } from './redirectConsole.js'
+import { loadConfig } from '../config/loadConfig.js'
 
 export { ResumeConflictError } from './prepareExecution.js'
 
 const logger = createLogger('execute-task')
 
 const POLL_INTERVAL = 500
-const DEFAULT_CONCURRENCY = 3
 
 /**
  * 执行选项
@@ -78,7 +79,16 @@ export async function executeTask(
   task: Task,
   options: ExecuteTaskOptions = {}
 ): Promise<ExecuteTaskResult> {
-  const { concurrency = DEFAULT_CONCURRENCY, resume = false, useConsole = false } = options
+  const config = await loadConfig()
+  const { concurrency = config.tasks.concurrency, useConsole = false } = options
+  // Auto-detect resume mode: if an existing non-completed instance is found, always resume.
+  // This prevents polling cron from restarting a task from scratch after orphan recovery
+  // sets the task back to 'pending' but before the spawned process updates its status.
+  const existingInstance = getTaskInstance(task.id)
+  const existingWorkflow = getTaskWorkflow(task.id)
+  const resume =
+    options.resume ??
+    !!(existingWorkflow && existingInstance && existingInstance.status !== 'completed')
 
   if (useConsole) {
     setLogMode('foreground')
@@ -250,10 +260,10 @@ export async function executeTask(
       throw error
     }
 
-    // If task was already cancelled (by stopTask), don't overwrite with 'failed'
+    // If task was already cancelled/stopped (by stopTask), don't overwrite with 'failed'
     const currentTask = getTask(task.id)
-    if (currentTask?.status === 'cancelled') {
-      logger.info(`Task already cancelled, skipping failed status update: ${task.id}`)
+    if (currentTask?.status === 'cancelled' || currentTask?.status === 'stopped') {
+      logger.info(`Task already ${currentTask.status}, skipping failed status update: ${task.id}`)
       throw error
     }
 

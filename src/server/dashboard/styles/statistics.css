@@ -76,11 +76,36 @@
 }
 
 /* Pie chart row */
-.stats-pie-row { display: flex; gap: 16px; }
+.stats-pie-row { display: flex; gap: 20px; align-items: flex-start; }
 .stats-pie-container { flex: 1; min-width: 0; }
 .stats-pie-title {
   font-size: 11px; color: var(--text-secondary); text-align: center;
   margin-bottom: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px;
+}
+.stats-pie-chart {
+  min-height: 180px;
+}
+.stats-distribution-list {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 8px;
+}
+.stats-distribution-item {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(51, 65, 85, 0.7);
+}
+.stats-distribution-main {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+}
+.stats-distribution-dot {
+  width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0;
+}
+.stats-distribution-name {
+  font-size: 12px; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.stats-distribution-values {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  font-size: 11px; color: var(--text-secondary);
 }
 
 /* Heatmap */
@@ -168,6 +193,7 @@
   .stats-card-icon { font-size: 22px; }
   .stats-card-value { font-size: 18px; }
   .stats-pie-row { flex-direction: column; }
+  .stats-distribution-item { padding: 8px; }
   .stats-chart-card { padding: 14px 16px; }
 }
 

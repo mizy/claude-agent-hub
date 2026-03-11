@@ -61,14 +61,15 @@ export async function invokeBackend(
 ): Promise<Result<InvokeResult, InvokeError>> {
   const backend = await resolveBackend(options.backendType)
 
-  // Apply model override: backendModel param > options.model > backend config model
-  if (options.backendModel && !options.model) {
-    options.model = options.backendModel
+  // Resolve model without mutating the caller's options object
+  let resolvedModel = options.model
+  if (!resolvedModel && options.backendModel) {
+    resolvedModel = options.backendModel
   }
-  if (!options.model) {
+  if (!resolvedModel) {
     const backendConfig = await resolveBackendConfig(options.backendType)
     if (backendConfig.model) {
-      options.model = backendConfig.model
+      resolvedModel = backendConfig.model
     }
   }
 
@@ -92,17 +93,19 @@ export async function invokeBackend(
   }
 
   const slotStart = Date.now()
-  await acquireSlot()
-  const slotWaitMs = Date.now() - slotStart
-
-  // Check if aborted while waiting for slot
-  if (options.signal?.aborted) {
-    releaseSlot()
-    return {
-      ok: false,
-      error: { type: 'cancelled', message: 'Aborted during slot wait' },
-    } as Result<InvokeResult, InvokeError>
+  try {
+    await acquireSlot(options.signal)
+  } catch (e) {
+    // AbortError from signal — slot was never acquired, no need to release
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return {
+        ok: false,
+        error: { type: 'cancelled', message: 'Aborted during slot wait' },
+      } as Result<InvokeResult, InvokeError>
+    }
+    throw e
   }
+  const slotWaitMs = Date.now() - slotStart
   if (slotWaitMs > 50) {
     logger.info(`Slot wait: ${slotWaitMs}ms`)
   }
@@ -110,10 +113,10 @@ export async function invokeBackend(
   // Create LLM span if trace context is provided
   const traceCtx = options.traceCtx
   const llmSpan = traceCtx
-    ? createChildSpan(traceCtx.currentSpan, `llm:${options.model ?? 'default'}`, 'llm', {
+    ? createChildSpan(traceCtx.currentSpan, `llm:${resolvedModel ?? 'default'}`, 'llm', {
         'task.id': traceCtx.taskId,
         'llm.backend': backend.name,
-        'llm.model': options.model,
+        'llm.model': resolvedModel,
         'llm.prompt_length': fullPrompt.length,
         'llm.slot_wait_ms': slotWaitMs,
       })
@@ -123,7 +126,7 @@ export async function invokeBackend(
   }
 
   try {
-    const result = await backend.invoke({ ...options, prompt: fullPrompt })
+    const result = await backend.invoke({ ...options, prompt: fullPrompt, model: resolvedModel })
     releaseSlot()
     // Attach slot wait time to result
     if (result.ok) {

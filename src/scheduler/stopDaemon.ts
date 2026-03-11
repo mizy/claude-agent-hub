@@ -6,6 +6,7 @@ import { TASKS_DIR, RUNNER_LOCK_FILE } from '../store/paths.js'
 import { getPidLock, releasePidLock, isProcessRunning, isServiceRunning } from './pidLock.js'
 import { releaseRunnerLock } from '../task/spawnTask.js'
 import { createLogger } from '../shared/logger.js'
+import { ensureError } from '../shared/assertError.js'
 
 const logger = createLogger('stop-daemon')
 
@@ -27,12 +28,12 @@ function killProcess(pid: number, label: string): boolean {
     logger.info(`Sent SIGTERM to ${label} (PID ${pid})`)
     return true
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (code === 'ESRCH') {
+    const err = ensureError(error) as NodeJS.ErrnoException
+    if (err.code === 'ESRCH') {
       logger.debug(`${label} (PID ${pid}) already dead`)
       return false
     }
-    logger.warn(`Failed to kill ${label} (PID ${pid}): ${code}`)
+    logger.warn(`Failed to kill ${label} (PID ${pid}): ${err.code}`)
     return false
   }
 }
@@ -121,7 +122,8 @@ export async function stopDaemon(_options: StopOptions): Promise<StopResult> {
       console.log(chalk.green(`✓ 已发送停止信号到守护进程 (PID ${pid})`))
       releasePidLock()
     } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ESRCH') {
+      const err = ensureError(error) as NodeJS.ErrnoException
+      if (err.code === 'ESRCH') {
         console.log(chalk.yellow('守护进程已不存在，清理残留文件'))
         store.setDaemonPid(null)
         releasePidLock()

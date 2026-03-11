@@ -17,7 +17,7 @@ import {
 } from './sessionManager.js'
 import { clearChatMemoryBuffers } from './chatMemoryExtractor.js'
 import { flushEpisode, destroyEpisodeTrackers } from './episodeExtractor.js'
-import { destroyGroupBuffer } from '../larkEventRouter.js'
+import { destroyGroupBuffer } from '../larkGroupBuffer.js'
 import { createBenchmark } from './chatBenchmark.js'
 import { recordEvent, registerSession, deregisterSession, updateSessionTopic, clearActiveSessions, flushInnerState } from '../../consciousness/index.js'
 import type { MessengerAdapter, ClientContext } from './types.js'
@@ -40,6 +40,14 @@ const DEFAULT_MAX_LENGTH = 4096
 
 // Per-chatId AbortController for interrupting active AI calls
 const activeControllers = new Map<string, AbortController>()
+
+// Per-chatId active streaming context for graceful shutdown messaging
+interface ActiveStreamCtx {
+  messenger: MessengerAdapter
+  getPlaceholderId: () => string | null
+  getAccumulated: () => string
+}
+const activeStreams = new Map<string, ActiveStreamCtx>()
 
 // ── Public API ──
 
@@ -117,6 +125,26 @@ export function cancelActiveChat(chatId: string): void {
  * Cleanup all sessions and stop timers. Call on daemon shutdown.
  */
 export async function destroyChatHandler(): Promise<void> {
+  // Send "进程已中断" to all active streaming chats before aborting
+  const shutdownEdits: Promise<void>[] = []
+  for (const [chatId, ctx] of activeStreams) {
+    const placeholderId = ctx.getPlaceholderId()
+    if (placeholderId) {
+      const partial = ctx.getAccumulated()
+      const content = partial
+        ? `${partial}\n\n⚠️ 进程已中断，请重新发送消息`
+        : '⚠️ 进程已中断，请重新发送消息'
+      shutdownEdits.push(
+        ctx.messenger.editMessage(chatId, placeholderId, content)
+          .then(() => {})
+          .catch(e => logger.debug(`shutdown edit failed [${chatId.slice(0, 8)}]: ${e}`))
+      )
+    }
+  }
+  // Wait briefly for edits to land, then abort
+  await Promise.allSettled(shutdownEdits)
+  activeStreams.clear()
+
   for (const controller of activeControllers.values()) {
     controller.abort()
   }
@@ -245,6 +273,7 @@ async function handleChatInternal(
   const streamOpts: StreamHandlerOptions | undefined =
     platform === 'Web' ? { throttleMs: 150, minDelta: 10 } : undefined
   const stream = setupStreamingAndPlaceholder(chatId, hasImages, hasFiles, maxLen, messenger, bench, signal, streamOpts)
+  activeStreams.set(chatId, { messenger, getPlaceholderId: stream.getPlaceholderId, getAccumulated: stream.getAccumulated })
   bench.parallelStart = Date.now()
 
   // Build prompt concurrently with placeholder send
@@ -270,6 +299,7 @@ async function handleChatInternal(
     ])
     bench.backendDone = Date.now()
     if (activeControllers.get(chatId) === abortController) activeControllers.delete(chatId)
+    activeStreams.delete(chatId)
 
     if (!result.ok) {
       if (result.error.type === 'cancelled') {
@@ -297,6 +327,7 @@ async function handleChatInternal(
     )
   } catch (error) {
     if (activeControllers.get(chatId) === abortController) activeControllers.delete(chatId)
+    activeStreams.delete(chatId)
     if (signal.aborted) {
       await stream.stopStreaming()
       await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger, stream.getAccumulated())

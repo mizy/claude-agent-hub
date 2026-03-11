@@ -21,7 +21,7 @@ export interface WorkflowNode {
   name: string
   type: string
   description?: string
-  task?: { agent?: string; prompt?: string }
+  task?: { agent?: string; prompt?: string; backend?: string; model?: string }
   // Raw data: loop nodes use `loop` field, but also mapped as `config` for legacy compat
   config?: { bodyNodes?: string[]; maxIterations?: number; model?: string; backend?: string }
   loop?: { bodyNodes?: string[]; maxIterations?: number }
@@ -33,6 +33,7 @@ export interface WorkflowEdge {
   to: string
   maxLoops?: number
   condition?: string
+  label?: string
 }
 
 export interface NodeState {
@@ -136,7 +137,7 @@ interface DashboardStore {
   rightPanelCollapsed: boolean
   traceData: TraceData[] | null
 
-  selectTask: (id: string) => void
+  selectTask: (id: string | null) => void
   selectNode: (id: string | null) => void
   setActiveTab: (tab: DashboardStore['activeTab']) => void
   refreshTasks: () => Promise<void>
@@ -164,14 +165,47 @@ interface DashboardStore {
 
 let toastId = 0
 
-export const useStore = create<DashboardStore>((set, get) => ({
-  currentPage: 'tasks',
+// --- Hash routing helpers ---
+
+/** Parse hash like #/tasks?id=xxx&tab=logs into { page, id, tab } */
+function parseHash(): { page: PageId; id?: string; tab?: DashboardStore['activeTab'] } {
+  const hash = window.location.hash.replace(/^#\/?/, '')
+  const [path, query] = hash.split('?')
+  const params = new URLSearchParams(query ?? '')
+  const pageMap: Record<string, PageId> = { tasks: 'tasks', chat: 'chat', settings: 'settings', statistics: 'statistics' }
+  const page = pageMap[path] ?? 'tasks'
+  const tabValues = ['details', 'timeline', 'logs', 'output', 'trace'] as const
+  const rawTab = params.get('tab')
+  const tab = rawTab && (tabValues as readonly string[]).includes(rawTab)
+    ? (rawTab as DashboardStore['activeTab'])
+    : undefined
+  return { page, id: params.get('id') ?? undefined, tab }
+}
+
+/** Write current state into location.hash without triggering navigation */
+function syncHash(page: PageId, taskId?: string | null, tab?: string) {
+  let hash = `#/${page}`
+  const params = new URLSearchParams()
+  if (page === 'tasks' && taskId) params.set('id', taskId)
+  if (page === 'tasks' && tab && tab !== 'details') params.set('tab', tab)
+  const qs = params.toString()
+  if (qs) hash += `?${qs}`
+  if (window.location.hash !== hash) {
+    history.replaceState(null, '', hash)
+  }
+}
+
+/** @entry Zustand store — single source of truth for dashboard UI state */
+export const useStore = create<DashboardStore>((set, get) => {
+  const initial = parseHash()
+  return {
+  currentPage: initial.page,
   tasks: [],
-  selectedTaskId: null,
+  selectedTaskId: initial.id ?? null,
   taskData: null,
   timelineLogs: [],
   selectedNodeId: null,
-  activeTab: 'details',
+  activeTab: initial.tab ?? 'details',
   toasts: [],
   showNewTaskModal: false,
   showMessageModal: null,
@@ -183,34 +217,73 @@ export const useStore = create<DashboardStore>((set, get) => ({
   traceData: null,
 
   selectTask: id => {
-    set({ selectedTaskId: id, selectedNodeId: null })
-    get().refreshTaskData()
+    const tab = get().activeTab
+    set({
+      selectedTaskId: id,
+      selectedNodeId: null,
+      taskData: null,
+      timelineLogs: [],
+      traceData: null,
+    })
+    syncHash(get().currentPage, id, tab)
+    if (id) get().refreshTaskData()
     if (window.innerWidth <= 768) get().closeMobilePanels()
   },
 
   selectNode: id => set({ selectedNodeId: id }),
-  setActiveTab: tab => set({ activeTab: tab }),
+  setActiveTab: tab => {
+    set({ activeTab: tab })
+    syncHash(get().currentPage, get().selectedTaskId, tab)
+  },
 
   refreshTasks: async () => {
     const tasks = await fetchApi<Task[]>('/api/tasks')
-    if (tasks) set({ tasks })
+    if (!tasks) return
+
+    const { selectedTaskId } = get()
+    const selectedTaskExists = selectedTaskId ? tasks.some(task => task.id === selectedTaskId) : true
+    if (!selectedTaskExists) {
+      set({
+        tasks,
+        selectedTaskId: null,
+        selectedNodeId: null,
+        taskData: null,
+        timelineLogs: [],
+        traceData: null,
+      })
+      syncHash(get().currentPage, null)
+      return
+    }
+
+    set({ tasks })
   },
 
   refreshTaskData: async () => {
-    const { selectedTaskId } = get()
-    if (!selectedTaskId) return
+    const taskId = get().selectedTaskId
+    if (!taskId) return
     const [taskData, timeline] = await Promise.all([
-      fetchApi<TaskData>(`/api/tasks/${selectedTaskId}`),
-      fetchApi<TimelineEvent[]>(`/api/tasks/${selectedTaskId}/timeline`),
+      fetchApi<TaskData>(`/api/tasks/${taskId}`),
+      fetchApi<TimelineEvent[]>(`/api/tasks/${taskId}/timeline`),
     ])
-    if (taskData) set({ taskData })
-    if (timeline) set({ timelineLogs: timeline })
+    if (get().selectedTaskId !== taskId) return
+
+    if (taskData || timeline) {
+      set(state => ({
+        taskData: taskData ?? state.taskData,
+        timelineLogs: timeline ?? state.timelineLogs,
+        selectedNodeId:
+          state.selectedNodeId && !taskData?.instance?.nodeStates?.[state.selectedNodeId]
+            ? null
+            : state.selectedNodeId,
+      }))
+    }
   },
 
   refreshTraceData: async () => {
-    const { selectedTaskId } = get()
-    if (!selectedTaskId) return
-    const traces = await fetchApi<TraceData[]>(`/api/tasks/${selectedTaskId}/traces`)
+    const taskId = get().selectedTaskId
+    if (!taskId) return
+    const traces = await fetchApi<TraceData[]>(`/api/tasks/${taskId}/traces`)
+    if (get().selectedTaskId !== taskId) return
     if (traces) set({ traceData: traces })
   },
 
@@ -273,7 +346,16 @@ export const useStore = create<DashboardStore>((set, get) => ({
     const res = await deleteApi<{ success: boolean }>(`/api/tasks/${id}`)
     if (res) {
       get().addToast('Task deleted', 'success')
-      if (get().selectedTaskId === id) set({ selectedTaskId: null, taskData: null })
+      if (get().selectedTaskId === id) {
+        set({
+          selectedTaskId: null,
+          selectedNodeId: null,
+          taskData: null,
+          timelineLogs: [],
+          traceData: null,
+        })
+        syncHash(get().currentPage, null)
+      }
       await get().refreshTasks()
     } else get().addToast('Failed to delete task', 'error')
   },
@@ -293,7 +375,10 @@ export const useStore = create<DashboardStore>((set, get) => ({
     } else get().addToast('Failed to inject node', 'error')
   },
 
-  setCurrentPage: page => set({ currentPage: page }),
+  setCurrentPage: page => {
+    set({ currentPage: page })
+    syncHash(page, get().selectedTaskId, get().activeTab)
+  },
   setShowNewTaskModal: v => set({ showNewTaskModal: v }),
   setShowMessageModal: v => set({ showMessageModal: v }),
   setShowInjectNodeModal: v => set({ showInjectNodeModal: v }),
@@ -302,4 +387,5 @@ export const useStore = create<DashboardStore>((set, get) => ({
   setRightPanelOpen: v => set({ rightPanelOpen: v }),
   toggleRightPanelCollapsed: () => set(s => ({ rightPanelCollapsed: !s.rightPanelCollapsed })),
   closeMobilePanels: () => set({ sidebarOpen: false, rightPanelOpen: false }),
-}))
+}})
+

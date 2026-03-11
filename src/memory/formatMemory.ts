@@ -2,6 +2,7 @@
  * Format memories for injection into prompts
  */
 
+import { contentSimilarity } from './textSimilarity.js'
 import type { MemoryCategory, MemoryEntry } from './types.js'
 
 const CATEGORY_HEADINGS: Record<MemoryCategory, string> = {
@@ -21,44 +22,6 @@ const MAX_TOTAL_LENGTH = 3000
 function truncateContent(content: string, maxLen: number): string {
   if (content.length <= maxLen) return content
   return content.slice(0, maxLen - 3) + '...'
-}
-
-/** CJK character range test */
-function isCJK(ch: string): boolean {
-  const code = ch.charCodeAt(0)
-  return (code >= 0x4e00 && code <= 0x9fff) || (code >= 0x3400 && code <= 0x4dbf)
-}
-
-/** Tokenize text into words (space-split for Latin) + 2-gram for CJK */
-function tokenize(text: string): Set<string> {
-  const tokens = new Set<string>()
-  const lower = text.toLowerCase()
-
-  // Extract space-separated words (Latin, numbers, mixed)
-  for (const w of lower.split(/\s+/)) {
-    if (w.length >= 2) tokens.add(w)
-  }
-
-  // Extract CJK 2-grams
-  for (let i = 0; i < lower.length - 1; i++) {
-    if (isCJK(lower[i]!) && isCJK(lower[i + 1]!)) {
-      tokens.add(lower[i]! + lower[i + 1]!)
-    }
-  }
-
-  return tokens
-}
-
-/** Word-set + CJK n-gram overlap ratio for dedup */
-function contentSimilarity(a: string, b: string): number {
-  const tokensA = tokenize(a)
-  const tokensB = tokenize(b)
-  if (tokensA.size === 0 || tokensB.size === 0) return 0
-  let overlap = 0
-  for (const t of tokensA) {
-    if (tokensB.has(t)) overlap++
-  }
-  return overlap / Math.max(tokensA.size, tokensB.size)
 }
 
 /** Remove memories with >70% content overlap, keeping higher-scored (earlier in list) */

@@ -16,6 +16,8 @@ export const taskConfigSchema = z.object({
   default_priority: z.enum(['low', 'medium', 'high']).default('medium'),
   max_retries: z.number().default(3),
   timeout: z.string().default('30m'),
+  /** 节点并发数（同时执行的 workflow 节点数，默认 3） */
+  concurrency: z.number().min(1).max(10).default(3),
 })
 
 export const gitConfigSchema = z.object({
@@ -163,7 +165,7 @@ export const configSchema = z.object({
   /** 命名 backend 配置映射，至少需要定义一个 */
   backends: z.record(z.string(), backendConfigSchema).default({}),
   /** 默认使用的 backend 名称，指向 backends 中的 key */
-  defaultBackend: z.string().default('default'),
+  defaultBackend: z.string().default('claude'),
   notify: notifyConfigSchema.optional(),
   daemon: daemonConfigSchema.optional(),
   memory: memoryConfigSchema.default({}),

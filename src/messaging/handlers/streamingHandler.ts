@@ -30,7 +30,7 @@ export function createStreamHandler(
   messenger: MessengerAdapter,
   bench: { firstChunk: number },
   options?: StreamHandlerOptions,
-): { onChunk: ((chunk: string) => void) | undefined; getAccumulated: () => string; stop: () => void; resetForNewTurn: () => void } {
+): { onChunk: ((chunk: string) => void) | undefined; getAccumulated: () => string; stop: () => Promise<void>; resetForNewTurn: () => void } {
   const throttleMs = options?.throttleMs ?? STREAM_THROTTLE_MS
   const minDelta = options?.minDelta ?? STREAM_MIN_DELTA
   let accumulated = ''
@@ -95,15 +95,11 @@ export function createStreamHandler(
     getAccumulated: () => accumulated,
     stop: async () => {
       stopped = true
-      // Final flush: push remaining accumulated content (without ⏳) if there's unsent text
-      const placeholderId = placeholderIdRef.placeholderId
-      if (placeholderId && accumulated.length > lastEditLength) {
-        const preview = accumulated.length > maxLen
-          ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
-          : accumulated
-        scheduleEdit(preview, placeholderId)
-      }
-      // Wait for all pending edits to complete
+      // Just wait for in-flight edits — do NOT flush remaining content here.
+      // sendFinalResponse() immediately follows and will overwrite the placeholder
+      // with the complete final text. A redundant pre-final edit here causes two
+      // rapid edits in a row, which triggers Lark rate-limiting and the
+      // delete + re-send fallback (visible to user as "撤回 + 重发").
       await editChain
     },
     /** Reset accumulated text when a new assistant turn starts (after tool use) */

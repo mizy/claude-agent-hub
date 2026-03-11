@@ -11,6 +11,7 @@ import {
   updateMemory,
   deleteMemory as deleteMemoryFromStore,
 } from '../store/MemoryStore.js'
+import { removeFromEntityIndex } from './entityIndex.js'
 import { migrateMemoryEntry } from './migrateMemory.js'
 import type { MemoryEntry } from './types.js'
 
@@ -34,12 +35,17 @@ const REASON_TO_CONFIG_KEY: Record<ReinforceReason, string> = {
 export function calculateStrength(entry: MemoryEntry, now?: Date): number {
   const migrated = migrateMemoryEntry(entry)
   const currentTime = now ?? new Date()
-  const lastReinforced = new Date(migrated.lastReinforcedAt!).getTime()
-  const hoursSinceReinforce = (currentTime.getTime() - lastReinforced) / 3600000
 
+  // Guard against missing/invalid fields after migration
+  if (!migrated.lastReinforcedAt || !migrated.stability || !migrated.decayRate) return 50
+
+  const lastReinforced = new Date(migrated.lastReinforcedAt).getTime()
+  if (isNaN(lastReinforced)) return 50
+
+  const hoursSinceReinforce = (currentTime.getTime() - lastReinforced) / 3600000
   if (hoursSinceReinforce <= 0) return 100
 
-  const effectiveStability = migrated.stability! / migrated.decayRate!
+  const effectiveStability = migrated.stability / migrated.decayRate
   const retention = Math.exp(-hoursSinceReinforce / effectiveStability)
   return Math.round(retention * 100)
 }
@@ -135,6 +141,7 @@ export async function cleanupFadingMemories(): Promise<{ archived: number; delet
     const strength = calculateStrength(entry, now)
 
     if (strength < deleteThreshold) {
+      removeFromEntityIndex(entry.id)
       deleteMemoryFromStore(entry.id)
       deleted++
     } else if (strength < archiveThreshold) {
@@ -173,15 +180,17 @@ export async function getMemoryHealth(): Promise<
       const entry = migrateMemoryEntry(raw)
       const strength = calculateStrength(entry, now)
 
-      const effectiveStability = entry.stability! / entry.decayRate!
+      const stability = entry.stability ?? 168
+      const decayRate = entry.decayRate ?? 1.0
+      const effectiveStability = stability / decayRate
       let daysUntilFade: number
 
       if (strength <= archiveThreshold) {
         daysUntilFade = 0
       } else {
         const hoursUntilFade = -effectiveStability * Math.log(thresholdRatio)
-        const hoursElapsed =
-          (now.getTime() - new Date(entry.lastReinforcedAt!).getTime()) / 3600000
+        const lastReinforced = new Date(entry.lastReinforcedAt ?? entry.createdAt).getTime()
+        const hoursElapsed = (now.getTime() - lastReinforced) / 3600000
         const hoursRemaining = hoursUntilFade - hoursElapsed
         daysUntilFade = Math.max(0, Math.round((hoursRemaining / 24) * 10) / 10)
       }

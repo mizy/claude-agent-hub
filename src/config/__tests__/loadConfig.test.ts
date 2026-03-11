@@ -62,7 +62,7 @@ git:
   base_branch: develop
   auto_push: true
 backends:
-  default:
+  claude:
     type: opencode
     model: gpt-4
 `
@@ -132,7 +132,7 @@ tasks:
 some_unknown_field:
   key: value
 backends:
-  default:
+  claude:
     type: opencode
     model: gpt-4
 `
@@ -315,7 +315,7 @@ notify:
       join(TEST_DIR, '.claude-agent-hub.yaml'),
       `
 backends:
-  default:
+  claude:
     type: opencode
     model: gpt-4
 `

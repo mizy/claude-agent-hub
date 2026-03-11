@@ -7,55 +7,6 @@
  */
 
 /**
- * Convert standard markdown tables to Lark-compatible list format.
- *
- * Lark card markdown does NOT support <table> or | table syntax.
- * We convert tables to a readable text format using only **bold** and plain text.
- *
- * For 2-column tables (key-value): **key**: value
- * For 3+ columns: each row becomes a block with the first column as title,
- *   remaining columns as indented fields, separated by blank lines.
- */
-export function convertMarkdownTables(text: string): string {
-  return text.replace(
-    /(?:^|\n)((?:\|[^\n]+\|\n){2,}(?:\|[^\n]+\|))/g,
-    (match, tableBlock: string) => {
-      const lines = tableBlock.trim().split('\n')
-      if (lines.length < 3) return match
-
-      const parseCells = (line: string) =>
-        line.split('|').filter(c => c.trim()).map(c => c.trim())
-      const isSeparator = (line: string) => /^\|[\s\-:|]+\|$/.test(line.trim())
-
-      const headers = parseCells(lines[0]!)
-      if (!isSeparator(lines[1]!)) return match
-
-      const dataRows = lines.slice(2).filter(l => !isSeparator(l))
-      if (dataRows.length === 0) return match
-
-      const isKeyValue = headers.length === 2
-      const prefix = match.startsWith('\n') ? '\n' : ''
-
-      if (isKeyValue) {
-        const converted = dataRows.map(row => {
-          const cells = parseCells(row)
-          return `**${cells[0] ?? ''}**: ${cells[1] ?? ''}`
-        })
-        return prefix + converted.join('\n')
-      }
-
-      // Multi-column: bold header line + bulleted list rows
-      const headerLine = headers.map(h => `**${h}**`).join(' · ')
-      const converted = dataRows.map(row => {
-        const cells = parseCells(row)
-        return '- ' + cells.join(' · ')
-      })
-      return prefix + headerLine + '\n' + converted.join('\n')
-    }
-  )
-}
-
-/**
  * Normalize markdown for Lark card rendering.
  *
  * Lark card markdown (tag: 'markdown') supports (official docs):
@@ -67,7 +18,7 @@ export function convertMarkdownTables(text: string): string {
  *   # headings, `inline code`, > blockquote
  */
 export function normalizeLarkMarkdown(text: string): string {
-  let result = convertMarkdownTables(text)
+  let result = text
   // # headings → bold (not supported in card markdown)
   result = result.replace(/^(#{1,})\s+(.+)$/gm, (_match, _hashes: string, title: string) => {
     return `**${title}**`
@@ -94,7 +45,6 @@ export function normalizeLarkMarkdown(text: string): string {
  *   - - [ ] task          → - ☐ task
  *   - `inline code`       → plain text (no native inline code in post md)
  *   - --- hr              → \n ---\n (md tag requires surrounding newlines)
- *   - markdown tables     → plain text (via convertMarkdownTables)
  *
  * Returns JSON.stringify({ zh_cn: { content: [[mdElement]] } }) for msg_type: 'post'.
  */
@@ -103,9 +53,6 @@ export function markdownToPostContent(text: string): string {
   let result = text
   result = result.replace(/<text_tag[^>]*>([\s\S]*?)<\/text_tag>/g, '$1')
   result = result.replace(/<font[^>]*>([\s\S]*?)<\/font>/g, '$1')
-
-  // Convert markdown tables to plain text
-  result = convertMarkdownTables(result)
 
   // # headings → **heading** (md tag doesn't support # headings)
   result = result.replace(/^#{1,6}\s+(.+)$/gm, '**$1**')

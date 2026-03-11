@@ -202,7 +202,7 @@ export function updateInstanceStatus(id: string, status: WorkflowStatus, error?:
 
   if (status === 'running' && !instance.startedAt) {
     instance.startedAt = new Date().toISOString()
-  } else if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+  } else if (status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'stopped') {
     instance.completedAt = new Date().toISOString()
     if (error) instance.error = error
   }

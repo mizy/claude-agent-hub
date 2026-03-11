@@ -109,6 +109,10 @@ export function createClaudeCodeBackend(): BackendAdapter {
         )
         const parsed = parseClaudeCompatOutput(rawOutput)
 
+        if (parsed.error && !parsed.response) {
+          return err({ type: 'process', message: parsed.error })
+        }
+
         if (mcpImagePaths.length > 0) {
           logger.debug(`Extracted ${mcpImagePaths.length} MCP image(s): ${mcpImagePaths.join(', ')}`)
         }

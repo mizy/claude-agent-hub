@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import { existsSync, accessSync, constants } from 'fs'
 import { getAllTasks } from '../store/TaskStore.js'
 import { isServiceRunning, type PidLockInfo } from './pidLock.js'
@@ -240,8 +240,9 @@ function truncate(text: string, maxLen: number): string {
 
 function getProcessMemoryMB(pid: number): string | null {
   try {
+    if (!Number.isFinite(pid) || pid <= 0) return null
     // ps -o rss= returns KB
-    const output = execSync(`ps -o rss= -p ${pid}`, { encoding: 'utf-8' }).trim()
+    const output = execFileSync('ps', ['-o', 'rss=', '-p', String(pid)], { encoding: 'utf-8' }).trim()
     const kb = parseInt(output, 10)
     if (isNaN(kb)) return null
     return String(Math.round(kb / 1024))
@@ -253,7 +254,7 @@ function getProcessMemoryMB(pid: number): string | null {
 function getDiskUsage(dir: string): string | null {
   if (!existsSync(dir)) return null
   try {
-    const output = execSync(`du -sh "${dir}" 2>/dev/null`, { encoding: 'utf-8' }).trim()
+    const output = execFileSync('du', ['-sh', dir], { encoding: 'utf-8' }).trim()
     // "128M	/path/to/dir" → "128M"
     return output.split('\t')[0] ?? null
   } catch {
@@ -263,7 +264,7 @@ function getDiskUsage(dir: string): string | null {
 
 function isProcessNameRunning(name: string): boolean {
   try {
-    execSync(`pgrep -x ${name}`, { encoding: 'utf-8' })
+    execFileSync('pgrep', ['-x', name], { encoding: 'utf-8' })
     return true
   } catch {
     return false

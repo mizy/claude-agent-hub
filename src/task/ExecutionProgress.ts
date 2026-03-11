@@ -63,7 +63,8 @@ export async function waitForWorkflowCompletion(
     if (
       instance.status === 'completed' ||
       instance.status === 'failed' ||
-      instance.status === 'cancelled'
+      instance.status === 'cancelled' ||
+      instance.status === 'stopped'
     ) {
       return instance
     }
@@ -71,10 +72,10 @@ export async function waitForWorkflowCompletion(
     // 检查 task 状态是否被外部修改（如手动停止、暂停等）
     if (taskId) {
       const task = getTask(taskId)
-      if (task && (task.status === 'failed' || task.status === 'cancelled')) {
+      if (task && (task.status === 'failed' || task.status === 'cancelled' || task.status === 'stopped')) {
         logger.info(`Task status changed to ${task.status}, syncing instance status...`)
         const reason = task.error || `Task externally ${task.status}`
-        updateInstanceStatus(instanceId, task.status === 'cancelled' ? 'cancelled' : 'failed', reason)
+        updateInstanceStatus(instanceId, task.status === 'failed' ? 'failed' : task.status, reason)
         const updatedInstance = getInstance(instanceId)
         if (updatedInstance) {
           return updatedInstance

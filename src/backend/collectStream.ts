@@ -41,9 +41,14 @@ export async function collectStream(
         perf.firstStdout = Date.now() - startTime
       }
 
-      if (guard.push(text)) {
+      const accepted = guard.push(text)
+      if (accepted) {
         chunks.push(text)
       }
+
+      // Skip processing after output guard truncation to avoid wasting CPU
+      // and prevent raw passthrough from writing unlimited data to stdout
+      if (!accepted) continue
 
       if (processLine) {
         buffer += text

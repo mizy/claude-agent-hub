@@ -9,18 +9,20 @@ function ActionButtons({ task }: { task: Task }) {
   const setPendingDeleteTask = useStore((s) => s.setPendingDeleteTask)
   const setShowMessageModal = useStore((s) => s.setShowMessageModal)
   const s = task.status
-  const isRunning = ['developing', 'planning', 'reviewing'].includes(s)
-  const isStoppable = isRunning || s === 'waiting'
+  const isRunning = ['planning', 'developing'].includes(s)
+  const isPausable = s === 'developing'
+  const isStoppable = ['pending', 'planning', 'developing', 'paused', 'reviewing', 'waiting'].includes(s)
+  const canResume = ['failed', 'cancelled', 'stopped', 'paused'].includes(s)
 
   return (
     <div className="task-actions">
-      {isRunning && (
+      {isPausable && (
         <button className="action-btn warning" onClick={(e) => { e.stopPropagation(); pauseTask(task.id) }}>Pause</button>
       )}
       {isStoppable && (
         <button className="action-btn warning" onClick={(e) => { e.stopPropagation(); stopTask(task.id) }}>Stop</button>
       )}
-      {['failed', 'cancelled', 'paused'].includes(s) && (
+      {canResume && (
         <button className="action-btn primary" onClick={(e) => { e.stopPropagation(); resumeTask(task.id) }}>Resume</button>
       )}
       {s === 'reviewing' && (

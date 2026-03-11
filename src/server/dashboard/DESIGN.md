@@ -46,6 +46,7 @@ Express 5 服务，提供以下 API：
 - 平滑动画过渡（ease-out cubic）
 - 节点悬浮 Tooltip
 - 状态图例 + 缩放控制工具栏
+- Edge label 视觉方案与验收总结见 workflowCanvasEdgeLabels.md
 
 **C. 右侧面板 - 详情/日志/输出 (Right Panel)**
 - Tab 切换：Details / Timeline / Logs / Output

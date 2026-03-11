@@ -6,7 +6,7 @@
  */
 
 import { extractKeywords } from '../analysis/index.js'
-import { getAllMemories, updateMemory } from '../store/MemoryStore.js'
+import { getAllMemories, atomicUpdateMemory } from '../store/MemoryStore.js'
 import { migrateMemoryEntry } from './migrateMemory.js'
 import { calculateStrength, reinforceMemory } from './forgettingEngine.js'
 import { spreadActivation } from './associationEngine.js'
@@ -356,10 +356,10 @@ export async function retrieveRelevantMemories(
 
   // Update accessCount, lastAccessedAt, and reinforce on access
   for (const entry of results) {
-    updateMemory(entry.id, {
-      accessCount: entry.accessCount + 1,
+    atomicUpdateMemory(entry.id, (current) => ({
+      accessCount: (current.accessCount ?? 0) + 1,
       lastAccessedAt: now.toISOString(),
-    })
+    }))
     // Fire-and-forget reinforcement with retry queue on failure
     reinforceMemory(entry.id, 'access').catch(() => enqueueReinforceRetry(entry.id))
   }

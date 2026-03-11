@@ -81,11 +81,20 @@ export async function emitWorkflowCompleted(ctx: CompletionContext): Promise<voi
   const totalDurationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime()
   const success = finalInstance.status === 'completed'
 
-  // Execution stats from event emitter
+  // Derive node counts from finalInstance (ground truth) instead of in-memory event emitter
+  // The event emitter stats can be undefined (e.g., resumed tasks skip emitWorkflowStarted)
+  // or stale due to race conditions with node status resets
   const executionStats = workflowEvents.getExecutionStats(finalInstance.id)
   const totalCostUsd = executionStats?.summary.totalCostUsd ?? 0
-  const nodesCompleted = executionStats?.summary.completedNodes ?? 0
-  const nodesFailed = executionStats?.summary.failedNodes ?? 0
+  const taskNodes = workflow.nodes.filter(n => n.type !== 'start' && n.type !== 'end')
+  let nodesCompleted = 0
+  let nodesFailed = 0
+  for (const n of taskNodes) {
+    const state = finalInstance.nodeStates[n.id]
+    if (!state) continue
+    if (state.status === 'done' || (success && state.durationMs)) nodesCompleted++
+    else if (state.status === 'failed') nodesFailed++
+  }
 
   // Emit workflow event
   if (success) {
@@ -140,7 +149,6 @@ export async function emitWorkflowCompleted(ctx: CompletionContext): Promise<voi
   }
 
   // Emit completion event (messaging layer listens and sends notifications)
-  const taskNodes = workflow.nodes.filter(n => n.type !== 'start' && n.type !== 'end')
   const nodeInfos = taskNodes.map(n => {
     const state = finalInstance.nodeStates[n.id]
     // If task succeeded and node has durationMs, it must have completed — override racing status

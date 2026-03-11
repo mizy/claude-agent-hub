@@ -9,10 +9,7 @@
 import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { addMemory } from './manageMemory.js'
 import { resolveContradictions } from './detectContradiction.js'
-import { buildAssociations } from './associationEngine.js'
-import { getAllMemories } from '../store/MemoryStore.js'
-import { migrateMemoryEntry } from './migrateMemory.js'
-import { saveMemory } from '../store/MemoryStore.js'
+import { linkNewEntries } from './associationEngine.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { MemoryCategory, MemoryEntry } from './types.js'
@@ -163,29 +160,8 @@ export async function extractChatMemory(
       entries.push(entry)
     }
 
-    // Build associations for new entries (bidirectional)
-    if (entries.length > 0) {
-      const allEntries = getAllMemories().map(migrateMemoryEntry)
-      const newIds = new Set(entries.map(e => e.id))
-
-      for (const entry of entries) {
-        const migrated = migrateMemoryEntry(entry)
-        migrated.associations = await buildAssociations(migrated, allEntries)
-        saveMemory(migrated)
-
-        // Reverse link: update old entries to point back to new entry
-        for (const assoc of migrated.associations) {
-          if (newIds.has(assoc.targetId)) continue // skip new-to-new, handled above
-          const target = allEntries.find(e => e.id === assoc.targetId)
-          if (!target) continue
-          const existing = (target.associations ?? []).find(a => a.targetId === migrated.id)
-          if (!existing) {
-            target.associations = [...(target.associations ?? []), { targetId: migrated.id, weight: assoc.weight, type: assoc.type }]
-            saveMemory(target)
-          }
-        }
-      }
-    }
+    // Build bidirectional associations for new entries
+    await linkNewEntries(entries)
 
     logger.info(`Extracted ${entries.length} memories from chat [${context.chatId.slice(0, 8)}]`)
     return entries

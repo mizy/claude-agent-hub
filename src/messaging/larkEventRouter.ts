@@ -1,14 +1,13 @@
 /**
- * Lark event routing — message processing, image buffering, card action dispatch
+ * Lark event routing — message processing, card action dispatch
  *
  * Delegates to:
  * - larkMessageDedup.ts — dedup + stale message filtering
  * - larkAdapter.ts — MessengerAdapter factory
+ * - larkImageBuffer.ts — image/file download + pending image buffer
+ * - larkGroupBuffer.ts — group message aggregation buffer
  */
 
-import { statSync, mkdirSync, unlinkSync } from 'fs'
-import { join } from 'path'
-import { DATA_DIR } from '../store/paths.js'
 import type * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
@@ -18,6 +17,8 @@ import { buildWelcomeCard } from './buildLarkCard.js'
 import { routeMessage } from './handlers/messageRouter.js'
 import { dispatchCardAction } from './handlers/larkCardActions.js'
 import { isDuplicateMessage, isDuplicateContent, isStaleMessage } from './larkMessageDedup.js'
+import { downloadLarkImage, downloadLarkFile, bufferImage, hasPendingImages, flushPendingImages } from './larkImageBuffer.js'
+import { addToGroupBuffer, setHandleLarkMessage } from './larkGroupBuffer.js'
 import type { MessengerAdapter, ClientContext } from './handlers/types.js'
 import type { LarkConfig } from '../config/schema.js'
 
@@ -29,6 +30,8 @@ export {
   isStaleMessage,
   markDaemonStarted,
 } from './larkMessageDedup.js'
+export { downloadLarkImage, downloadLarkFile } from './larkImageBuffer.js'
+export { destroyGroupBuffer } from './larkGroupBuffer.js'
 
 const logger = createLogger('lark-ws')
 
@@ -36,19 +39,12 @@ const SUPPORTED_MSG_TYPES = new Set(['text', 'image', 'post', 'file', 'audio'])
 
 // ── Access control ──
 
-/**
- * Check if a sender/chat is allowed based on lark.accessControl config.
- * Default mode is 'open' (everyone allowed). Returns true if access is granted.
- * Accepts pre-fetched accessControl to avoid redundant config reads.
- */
 function checkLarkAccess(
   chatId: string,
   senderOpenId: string | undefined,
   ac: LarkConfig['accessControl']
 ): boolean {
   if (!ac || ac.mode === 'open') return true
-
-  // allowlist mode: check chat or user (schema refine ensures non-empty allowlist)
   if (ac.allowedChats?.length && ac.allowedChats.includes(chatId)) return true
   if (senderOpenId && ac.allowedUsers?.length && ac.allowedUsers.includes(senderOpenId)) return true
 
@@ -76,9 +72,7 @@ export interface LarkMessageEvent {
     chat_type?: string
     create_time?: string
     mentions?: Array<{ key: string; id: { open_id?: string }; name: string }>
-    /** ID of the message being quoted/replied to */
     upper_message_id?: string
-    /** Thread parent message ID */
     parent_id?: string
   }
 }
@@ -100,292 +94,6 @@ export interface LarkCardActionEvent {
 
 export interface LarkP2pChatCreateEvent {
   chat_id?: string
-}
-
-// ── File / image limits ──
-
-const IMAGE_BUFFER_DELAY_MS = 10_000
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024
-const MAX_FILE_BYTES = 50 * 1024 * 1024
-
-interface PendingImage {
-  chatId: string
-  images: string[]
-  isGroup: boolean
-  hasMention: boolean
-  timer: ReturnType<typeof setTimeout>
-}
-
-const pendingImageBuffer = new Map<string, PendingImage>()
-
-// ── Group message aggregation buffer ──
-
-const GROUP_BUFFER_DELAY_MS = 3_000
-const GROUP_BUFFER_MAX_MESSAGES = 5
-
-interface BufferedGroupMessage {
-  senderOpenId?: string
-  text: string
-  images?: string[]
-  files?: string[]
-  messageId?: string
-}
-
-interface PendingGroupChat {
-  messages: BufferedGroupMessage[]
-  timer: ReturnType<typeof setTimeout>
-  adapter: MessengerAdapter
-  botName: string | null
-  onChatIdDiscovered: (chatId: string) => void
-}
-
-const pendingGroupBuffer = new Map<string, PendingGroupChat>()
-
-function addToGroupBuffer(
-  chatId: string,
-  text: string,
-  adapter: MessengerAdapter,
-  botName: string | null,
-  onChatIdDiscovered: (chatId: string) => void,
-  images?: string[],
-  files?: string[],
-  senderOpenId?: string,
-  messageId?: string
-): void {
-  const msg: BufferedGroupMessage = { text, images, files, senderOpenId, messageId }
-
-  const existing = pendingGroupBuffer.get(chatId)
-  if (existing) {
-    clearTimeout(existing.timer)
-    existing.messages.push(msg)
-    existing.adapter = adapter
-    existing.botName = botName
-    existing.onChatIdDiscovered = onChatIdDiscovered
-
-    if (existing.messages.length >= GROUP_BUFFER_MAX_MESSAGES) {
-      flushGroupBuffer(chatId).catch(error => {
-        logger.error(`Failed to flush group buffer on max: ${getErrorMessage(error)}`)
-      })
-      return
-    }
-
-    existing.timer = setTimeout(() => {
-      flushGroupBuffer(chatId).catch(error => {
-        logger.error(`Failed to flush group buffer on timeout: ${getErrorMessage(error)}`)
-      })
-    }, GROUP_BUFFER_DELAY_MS)
-  } else {
-    const entry: PendingGroupChat = {
-      messages: [msg],
-      timer: setTimeout(() => {
-        flushGroupBuffer(chatId).catch(error => {
-          logger.error(`Failed to flush group buffer on timeout: ${getErrorMessage(error)}`)
-        })
-      }, GROUP_BUFFER_DELAY_MS),
-      adapter,
-      botName,
-      onChatIdDiscovered,
-    }
-    pendingGroupBuffer.set(chatId, entry)
-  }
-}
-
-async function flushGroupBuffer(chatId: string): Promise<void> {
-  const pending = pendingGroupBuffer.get(chatId)
-  if (!pending) return
-  clearTimeout(pending.timer)
-  pendingGroupBuffer.delete(chatId)
-
-  const { messages, adapter, botName, onChatIdDiscovered } = pending
-  if (messages.length === 0) return
-
-  const last = messages[messages.length - 1]!
-  const allImages = messages.flatMap(m => m.images ?? [])
-  const allFiles = messages.flatMap(m => m.files ?? [])
-
-  let combinedText: string
-  if (messages.length === 1) {
-    combinedText = last.text
-  } else {
-    const formatSender = (openId?: string) =>
-      openId ? `用户(${openId.slice(-4)})` : '用户'
-    const contextLines = messages.slice(0, -1).map(m => {
-      const attachments = [
-        ...(m.images?.length ? [`+${m.images.length}图片`] : []),
-        ...(m.files?.length ? [`+${m.files.length}文件`] : []),
-      ].join(' ')
-      return `${formatSender(m.senderOpenId)}: ${m.text || '[附件]'}${attachments ? ` ${attachments}` : ''}`
-    })
-    const lastAttachments = [
-      ...(last.images?.length ? [`+${last.images.length}图片`] : []),
-      ...(last.files?.length ? [`+${last.files.length}文件`] : []),
-    ].join(' ')
-    combinedText = [
-      `[群聊上下文 - 最近${messages.length}条@消息]`,
-      ...contextLines,
-      '---',
-      `最新消息（来自${formatSender(last.senderOpenId)}）: ${last.text || '[附件]'}${lastAttachments ? ` ${lastAttachments}` : ''}`,
-    ].join('\n')
-    logger.info(`Group buffer flushed: ${messages.length} messages for chat ${chatId.slice(0, 8)}`)
-  }
-
-  await handleLarkMessage(
-    chatId, combinedText, true, true,
-    adapter, botName, onChatIdDiscovered,
-    allImages.length > 0 ? allImages : undefined,
-    last.messageId,
-    allFiles.length > 0 ? allFiles : undefined,
-    last.senderOpenId
-  )
-}
-
-export async function destroyGroupBuffer(): Promise<void> {
-  const chatIds = [...pendingGroupBuffer.keys()]
-  await Promise.allSettled(chatIds.map(chatId => flushGroupBuffer(chatId)))
-}
-
-async function flushPendingImages(
-  chatId: string,
-  text: string,
-  handleMessage: (
-    chatId: string,
-    text: string,
-    isGroup: boolean,
-    hasMention: boolean,
-    images?: string[],
-    files?: string[]
-  ) => Promise<void>
-): Promise<void> {
-  const pending = pendingImageBuffer.get(chatId)
-  if (!pending) return
-  clearTimeout(pending.timer)
-  pendingImageBuffer.delete(chatId)
-  try {
-    await handleMessage(chatId, text, pending.isGroup, pending.hasMention, pending.images)
-  } catch (error) {
-    logger.error(
-      `Failed to handle message with images for chat ${chatId}: ${getErrorMessage(error)}`
-    )
-  }
-}
-
-export async function downloadLarkImage(
-  larkClient: Lark.Client,
-  messageId: string,
-  imageKey: string
-): Promise<string | null> {
-  try {
-    const res = await larkClient.im.v1.messageResource.get({
-      path: { message_id: messageId, file_key: imageKey },
-      params: { type: 'image' },
-    })
-    const fileData = res as unknown as { writeFile(path: string): Promise<void> }
-    if (typeof fileData?.writeFile !== 'function') {
-      logger.error(
-        `Unexpected messageResource response: ${JSON.stringify(res).slice(0, 200)}`
-      )
-      return null
-    }
-    const tmpDir = join(DATA_DIR, 'tmp')
-    mkdirSync(tmpDir, { recursive: true })
-    const filePath = join(tmpDir, `lark-img-${Date.now()}-${imageKey.slice(-8)}.png`)
-    await fileData.writeFile(filePath)
-
-    const fileSize = statSync(filePath).size
-    if (fileSize > MAX_IMAGE_BYTES) {
-      logger.warn(
-        `Image too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB > ${MAX_IMAGE_BYTES / 1024 / 1024}MB`
-      )
-      try { unlinkSync(filePath) } catch (e) { logger.debug(`Failed to clean up tmp file ${filePath}: ${getErrorMessage(e)}`) }
-      return null
-    }
-
-    logger.debug(
-      `Downloaded image: ${imageKey} → ${filePath} (${(fileSize / 1024).toFixed(0)}KB)`
-    )
-    return filePath
-  } catch (error) {
-    logger.error(`Failed to download image ${imageKey}: ${getErrorMessage(error)}`)
-    return null
-  }
-}
-
-export async function downloadLarkFile(
-  larkClient: Lark.Client,
-  messageId: string,
-  fileKey: string,
-  fileName: string
-): Promise<string | null> {
-  try {
-    const res = await larkClient.im.v1.messageResource.get({
-      path: { message_id: messageId, file_key: fileKey },
-      params: { type: 'file' },
-    })
-    const fileData = res as unknown as { writeFile(path: string): Promise<void> }
-    if (typeof fileData?.writeFile !== 'function') {
-      logger.error(`Unexpected file response for key ${fileKey}`)
-      return null
-    }
-    const tmpDir = join(DATA_DIR, 'tmp')
-    mkdirSync(tmpDir, { recursive: true })
-    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'unnamed'
-    const filePath = join(tmpDir, `lark-file-${Date.now()}-${safeName}`)
-    await fileData.writeFile(filePath)
-
-    const fileSize = statSync(filePath).size
-    if (fileSize > MAX_FILE_BYTES) {
-      logger.warn(`File too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB > ${MAX_FILE_BYTES / 1024 / 1024}MB`)
-      try { unlinkSync(filePath) } catch (e) { logger.debug(`Failed to clean up tmp file ${filePath}: ${getErrorMessage(e)}`) }
-      return null
-    }
-
-    logger.debug(`Downloaded file: ${fileName} → ${filePath} (${(fileSize / 1024).toFixed(0)}KB)`)
-    return filePath
-  } catch (error) {
-    logger.error(`Failed to download file ${fileName}: ${getErrorMessage(error)}`)
-    return null
-  }
-}
-
-/** Fetch the text content of a quoted/replied-to message by ID */
-async function fetchQuotedMessageText(
-  larkClient: Lark.Client,
-  upperMessageId: string
-): Promise<string | null> {
-  try {
-    const res = await larkClient.im.v1.message.get({
-      path: { message_id: upperMessageId },
-    }) as unknown as { data?: { items?: Array<{ msg_type?: string; body?: { content?: string } }> } }
-    if (!res?.data?.items) {
-      logger.warn(`Unexpected response structure from im.v1.message.get for ${upperMessageId}: missing data.items`)
-      return null
-    }
-    const item = res.data.items[0]
-    if (!item) return null
-
-    const msgType = item.msg_type
-    const rawContent = item.body?.content
-    if (!rawContent) return null
-
-    let parsed: Record<string, unknown>
-    try {
-      parsed = JSON.parse(rawContent)
-    } catch {
-      return rawContent.slice(0, 500)
-    }
-
-    if (msgType === 'text') {
-      return (parsed.text as string | undefined)?.slice(0, 500) ?? null
-    }
-    if (msgType === 'post') {
-      const { text } = parsePostContent(parsed)
-      return text.slice(0, 500) || null
-    }
-    return null
-  } catch (error) {
-    logger.debug(`Failed to fetch quoted message ${upperMessageId}: ${getErrorMessage(error)}`)
-    return null
-  }
 }
 
 // ── Client context ──
@@ -418,7 +126,6 @@ export async function createApprovalCallback() {
 
 // ── Event handlers ──
 
-/** Wrap adapter so all reply/sendAndGetId calls auto-quote the original message and @mention the sender */
 function wrapWithReplyQuote(adapter: MessengerAdapter, messageId: string, senderOpenId?: string): MessengerAdapter {
   const baseMentions = senderOpenId ? [{ userId: senderOpenId, name: '' }] : []
   return {
@@ -461,7 +168,6 @@ export async function handleLarkMessage(
   const fileSuffix = files?.length ? ` +${files.length} file(s)` : ''
   logger.info(`← [${isGroup ? 'group' : 'dm'}]${imgSuffix}${fileSuffix}`)
 
-  // In group chats, wrap adapter to quote the original @mention message and @mention the sender
   const messenger = isGroup && originalMessageId
     ? wrapWithReplyQuote(adapter, originalMessageId, senderOpenId)
     : adapter
@@ -478,6 +184,9 @@ export async function handleLarkMessage(
   })
 }
 
+// Register handleLarkMessage with group buffer so it can flush back to us
+setHandleLarkMessage(handleLarkMessage)
+
 export async function handleCardAction(
   data: LarkCardActionEvent,
   adapter: MessengerAdapter
@@ -487,7 +196,6 @@ export async function handleCardAction(
   const value = data?.action?.value
   if (!chatId || !value) return undefined
 
-  // Access control for card actions (prevent bypassing allowlist via button clicks)
   const operatorOpenId = data?.operator?.open_id
   const larkConfig = await getLarkConfig()
   if (!checkLarkAccess(chatId, operatorOpenId, larkConfig?.accessControl)) return undefined
@@ -525,7 +233,6 @@ interface PostElement {
   text?: string
   image_key?: string
   href?: string
-  // quote element: contains a nested message content
   content?: unknown
 }
 
@@ -562,7 +269,6 @@ function parsePostContent(
       } else if (el.tag === 'a' && el.text) {
         texts.push(el.text)
       }
-      // quote element: skip (quoted context is handled via upper_message_id fetch)
     }
   }
 
@@ -571,6 +277,47 @@ function parsePostContent(
     `parsePostContent: extracted ${texts.length} text(s), ${imageKeys.length} image(s)`
   )
   return result
+}
+
+/** Fetch the text content of a quoted/replied-to message by ID */
+async function fetchQuotedMessageText(
+  larkClient: Lark.Client,
+  upperMessageId: string
+): Promise<string | null> {
+  try {
+    const res = await larkClient.im.v1.message.get({
+      path: { message_id: upperMessageId },
+    }) as unknown as { data?: { items?: Array<{ msg_type?: string; body?: { content?: string } }> } }
+    if (!res?.data?.items) {
+      logger.warn(`Unexpected response structure from im.v1.message.get for ${upperMessageId}: missing data.items`)
+      return null
+    }
+    const item = res.data.items[0]
+    if (!item) return null
+
+    const msgType = item.msg_type
+    const rawContent = item.body?.content
+    if (!rawContent) return null
+
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(rawContent)
+    } catch {
+      return rawContent.slice(0, 500)
+    }
+
+    if (msgType === 'text') {
+      return (parsed.text as string | undefined)?.slice(0, 500) ?? null
+    }
+    if (msgType === 'post') {
+      const { text } = parsePostContent(parsed)
+      return text.slice(0, 500) || null
+    }
+    return null
+  } catch (error) {
+    logger.debug(`Failed to fetch quoted message ${upperMessageId}: ${getErrorMessage(error)}`)
+    return null
+  }
 }
 
 // ── Message event processor (called from WS client) ──
@@ -617,12 +364,10 @@ export async function processMessageEvent(
     return
   }
 
-  // Access control check (fetch config once, reused for access check)
   const senderOpenId = data.sender?.sender_id?.open_id
   const larkConfig = await getLarkConfig()
   if (!checkLarkAccess(chatId, senderOpenId, larkConfig?.accessControl)) return
 
-  // Content hash dedup only when message_id is unavailable (message_id is more reliable)
   if (!messageId) {
     const rawContent = message.content || ''
     if (isDuplicateContent(chatId, rawContent)) {
@@ -633,21 +378,18 @@ export async function processMessageEvent(
     }
   }
 
-  // In group chats, only treat as mentioned if the bot itself is @-ed.
-  // Fall back to any-mention if botName is not configured.
   const hasMention = !!(message.mentions?.length && (
     !botName || message.mentions.some(m => m.name === botName)
   ))
   const isGroup = message.chat_type === 'group'
 
-  // Audio message: reply with friendly unsupported notice (after dedup/stale checks)
   if (msgType === 'audio') {
     if (isGroup && !hasMention) return
     await adapter.reply(chatId, '⚠️ 暂不支持音频消息，请发送文字或文件')
     return
   }
 
-  // Fetch quoted message context (引用回复) if present
+  // Fetch quoted message context
   let quotedText: string | null = null
   const upperMsgId = message.upper_message_id
   if (upperMsgId) {
@@ -657,7 +399,6 @@ export async function processMessageEvent(
     }
   }
 
-  /** Prepend quoted context to text */
   function withQuote(txt: string): string {
     if (!quotedText) return txt
     const quoted = `[引用: ${quotedText}]`
@@ -673,7 +414,6 @@ export async function processMessageEvent(
     files?: string[]
   ) => handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs, messageId, files, senderOpenId)
 
-  // Group messages with @mention go through aggregation buffer
   const handleMsg = isGroup && hasMention
     ? (cId: string, txt: string, _grp: boolean, _mention: boolean, imgs?: string[], files?: string[]) => {
         addToGroupBuffer(cId, txt, adapter, botName, onChatIdDiscovered, imgs, files, senderOpenId, messageId)
@@ -684,7 +424,6 @@ export async function processMessageEvent(
   // File message
   if (msgType === 'file') {
     if (isGroup && !hasMention) return
-
     const fileKey = content.file_key
     const fileName = content.file_name ?? 'file'
     if (!fileKey || !messageId) {
@@ -718,9 +457,9 @@ export async function processMessageEvent(
     return
   }
 
+  // Image message
   if (msgType === 'image') {
     if (isGroup && !hasMention) return
-
     const imageKey = content.image_key
     if (!imageKey || !messageId) {
       logger.debug('Image message missing image_key or message_id')
@@ -732,44 +471,18 @@ export async function processMessageEvent(
       return
     }
 
-    // If there's a quoted message, flush image immediately with quote context
     if (quotedText) {
       await handleMsg(chatId, withQuote(''), isGroup, hasMention, [imagePath])
       return
     }
 
-    const existing = pendingImageBuffer.get(chatId)
-    if (existing) {
-      clearTimeout(existing.timer)
-      existing.images.push(imagePath)
-      existing.timer = setTimeout(() => {
-        flushPendingImages(chatId, '', handleMsg).catch(e => {
-          logger.error(`Failed to flush pending images on timeout: ${getErrorMessage(e)}`)
-        })
-      }, IMAGE_BUFFER_DELAY_MS)
-    } else {
-      const timer = setTimeout(() => {
-        flushPendingImages(chatId, '', handleMsg).catch(e => {
-          logger.error(`Failed to flush pending images on timeout: ${getErrorMessage(e)}`)
-        })
-      }, IMAGE_BUFFER_DELAY_MS)
-      pendingImageBuffer.set(chatId, {
-        chatId,
-        images: [imagePath],
-        isGroup,
-        hasMention,
-        timer,
-      })
-    }
-    logger.debug(
-      `Image buffered for chat ${chatId}, waiting ${IMAGE_BUFFER_DELAY_MS}ms for text`
-    )
+    bufferImage(chatId, imagePath, isGroup, hasMention, handleMsg)
     return
   }
 
   // Text message
   const text = withQuote(content.text || '')
-  if (pendingImageBuffer.has(chatId)) {
+  if (hasPendingImages(chatId)) {
     await flushPendingImages(chatId, text, handleMsg)
   } else {
     await handleMsg(chatId, text, isGroup, hasMention)

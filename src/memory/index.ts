@@ -59,6 +59,7 @@ export type { EpisodeMessage, ExtractEpisodeParams } from './extractEpisode.js'
 // Association engine — build, spread, retrieve via associations
 export {
   buildAssociations,
+  linkNewEntries,
   spreadActivation,
   updateAssociationStrength,
   associativeRetrieve,

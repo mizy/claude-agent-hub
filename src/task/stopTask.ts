@@ -31,7 +31,7 @@ export interface StopTaskResult {
 
 /**
  * Stop a running task by ID
- * Changes status to 'cancelled' and releases the agent
+ * Changes status to 'stopped' and kills the process
  */
 export function stopTask(id: string): StopTaskResult {
   const task = getTask(id)
@@ -58,10 +58,19 @@ export function stopTask(id: string): StopTaskResult {
       )
     } else {
       try {
-        process.kill(processInfo.pid, 'SIGTERM')
-        logger.info(`Killed process: ${processInfo.pid}`)
+        // Kill the entire process group (negative PID) to also terminate child processes
+        // (e.g. claude CLI, cursor-agent spawned by the task process).
+        // spawnTaskProcess uses detached:true, making the child a process group leader (pgid = pid).
+        process.kill(-processInfo.pid, 'SIGTERM')
+        logger.info(`Killed process group: -${processInfo.pid}`)
       } catch {
-        // Process may have already exited
+        // Fallback: kill just the main process if group kill fails
+        try {
+          process.kill(processInfo.pid, 'SIGTERM')
+          logger.info(`Killed process: ${processInfo.pid} (group kill failed, single kill fallback)`)
+        } catch {
+          // Process may have already exited
+        }
       }
     }
     // Update process info regardless
@@ -76,11 +85,11 @@ export function stopTask(id: string): StopTaskResult {
   const currentNodeInfo = instance ? getActiveNodes(instance).join(', ') : 'unknown'
 
   // Update task status
-  updateTask(task.id, { status: 'cancelled' })
+  updateTask(task.id, { status: 'stopped' })
 
   // Also update instance status to keep them in sync
   if (instance) {
-    updateInstanceStatus(instance.id, 'cancelled')
+    updateInstanceStatus(instance.id, 'stopped')
     // Clear schedule-wait markers so daemon won't try to resume a cancelled task.
     // Also reset any 'waiting' schedule-wait nodes back to 'pending' so that
     // if the task is later resumed, recoverWorkflowInstance can re-execute them.

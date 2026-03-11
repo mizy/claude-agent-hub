@@ -75,6 +75,17 @@ export function parseJson(input: JsonWorkflowInput | string, sourceFile?: string
     logger.debug('Auto-added end node')
   }
 
+  // Detect duplicate node IDs (LLM sometimes reuses "start"/"end" for task nodes)
+  const seenIds = new Set<string>()
+  for (const node of nodes) {
+    if (seenIds.has(node.id)) {
+      throw new Error(
+        `Duplicate node id "${node.id}" — "start" and "end" are reserved for structural nodes only. Use a descriptive id (e.g. "analyze", "summarize") for task nodes.`
+      )
+    }
+    seenIds.add(node.id)
+  }
+
   // Deduplicate condition edges, then auto-generate edge IDs
   const dedupedEdges = deduplicateConditionEdges(data.edges || [])
   const edges: WorkflowEdge[] = dedupedEdges.map((e, i) => ({
@@ -90,6 +101,31 @@ export function parseJson(input: JsonWorkflowInput | string, sourceFile?: string
     }
     if (!nodeIds.has(edge.to)) {
       throw new Error(`Edge ${edge.id} references unknown target node: ${edge.to}`)
+    }
+  }
+
+  // Warn if loop-back target has parallel siblings (fan-out issue)
+  const loopBackEdges = edges.filter(e => e.maxLoops && e.maxLoops > 0)
+  if (loopBackEdges.length > 0) {
+    // Build outgoing edges map: source -> [target]
+    const outgoing = new Map<string, string[]>()
+    for (const e of edges) {
+      const list = outgoing.get(e.from) || []
+      list.push(e.to)
+      outgoing.set(e.from, list)
+    }
+    for (const lbEdge of loopBackEdges) {
+      const targetId = lbEdge.to
+      // Find all sources that have an edge pointing to targetId
+      const parents = edges.filter(e => e.to === targetId && !e.maxLoops).map(e => e.from)
+      for (const parent of parents) {
+        const siblings = (outgoing.get(parent) || []).filter(id => id !== targetId)
+        if (siblings.length > 0) {
+          logger.warn(
+            `loop-back target "${targetId}" has parallel siblings that will not be reset: [${siblings.join(', ')}]. Consider pointing loop-back to the common source "${parent}" instead.`
+          )
+        }
+      }
     }
   }
 
@@ -228,6 +264,37 @@ export function validateJsonWorkflow(input: unknown): { valid: boolean; errors: 
         } else {
           seen.add(cond)
           condByFrom.set(from, seen)
+        }
+      }
+    }
+  }
+
+  // Warn if loop-back target has parallel siblings (fan-out issue)
+  if (Array.isArray(data.edges)) {
+    const edgeList = data.edges as Array<Record<string, unknown>>
+    const loopBacks = edgeList.filter(e => e.maxLoops && Number(e.maxLoops) > 0)
+    if (loopBacks.length > 0) {
+      const outgoing = new Map<string, string[]>()
+      for (const e of edgeList) {
+        if (e.from) {
+          const from = String(e.from)
+          const list = outgoing.get(from) || []
+          list.push(String(e.to))
+          outgoing.set(from, list)
+        }
+      }
+      for (const lb of loopBacks) {
+        const targetId = String(lb.to)
+        const parents = edgeList
+          .filter(e => String(e.to) === targetId && !(e.maxLoops && Number(e.maxLoops) > 0))
+          .map(e => String(e.from))
+        for (const parent of parents) {
+          const siblings = (outgoing.get(parent) || []).filter(id => id !== targetId)
+          if (siblings.length > 0) {
+            warnings.push(
+              `loop-back 目标 '${targetId}' 存在并行兄弟节点 [${siblings.join(', ')}]，循环重置时可能影响这些分支。建议将 loop-back 指向共同源头 '${parent}'`
+            )
+          }
         }
       }
     }

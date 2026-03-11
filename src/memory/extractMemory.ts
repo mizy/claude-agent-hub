@@ -9,6 +9,7 @@ import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { buildMemoryExtractionPrompt, type TaskSummary } from '../prompts/memoryPrompts.js'
 import { addMemory } from './manageMemory.js'
 import { resolveContradictions } from './detectContradiction.js'
+import { linkNewEntries } from './associationEngine.js'
 import { shouldConsolidate, consolidateMemories } from './consolidateMemories.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
@@ -164,6 +165,9 @@ export async function extractMemoryFromTask(
     }
 
     logger.info(`Extracted ${entries.length} memories from task ${task.id}`)
+
+    // Build bidirectional associations for new entries
+    await linkNewEntries(entries)
 
     // Fire-and-forget: consolidate if enough new memories were added
     if (shouldConsolidate(entries.length)) {

@@ -17,6 +17,7 @@ import { join } from 'path'
 
 import {
   saveTask,
+  getTask,
   saveProcessInfo,
   TASKS_DIR,
   type ProcessInfo,
@@ -142,7 +143,7 @@ describe('Orphan Detection', () => {
     expect(found!.pid).toBe(999999999)
   })
 
-  it('进程状态为 stopped 但 task 状态为活跃时视为 orphan', () => {
+  it('进程状态为 stopped 但 task 状态为活跃时同步为 stopped（非 orphan）', () => {
     const task = createTestTask({ status: 'planning' })
     saveTaskBypassingGrace(task)
 
@@ -156,8 +157,10 @@ describe('Orphan Detection', () => {
     const orphans = detectOrphanedTasks()
     const found = orphans.find(o => o.task.id === task.id)
 
-    expect(found).toBeDefined()
-    expect(found!.reason).toBe('process_not_found')
+    // User-stopped process: task status synced to 'stopped', not treated as orphan
+    expect(found).toBeUndefined()
+    const updated = getTask(task.id)
+    expect(updated?.status).toBe('stopped')
   })
 
   it('进程状态为 stopped 且 task 状态为终态时不视为 orphan', () => {

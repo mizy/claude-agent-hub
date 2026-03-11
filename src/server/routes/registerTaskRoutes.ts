@@ -80,7 +80,47 @@ export function registerTaskRoutes(app: Express): void {
       }
 
       const tail = parseInt(req.query.tail as string)
-      const content = readFileSync(logPath, 'utf-8')
+      const nodeId = req.query.nodeId as string | undefined
+      let content = readFileSync(logPath, 'utf-8')
+
+      // Raw streaming chunks use ⟨nodeId⟩ markers.
+      // When filtering by nodeId: extract only chunks belonging to target node.
+      // When showing all: strip markers but keep all content.
+      if (nodeId) {
+        const scopeSuffix = `:${nodeId}]`
+        const scopeExact = `[${nodeId}]`
+        const parts: string[] = []
+
+        for (const line of content.split('\n')) {
+          if (line.includes('⟨')) {
+            const markerRe = /⟨([^⟩]*)⟩/g
+            let match: RegExpExecArray | null
+            let lastIdx = 0
+            let lastNode: string | null | undefined = null
+            let lineFragments = ''
+
+            while ((match = markerRe.exec(line)) !== null) {
+              if (lastNode === nodeId && lastIdx < match.index) {
+                lineFragments += line.slice(lastIdx, match.index)
+              }
+              lastNode = match[1]
+              lastIdx = match.index + match[0].length
+            }
+            if (lastNode === nodeId && lastIdx < line.length) {
+              lineFragments += line.slice(lastIdx)
+            }
+            if (lineFragments) {
+              parts.push(lineFragments)
+            }
+          } else if (line.includes(scopeSuffix) || line.includes(scopeExact)) {
+            parts.push(line)
+          }
+        }
+        content = parts.join('\n')
+      } else {
+        // No node filter — strip all ⟨nodeId⟩ markers but keep content
+        content = content.replace(/⟨[^⟩]*⟩/g, '')
+      }
 
       if (tail > 0) {
         const lines = content.split('\n')

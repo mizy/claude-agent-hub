@@ -14,6 +14,7 @@ export type TaskStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'stopped'
   | 'waiting'
 
 const VALID_PRIORITIES: readonly string[] = ['low', 'medium', 'high']
@@ -26,6 +27,7 @@ const VALID_STATUSES: readonly string[] = [
   'completed',
   'failed',
   'cancelled',
+  'stopped',
   'waiting',
 ]
 

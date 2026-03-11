@@ -19,7 +19,7 @@ export interface ExecutionSummary {
   workflowId: string
   instanceId: string
   workflowName: string
-  status: 'running' | 'completed' | 'failed' | 'cancelled'
+  status: 'running' | 'completed' | 'failed' | 'cancelled' | 'stopped'
   startedAt: string
   completedAt?: string
   lastUpdatedAt: string

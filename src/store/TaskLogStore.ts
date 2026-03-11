@@ -93,6 +93,8 @@ export interface ExecutionLogOptions {
   scope?: string
   /** 是否为原始流式输出（不添加时间戳和格式） */
   raw?: boolean
+  /** 节点 ID，用于按节点过滤日志 */
+  nodeId?: string
 }
 
 /**
@@ -114,15 +116,17 @@ export function appendExecutionLog(
     mkdirSync(logDir, { recursive: true })
   }
 
-  const { level = 'info', scope = '', raw = false } = options
+  const { level = 'info', scope = '', raw = false, nodeId } = options
 
   let logLine: string
   if (raw) {
-    // 原始流式输出：只移除 ANSI 颜色码，不添加格式
-    logLine = stripAnsi(message)
+    // 原始流式输出：只移除 ANSI 颜色码，添加节点标记便于过滤
+    const cleaned = stripAnsi(message)
+    logLine = nodeId ? `⟨${nodeId}⟩${cleaned}` : cleaned
   } else {
-    // 结构化日志：使用统一格式
-    logLine = formatFileLogLine(level, scope, message) + '\n'
+    // 结构化日志：使用统一格式，nodeId 放入 scope
+    const effectiveScope = nodeId ? (scope ? `${scope}:${nodeId}` : nodeId) : scope
+    logLine = formatFileLogLine(level, effectiveScope, message) + '\n'
   }
 
   appendToFile(logPath, logLine)

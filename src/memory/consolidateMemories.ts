@@ -10,8 +10,10 @@
  */
 
 import { invokeBackend, resolveLightModel } from '../backend/index.js'
-import { getAllMemories, saveMemory, deleteMemory, updateMemory } from '../store/MemoryStore.js'
+import { getAllMemories, getMemory, deleteMemory, updateMemory } from '../store/MemoryStore.js'
+import { removeFromEntityIndex, indexMemoryEntities } from './entityIndex.js'
 import { migrateMemoryEntry } from './migrateMemory.js'
+import { contentSimilarity } from './textSimilarity.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { MemoryEntry } from './types.js'
@@ -24,39 +26,6 @@ const SIMILARITY_THRESHOLD = 0.6
 const MAX_PAIRS_PER_BATCH = 5
 // Min new memories to trigger consolidation
 const MIN_NEW_MEMORIES_TO_TRIGGER = 3
-
-/** CJK character test */
-function isCJK(ch: string): boolean {
-  const code = ch.charCodeAt(0)
-  return (code >= 0x4e00 && code <= 0x9fff) || (code >= 0x3400 && code <= 0x4dbf)
-}
-
-/** Tokenize for similarity: space-split words + CJK 2-grams */
-function tokenize(text: string): Set<string> {
-  const tokens = new Set<string>()
-  const lower = text.toLowerCase()
-  for (const w of lower.split(/\s+/)) {
-    if (w.length >= 2) tokens.add(w)
-  }
-  for (let i = 0; i < lower.length - 1; i++) {
-    if (isCJK(lower[i]!) && isCJK(lower[i + 1]!)) {
-      tokens.add(lower[i]! + lower[i + 1]!)
-    }
-  }
-  return tokens
-}
-
-/** Token-based content similarity (Jaccard-like) */
-function contentSimilarity(a: string, b: string): number {
-  const tokensA = tokenize(a)
-  const tokensB = tokenize(b)
-  if (tokensA.size === 0 || tokensB.size === 0) return 0
-  let overlap = 0
-  for (const t of tokensA) {
-    if (tokensB.has(t)) overlap++
-  }
-  return overlap / Math.max(tokensA.size, tokensB.size)
-}
 
 interface SimilarPair {
   a: MemoryEntry
@@ -145,27 +114,37 @@ function applyDecision(pair: SimilarPair, decision: PairDecision): { merged: num
   switch (decision.decision) {
     case 'merge': {
       // Update A with merged content, delete B
+      const mergedContent = decision.mergedContent ?? pair.a.content
       const mergedKeywords = decision.mergedKeywords ??
         [...new Set([...pair.a.keywords, ...pair.b.keywords])]
       updateMemory(pair.a.id, {
-        content: decision.mergedContent ?? pair.a.content,
+        content: mergedContent,
         keywords: mergedKeywords,
         confidence: Math.max(pair.a.confidence, pair.b.confidence),
         reinforceCount: (pair.a.reinforceCount ?? 0) + (pair.b.reinforceCount ?? 0),
         updatedAt: now,
       })
+      // Re-index entities for merged content (content/keywords changed)
+      const merged = getMemory(pair.a.id)
+      if (merged) {
+        removeFromEntityIndex(pair.a.id)
+        indexMemoryEntities(merged)
+      }
       // Migrate B's associations to A
       migrateAssociations(pair.b, pair.a)
+      removeFromEntityIndex(pair.b.id)
       deleteMemory(pair.b.id)
       return { merged: 1, deleted: 1 }
     }
     case 'supersede_a': {
       migrateAssociations(pair.b, pair.a)
+      removeFromEntityIndex(pair.b.id)
       deleteMemory(pair.b.id)
       return { merged: 0, deleted: 1 }
     }
     case 'supersede_b': {
       migrateAssociations(pair.a, pair.b)
+      removeFromEntityIndex(pair.a.id)
       deleteMemory(pair.a.id)
       return { merged: 0, deleted: 1 }
     }
@@ -179,14 +158,18 @@ function applyDecision(pair: SimilarPair, decision: PairDecision): { merged: num
 function migrateAssociations(deleted: MemoryEntry, survivor: MemoryEntry): void {
   if (!deleted.associations || deleted.associations.length === 0) return
 
-  const existingTargets = new Set((survivor.associations ?? []).map(a => a.targetId))
+  // Re-read survivor from store to avoid overwriting concurrent updates (e.g. merge)
+  const current = getMemory(survivor.id)
+  if (!current) return
+
+  const existingTargets = new Set((current.associations ?? []).map(a => a.targetId))
   const newAssocs = deleted.associations.filter(
     a => a.targetId !== survivor.id && !existingTargets.has(a.targetId),
   )
 
   if (newAssocs.length > 0) {
-    const updated = [...(survivor.associations ?? []), ...newAssocs]
-    saveMemory({ ...survivor, associations: updated })
+    const updated = [...(current.associations ?? []), ...newAssocs]
+    updateMemory(survivor.id, { associations: updated })
   }
 }
 

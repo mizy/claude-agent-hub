@@ -60,7 +60,30 @@ export async function getNextNodes(
   const nextNodes: string[] = []
   let loopBackFollowed = false
 
+  // Exclusive gateway semantics: when a node has BOTH conditional and unconditional
+  // outgoing edges, unconditional edges act as "else" branches — only followed when
+  // NO conditional edge matches. This prevents both paths firing simultaneously
+  // (e.g. APPROVED → report AND unconditional → fix_issues both triggering).
+  const hasConditionalEdges = outEdges.some(e => !!e.condition)
+  let anyConditionMatched = false
+
+  // First pass: evaluate conditional edges
+  if (hasConditionalEdges) {
+    for (const edge of outEdges) {
+      if (edge.condition) {
+        const shouldFollow = await shouldFollowEdge(edge, instance, workflow)
+        if (shouldFollow) anyConditionMatched = true
+      }
+    }
+  }
+
   for (const edge of outEdges) {
+    // Skip unconditional "else" edges when a conditional edge already matched
+    if (hasConditionalEdges && !edge.condition && anyConditionMatched) {
+      logger.debug(`Skipping unconditional edge ${edge.id} (${edge.from}→${edge.to}): conditional sibling matched`)
+      continue
+    }
+
     const shouldFollow = await shouldFollowEdge(edge, instance, workflow)
 
     if (shouldFollow) {
@@ -83,17 +106,6 @@ export async function getNextNodes(
 
         logger.debug(`Loop edge ${edge.id}: count ${currentLoops + 1}/${maxLoops}`)
         loopBackFollowed = true
-      } else {
-        // Non-loop edge entering a loop body: check if the downstream loop-back
-        // is on its last iteration. If so, skip this edge entirely to avoid
-        // wasting AI calls on fix/verify nodes that would just loop back one
-        // final time. e.g. review→fix when fix→review is at maxLoops-1.
-        if (wouldEnterExhaustedLoop(edge.to, currentNodeId, workflow, instance)) {
-          logger.info(
-            `Skipping edge ${edge.from}→${edge.to}: downstream loop-back is at last iteration`
-          )
-          continue
-        }
       }
 
       nextNodes.push(edge.to)
@@ -109,51 +121,8 @@ export async function getNextNodes(
   return nextNodes
 }
 
-/**
- * Check if following an edge into `targetNodeId` would enter a loop body
- * whose loop-back edge is on its last iteration (i.e. after this round of
- * fix nodes, the loop-back to `sourceNodeId` would be exhausted).
- *
- * This lets us skip the entire loop body (fix, verify, etc.) on the final
- * iteration, saving AI calls — the workflow will follow the non-loop path
- * (e.g. APPROVED → end) instead.
- */
-function wouldEnterExhaustedLoop(
-  targetNodeId: string,
-  sourceNodeId: string,
-  workflow: Workflow,
-  instance: WorkflowInstance
-): boolean {
-  // Walk forward from targetNodeId through the loop body to find a loop-back
-  // edge that returns to sourceNodeId (BFS, max depth to avoid infinite walk).
-  const visited = new Set<string>()
-  const queue = [targetNodeId]
-  const MAX_DEPTH = 20
-
-  for (let depth = 0; depth < MAX_DEPTH && queue.length > 0; depth++) {
-    const nodeId = queue.shift()!
-    if (visited.has(nodeId)) continue
-    visited.add(nodeId)
-
-    for (const edge of workflow.edges.filter(e => e.from === nodeId)) {
-      const isLoopBack = edge.maxLoops !== undefined || isTopologicalLoopBack(edge, workflow)
-      if (isLoopBack && edge.to === sourceNodeId) {
-        // Found the loop-back edge — check if it's at its last iteration
-        const maxLoops = edge.maxLoops ?? DEFAULT_MAX_LOOPS
-        const currentLoops = instance.loopCounts[edge.id] || 0
-        if (currentLoops >= maxLoops - 1) {
-          return true
-        }
-      }
-      // Continue BFS through non-loop-back edges
-      if (!isLoopBack && !visited.has(edge.to)) {
-        queue.push(edge.to)
-      }
-    }
-  }
-
-  return false
-}
+// wouldEnterExhaustedLoop was removed: it caused premature workflow completion
+// when the last fix iteration was skipped but review still didn't pass.
 
 /**
  * 判断是否应该走这条边
@@ -468,9 +437,12 @@ export async function handleNodeResult(
       }
     }
 
-    // True dead end — no reachable downstream nodes.
-    logger.warn(`Node "${nodeId}" has no reachable downstream nodes (all edges exhausted), completing workflow`)
-    await completeWorkflowInstance(instanceId)
+    // Dead end — no reachable downstream nodes. This means the workflow cannot
+    // reach the end node (e.g. all loop iterations exhausted without approval).
+    // Fail the workflow with a descriptive error rather than completing prematurely.
+    const errorMsg = `Node "${nodeId}" reached dead end: all outgoing edges exhausted or conditions unmet. Workflow cannot reach end node.`
+    logger.error(errorMsg)
+    await failWorkflowInstance(instanceId, errorMsg)
     return []
   }
 

@@ -27,6 +27,7 @@ interface ConversationTracker {
   messages: EpisodeMessage[]
   turnCount: number
   timer: ReturnType<typeof setTimeout> | null
+  timerGen: number
   extracted: boolean
   platform: string
 }
@@ -40,7 +41,7 @@ const extractedSet = new Set<string>()
 function getTracker(chatId: string, platform = 'lark'): ConversationTracker {
   let tracker = trackers.get(chatId)
   if (!tracker) {
-    tracker = { messages: [], turnCount: 0, timer: null, extracted: false, platform }
+    tracker = { messages: [], turnCount: 0, timer: null, timerGen: 0, extracted: false, platform }
     trackers.set(chatId, tracker)
   }
   return tracker
@@ -113,8 +114,10 @@ async function doExtract(chatId: string, tracker: ConversationTracker, trigger: 
 
 function startIdleTimer(chatId: string, tracker: ConversationTracker): void {
   clearTimer(tracker)
+  // Bump generation so stale async callbacks are discarded
+  const gen = ++tracker.timerGen
   getEpisodicConfig().then(({ enabled, idleTimeoutMs }) => {
-    if (!enabled) return
+    if (!enabled || tracker.timerGen !== gen) return
     tracker.timer = setTimeout(() => {
       if (!tracker.extracted) {
         doExtract(chatId, tracker, 'idle-timeout').catch(() => {})

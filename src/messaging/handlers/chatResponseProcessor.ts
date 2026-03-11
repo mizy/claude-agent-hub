@@ -120,13 +120,30 @@ export function recordBackendPreference(chatId: string, backend: string, text: s
 /** Handle successful backend result: log, update session, send response, side-effects */
 export async function processSuccessResult(
   ctx: PostResponseContext,
-  result: { response: string; sessionId?: string; costUsd?: number; mcpImagePaths?: string[]; slotWaitMs?: number; durationApiMs?: number },
+  result: {
+    response: string
+    sessionId?: string
+    costUsd?: number
+    mcpImagePaths?: string[]
+    slotWaitMs?: number
+    durationApiMs?: number
+  },
   stopStreaming: () => void | Promise<void>,
   placeholderId: string | null,
   maxLen: number,
   messenger: MessengerAdapter
 ): Promise<void> {
-  const { chatId, text, effectiveText, platform, sessionId, backendOverride, model, config, bench } = ctx
+  const {
+    chatId,
+    text,
+    effectiveText,
+    platform,
+    sessionId,
+    backendOverride,
+    model,
+    config,
+    bench,
+  } = ctx
   const { response, mcpImagePaths = [], sessionId: newSessionId } = result
   const durationMs = Date.now() - bench.start
   logger.info(`→ reply ${response.length} chars (${(durationMs / 1000).toFixed(1)}s)`)
@@ -153,7 +170,9 @@ export async function processSuccessResult(
   incrementTurn(chatId, text, response)
   try {
     recordEvent('msg_out', `回复: ${response.slice(0, 50)}`)
-  } catch { /* inner state write may fail */ }
+  } catch {
+    /* inner state write may fail */
+  }
 
   // Extract media tags ([SEND_FILE: ...] / [SEND_IMAGE: ...]) before building final text
   const { tags: mediaTags, cleanedText: responseWithoutTags } = extractMediaTags(response)
@@ -161,7 +180,7 @@ export async function processSuccessResult(
   // When text is empty after removing media tags, generate file/image description
   let displayText = responseWithoutTags
   if (!displayText && mediaTags.length > 0) {
-    const labels = mediaTags.map((t) => {
+    const labels = mediaTags.map(t => {
       const icon = t.type === 'file' ? '📎' : '🖼️'
       return `${icon} ${basename(t.path)}`
     })
@@ -174,7 +193,7 @@ export async function processSuccessResult(
   const configModel = config.backends[backendName]?.model
   const displayModel = model ?? configModel
   const modelLabel = displayModel ? ` (${displayModel})` : ''
-  const finalText = displayText + `\n\n⏱️ ${elapsedSec}s | ${backendName}${modelLabel}`
+  const finalText = displayText + `\n\r\n⏱️ ${elapsedSec}s | ${backendName}${modelLabel}`
 
   await stopStreaming()
   await sendFinalResponse(chatId, finalText, maxLen, placeholderId, messenger)

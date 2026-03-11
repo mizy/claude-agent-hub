@@ -75,8 +75,9 @@ export function collectTaskStats(): TaskStats {
   const completed = tasks.filter(t => t.status === 'completed').length
   const failed = tasks.filter(t => t.status === 'failed').length
   const cancelled = tasks.filter(t => t.status === 'cancelled').length
+  const stopped = tasks.filter(t => t.status === 'stopped').length
   const pending = tasks.filter(t => t.status === 'pending').length
-  const other = tasks.length - completed - failed - cancelled - pending
+  const other = tasks.length - completed - failed - cancelled - stopped - pending
 
   // Average duration from completed tasks with output.timing
   const durations: number[] = []

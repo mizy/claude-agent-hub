@@ -48,8 +48,6 @@ const HEARTBEAT_ALIVE_THRESHOLD_MS = 30 * 1000
 // 进程启动宽限期（毫秒）- 进程刚启动时可能还没写心跳
 const PROCESS_START_GRACE_MS = 10 * 1000
 
-// 无心跳进程的最大存活时间（毫秒）- 进程运行超过此时间却从未写过心跳，视为挂起
-const NO_HEARTBEAT_STALE_MS = 10 * 60 * 1000 // 10 minutes
 
 /**
  * 检查进程是否活跃（基于心跳和启动时间）
@@ -89,19 +87,21 @@ function isProcessActive(processInfo: ProcessInfo | null): boolean {
     }
   }
 
-  // 进程运行了很久但从未写过心跳 — 视为挂起（zombie/hung process）
-  if (!processInfo.lastHeartbeat && processInfo.startedAt) {
-    const runningTime = now - new Date(processInfo.startedAt).getTime()
-    if (runningTime > NO_HEARTBEAT_STALE_MS) {
-      logger.info(
-        `Process ${processInfo.pid} running for ${Math.round(runningTime / 60000)}min without any heartbeat, treating as stale`
-      )
-      return false
-    }
+  // 先检查 PID 是否存在 — PID 活着说明进程仍在运行，不论心跳
+  if (isProcessRunning(processInfo.pid)) {
+    logger.debug(`Process ${processInfo.pid} still running (PID alive), treating as active`)
+    return true
   }
 
-  // 最后检查 PID 是否存在
-  return isProcessRunning(processInfo.pid)
+  // PID 已消失，进程确实死了（即使 status 还是 running）
+  if (!processInfo.lastHeartbeat && processInfo.startedAt) {
+    const runningTime = now - new Date(processInfo.startedAt).getTime()
+    logger.info(
+      `Process ${processInfo.pid} dead (PID gone) after ${Math.round(runningTime / 60000)}min`
+    )
+  }
+
+  return false
 }
 
 /**
@@ -153,11 +153,21 @@ export function detectOrphanedTasks(): OrphanedTask[] {
       }
 
       // 进程状态已经是 stopped 或 crashed — 通常意味着任务已正常终止，
-      // 但如果 task 还处于活跃状态（developing/planning），说明是异常退出后状态未更新，
-      // 需要当作孤儿处理。
+      // 但如果 task 还处于活跃状态（developing/planning），说明是退出后状态未更新
       if (processInfo.status !== 'running') {
         const isActiveStatus = task.status === 'developing' || task.status === 'planning'
         if (!isActiveStatus) continue
+
+        // 区分用户主动停止（stopped）和异常崩溃（crashed）
+        if (processInfo.status === 'stopped') {
+          // 用户主动停止：同步 task 状态为 stopped，不当孤儿处理
+          logger.info(
+            `Task ${task.id} process was stopped by user but task status=${task.status}, syncing to stopped`
+          )
+          updateTask(task.id, { status: 'stopped' })
+          continue
+        }
+
         logger.info(
           `Task ${task.id} has process status=${processInfo.status} but task status=${task.status}, treating as orphaned`
         )

@@ -82,22 +82,10 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
 ## 任务拆分原则
 
-1. **单一职责**：每个节点只做一件事，职责明确
-2. **原子性**：每个节点要么完全成功，要么完全失败，便于重试
-3. **顺序依赖**：有依赖关系的任务串行，无依赖的并行（见下方"并行执行"）
-4. **合理粒度**：
-   - **简单任务**（Git 提交、单文件修改）：2-3 个 task 节点
-   - **中等任务**（功能开发、重构）：4-6 个 task 节点
-   - **复杂任务**（多模块改动、迭代开发）：7-10 个 task 节点
-
-## 节点合并原则（避免过度拆分）
-
-以下场景合并为单个节点：
-- **Git 提交**：analyze-changes → commit-and-verify（2 节点），不要拆成 5 步
-- **迭代+文档**：每个迭代节点内包含相关文档更新，不要分开
-- **验证类**：typecheck、lint、test 合并为单个 verify 节点
-
-保持独立的节点：代码修改核心逻辑、风险操作（发布/部署）、需要人工确认的步骤
+- **单一职责 + 原子性**：每个节点只做一件事，要么成功要么失败
+- **合理粒度**：简单任务 2-3 节点，中等 4-6 节点，复杂 7-10 节点
+- **合并原则**：Git 操作合并为 2 节点；typecheck/lint/test 合并为单个 verify 节点；迭代节点内含文档更新
+- **保持独立**：核心逻辑修改、风险操作（发布/部署）、人工确认步骤
 
 ## 可用 Agent
 
@@ -117,8 +105,6 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
 ---
 
-请为以下任务制定执行计划：
-
 ## 任务
 标题: {{taskTitle}}
 描述: {{taskDescription}}
@@ -126,217 +112,79 @@ Return ONLY the title text, nothing else. Use the same language as the content (
 
 ---
 
-## 可用节点类型
+## 节点类型
 
-1. **task** - AI 执行任务
-   \`\`\`json
-   { "id": "node_id", "type": "task", "name": "节点名称", "task": { "agent": "auto", "prompt": "任务描述" } }
-   \`\`\`
+**核心节点**（最常用）：
+- **task**: \`{ "id": "xxx", "type": "task", "name": "名称", "task": { "agent": "auto", "prompt": "描述" } }\` — 可选 \`task.backend\`/\`task.model\` 覆盖全局设置
+- **lark-notify**: \`{ "id": "notify", "type": "lark-notify", "name": "推送飞书", "larkNotify": { "title": "标题" } }\` — ⚠️ 推送飞书必须用此节点，task 节点无法发消息。省略 content 自动取最近完成节点输出
+- **schedule-wait**: \`{ "id": "wait", "type": "schedule-wait", "name": "等待", "scheduleWait": { "cron": "0 9 * * 1-5" } }\` — 5 字段 cron，最小间隔 30s
 
-2. **lark-notify** - 飞书通知（直接调用 API，不经过 AI）
-   \`\`\`json
-   { "id": "notify", "type": "lark-notify", "name": "推送飞书", "larkNotify": { "content": "outputs.report._raw", "title": "标题" } }
-   \`\`\`
-   ⚠️ **凡是需要推送飞书消息，必须用此节点**，task 节点无法实际发送消息。省略 content 则自动取最近完成节点输出。
-
-3. **schedule-wait** - 定时等待（配合 loop-back edge 实现周期任务）
-   \`\`\`json
-   { "id": "wait", "type": "schedule-wait", "name": "等待下次", "scheduleWait": { "cron": "0 9 * * 1-5" } }
-   \`\`\`
-   cron 为标准 5 字段表达式，最小间隔 30 秒。执行时状态变为 waiting，不占用 worker。
-
-4. **human** - 人工审批（仅任务明确要求时使用）
-   \`\`\`json
-   { "id": "approve", "type": "human", "name": "人工审核", "human": { "timeout": 86400000 } }
-   \`\`\`
-
-5. **delay** - 固定延迟
-   \`\`\`json
-   { "id": "wait", "type": "delay", "name": "等待", "delay": { "value": 5, "unit": "s" } }
-   \`\`\`
-   unit: s / m / h / d
-
-6. **switch** - 多路条件分支（3 个及以上分支时使用；2 路分支优先用条件边）
-   \`\`\`json
-   { "id": "branch", "type": "switch", "name": "分支", "switch": {
-     "expression": "outputs.check._raw",
-     "cases": [
-       { "value": "success", "targetNode": "deploy" },
-       { "value": "warning", "targetNode": "notify" },
-       { "value": "default", "targetNode": "rollback" }
-     ]
-   }}
-   \`\`\`
-
-7. **assign** - 变量赋值
-   \`\`\`json
-   { "id": "init", "type": "assign", "name": "初始化", "assign": {
-     "assignments": [
-       { "variable": "count", "value": 0 },
-       { "variable": "name", "value": "outputs.prev._raw", "isExpression": true }
-     ]
-   }}
-   \`\`\`
-
-8. **script** - 表达式计算
-   \`\`\`json
-   { "id": "calc", "type": "script", "name": "计算", "script": { "expression": "variables.count + 1", "outputVar": "count" } }
-   \`\`\`
-
-9. **loop** - 条件循环
-   \`\`\`json
-   { "id": "loop", "type": "loop", "name": "循环", "loop": { "type": "while", "condition": "variables.count < 10", "maxIterations": 100, "bodyNodes": ["process"] } }
-   \`\`\`
-
-10. **foreach** - 集合遍历
-    \`\`\`json
-    { "id": "each", "type": "foreach", "name": "遍历", "foreach": { "collection": "outputs.list.items", "itemVar": "item", "bodyNodes": ["process_item"], "mode": "sequential" } }
-    \`\`\`
-
----
+**辅助节点**（按需使用）：
+- **human**: \`{ ..., "human": { "timeout": 86400000 } }\` — 人工审批
+- **delay**: \`{ ..., "delay": { "value": 5, "unit": "s" } }\` — 固定延迟（s/m/h/d）
+- **switch**: \`{ ..., "switch": { "expression": "outputs.x._raw", "cases": [{ "value": "v", "targetNode": "id" }, { "value": "default", "targetNode": "id" }] } }\`
+- **assign**: \`{ ..., "assign": { "assignments": [{ "variable": "name", "value": 0 }] } }\` — isExpression:true 时 value 为表达式
+- **script**: \`{ ..., "script": { "expression": "variables.count + 1", "outputVar": "count" } }\`
+- **loop**: \`{ ..., "loop": { "type": "while", "condition": "expr", "maxIterations": 100, "bodyNodes": ["id"] } }\`
+- **foreach**: \`{ ..., "foreach": { "collection": "outputs.x.items", "itemVar": "item", "bodyNodes": ["id"], "mode": "sequential" } }\`
 
 ## 边（Edge）
 
-**无条件边**：普通连接
-\`\`\`json
-{ "from": "a", "to": "b" }
-\`\`\`
-
-**条件边**：condition 为 true 时走这条边
-\`\`\`json
-{ "from": "review", "to": "end", "condition": "outputs.review._raw.includes('APPROVED')" }
-\`\`\`
-
-**loop-back 边**：循环回跳，配合 maxLoops 防止死循环
-\`\`\`json
-{ "from": "fix", "to": "verify", "maxLoops": 3 }
-\`\`\`
-
-**并行执行**：从同一节点出发多条无条件边 → 引擎自动并发执行目标节点
-\`\`\`json
-{ "from": "start", "to": "task_a" },
-{ "from": "start", "to": "task_b" }
-\`\`\`
-两条分支都完成后，下游节点才会执行（自动 join）。
-
----
+- 无条件边：\`{ "from": "a", "to": "b" }\`
+- 条件边：\`{ "from": "a", "to": "b", "condition": "outputs.a._raw.includes('APPROVED')" }\`
+- loop-back 边：\`{ "from": "a", "to": "b", "maxLoops": 5 }\`
+- 并行：同一节点多条无条件出边 → 引擎自动并发，全部完成后下游才执行
 
 ## 常用模式
 
-### Review-Fix 循环（功能开发/重构必用）
-
+**Review-Fix 循环**（功能开发/重构必用）：
 \`\`\`
-implement → review → end (APPROVED)
-                ↓ (fallback)
+implement → review →(APPROVED)→ end/后续节点
+                ↓ (fallback，无 condition)
                fix → review (maxLoops=5)
 \`\`\`
+关键规则：
+- review 节点先跑 build/test 再评审，prompt 要求输出 APPROVED/NEEDS_CHANGES/REJECTED
+- APPROVED 条件边放前，无条件 fallback 边放后（引擎按顺序匹配）
+- 同一节点只能有一条 APPROVED 出边
+- APPROVED 后有后续节点时，条件边指向后续节点（不是 end）
 
-规则：
-- review（代码评审）节点同时负责构建验证和代码审查，先跑 build/test 再评审
-- review → end/后续节点 是 APPROVED 条件边；review → fix 是**无条件 fallback 边**（不设 condition 字段）
-- **APPROVED 边放前，fallback 边放后**（引擎按顺序匹配，有条件边都不满足时走无条件边）
-- **同一节点只能有一条 APPROVED 出边**，不能对同一条件有多条出边指向不同目标
-- 如果 APPROVED 后还有后续节点（如 generate_report），APPROVED 边必须指向该后续节点，不能同时有 review→end 和 review→后续节点 两条 APPROVED 边
-- fix → review 设 maxLoops=5
-- 不需要单独的构建验证节点，review 节点内先验证再评审
-
+边示例：
 \`\`\`json
-{
-  "nodes": [
-    { "id": "start", "type": "start", "name": "开始" },
-    { "id": "implement", "type": "task", "name": "实现功能", "task": { "agent": "Pragmatist", "prompt": "实现 xxx 功能" } },
-    { "id": "review", "type": "task", "name": "代码评审", "task": { "agent": "Reviewer", "prompt": "先运行构建验证（typecheck、lint、build、test），有失败先修复再继续。\\n\\n构建通过后，严格评审代码变更，逐项检查正确性、代码质量、架构、错误处理、性能、安全。\\n\\n输出结论：APPROVED（零🔴问题）、NEEDS_CHANGES（有🔴必须修复项）或 REJECTED（架构性问题需重写）。按 🔴/🟡/🟢 分级列出问题。" } },
-    { "id": "fix", "type": "task", "name": "修复问题", "task": { "agent": "Pragmatist", "prompt": "根据评审意见修复代码问题" } },
-    { "id": "end", "type": "end", "name": "结束" }
-  ],
-  "edges": [
-    { "from": "start", "to": "implement" },
-    { "from": "implement", "to": "review" },
-    { "from": "review", "to": "end", "condition": "outputs.review._raw.includes('APPROVED')" },
-    { "from": "review", "to": "fix" },
-    { "from": "fix", "to": "review", "maxLoops": 5 }
-  ]
-}
+{ "from": "review", "to": "end", "condition": "outputs.review._raw.includes('APPROVED')" },
+{ "from": "review", "to": "fix" },
+{ "from": "fix", "to": "review", "maxLoops": 5 }
 \`\`\`
 
-带后续节点的变体（APPROVED 后还有步骤）：
+**多模块并行 Review-Fix**（多模块审查/修复）：
+- 每模块独立 review→fix→verify 链，从 start 并行展开
+- verify 通过(✅)→汇聚到 report 节点，失败(❌)→loop-back 回 review（maxLoops:5）
+- id 命名：review_xxx / fix_xxx / verify_xxx
 
+**周期任务**（schedule-wait + loop-back，通常无 end）：
 \`\`\`
-implement → review → generate_report → end (APPROVED)
-                ↓ (fallback)
-               fix → review (maxLoops=5)
+start → execute → notify → wait →(maxLoops:500)→ execute
 \`\`\`
-
-此时 APPROVED 边指向 generate_report（不是 end），fallback 边指向 fix：
-\`\`\`json
-"edges": [
-  { "from": "review", "to": "generate_report", "condition": "outputs.review._raw.includes('APPROVED')" },
-  { "from": "review", "to": "fix" },
-  { "from": "fix", "to": "review", "maxLoops": 5 },
-  { "from": "generate_report", "to": "end" }
-]
-\`\`\`
-
-何时使用：核心功能开发、重构、涉及安全/性能的修改
-何时不用：配置修改、文档更新、Git 提交、2-3 节点的简单任务
-
-### 周期任务（schedule-wait + loop-back）
-
-大多数周期任务是**无限循环**，无需 end 节点（用户手动停止）：
-
-\`\`\`json
-{
-  "nodes": [
-    { "id": "start", "type": "start", "name": "开始" },
-    { "id": "execute", "type": "task", "name": "执行任务", "task": { "agent": "Pragmatist", "prompt": "执行检查/分析..." } },
-    { "id": "notify", "type": "lark-notify", "name": "推送结果", "larkNotify": { "title": "定时报告" } },
-    { "id": "wait", "type": "schedule-wait", "name": "等待下次", "scheduleWait": { "cron": "0 9 * * 1-5" } }
-  ],
-  "edges": [
-    { "from": "start", "to": "execute" },
-    { "from": "execute", "to": "notify" },
-    { "from": "notify", "to": "wait" },
-    { "from": "wait", "to": "execute", "maxLoops": 500 }
-  ]
-}
-\`\`\`
-
----
 
 ## 输出格式
 
 \`\`\`json
-{
-  "name": "工作流名称",
-  "description": "工作流描述",
-  "nodes": [
-    { "id": "start", "type": "start", "name": "开始" },
-    { "id": "end", "type": "end", "name": "结束" }
-  ],
-  "edges": [
-    { "from": "start", "to": "first_node" },
-    { "from": "last_node", "to": "end" }
-  ]
-}
+{ "name": "名称", "description": "描述", "nodes": [...], "edges": [...] }
 \`\`\`
+每个 workflow 必须有 start 节点；非周期任务必须有 end 节点。
 
-## 表达式语法
+## 表达式
 
-- \`outputs.node_id._raw\` — 节点原始文本输出（**最常用**）
-- \`outputs.node_id._raw.includes('xxx')\` — 检查关键字
-- ⚠️ \`outputs.node_id.result\` 不存在，始终用 \`_raw\`
-- \`variables.xxx\` — 访问变量
-- \`startsWith(str, prefix)\` / \`lower(str)\` / \`upper(str)\`
-- \`len(array)\` / \`has(obj, key)\`
-- \`&&\` / \`||\` / 数学运算 +, -, *, /
+- \`outputs.node_id._raw\` — 节点原始输出（⚠️ 始终用 _raw，不存在 .result）
+- \`outputs.node_id._raw.includes('xxx')\` / \`variables.xxx\` / \`&&\` / \`||\`
 
 ## 规则
 
-1. 每个节点必须有唯一 id，**使用下划线分隔**（如 \`analyze_changes\`），避免连字符（条件表达式中连字符会被转为下划线，容易出错）
-2. edges 定义节点连接；条件边用 condition，loop-back 用 maxLoops
-3. review 节点 prompt 必须要求输出 APPROVED / NEEDS_CHANGES / REJECTED
-4. **条件边顺序**：肯定条件（APPROVED → end）放前，否定条件（!APPROVED → fix）放后作为 fallback；引擎在所有条件为 false 时走最后一条边
-5. **可达性**：从 start 沿非 loop-back 边必须能到达 end（周期任务例外，可无 end）
+1. 节点 id 用**下划线分隔**（如 analyze_changes），避免连字符；**"start" 和 "end" 是保留 ID**，只能用于 type=start/end 的结构节点，task 节点严禁使用这两个 id（用 analyze、summarize、report 等代替）
+2. review 节点 prompt 必须要求输出 APPROVED / NEEDS_CHANGES / REJECTED
+3. **条件边顺序**：肯定条件放前，fallback 放后
+4. **可达性**：从 start 沿非 loop-back 边必须能到达 end（周期任务例外）
+5. **loop-back 与 fan-out**：当一个节点有多条并行出边（fan-out）时，loop-back 的目标节点必须是 fan-out 源头节点或其上游，不能指向并行分支中的某个节点。否则循环重置会扩散到其他并行分支，导致聚合节点混合新旧数据。标准模式：checkpoint → [A, B, C 并行] → aggregate → verify → loop-back 到 checkpoint
 6. {{outputInstruction}}
 
 现在请生成 JSON Workflow：

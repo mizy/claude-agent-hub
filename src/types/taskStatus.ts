@@ -20,7 +20,7 @@ const ACTIVE_STATUSES: readonly TaskStatus[] = [
 ] as const
 
 /** 终结状态（已结束的任务） */
-const TERMINAL_STATUSES: readonly TaskStatus[] = ['completed', 'failed', 'cancelled'] as const
+const TERMINAL_STATUSES: readonly TaskStatus[] = ['completed', 'failed', 'cancelled', 'stopped'] as const
 
 /** 可停止的状态 */
 const STOPPABLE_STATUSES: readonly TaskStatus[] = [
@@ -110,6 +110,13 @@ export function isPausedStatus(status: TaskStatus): boolean {
  */
 export function isPausableStatus(status: TaskStatus): boolean {
   return (PAUSABLE_STATUSES as readonly string[]).includes(status)
+}
+
+/**
+ * 判断任务是否已被用户手动停止
+ */
+export function isStoppedStatus(status: TaskStatus): boolean {
+  return status === 'stopped'
 }
 
 /**

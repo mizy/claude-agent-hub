@@ -3,6 +3,7 @@
  */
 
 import type { ClientContext } from '../messaging/handlers/types.js'
+import { CAH_KNOWLEDGE } from './cahKnowledge.js'
 import { loadSoul } from './loadSoul.js'
 
 /** Current date/time string for chat context */
@@ -31,7 +32,7 @@ const DEFAULT_AGENT = [
   '- 不确定时先问清楚，别猜',
   '',
   '[任务分流]',
-  '- 耗时操作（多文件改动 / 新功能 / 全项目操作 / 深度审查 / 定时任务）→ 读取 cah skill,用 cah 工作流实现，无需用户指示',
+  '- 耗时操作（多文件改动 / 新功能 / 全项目操作 / 深度审查 / 定时任务）→ 用 cah 工作流实现，无需用户指示',
   '- 快速操作（问答 / 单文件小改 / 查状态 / 简单 bug）→ 直接做',
   '- 需求模糊时：影响大的先问，影响小的自行判断后说明',
   '',
@@ -149,6 +150,9 @@ export function buildClientPrompt(
   if (!soul) {
     lines.push('', DEFAULT_AGENT)
   }
+
+  // Built-in CAH knowledge — always available regardless of SOUL/non-SOUL
+  lines.push('', CAH_KNOWLEDGE)
 
   // Safety rules — always included regardless of SOUL/non-SOUL branch
   lines.push('', SAFETY_FULL)
