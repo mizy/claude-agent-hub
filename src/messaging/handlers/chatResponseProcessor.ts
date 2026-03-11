@@ -16,7 +16,9 @@ import { extractMediaTags, processMediaTags } from './mediaTagExtractor.js'
 import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
 import { trackEpisodeTurn } from './episodeExtractor.js'
 import { setSession, incrementTurn } from './sessionManager.js'
+import { recordEvent } from '../../consciousness/index.js'
 import { createBenchmark, formatBenchmark, isBenchmarkEnabled } from './chatBenchmark.js'
+
 import type { MessengerAdapter } from './types.js'
 
 const logger = createLogger('chat-response')
@@ -149,6 +151,9 @@ export async function processSuccessResult(
     setSession(chatId, newSessionId, backendOverride)
   }
   incrementTurn(chatId, text, response)
+  try {
+    recordEvent('msg_out', `回复: ${response.slice(0, 50)}`)
+  } catch { /* inner state write may fail */ }
 
   // Extract media tags ([SEND_FILE: ...] / [SEND_IMAGE: ...]) before building final text
   const { tags: mediaTags, cleanedText: responseWithoutTags } = extractMediaTags(response)

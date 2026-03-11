@@ -28,6 +28,7 @@ import { resolveEvolveContext } from '../selfevolve/resolveEvolveContext.js'
 import { intervalToCron } from '../shared/formatTime.js'
 import { registerDaemonJobs, stopAllJobs } from './daemonJobs.js'
 import { startSleepPrevention, stopSleepPrevention } from './sleepPrevention.js'
+import { flushInnerState } from '../consciousness/index.js'
 import { appendLifecycleEvent } from './lifecycleLog.js'
 import { appendEntry } from '../consciousness/index.js'
 import { bootstrapRuntime } from '../runtime/bootstrap.js'
@@ -242,6 +243,7 @@ async function runDaemon(): Promise<void> {
     stopSelfDrive()
     stopSleepPrevention()
     stopAllJobs()
+    flushInnerState()
     destroyChatHandler().catch(() => {})
     stopTelegramClient()
     releasePidLock()
@@ -261,6 +263,7 @@ async function runDaemon(): Promise<void> {
     stopSelfDrive()
     stopSleepPrevention()
     stopAllJobs()
+    flushInnerState()
     await destroyChatHandler().catch(() => {})
     stopTelegramClient()
     releasePidLock()

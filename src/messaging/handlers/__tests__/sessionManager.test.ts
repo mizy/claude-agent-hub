@@ -213,7 +213,8 @@ describe('sessionManager', () => {
       })
       loadSessions()
       expect(getSession('chat-1')).toBeDefined()
-      expect(getSession('chat-1')!.turnCount).toBe(2)
+      // loadSessions resets turnCount to 0 for fresh CLI session start
+      expect(getSession('chat-1')!.turnCount).toBe(0)
     })
 
     it('should skip expired sessions on load', () => {

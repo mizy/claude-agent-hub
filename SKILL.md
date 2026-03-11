@@ -89,7 +89,7 @@ cah task get <task-id> --verbose # 详细信息（含节点状态）
 
 # 实时查看任务日志
 cah task logs <task-id> -f
-cah task logs <task-id> -n <lines>  # 最后 N 行（默认 50）
+cah task logs <task-id> --tail <lines>  # 最后 N 行（默认 50）
 cah task logs <task-id> --head <n>  # 前 N 行
 
 # 查看任务执行统计
@@ -161,10 +161,16 @@ cah stop
 cah stop -a <agent>              # 只停止指定 Agent
 
 # 重启守护进程
-cah restart
+cah restart [-D]
 
 # 查看运行状态
 cah status
+
+# 守护进程日志
+cah daemon logs
+cah daemon logs -f               # 持续跟踪
+cah daemon logs -n <lines>       # 最后 N 行
+cah daemon logs -e               # 只看错误日志
 ```
 
 ### 报告与分析
@@ -197,6 +203,7 @@ cah report live -i <ms>          # 刷新间隔（默认 3000ms）
 # 查看日志（等价于 cah task logs）
 cah logs <task-id>
 cah logs <task-id> -f            # 持续跟踪
+cah logs <task-id> -n <lines>    # 最后 N 行（默认 50）
 
 # 手动执行队列中下一个待处理任务
 cah run
@@ -218,13 +225,20 @@ cah self check --auto-fix          # 自动修复并验证
 cah self status
 
 # 自我进化
+cah self evolve                  # 执行完整进化周期
 cah self evolve analyze          # 分析失败任务模式
 cah self evolve validate <id>    # 验证进化效果
 cah self evolve history          # 查看进化历史
+cah self evolve intents          # 意图列表（-m/--mine, --json）
+cah self evolve proposals        # 提案列表（-a/--all）
 
 # 自驱模式
 cah self drive start|stop|disable|enable|status
 cah self drive goals             # 自驱目标管理
+cah self drive goals list        # 列出目标（默认）
+cah self drive goals enable <id> # 启用目标
+cah self drive goals disable <id> # 禁用目标
+cah self drive goals set-schedule <id> "<cron>"  # 设置目标调度
 ```
 
 ### 定时任务管理
@@ -247,9 +261,11 @@ cah schedule stop <task-id>
 ```bash
 # 系统统计
 cah stats overview               # 系统概览统计
+cah stats overview -f            # 强制重新计算（忽略缓存）
 cah stats chat                   # 对话使用统计
 cah stats task                   # 任务执行统计
 cah stats growth                 # 增长趋势统计
+cah stats selfdrive              # 自驱目标统计
 cah stats <subcommand> --json    # JSON 格式输出
 ```
 
@@ -259,6 +275,8 @@ cah stats <subcommand> --json    # JSON 格式输出
 # 一次性对话
 cah chat "你好"
 cah chat "你好" -m opus -b claude-code
+cah chat "你好" -o json          # 输出格式 (text/json/stream-json)
+cah chat                         # 交互式 REPL 模式（TTY 环境）
 ```
 
 ### Agent 管理
@@ -477,10 +495,16 @@ cah self check
 ├── evolution/             # 自进化数据
 ├── failure-kb/            # 失败知识库
 ├── success-patterns/      # 成功模式
+├── consciousness/         # 意识系统（growth-journal.jsonl, value-system.json, intents.json）
+├── self-model.json        # 意识自模型
+├── reflections.jsonl      # 反思日志
+├── consciousness.jsonl    # 意识流日志
 ├── conversation.jsonl     # 全局 IM 对话日志
 ├── queue.json             # 任务队列
 ├── runner.lock            # 队列 Runner 锁
+├── runner.log             # 队列运行日志
 ├── daemon.pid             # Daemon 进程 PID
+├── dashboard.pid          # Dashboard 进程 PID
 └── tmp/                   # 临时文件
 ```
 

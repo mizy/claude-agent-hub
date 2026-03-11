@@ -8,27 +8,28 @@
 # 任务（必须在目标项目目录下运行，cwd 用于同项目冲突检测和自动串行）
 cah "任务描述"           # 创建并执行（-p priority, -a agent, -b backend, -m model, -S schedule, -F 前台, --no-run 仅创建, -v verbose, -d data-dir）
 cah list                 # 任务列表（-s status, -w watch, --no-progress, -a agent, --source, --cwd, --project, -i interval）
-cah logs <id>            # 任务日志（-f follow, -n tail）
+cah logs <id>            # 任务日志（-f follow, -n lines）
 cah run                  # 手动执行队列中下一个 pending 任务
-cah chat <message>       # 与 AI 对话（一次性）
+cah chat <message>       # 与 AI 对话（-m model, -b backend, -o output-format；无参数进入 REPL）
 cah task add|list|show|stats|logs|delete|stop|clear|complete|reject|resume|pause|snapshot|msg|inject-node|trace  # 详见 cah task --help
 
 # 守护进程
-cah start [-D]           # 启动（-D 后台），cah stop, cah restart, cah status
+cah start [-D]           # 启动（-D 后台），cah stop [-a agent], cah restart [-D]（默认后台）, cah status
+cah daemon logs          # 守护进程日志（-f follow, -n lines, -e error）
 
 # 其他子命令（详见 cah <cmd> --help）
 cah report work|trend|live    # 报告
 cah memory list|add|search|delete|health|fading|reinforce|associations|episodes|recall|link|cleanup  # 记忆
 cah self check [--fix|--auto-fix]|status  # 自检查
-cah self evolve analyze|validate|history  # 自进化
-cah self drive start|stop|disable|enable|status|goals  # 自驱管理
+cah self evolve [analyze|validate|history|intents|proposals]  # 自进化（无子命令执行完整周期）
+cah self drive start|stop|disable|enable|status|goals  # 自驱管理（goals 子命令：list|enable|disable|set-schedule）
 cah schedule create|list|stop  # 定时任务
 cah backend list|current      # 后端
 cah prompt versions|rollback|diff|compare|test|evaluate|extract  # Prompt 管理
 cah agent list|show           # Agent 管理
-cah stats overview|chat|task|growth  # 统计（--json）
+cah stats overview|chat|task|growth|selfdrive  # 统计（--json, -f/--force）
 cah init                 # 初始化
-cah dashboard start|stop|status  # 可视化面板
+cah dashboard start|stop|status  # 可视化面板（start: -p port, -H host, --open, -D detach）
 ```
 
 ## 分层架构
@@ -37,7 +38,7 @@ cah dashboard start|stop|status  # 可视化面板
 CLI (cli/) → Server/Report/Messaging  表现层
 Task (task/) → Scheduler/Workflow/Analysis/Output/SelfEvolve/SelfDrive  业务层
 Backend (backend/)  集成层（claude-code/opencode/iflow/codebuddy/cursor）
-Memory/Agents/Prompts/PromptOptimization/Config/Consciousness/Statistics  领域层
+Memory/Agents/Prompts/PromptOptimization/Config/Consciousness/Statistics/Notification/Runtime  领域层
 Store (store/)  持久层（GenericFileStore）
 Shared (shared/) / Types (types/)  基础设施
 ```
@@ -73,10 +74,16 @@ cah "描述" → createTask(cwd, pending)
 ├── evolution/           # 自进化数据
 ├── failure-kb/          # 失败知识库
 ├── success-patterns/    # 成功模式
+├── consciousness/       # 意识系统（growth-journal.jsonl, value-system.json, intents.json）
+├── self-model.json      # 意识自模型
+├── reflections.jsonl    # 反思日志
+├── consciousness.jsonl  # 意识流日志
 ├── conversation.jsonl   # 全局 IM 对话日志（in/out/event/cmd）
 ├── queue.json           # 任务队列
 ├── runner.lock          # 队列运行锁
+├── runner.log           # 队列运行日志
 ├── daemon.pid           # daemon PID
+├── dashboard.pid        # dashboard PID
 └── tmp/                 # 临时文件
 ```
 

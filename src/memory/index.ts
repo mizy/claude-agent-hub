@@ -14,7 +14,8 @@
  * - 关联引擎: buildAssociations / spreadActivation / updateAssociationStrength
  *   associativeRetrieve / rebuildAllAssociations
  * - 整合引擎: consolidateMemories / shouldConsolidate（A-MEM 去重合并）
- * - 实体索引: extractEntities / indexMemoryEntities / queryEntityIndex / rebuildEntityIndex（HippoRAG-lite）
+ * - 查询扩展: expandQueryForRetrieval / clearExpandCache
+ * - 实体索引: extractEntities / indexMemoryEntities / removeFromEntityIndex / queryEntityIndex / rebuildEntityIndex（HippoRAG-lite）
  */
 
 // Types

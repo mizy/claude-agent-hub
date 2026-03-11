@@ -230,7 +230,10 @@ export function extractEventError(event: Record<string, unknown>): string | unde
 
   if (msg) return msg
   if (errorRecord) return JSON.stringify(errorRecord)
-  return 'Unknown backend error event'
+  // Include raw event keys so failures are diagnosable instead of opaque
+  const keys = Object.keys(event).filter(k => k !== 'type')
+  const hint = keys.length > 0 ? ` (keys: ${keys.join(', ')})` : ''
+  return `Unknown backend error event${hint}: ${JSON.stringify(event).slice(0, 200)}`
 }
 
 // ============ MCP Config ============

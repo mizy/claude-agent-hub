@@ -195,7 +195,12 @@ export async function sendFinalResponse(
       await new Promise(r => setTimeout(r, 500))
       editOk = await messenger.editMessage(chatId, placeholderId, markedParts[0]!)
       if (!editOk) {
-        logger.warn('final edit failed after retry, skipping (user saw streaming content)')
+        // Edit failed twice — try delete + reply, but only reply if delete succeeds
+        logger.warn('final edit failed after retry, attempting delete + reply')
+        const deleted = await messenger.deleteMessage?.(chatId, placeholderId).then(() => true).catch(() => false)
+        if (deleted) {
+          await messenger.reply(chatId, markedParts[0]!)
+        }
       }
     }
     for (const part of markedParts.slice(1)) {

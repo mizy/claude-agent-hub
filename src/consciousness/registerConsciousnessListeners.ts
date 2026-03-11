@@ -7,6 +7,7 @@
 
 import { taskEventBus, type TaskCompletionPayload } from '../shared/events/index.js'
 import { appendEntry } from './consciousnessStore.js'
+import { recordEvent } from './innerState.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 
@@ -42,6 +43,8 @@ export function registerConsciousnessListeners(): void {
           duration: durationMs,
         },
       })
+
+      recordEvent(success ? 'task_done' : 'task_fail', content)
     } catch (e) {
       logger.warn(`Failed to write consciousness task event: ${getErrorMessage(e)}`)
     }

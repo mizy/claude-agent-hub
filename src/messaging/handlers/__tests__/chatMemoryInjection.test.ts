@@ -76,6 +76,28 @@ vi.mock('../../../backend/resolveBackend.js', () => ({
   getRegisteredBackends: vi.fn(() => ['claude-code']),
 }))
 
+// Mock consciousness modules to avoid reading real state files
+vi.mock('../../../consciousness/index.js', () => ({
+  getRecentEntries: vi.fn(() => []),
+  formatForPrompt: vi.fn(() => ''),
+  loadSelfModel: vi.fn(() => null),
+  loadInnerState: vi.fn(() => ({ activeSessions: [], recentEvents: [], updatedAt: '' })),
+  formatInnerStateForPrompt: vi.fn(() => ''),
+  recordEvent: vi.fn(),
+  registerSession: vi.fn(),
+  deregisterSession: vi.fn(),
+  updateSessionTopic: vi.fn(),
+  clearActiveSessions: vi.fn(),
+}))
+vi.mock('../../../consciousness/activeThoughts.js', () => ({
+  getTopThoughts: vi.fn(() => []),
+  formatActiveThoughts: vi.fn(() => ''),
+}))
+vi.mock('../../../consciousness/initiative.js', () => ({
+  loadPendingIntents: vi.fn(() => []),
+  formatPendingIntents: vi.fn(() => ''),
+}))
+
 // Mock loadConfig with memory enabled
 vi.mock('../../../config/loadConfig.js', () => ({
   loadConfig: vi.fn().mockResolvedValue({

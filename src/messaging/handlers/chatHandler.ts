@@ -19,6 +19,7 @@ import { clearChatMemoryBuffers } from './chatMemoryExtractor.js'
 import { flushEpisode, destroyEpisodeTrackers } from './episodeExtractor.js'
 import { destroyGroupBuffer } from '../larkEventRouter.js'
 import { createBenchmark } from './chatBenchmark.js'
+import { recordEvent, registerSession, deregisterSession, updateSessionTopic, clearActiveSessions, flushInnerState } from '../../consciousness/index.js'
 import type { MessengerAdapter, ClientContext } from './types.js'
 import type { StreamHandlerOptions } from './streamingHandler.js'
 
@@ -86,6 +87,10 @@ export async function handleChat(
  */
 export function clearChatSession(chatId: string): boolean {
   flushEpisode(chatId)
+  try {
+    deregisterSession(chatId)
+    recordEvent('session_end', '会话主动清除')
+  } catch (e) { logger.debug(`consciousness cleanup failed: ${getErrorMessage(e)}`) }
   return clearSession(chatId)
 }
 
@@ -120,6 +125,11 @@ export async function destroyChatHandler(): Promise<void> {
   await destroyGroupBuffer()
   destroyEpisodeTrackers()
   destroySessions()
+  // Clear stale activeSessions from InnerState so next startup doesn't load expired sessions
+  try {
+    clearActiveSessions()
+    flushInnerState()
+  } catch { /* best effort */ }
 }
 
 // ── Session state resolution ──
@@ -200,7 +210,7 @@ async function handleChatInternal(
   const ss = resolveSessionState(chatId, inlineBackend)
   if (inlineBackend && effectiveText) recordBackendPreference(chatId, inlineBackend, effectiveText)
 
-  // 3. Log user message
+  // 3. Log user message + consciousness events
   logConversation({
     ts: new Date().toISOString(),
     dir: 'in',
@@ -210,6 +220,16 @@ async function handleChatInternal(
     text: effectiveText || (options?.images?.length ? '[图片消息]' : ''),
     images: options?.images,
   })
+
+  // Register session + record event in consciousness
+  try {
+    if (ss.willStartNewSession) {
+      registerSession(chatId, platform)
+      recordEvent('session_start', `新会话开始 (${platform})`)
+    }
+    updateSessionTopic(chatId, effectiveText || '')
+    recordEvent('msg_in', effectiveText?.slice(0, 50) || '[非文本消息]')
+  } catch (e) { logger.debug(`consciousness event recording failed: ${getErrorMessage(e)}`) }
 
   // 4. Resolve config + model
   const config = await loadConfig()
@@ -253,7 +273,7 @@ async function handleChatInternal(
 
     if (!result.ok) {
       if (result.error.type === 'cancelled') {
-        stream.stopStreaming()
+        await stream.stopStreaming()
         await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger, stream.getAccumulated())
         return
       }
@@ -278,7 +298,7 @@ async function handleChatInternal(
   } catch (error) {
     if (activeControllers.get(chatId) === abortController) activeControllers.delete(chatId)
     if (signal.aborted) {
-      stream.stopStreaming()
+      await stream.stopStreaming()
       await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger, stream.getAccumulated())
       return
     }

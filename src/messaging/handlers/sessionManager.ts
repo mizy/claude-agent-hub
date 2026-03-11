@@ -16,7 +16,6 @@ import type { ChatSession } from './types.js'
 import type { SessionConfig } from '../../config/schema.js'
 import { appendEntry } from '../../consciousness/index.js'
 import { generateSessionEndInsight } from '../../consciousness/generateSummary.js'
-import type { ConversationMessage } from '../../consciousness/generateSummary.js'
 import { addActiveThought } from '../../consciousness/activeThoughts.js'
 
 const logger = createLogger('session-manager')
