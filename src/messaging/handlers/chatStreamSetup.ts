@@ -17,6 +17,7 @@ export interface StreamSetup {
   placeholderPromise: Promise<string | null>
   getPlaceholderId: () => string | null
   getAccumulated: () => string
+  updateStatus: (text: string) => void
 }
 
 /** Setup streaming handler and send placeholder message */
@@ -49,5 +50,12 @@ export function setupStreamingAndPlaceholder(
     })
     .catch(e => { logger.debug(`placeholder send failed: ${getErrorMessage(e)}`); return null })
 
-  return { onChunk, onToolUse: resetForNewTurn, stopStreaming, placeholderPromise, getPlaceholderId: () => placeholderId, getAccumulated }
+  // Update the placeholder text with a status message (no-op if placeholder not ready or streaming started)
+  function updateStatus(text: string): void {
+    if (!placeholderId || getAccumulated().length > 0) return
+    messenger.editMessage(chatId, placeholderId, text)
+      .catch(e => logger.debug(`status update failed: ${getErrorMessage(e)}`))
+  }
+
+  return { onChunk, onToolUse: resetForNewTurn, stopStreaming, placeholderPromise, getPlaceholderId: () => placeholderId, getAccumulated, updateStatus }
 }

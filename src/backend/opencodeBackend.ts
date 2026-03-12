@@ -81,6 +81,7 @@ export function createOpencodeBackend(): BackendAdapter {
               bash: 'allow',
               edit: 'allow',
               read: 'allow',
+              external_directory: 'allow',
             }),
           },
           ...(signal ? { cancelSignal: signal, gracefulCancel: true } : {}),

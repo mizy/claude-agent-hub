@@ -280,11 +280,14 @@ async function handleChatInternal(
   const prompt = await buildFullPrompt(
     chatId, effectiveText, ss.willStartNewSession, options?.client, options?.images, config,
     { backend: backendName, model: model ?? config.backends[backendName]?.model },
-    options?.files
+    options?.files, 'full',
+    ss.willStartNewSession ? (text) => stream.updateStatus(text) : undefined
   )
   bench.promptReady = Date.now()
+  stream.updateStatus('💭 等待 AI 响应...')
 
   // 6. Invoke backend
+  // <think> tags streamed as-is for user feedback; stripped in final response by chatResponseProcessor
   try {
     const effectiveSessionId = inlineBackend || ss.backendChanged ? undefined : ss.sessionId
     const [, result] = await Promise.all([

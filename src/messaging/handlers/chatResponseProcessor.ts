@@ -13,6 +13,7 @@ import { addMemory } from '../../memory/index.js'
 import { sendFinalResponse } from './streamingHandler.js'
 import { sendDetectedImages } from './imageExtractor.js'
 import { extractMediaTags, processMediaTags } from './mediaTagExtractor.js'
+import { stripThinkTags } from './stripThinkTags.js'
 import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
 import { trackEpisodeTurn } from './episodeExtractor.js'
 import { setSession, incrementTurn } from './sessionManager.js'
@@ -174,8 +175,10 @@ export async function processSuccessResult(
     /* inner state write may fail */
   }
 
+  // Strip <think>...</think> reasoning tags from models like DeepSeek/minimax
+  const responseClean = stripThinkTags(response)
   // Extract media tags ([SEND_FILE: ...] / [SEND_IMAGE: ...]) before building final text
-  const { tags: mediaTags, cleanedText: responseWithoutTags } = extractMediaTags(response)
+  const { tags: mediaTags, cleanedText: responseWithoutTags } = extractMediaTags(responseClean)
 
   // When text is empty after removing media tags, generate file/image description
   let displayText = responseWithoutTags

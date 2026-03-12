@@ -27,6 +27,9 @@ const CONSCIOUSNESS_BUDGET = {
   selfModel: 400,    // state + narrative + insights
 } as const
 
+/** Total budget cap for all consciousness modules combined (chars) */
+const MAX_CONSCIOUSNESS_TOTAL = 1500
+
 /** Gap messages threshold: if gap exceeds this, regenerate summary incrementally */
 const GAP_REGEN_THRESHOLD = 10
 
@@ -49,7 +52,8 @@ export async function buildFullPrompt(
   config: Awaited<ReturnType<typeof loadConfig>>,
   runtime?: { backend?: string; model?: string },
   files?: string[],
-  mode: PromptMode = 'full'
+  mode: PromptMode = 'full',
+  onStatus?: (text: string) => void
 ): Promise<string> {
   const clientPrefix = client ? buildClientPrompt(client, runtime, mode) + '\n\n' : ''
 
@@ -125,12 +129,17 @@ export async function buildFullPrompt(
   // Retrieve relevant memories only on new session start.
   // Memory is for cross-session recall — no need to refresh mid-session.
   if (mode === 'full' && willStartNewSession && effectiveText) {
+    onStatus?.('🔍 检索记忆中...')
     memoryPromise = retrieveAllMemoryContext(effectiveText, {
       maxResults: config.memory.chatMemory.maxMemories,
     }).catch(e => {
       logger.debug(`memory retrieval failed: ${getErrorMessage(e)}`)
       return null
     })
+  }
+
+  if (summaryPromise) {
+    onStatus?.('📝 构建对话上下文...')
   }
 
   // Await parallel tasks together
@@ -244,7 +253,31 @@ export async function buildFullPrompt(
     }
   }
 
-  const consciousnessTotal = consciousnessRaw + innerStateRaw + activeThoughtsRaw + intentsRaw + selfModelRaw
+  // Enforce total consciousness budget — trim low-priority modules first
+  // Priority (high→low): innerState, selfModel, stream, thoughts, intents
+  let consciousnessTotal = consciousnessRaw + innerStateRaw + activeThoughtsRaw + intentsRaw + selfModelRaw
+  if (consciousnessTotal.length > MAX_CONSCIOUSNESS_TOTAL) {
+    const modules = [
+      { name: 'intents', get: () => intentsRaw, set: (v: string) => { intentsRaw = v } },
+      { name: 'thoughts', get: () => activeThoughtsRaw, set: (v: string) => { activeThoughtsRaw = v } },
+      { name: 'stream', get: () => consciousnessRaw, set: (v: string) => { consciousnessRaw = v } },
+    ]
+    for (const mod of modules) {
+      const total = consciousnessRaw.length + innerStateRaw.length + activeThoughtsRaw.length + intentsRaw.length + selfModelRaw.length
+      if (total <= MAX_CONSCIOUSNESS_TOTAL) break
+      const excess = total - MAX_CONSCIOUSNESS_TOTAL
+      const current = mod.get()
+      if (!current) continue
+      if (current.length <= excess) {
+        mod.set('')
+        logger.debug(`consciousness budget: dropped ${mod.name} (${current.length} chars)`)
+      } else {
+        mod.set(current.slice(0, current.length - excess) + '\n…')
+        logger.debug(`consciousness budget: trimmed ${mod.name} by ${excess} chars`)
+      }
+    }
+    consciousnessTotal = consciousnessRaw + innerStateRaw + activeThoughtsRaw + intentsRaw + selfModelRaw
+  }
 
   // Assemble: system context → consciousness block → memory → history/summary → user message → images → files
   let historyBlock = ''

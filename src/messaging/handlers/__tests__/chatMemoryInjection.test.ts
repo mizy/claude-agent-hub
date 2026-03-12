@@ -18,10 +18,11 @@ vi.mock('../../../memory/index.js', () => ({
   addMemory: vi.fn(),
 }))
 
-// Mock conversation log
+// Mock conversation log (moved to store/ layer)
 const mockLogConversation = vi.fn()
-vi.mock('../conversationLog.js', () => ({
+vi.mock('../../../store/conversationLog.js', () => ({
   logConversation: (...args: unknown[]) => mockLogConversation(...args),
+  logConversationEvent: vi.fn(),
   getRecentConversations: () => [],
 }))
 
@@ -50,6 +51,8 @@ vi.mock('../streamingHandler.js', () => ({
   createStreamHandler: vi.fn(() => ({
     onChunk: vi.fn(),
     stop: vi.fn(),
+    getAccumulated: vi.fn(() => ''),
+    resetForNewTurn: vi.fn(),
   })),
   sendFinalResponse: vi.fn(),
 }))
@@ -62,6 +65,7 @@ vi.mock('../imageExtractor.js', () => ({
 // Mock chat memory extractor
 vi.mock('../chatMemoryExtractor.js', () => ({
   triggerChatMemoryExtraction: vi.fn(),
+  clearChatMemoryBuffers: vi.fn(),
 }))
 
 // Mock episode extractor
@@ -88,6 +92,14 @@ vi.mock('../../../consciousness/index.js', () => ({
   deregisterSession: vi.fn(),
   updateSessionTopic: vi.fn(),
   clearActiveSessions: vi.fn(),
+  flushInnerState: vi.fn(),
+}))
+vi.mock('../../../consciousness/generateSummary.js', () => ({
+  generateChatContextSummary: vi.fn(),
+}))
+vi.mock('../../../store/chatSummaryStore.js', () => ({
+  saveChatSummary: vi.fn(),
+  loadChatSummary: vi.fn(() => null),
 }))
 vi.mock('../../../consciousness/activeThoughts.js', () => ({
   getTopThoughts: vi.fn(() => []),
@@ -96,6 +108,11 @@ vi.mock('../../../consciousness/activeThoughts.js', () => ({
 vi.mock('../../../consciousness/initiative.js', () => ({
   loadPendingIntents: vi.fn(() => []),
   formatPendingIntents: vi.fn(() => ''),
+}))
+
+// Mock lark group buffer
+vi.mock('../../larkGroupBuffer.js', () => ({
+  destroyGroupBuffer: vi.fn(),
 }))
 
 // Mock loadConfig with memory enabled
