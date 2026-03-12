@@ -234,7 +234,7 @@ async function runDaemon(): Promise<void> {
     }
   }
 
-  resumeSelfDriveIfEnabled()
+  await resumeSelfDriveIfEnabled()
   console.log(chalk.green(`✓ 守护进程运行中 (PID: ${process.pid})`))
   console.log(chalk.gray('  Ctrl+C 停止'))
 

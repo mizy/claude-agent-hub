@@ -25,7 +25,7 @@ export function registerSelfDriveCommand(parent: Command) {
       console.log()
       try {
         const { startSelfDrive, getSelfDriveStatus } = await import('../../selfdrive/index.js')
-        startSelfDrive()
+        await startSelfDrive()
         const status = getSelfDriveStatus()
 
         console.log(chalk.green('✓ 自驱模式已启动'))

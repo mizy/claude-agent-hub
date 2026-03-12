@@ -1,11 +1,12 @@
 /**
- * @entry Self-drive scheduler
+ * @entry Self-drive scheduler (introspection only)
  *
- * Simple setInterval-based scheduler that executes goals by creating tasks.
- * Runs inside the daemon process — no separate process needed.
+ * Handles introspection goals (daily-reflection, weekly-narrative) and signal detection.
+ * Task-type goals (evolve, evolve-feature, cleanup-code, update-docs) are handled
+ * by the selfdrive-master workflow instead.
  *
  * Public API:
- * - startScheduler(): start timers for enabled goals + signal detection
+ * - startScheduler(): start timers for introspection goals + signal detection
  * - stopScheduler(): stop all timers
  * - getSchedulerStatus(): report current scheduler state
  */
@@ -63,10 +64,11 @@ export function startScheduler(): void {
   stopScheduler()
   ensureBuiltinGoals()
 
-  const goals = listEnabledGoals()
-  logger.info(`Starting self-drive scheduler with ${goals.length} enabled goal(s)`)
+  // Only schedule introspection goals — task-type goals are handled by selfdrive-master workflow
+  const introspectionGoals = listEnabledGoals().filter(g => g.type === 'introspection')
+  logger.info(`Starting introspection scheduler with ${introspectionGoals.length} goal(s)`)
 
-  for (const goal of goals) {
+  for (const goal of introspectionGoals) {
     const intervalMs = parseScheduleMs(goal.schedule)
     if (!intervalMs) {
       logger.warn(`Invalid schedule for goal ${goal.id}: ${goal.schedule}`)
@@ -91,6 +93,7 @@ export function startScheduler(): void {
     activeTimers.set(goal.id, timer)
   }
 
+  // Signal detection — still needed for reactive evolution triggers
   const initialDelay = setTimeout(() => {
     runSignalDetection(SIGNAL_DETECTION_INTERVAL_MS).catch(err =>
       logger.error(`Initial signal detection error: ${getErrorMessage(err)}`)

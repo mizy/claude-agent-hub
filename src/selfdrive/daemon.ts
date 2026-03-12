@@ -12,6 +12,7 @@ import { FileStore } from '../store/GenericFileStore.js'
 import { createLogger } from '../shared/logger.js'
 import { ensureBuiltinGoals } from './goals.js'
 import { startScheduler, stopScheduler, getSchedulerStatus } from './scheduler.js'
+import { ensureSelfDriveWorkflow } from './ensureSelfDriveWorkflow.js'
 
 const logger = createLogger('selfdrive')
 
@@ -44,8 +45,8 @@ function saveState(state: SelfDriveState): void {
 
 // ============ Control ============
 
-/** Start self-drive mode. Initializes built-in goals and starts scheduler. */
-export function startSelfDrive(): void {
+/** Start self-drive mode. Ensures workflow exists and starts introspection scheduler. */
+export async function startSelfDrive(): Promise<void> {
   const state = getState()
   if (state.enabled) {
     logger.debug('Self-drive already enabled')
@@ -53,7 +54,8 @@ export function startSelfDrive(): void {
   }
 
   ensureBuiltinGoals()
-  startScheduler()
+  await ensureSelfDriveWorkflow()
+  startScheduler() // introspection + signal detection only
 
   saveState({
     enabled: true,
@@ -133,7 +135,7 @@ export function getSelfDriveStatus(): {
  * Auto-starts unless the user has explicitly and permanently disabled it.
  * A temporary stop (via stopSelfDrive) is NOT permanent — daemon restart resumes it.
  */
-export function resumeSelfDriveIfEnabled(): void {
+export async function resumeSelfDriveIfEnabled(): Promise<void> {
   const state = getState()
   if (state.permanentlyDisabled) {
     logger.info('Self-drive permanently disabled, skipping auto-start')
@@ -141,7 +143,8 @@ export function resumeSelfDriveIfEnabled(): void {
   }
   logger.info('Auto-starting self-drive on daemon start')
   ensureBuiltinGoals()
-  startScheduler()
+  await ensureSelfDriveWorkflow()
+  startScheduler() // introspection + signal detection only
   saveState({
     ...state,
     enabled: true,

@@ -253,7 +253,7 @@ async function handleSelfDrive(args: string): Promise<CommandResult> {
   if (sub === 'start') {
     try {
       const { startSelfDrive, getSelfDriveStatus } = await import('../../selfdrive/index.js')
-      startSelfDrive()
+      await startSelfDrive()
       const status = getSelfDriveStatus()
 
       return {

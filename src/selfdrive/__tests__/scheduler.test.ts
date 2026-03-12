@@ -62,21 +62,30 @@ describe('scheduler', () => {
     expect(status.activeGoals).toBe(0)
   })
 
-  it('schedules enabled goals', () => {
+  it('schedules enabled introspection goals', () => {
     vi.mocked(listEnabledGoals).mockReturnValue([
-      makeGoal('health-check', '30m'),
-      makeGoal('evolve', '1h'),
+      makeGoal('introspection', '30m', { id: 'goal-daily-reflection' }),
+      makeGoal('introspection', '1h', { id: 'goal-weekly-narrative' }),
     ])
     startScheduler()
     const status = getSchedulerStatus()
     expect(status.running).toBe(true)
     expect(status.activeGoals).toBe(2)
-    expect(status.goalIds).toContain('goal-health-check')
-    expect(status.goalIds).toContain('goal-evolve')
+    expect(status.goalIds).toContain('goal-daily-reflection')
+    expect(status.goalIds).toContain('goal-weekly-narrative')
+  })
+
+  it('skips non-introspection goals (handled by workflow)', () => {
+    vi.mocked(listEnabledGoals).mockReturnValue([
+      makeGoal('evolve', '1h'),
+      makeGoal('health-check', '30m'),
+    ])
+    startScheduler()
+    expect(getSchedulerStatus().activeGoals).toBe(0)
   })
 
   it('stops all timers on stopScheduler', () => {
-    vi.mocked(listEnabledGoals).mockReturnValue([makeGoal('health-check', '30m')])
+    vi.mocked(listEnabledGoals).mockReturnValue([makeGoal('introspection', '30m', { id: 'goal-daily-reflection' })])
     startScheduler()
     expect(getSchedulerStatus().running).toBe(true)
     stopScheduler()
@@ -86,21 +95,21 @@ describe('scheduler', () => {
 
   it('skips goals with invalid schedule', () => {
     vi.mocked(listEnabledGoals).mockReturnValue([
-      makeGoal('health-check', 'invalid'),
+      makeGoal('introspection', 'invalid'),
     ])
     startScheduler()
     expect(getSchedulerStatus().activeGoals).toBe(0)
   })
 
   it('restarts cleanly (stop existing + start new)', () => {
-    vi.mocked(listEnabledGoals).mockReturnValue([makeGoal('health-check', '30m')])
+    vi.mocked(listEnabledGoals).mockReturnValue([makeGoal('introspection', '30m', { id: 'goal-daily-reflection' })])
     startScheduler()
     expect(getSchedulerStatus().activeGoals).toBe(1)
 
     // Start again — should clear old timers first
     vi.mocked(listEnabledGoals).mockReturnValue([
-      makeGoal('health-check', '30m'),
-      makeGoal('evolve', '1h'),
+      makeGoal('introspection', '30m', { id: 'goal-daily-reflection' }),
+      makeGoal('introspection', '1h', { id: 'goal-weekly-narrative' }),
     ])
     startScheduler()
     expect(getSchedulerStatus().activeGoals).toBe(2)

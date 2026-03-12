@@ -37,6 +37,9 @@ export {
   getSchedulerStatus,
 } from './scheduler.js'
 
+// Workflow-based self-drive
+export { ensureSelfDriveWorkflow } from './ensureSelfDriveWorkflow.js'
+
 // Daemon integration
 export {
   startSelfDrive,

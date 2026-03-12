@@ -18,6 +18,10 @@ vi.mock('../goals.js', () => ({
   ensureBuiltinGoals: vi.fn(),
 }))
 
+vi.mock('../ensureSelfDriveWorkflow.js', () => ({
+  ensureSelfDriveWorkflow: vi.fn().mockResolvedValue(undefined),
+}))
+
 import {
   startSelfDrive,
   stopSelfDrive,
@@ -39,8 +43,8 @@ describe('daemon', () => {
     }
   })
 
-  it('starts self-drive: initializes goals and starts scheduler', () => {
-    startSelfDrive()
+  it('starts self-drive: initializes goals and starts scheduler', async () => {
+    await startSelfDrive()
     expect(ensureBuiltinGoals).toHaveBeenCalledOnce()
     expect(startScheduler).toHaveBeenCalledOnce()
 
@@ -49,15 +53,15 @@ describe('daemon', () => {
     expect(status.startedAt).toBeTruthy()
   })
 
-  it('start is idempotent when already enabled', () => {
-    startSelfDrive()
-    startSelfDrive() // second call
+  it('start is idempotent when already enabled', async () => {
+    await startSelfDrive()
+    await startSelfDrive() // second call
     expect(ensureBuiltinGoals).toHaveBeenCalledOnce()
     expect(startScheduler).toHaveBeenCalledOnce()
   })
 
-  it('stops self-drive: stops scheduler, updates state', () => {
-    startSelfDrive()
+  it('stops self-drive: stops scheduler, updates state', async () => {
+    await startSelfDrive()
     stopSelfDrive()
     expect(stopScheduler).toHaveBeenCalledOnce()
 
@@ -71,37 +75,37 @@ describe('daemon', () => {
     expect(stopScheduler).not.toHaveBeenCalled()
   })
 
-  it('getSelfDriveStatus shows scheduler info', () => {
+  it('getSelfDriveStatus shows scheduler info', async () => {
     vi.mocked(getSchedulerStatus).mockReturnValue({
       running: true,
       activeGoals: 2,
       goalIds: ['g1', 'g2'],
     })
-    startSelfDrive()
+    await startSelfDrive()
     const status = getSelfDriveStatus()
     expect(status.scheduler.running).toBe(true)
     expect(status.scheduler.activeGoals).toBe(2)
   })
 
-  it('resumeSelfDriveIfEnabled resumes when state.enabled is true', () => {
+  it('resumeSelfDriveIfEnabled resumes when state.enabled is true', async () => {
     // Start and then simulate daemon restart by clearing mocks
-    startSelfDrive()
+    await startSelfDrive()
     vi.clearAllMocks()
 
     // Now resume — should re-start scheduler since state says enabled
-    resumeSelfDriveIfEnabled()
+    await resumeSelfDriveIfEnabled()
     expect(ensureBuiltinGoals).toHaveBeenCalledOnce()
     expect(startScheduler).toHaveBeenCalledOnce()
   })
 
-  it('resumeSelfDriveIfEnabled auto-starts even when never started before', () => {
+  it('resumeSelfDriveIfEnabled auto-starts even when never started before', async () => {
     // Never started → state.enabled = false, but auto-start kicks in
-    resumeSelfDriveIfEnabled()
+    await resumeSelfDriveIfEnabled()
     expect(ensureBuiltinGoals).toHaveBeenCalledOnce()
     expect(startScheduler).toHaveBeenCalledOnce()
   })
 
-  it('resumeSelfDriveIfEnabled does nothing when permanently disabled', () => {
+  it('resumeSelfDriveIfEnabled does nothing when permanently disabled', async () => {
     // Simulate permanently disabled state
     // fs functions imported at top level
     mkdirSync(SELFDRIVE_DIR, { recursive: true })
@@ -110,7 +114,7 @@ describe('daemon', () => {
       JSON.stringify({ enabled: false, permanentlyDisabled: true })
     )
 
-    resumeSelfDriveIfEnabled()
+    await resumeSelfDriveIfEnabled()
     expect(startScheduler).not.toHaveBeenCalled()
   })
 })

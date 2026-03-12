@@ -2,8 +2,27 @@ import type { SignalEvent } from '../selfevolve/signalDetector.js'
 import { DATA_DIR } from '../store/paths.js'
 import { getTopValues, formatValuePreferences } from '../consciousness/valueSystem.js'
 
+const RUN_STATE_PATH = `${DATA_DIR}/evolution/run-state.json`
+const CONFIG_PATH = '~/.claude-agent-hub.yaml'
+
+function buildSkipCheck(goalType: string, interval: string): string {
+  return `## 前置检查（必须首先执行，任一条件命中则立即结束）
+
+**检查 1：系统禁用状态**
+读取配置文件 ${CONFIG_PATH}，检查 selfdrive.enabled 字段。若为 false，直接输出 "SKIPPED: selfdrive is disabled" 并结束，不执行后续任何步骤。
+
+**检查 2：频率控制**
+读取 ${RUN_STATE_PATH}（不存在则视为 {}）。
+检查 lastRun["${goalType}"]，若距当前时间 < ${interval} 则直接输出 "SKIPPED: ${goalType} 距上次运行不足 ${interval}" 并结束，不执行后续步骤。
+若到期或无记录，执行完毕后更新 run-state.json：将 lastRun["${goalType}"] 设为当前 ISO 时间戳。
+
+---
+
+`
+}
+
 const GOAL_PROMPTS: Record<string, string> = {
-  'evolve': `执行一轮全局自进化周期：系统中的任何模块都可能成为改进对象。
+  'evolve': `${buildSkipCheck('evolve', '24h')}执行一轮全局自进化周期：系统中的任何模块都可能成为改进对象。
 
 分析范围（三个维度，选最有价值的方向）：
 
@@ -40,9 +59,18 @@ const GOAL_PROMPTS: Record<string, string> = {
 - **严禁执行 cah restart、cah stop、kill 等任何终止/重启 daemon 的命令** — 会直接杀死当前运行的 daemon，stale_daemon 检测机制会在安全时机自动完成重启
 
 生成改进方案并应用，记录进化历史。`,
-  'evolve-feature': `执行一轮外部灵感采集，从开源社区和竞品中发现对 CAH 有价值的功能灵感。
+  'evolve-feature': `${buildSkipCheck('evolve-feature', '72h')}执行一轮外部灵感采集，从开源社区和竞品中发现对 CAH 有价值的功能灵感。
 
 ## 步骤
+
+**0. 加载历史去重上下文**
+
+读取 ${DATA_DIR}/evolution/idea-index.json（如不存在则视为空数组）。
+该文件存储历史已采集灵感的紧凑摘要，格式：
+\`\`\`json
+[{ "title": "...", "keywords": ["...", "..."], "addedAt": "ISO" }]
+\`\`\`
+将这份列表作为「已知灵感库」，后续去重时使用。
 
 **1. 爬取外部信息源**（使用 WebFetch/WebSearch 工具）
 
@@ -53,9 +81,13 @@ c) 竞品 GitHub releases：
    - goose (block/goose)
    - continue (continuedev/continue)
 
-**2. 筛选灵感**
+**2. 筛选并去重**
 
-从采集内容中筛选「对 CAH 有价值的灵感」，每条灵感包含以下字段：
+从采集内容中筛选「对 CAH 有价值的灵感」。对每条候选灵感，同时检查：
+- source URL 是否已在 proposals.json 中存在
+- 标题/核心概念是否与 idea-index.json 中已有条目高度重叠（语义相似，即使来源不同也跳过）
+
+通过去重的新灵感，包含字段：
 - source: 来源 URL
 - title: 灵感标题
 - idea: 核心思路（1-2句）
@@ -66,22 +98,30 @@ c) 竞品 GitHub releases：
 
 **3. 持久化**
 
+3a. 更新 proposals.json：
 读取 ${DATA_DIR}/evolution/proposals.json（如不存在则初始化为空数组），追加新灵感。
 保留最近 50 条（按 discoveredAt 倒序，截断旧的），写回文件。
+
+3b. 更新 idea-index.json（紧凑去重索引）：
+将本次新增的灵感追加到 idea-index.json，每条只保留核心字段：
+\`\`\`json
+{ "title": "灵感标题", "keywords": ["模块名", "功能关键词", "技术概念"], "addedAt": "ISO" }
+\`\`\`
+保留最近 200 条（比 proposals.json 更多，用于长期去重），写回 ${DATA_DIR}/evolution/idea-index.json。
 
 **4. 输出报告**
 
 输出本次发现的灵感列表摘要，格式为 markdown：
 - 标题：外部灵感采集报告
-- 每条灵感列出：标题、来源、启发方向、难度
+- 说明本次新增条数 / 跳过重复条数
+- 每条新灵感列出：标题、来源、启发方向、难度
 - 末尾附指引：「回复 cah "实现 xxx" 即可创建执行任务」
 
 ## 约束
 - 每轮采集 3-8 条高质量灵感，不要贪多
-- 跳过已在 proposals.json 中存在的相同 source URL 的灵感（去重）
 - 优先选择对 CAH 当前架构可落地的灵感，排除需要大规模重构的想法
 - **严禁执行 cah restart、cah stop、kill 等命令**`,
-  'cleanup-code': `执行一轮代码和文档清理，移除项目中的无用内容。
+  'cleanup-code': `${buildSkipCheck('cleanup-code', '72h')}执行一轮代码和文档清理，移除项目中的无用内容。
 
 扫描范围：
 - 查找空文件、无内容的占位文件
@@ -97,7 +137,7 @@ c) 竞品 GitHub releases：
 - 清理后运行 typecheck 和 test 验证无回归
 - 记录清理内容到 git commit message
 - **严禁执行 cah restart、cah stop、kill 等命令** — 会直接杀死 daemon`,
-  'update-docs': `检查并更新项目文档，确保文档与代码实际状态一致。
+  'update-docs': `${buildSkipCheck('update-docs', '48h')}检查并更新项目文档，确保文档与代码实际状态一致。
 
 检查范围：
 - CLAUDE.md：命令列表、架构描述、@entry 模块索引是否与代码匹配
