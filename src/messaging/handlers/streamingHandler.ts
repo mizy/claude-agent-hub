@@ -170,10 +170,9 @@ export async function createCardStreamHandler(
   }
 
   function formatContent(): string {
-    // No ⏳ needed — streaming_mode card shows its own animation
     return accumulated.length > maxLen
-      ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出过长，已截断)'
-      : accumulated
+      ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中) ⏳'
+      : accumulated + ' ⏳'
   }
 
   const onChunk = (chunk: string) => {

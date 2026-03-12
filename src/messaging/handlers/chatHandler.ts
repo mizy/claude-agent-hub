@@ -287,7 +287,7 @@ async function handleChatInternal(
     ss.willStartNewSession ? (text) => stream.updateStatus(text) : undefined
   )
   bench.promptReady = Date.now()
-  stream.updateStatus('💭 等待 AI 响应...')
+  if (ss.willStartNewSession) stream.updateStatus('💭 等待 AI 响应...')
 
   // 6. Invoke backend
   // <think> tags streamed as-is for user feedback; stripped in final response by chatResponseProcessor
