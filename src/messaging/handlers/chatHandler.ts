@@ -272,11 +272,14 @@ async function handleChatInternal(
   // 5. Setup streaming + placeholder — start before prompt build so placeholder appears sooner
   const streamOpts: StreamHandlerOptions | undefined =
     platform === 'Web' ? { throttleMs: 150, minDelta: 10 } : undefined
-  const stream = setupStreamingAndPlaceholder(chatId, hasImages, hasFiles, maxLen, messenger, bench, signal, streamOpts)
+  const stream = setupStreamingAndPlaceholder(chatId, hasImages, hasFiles, maxLen, messenger, bench, signal, streamOpts, platform)
   activeStreams.set(chatId, { messenger, getPlaceholderId: stream.getPlaceholderId, getAccumulated: stream.getAccumulated })
   bench.parallelStart = Date.now()
 
-  // Build prompt concurrently with placeholder send
+  // Await placeholder creation before building prompt so phase status updates (🔍📝💭) are visible.
+  // Serializing these is acceptable — placeholder creation (~100-300ms) overlaps with prior steps.
+  await stream.placeholderPromise
+
   const prompt = await buildFullPrompt(
     chatId, effectiveText, ss.willStartNewSession, options?.client, options?.images, config,
     { backend: backendName, model: model ?? config.backends[backendName]?.model },
@@ -326,7 +329,7 @@ async function handleChatInternal(
       { chatId, text, effectiveText, platform, sessionId: ss.sessionId,
         backendOverride: ss.backendOverride, model, config, bench, userImages: options?.images },
       result.value,
-      stream.stopStreaming, stream.getPlaceholderId(), maxLen, messenger
+      stream.stopStreaming, stream.getPlaceholderId(), maxLen, messenger, stream.cardKitInfo
     )
   } catch (error) {
     if (activeControllers.get(chatId) === abortController) activeControllers.delete(chatId)

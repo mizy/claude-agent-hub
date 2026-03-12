@@ -19,7 +19,6 @@ export async function ensureSelfDriveWorkflow(): Promise<void> {
   // 1. Check if already running
   const existing = getAllTasks().find(
     t =>
-      t.source === 'selfdrive' &&
       t.metadata?.workflowSlug === WORKFLOW_SLUG &&
       !TERMINAL_STATUSES.has(t.status),
   )

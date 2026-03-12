@@ -39,6 +39,35 @@ function buildMentionPrefix(mentions?: MentionTarget[]): string {
 }
 
 export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
+  // Cache: once streaming element update fails with 300309, skip directly to card.update
+  let streamingElementDisabled = false
+
+  /** Full card update — fallback when cardElement.content is unavailable */
+  async function updateCardFull(cardId: string, elementId: string, content: string, sequence: number): Promise<boolean> {
+    try {
+      const cardJson = JSON.stringify({
+        schema: '2.0',
+        config: { update_multi: true },
+        body: {
+          elements: [
+            { tag: 'markdown', content, element_id: elementId },
+          ],
+        },
+      })
+      await withLarkRetry(
+        () => larkClient.cardkit.v1.card.update({
+          data: { card: { type: 'card_json', data: cardJson }, sequence },
+          path: { card_id: cardId },
+        }),
+        'updateCardFull'
+      )
+      return true
+    } catch (error) {
+      logger.error(`→ updateCardFull failed: ${getErrorMessage(error)}`)
+      return false
+    }
+  }
+
   /** Send a post message (create or reply), return raw SDK response */
   const sendPost = (chatId: string, text: string, replyTo?: string, label = 'send', mentions?: MentionTarget[]) => {
     const prefix = buildMentionPrefix(mentions)
@@ -212,6 +241,98 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
         await sendLarkImage(larkClient, chatId, imageKey)
       } catch (error) {
         logger.error(`→ sendImage failed: ${getErrorMessage(error)}`)
+      }
+    },
+
+    async createStreamingCard(chatId: string, initialContent: string) {
+      const elementId = 'streaming_content'
+      try {
+        const cardJson = JSON.stringify({
+          schema: '2.0',
+          config: {
+            update_multi: true,
+            streaming_mode: true,
+            streaming_config: { print_frequency_ms: { default: 50 }, print_step: { default: 1 } },
+          },
+          body: {
+            elements: [
+              { tag: 'markdown', content: initialContent, element_id: elementId },
+            ],
+          },
+        })
+        const createRes = await withLarkRetry(
+          () => larkClient.cardkit.v1.card.create({ data: { type: 'card_json', data: cardJson } }),
+          'createStreamingCard'
+        )
+        const cardId = createRes?.data?.card_id
+        if (!cardId) {
+          logger.error('→ createStreamingCard: no card_id in response')
+          return null
+        }
+
+        const sendRes = await withLarkRetry(
+          () => larkClient.im.v1.message.create({
+            params: { receive_id_type: 'chat_id' },
+            data: {
+              receive_id: chatId,
+              content: JSON.stringify({ type: 'card', data: { card_id: cardId } }),
+              msg_type: 'interactive',
+            },
+          }),
+          'createStreamingCard:send'
+        )
+        const messageId = (sendRes as LarkSdkResponse)?.data?.message_id ?? null
+        return { cardId, elementId, messageId }
+      } catch (error) {
+        logger.error(`→ createStreamingCard failed: ${getErrorMessage(error)}`)
+        return null
+      }
+    },
+
+    async updateCardElement(cardId: string, elementId: string, content: string, sequence: number, uuid?: string) {
+      // After first 300309 error, skip element API entirely → saves one round-trip per update
+      if (streamingElementDisabled) {
+        return updateCardFull(cardId, elementId, content, sequence)
+      }
+      try {
+        await withLarkRetry(
+          () => larkClient.cardkit.v1.cardElement.content({
+            data: { content, sequence, ...(uuid ? { uuid } : {}) },
+            path: { card_id: cardId, element_id: elementId },
+          }),
+          'updateCardElement'
+        )
+        return true
+      } catch (error) {
+        const msg = getErrorMessage(error)
+        // 300309 = streaming mode not available — cache & fallback to full card update
+        if (msg.includes('300309') || msg.includes('streaming mode')) {
+          streamingElementDisabled = true
+          logger.warn(`→ updateCardElement: streaming mode closed, falling back to card.update (cached)`)
+          return updateCardFull(cardId, elementId, content, sequence)
+        }
+        logger.error(`→ updateCardElement failed: ${msg}`)
+        return false
+      }
+    },
+
+    async closeStreamingCard(cardId: string, summary: string, sequence: number) {
+      try {
+        const truncated = summary.replace(/\n/g, ' ').trim().slice(0, 47) + (summary.length > 47 ? '...' : '')
+        const settings = JSON.stringify({
+          config: { streaming_mode: false, summary: { content: truncated } },
+        })
+        await withLarkRetry(
+          () => larkClient.cardkit.v1.card.settings({
+            data: { settings, sequence, uuid: `c_${cardId}_${sequence}` },
+            path: { card_id: cardId },
+          }),
+          'closeStreamingCard'
+        )
+        return true
+      } catch (error) {
+        logger.debug(`→ closeStreamingCard failed: ${getErrorMessage(error)}`)
+        return false
       }
     },
   }

@@ -109,7 +109,7 @@ function getEdgeLabelKind(
 /** Build a human-readable label for an edge */
 function buildEdgeLabel(kind: EdgeLabelKind, curLoops?: number, maxLoops?: number): string | undefined {
   if (kind === 'loop') {
-    return curLoops != null && maxLoops ? `loop ${curLoops}/${maxLoops}` : 'loop'
+    return maxLoops ? `loop ${curLoops ?? 0}/${maxLoops}` : 'loop'
   }
   if (kind === 'else') return 'else'
   if (kind === 'condition-negative') return 'if not'

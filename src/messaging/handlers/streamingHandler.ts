@@ -19,6 +19,13 @@ export interface StreamHandlerOptions {
   minDelta?: number
 }
 
+export interface StreamHandlerResult {
+  onChunk: ((chunk: string) => void) | undefined
+  getAccumulated: () => string
+  stop: () => Promise<void>
+  resetForNewTurn: () => void
+}
+
 /**
  * Create a streaming chunk handler that throttles edits to a placeholder message.
  * Returns { onChunk, getAccumulated } — onChunk is undefined if no placeholderId.
@@ -30,7 +37,7 @@ export function createStreamHandler(
   messenger: MessengerAdapter,
   bench: { firstChunk: number },
   options?: StreamHandlerOptions,
-): { onChunk: ((chunk: string) => void) | undefined; getAccumulated: () => string; stop: () => Promise<void>; resetForNewTurn: () => void } {
+): StreamHandlerResult {
   const throttleMs = options?.throttleMs ?? STREAM_THROTTLE_MS
   const minDelta = options?.minDelta ?? STREAM_MIN_DELTA
   let accumulated = ''
@@ -111,6 +118,109 @@ export function createStreamHandler(
   }
 }
 
+/**
+ * Create a CardKit v2 streaming handler.
+ * Uses cardkit.v1.cardElement.content for typewriter-style updates (SDK does diff).
+ * Falls back to createStreamHandler if card creation fails.
+ */
+// Client has built-in typewriter animation (print_frequency_ms: 50, print_step: 1),
+// so server-side pushes can be less frequent — client smooths the rendering.
+const CARDKIT_THROTTLE_MS = 1000
+
+export async function createCardStreamHandler(
+  chatId: string,
+  initialContent: string,
+  maxLen: number,
+  messenger: MessengerAdapter,
+  bench: { firstChunk: number },
+): Promise<{ handler: StreamHandlerResult; placeholderId: string | null; cardKitInfo?: { cardId: string; elementId: string; getSequence: () => number } }> {
+  // Try to create a CardKit streaming card
+  const cardInfo = await messenger.createStreamingCard?.(chatId, initialContent).catch((err) => {
+    logger.warn(`CardKit card creation failed, falling back to editMessage: ${getErrorMessage(err)}`)
+    return null
+  })
+
+  if (!cardInfo) {
+    // Fallback: use the legacy editMessage-based stream handler
+    const streamState = { placeholderId: null as string | null }
+    const handler = createStreamHandler(chatId, streamState, maxLen, messenger, bench)
+    const pId = await messenger.sendAndGetId(chatId, initialContent).catch(() => null)
+    streamState.placeholderId = pId
+    if (handler.onChunk && handler.getAccumulated().length > 0) handler.onChunk('')
+    return { handler, placeholderId: pId }
+  }
+
+  const { cardId, elementId, messageId } = cardInfo
+  let accumulated = ''
+  let sequence = 0
+  let stopped = false
+  let lastUpdateAt = 0
+  let isFirstChunk = true
+  let updateChain: Promise<void> = Promise.resolve()
+
+  function scheduleUpdate(content: string): void {
+    const seq = ++sequence
+    updateChain = updateChain
+      .then(async () => {
+        await messenger.updateCardElement!(cardId, elementId, content, seq)
+      })
+      .catch((err) => {
+        logger.debug(`card element update failed (seq ${seq}): ${getErrorMessage(err)}`)
+      })
+  }
+
+  function formatContent(): string {
+    // No ⏳ needed — streaming_mode card shows its own animation
+    return accumulated.length > maxLen
+      ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出过长，已截断)'
+      : accumulated
+  }
+
+  const onChunk = (chunk: string) => {
+    accumulated += chunk
+    if (!bench.firstChunk) bench.firstChunk = Date.now()
+    if (stopped) return
+
+    const now = Date.now()
+
+    // First chunk: push immediately
+    if (isFirstChunk) {
+      isFirstChunk = false
+      lastUpdateAt = now
+      scheduleUpdate(formatContent())
+      return
+    }
+
+    // Pure time-based throttle — element API is incremental, just respect interval
+    if (now - lastUpdateAt >= CARDKIT_THROTTLE_MS) {
+      lastUpdateAt = now
+      scheduleUpdate(formatContent())
+    }
+  }
+
+  const handler: StreamHandlerResult = {
+    onChunk,
+    getAccumulated: () => accumulated,
+    stop: async () => {
+      stopped = true
+      // Do NOT flush remaining content here — sendFinalResponse() immediately
+      // follows and sends the complete final text. A redundant pre-final update
+      // wastes API quota and may hit rate limits.
+      await updateChain
+    },
+    resetForNewTurn: () => {
+      accumulated = ''
+      isFirstChunk = true
+    },
+  }
+
+  return {
+    handler,
+    placeholderId: messageId,
+    cardKitInfo: { cardId, elementId, getSequence: () => ++sequence },
+  }
+}
+
 /** Split long message into parts, breaking at newlines when possible */
 export function splitMessage(text: string, maxLength: number = DEFAULT_MAX_LENGTH): string[] {
   if (text.length <= maxLength) return [text]
@@ -151,8 +261,43 @@ export async function sendFinalResponse(
   response: string,
   maxLen: number,
   placeholderId: string | null,
-  messenger: MessengerAdapter
+  messenger: MessengerAdapter,
+  cardKitInfo?: { cardId: string; elementId: string; getSequence: () => number },
 ): Promise<void> {
+  // CardKit v2 path: update card element with final complete text
+  if (cardKitInfo && messenger.updateCardElement) {
+    const ok = await messenger.updateCardElement(
+      cardKitInfo.cardId, cardKitInfo.elementId, response, cardKitInfo.getSequence(),
+    ).catch((err) => {
+      logger.warn(`CardKit final update failed: ${getErrorMessage(err)}`)
+      return false
+    })
+    if (ok) {
+      // Close streaming mode — stops typewriter animation, shows summary in card
+      await messenger.closeStreamingCard?.(
+        cardKitInfo.cardId, response, cardKitInfo.getSequence(),
+      ).catch(e => logger.debug(`close streaming failed: ${getErrorMessage(e)}`))
+      return
+    }
+    // Retry once
+    logger.warn('CardKit final update failed, retrying...')
+    const retryOk = await messenger.updateCardElement(
+      cardKitInfo.cardId, cardKitInfo.elementId, response, cardKitInfo.getSequence(),
+    ).catch(() => false)
+    if (retryOk) {
+      await messenger.closeStreamingCard?.(
+        cardKitInfo.cardId, response, cardKitInfo.getSequence(),
+      ).catch(e => logger.debug(`close streaming failed: ${getErrorMessage(e)}`))
+      return
+    }
+    // CardKit completely failed — delete the card message and fall through to send a fresh reply
+    logger.warn('CardKit final update retry failed, falling back to fresh reply')
+    if (placeholderId && messenger.deleteMessage) {
+      await messenger.deleteMessage(chatId, placeholderId).catch(() => {})
+    }
+    // Fall through to legacy send path below (placeholderId = null to force new message)
+    placeholderId = null
+  }
   // Table → card upgrade: send card first, then delete streaming placeholder
   if (
     hasMarkdownTable(response) &&

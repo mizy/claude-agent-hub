@@ -132,7 +132,8 @@ export async function processSuccessResult(
   stopStreaming: () => void | Promise<void>,
   placeholderId: string | null,
   maxLen: number,
-  messenger: MessengerAdapter
+  messenger: MessengerAdapter,
+  cardKitInfo?: { cardId: string; elementId: string; getSequence: () => number },
 ): Promise<void> {
   const {
     chatId,
@@ -199,7 +200,7 @@ export async function processSuccessResult(
   const finalText = displayText + `\n\r\n⏱️ ${elapsedSec}s | ${backendName}${modelLabel}`
 
   await stopStreaming()
-  await sendFinalResponse(chatId, finalText, maxLen, placeholderId, messenger)
+  await sendFinalResponse(chatId, finalText, maxLen, placeholderId, messenger, cardKitInfo)
   bench.responseSent = Date.now()
 
   // Benchmark

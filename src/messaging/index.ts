@@ -148,6 +148,7 @@ export { triggerEpisodeOnTaskCreation, flushEpisode, clearEpisodeTracker } from 
 
 export {
   createStreamHandler,
+  createCardStreamHandler,
   splitMessage,
   sendFinalResponse,
 } from './handlers/streamingHandler.js'

@@ -45,6 +45,16 @@ export interface MessengerAdapter {
 
   /** Optional: send a raw card JSON string (Lark JSON 2.0) */
   sendCard?(chatId: string, cardJson: string, options?: SendOptions): Promise<string | null>
+
+  /** Optional: create a CardKit v2 streaming card with a markdown element */
+  createStreamingCard?(chatId: string, initialContent: string): Promise<{ cardId: string; elementId: string; messageId: string | null } | null>
+
+  /** Optional: update a CardKit v2 card element content (typewriter effect).
+   * Internally falls back to card.update when streaming_mode is unavailable (300309). */
+  updateCardElement?(cardId: string, elementId: string, content: string, sequence: number, uuid?: string): Promise<boolean>
+
+  /** Optional: close CardKit streaming mode — stops typewriter animation and shows summary */
+  closeStreamingCard?(cardId: string, summary: string, sequence: number): Promise<boolean>
 }
 
 export interface MentionTarget {
