@@ -7,7 +7,16 @@
  */
 
 import { join } from 'path'
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync, openSync, readSync, closeSync, statSync } from 'fs'
+import {
+  appendFileSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  openSync,
+  readSync,
+  closeSync,
+  statSync,
+} from 'fs'
 import { DATA_DIR } from './paths.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
@@ -271,10 +280,12 @@ export function logCliCommand(entry: {
       mkdirSync(PROMPTS_DIR, { recursive: true })
       promptsDirInit = true
     }
-    const ts = new Date().toISOString().replace(/[:.]/g, '-')
-    const filename = `${ts}-${entry.backend}.txt`
+    const date = new Date().toISOString().split('T')[0]
+    const ts = new Date().toISOString()
+    const filename = `${date}.txt`
     promptFile = join(PROMPTS_DIR, filename)
-    writeFileSync(promptFile, entry.prompt, 'utf-8')
+    const separator = `\n\n========== ${ts} | ${entry.backend} | ${entry.model ?? 'unknown'} | ${entry.command ?? 'chat'} ==========\n\n`
+    appendFileSync(promptFile, separator + entry.prompt, 'utf-8')
   } catch (error) {
     logger.debug(`Failed to write prompt file: ${getErrorMessage(error)}`)
   }
@@ -298,5 +309,7 @@ export function logCliCommand(entry: {
 
 /** Build a redacted CLI command string (replace prompt with length placeholder) */
 export function buildRedactedCommand(binary: string, args: string[], prompt: string): string {
-  return [binary, ...args.map(a => a === prompt ? `<prompt:${prompt.length} chars>` : a)].join(' ')
+  return [binary, ...args.map(a => (a === prompt ? `<prompt:${prompt.length} chars>` : a))].join(
+    ' '
+  )
 }

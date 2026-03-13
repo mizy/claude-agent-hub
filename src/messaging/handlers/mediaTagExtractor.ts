@@ -5,6 +5,7 @@
 
 import { existsSync } from 'fs'
 import { resolve } from 'path'
+import { homedir } from 'os'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { DATA_DIR } from '../../store/paths.js'
@@ -25,14 +26,13 @@ export interface ExtractResult {
 /** Matches [SEND_FILE: path] and [SEND_IMAGE: path] tags */
 const MEDIA_TAG_RE = /\[SEND_(FILE|IMAGE):\s*(.+?)\]/g
 
-// Allowed directories for media files (DATA_DIR + /tmp). Broader than imageExtractor
-// which only allows DATA_DIR, because media tags are explicit user/AI instructions.
-const ALLOWED_PREFIXES = [DATA_DIR, resolve('/tmp')]
+// Allowed directories for media files: DATA_DIR, /tmp, and user's home directory
+const ALLOWED_PREFIXES = [DATA_DIR, resolve('/tmp'), homedir()]
 
-/** Returns true if path is within allowed directories (DATA_DIR or /tmp) */
+/** Returns true if path is within allowed directories (DATA_DIR, /tmp, or home) */
 function isAllowedPath(filePath: string): boolean {
   const resolved = resolve(filePath)
-  return ALLOWED_PREFIXES.some((prefix) => resolved === prefix || resolved.startsWith(prefix + '/'))
+  return ALLOWED_PREFIXES.some(prefix => resolved === prefix || resolved.startsWith(prefix + '/'))
 }
 
 /** Extract [SEND_FILE: path] and [SEND_IMAGE: path] tags from text */
@@ -63,7 +63,7 @@ export async function processMediaTags(
   for (const tag of tags) {
     try {
       if (!isAllowedPath(tag.path)) {
-        logger.warn(`Path not allowed (must be in DATA_DIR or /tmp): ${tag.path}`)
+        logger.warn(`Path not allowed: ${tag.path}`)
         continue
       }
 
