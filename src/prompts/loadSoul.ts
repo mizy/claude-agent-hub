@@ -30,7 +30,18 @@ export function loadSoul(): string | null {
       return cached.content
     }
 
-    const content = readFileSync(SOUL_FILE, 'utf-8').trim() || null
+    let raw = readFileSync(SOUL_FILE, 'utf-8')
+
+    // Strip HTML comments (<!-- ... -->) to save tokens
+    raw = raw.replace(/<!--[\s\S]*?-->/g, '')
+
+    // Strip [CAH 命令速查] section — cahKnowledge.ts provides a more complete version
+    raw = raw.replace(/\[CAH 命令速查\][\s\S]*?(?=\n\[|$)/, '')
+
+    // Collapse excessive blank lines
+    raw = raw.replace(/\n{3,}/g, '\n\n')
+
+    const content = raw.trim() || null
     cached = { content, mtime, checkedAt: now }
     return content
   } catch (err: unknown) {

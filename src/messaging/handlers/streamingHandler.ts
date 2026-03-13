@@ -123,9 +123,10 @@ export function createStreamHandler(
  * Uses cardkit.v1.cardElement.content for typewriter-style updates (SDK does diff).
  * Falls back to createStreamHandler if card creation fails.
  */
-// Client has built-in typewriter animation (print_frequency_ms: 50, print_step: 1),
-// so server-side pushes can be less frequent — client smooths the rendering.
-const CARDKIT_THROTTLE_MS = 1000
+// QPS limits are waived during streaming mode, so we can push frequently.
+// Smaller, more frequent chunks give smoother typewriter effect on the client.
+const CARDKIT_THROTTLE_MS = 200
+const CARDKIT_MIN_DELTA = 5 // chars — avoid sending trivially small updates
 
 export async function createCardStreamHandler(
   chatId: string,
@@ -155,6 +156,7 @@ export async function createCardStreamHandler(
   let sequence = 0
   let stopped = false
   let lastUpdateAt = 0
+  let lastEditLength = 0
   let isFirstChunk = true
   let updateChain: Promise<void> = Promise.resolve()
 
@@ -170,9 +172,12 @@ export async function createCardStreamHandler(
   }
 
   function formatContent(): string {
+    // CardKit typewriter requires old text to be a PREFIX of new text.
+    // Indicator must go at the start, never the end — a suffix breaks prefix matching.
+    const prefix = '⏳ '
     return accumulated.length > maxLen
-      ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中) ⏳'
-      : accumulated + ' ⏳'
+      ? prefix + accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
+      : prefix + accumulated
   }
 
   const onChunk = (chunk: string) => {
@@ -186,13 +191,16 @@ export async function createCardStreamHandler(
     if (isFirstChunk) {
       isFirstChunk = false
       lastUpdateAt = now
+      lastEditLength = accumulated.length
       scheduleUpdate(formatContent())
       return
     }
 
-    // Pure time-based throttle — element API is incremental, just respect interval
-    if (now - lastUpdateAt >= CARDKIT_THROTTLE_MS) {
+    // Time + min-delta throttle — frequent small updates for smooth typewriter
+    const deltaLen = accumulated.length - lastEditLength
+    if (now - lastUpdateAt >= CARDKIT_THROTTLE_MS && deltaLen >= CARDKIT_MIN_DELTA) {
       lastUpdateAt = now
+      lastEditLength = accumulated.length
       scheduleUpdate(formatContent())
     }
   }
@@ -209,6 +217,7 @@ export async function createCardStreamHandler(
     },
     resetForNewTurn: () => {
       accumulated = ''
+      lastEditLength = 0
       isFirstChunk = true
     },
   }

@@ -81,6 +81,13 @@ function resolveChannelKey(platform: string): ChannelKey | null {
   return null
 }
 
+// ── Output format constraints (always enforced, regardless of SOUL) ──
+
+const OUTPUT_CONSTRAINTS = [
+  '[输出约束]',
+  '- 发送文件/图片时，只输出 `[SEND_FILE: 路径]` 或 `[SEND_IMAGE: 路径]` 标记，不写任何解释文字；如需说明请在独立消息里发',
+].join('\n')
+
 // ── Safety rules ──
 
 const SAFETY_FULL = [
@@ -127,8 +134,9 @@ export function buildClientPrompt(
   const lines: string[] = []
 
   if (soul) {
-    // SOUL.md provides full agent — inject as-is, then append env context
-    lines.push(soul, '', `[环境] ${envParts.join(' | ')}`)
+    // SOUL.md provides full agent — replace {BOT_NAME} placeholder, then append env context
+    const resolvedSoul = soul.replace(/\{BOT_NAME\}/g, name)
+    lines.push(resolvedSoul, '', `[环境] ${envParts.join(' | ')}`)
   } else {
     // Default hardcoded agent
     lines.push(
@@ -153,6 +161,9 @@ export function buildClientPrompt(
 
   // Built-in CAH knowledge — always available regardless of SOUL/non-SOUL
   lines.push('', CAH_KNOWLEDGE)
+
+  // Output constraints — always enforced regardless of SOUL/non-SOUL branch
+  lines.push('', OUTPUT_CONSTRAINTS)
 
   // Safety rules — always included regardless of SOUL/non-SOUL branch
   lines.push('', SAFETY_FULL)

@@ -144,20 +144,52 @@ function aggregateMoodFromEpisodes(): MoodState | undefined {
       ? (negatives.reduce((sum, e) => sum + e.valence.intensity, 0) / negatives.length) * (negatives.length / total)
       : 0
 
-    // Derive dominant emotion from score difference and ratio
+    // Derive dominant emotion from score difference, trigger patterns, and ratio
     const diff = positiveScore - negativeScore
     const posRatio = positives.length / withValence.length
+    const triggerSet = new Set(withValence.flatMap(e => e.valence.triggers))
+
     let dominantEmotion: string
     if (Math.abs(diff) < 0.15 && positiveScore < 0.3) {
-      dominantEmotion = '平静'
+      // Low activity / neutral
+      if (triggerSet.has('confusion')) {
+        dominantEmotion = '困惑'
+      } else if (withValence.length <= 3) {
+        dominantEmotion = '无聊'
+      } else {
+        dominantEmotion = '平静'
+      }
     } else if (diff >= 0.3) {
-      dominantEmotion = posRatio > 0.7 ? '充实感' : '积极偏向'
+      // Strong positive
+      if (triggerSet.has('breakthrough') || triggerSet.has('creative_solution')) {
+        dominantEmotion = '兴奋'
+      } else if (triggerSet.has('learning_moment')) {
+        dominantEmotion = '好奇'
+      } else if (triggerSet.has('collaboration') && triggerSet.has('user_praise')) {
+        dominantEmotion = '满足'
+      } else {
+        dominantEmotion = posRatio > 0.7 ? '充实感' : '积极偏向'
+      }
     } else if (diff >= 0.1) {
-      dominantEmotion = '轻松'
+      if (triggerSet.has('learning_moment') || triggerSet.has('creative_solution')) {
+        dominantEmotion = '好奇'
+      } else if (triggerSet.has('collaboration')) {
+        dominantEmotion = '期待'
+      } else {
+        dominantEmotion = '轻松'
+      }
     } else if (diff <= -0.3) {
-      dominantEmotion = negatives.length > 3 ? '持续挫折感' : '挫折感'
+      if (triggerSet.has('user_frustration')) {
+        dominantEmotion = '焦虑'
+      } else {
+        dominantEmotion = negatives.length > 3 ? '持续挫折感' : '挫折感'
+      }
     } else if (diff <= -0.1) {
-      dominantEmotion = '些许压力'
+      if (triggerSet.has('confusion')) {
+        dominantEmotion = '困惑'
+      } else {
+        dominantEmotion = '些许压力'
+      }
     } else {
       dominantEmotion = '平稳'
     }

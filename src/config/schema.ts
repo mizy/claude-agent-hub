@@ -132,6 +132,31 @@ export const memoryRerankConfigSchema = z.object({
   candidateSize: z.number().min(1).max(50).default(20),
 })
 
+export const memoryTiersConfigSchema = z.object({
+  maxPermanent: z.number().default(100),
+  maxLongterm: z.number().default(1000),
+  maxHot: z.number().default(200),
+  /** Tier promotion cycle interval in hours (default 1) */
+  promotionIntervalHours: z.number().min(1).default(1),
+})
+
+export const memoryConsolidationConfigSchema = z.object({
+  intervalMs: z.number().default(3600000),
+})
+
+export const atomicFactsConfigSchema = z.object({
+  maxPerConversation: z.number().default(10),
+})
+
+export const memSceneConfigSchema = z.object({
+  domains: z.record(z.string(), z.array(z.string())).default({
+    fund: ['基金', '持仓', '收益', '净值', '基金代码'],
+    health: ['体态', '健康', '运动', '疼痛', '拉伸'],
+    work: ['flex', 'flow360', 'jira', 'PR', 'deploy'],
+    code: ['bug', '重构', '架构', '测试', '性能'],
+  }),
+})
+
 export const memoryConfigSchema = z.object({
   forgetting: memoryForgettingConfigSchema.default({}),
   association: memoryAssociationConfigSchema.default({}),
@@ -139,6 +164,10 @@ export const memoryConfigSchema = z.object({
   chatMemory: chatMemoryConfigSchema.default({}),
   episodic: episodicMemoryConfigSchema.default({}),
   rerank: memoryRerankConfigSchema.default({}),
+  tiers: memoryTiersConfigSchema.default({}),
+  consolidation: memoryConsolidationConfigSchema.default({}),
+  atomicFacts: atomicFactsConfigSchema.default({}),
+  memScene: memSceneConfigSchema.default({}),
 })
 
 export const daemonConfigSchema = z.object({
@@ -189,5 +218,9 @@ export type MemoryReinforceConfig = z.infer<typeof memoryReinforceConfigSchema>
 export type ChatMemoryConfig = z.infer<typeof chatMemoryConfigSchema>
 export type EpisodicMemoryConfig = z.infer<typeof episodicMemoryConfigSchema>
 export type MemoryRerankConfig = z.infer<typeof memoryRerankConfigSchema>
+export type MemoryTiersConfig = z.infer<typeof memoryTiersConfigSchema>
+export type MemoryConsolidationConfig = z.infer<typeof memoryConsolidationConfigSchema>
+export type AtomicFactsConfig = z.infer<typeof atomicFactsConfigSchema>
+export type MemSceneConfig = z.infer<typeof memSceneConfigSchema>
 export type MemoryConfig = z.infer<typeof memoryConfigSchema>
 export type Config = z.infer<typeof configSchema>

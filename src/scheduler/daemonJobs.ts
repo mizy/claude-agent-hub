@@ -23,7 +23,7 @@ import { resumeTask, detectOrphanedTasks } from '../task/resumeTask.js'
 import { detectSignals, tryAutoRepair } from '../selfevolve/index.js'
 import { runEvolutionCycle } from '../prompt-optimization/index.js'
 import { BUILTIN_AGENTS } from '../agents/builtinAgents.js'
-import { cleanupFadingMemories, consolidateMemories, rebuildAllAssociations } from '../memory/index.js'
+import { cleanupFadingMemories, consolidateMemories, rebuildAllAssociations, runTierPromotion } from '../memory/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { createLogger } from '../shared/logger.js'
 
@@ -224,6 +224,20 @@ export async function registerDaemonJobs(pollCronExpr: string): Promise<void> {
     }
   })
   scheduledJobs.push(associationRebuildJob)
+
+  // Tier promotion — periodic ranking-based promotion/demotion
+  const tierPromotionHours = config.memory?.tiers?.promotionIntervalHours ?? 1
+  const tierPromotionJob = cron.schedule(`0 */${tierPromotionHours} * * *`, async () => {
+    try {
+      const result = await runTierPromotion()
+      if (result.promoted > 0 || result.demoted > 0 || result.archived > 0) {
+        logger.info(`Tier promotion: promoted=${result.promoted}, demoted=${result.demoted}, archived=${result.archived}`)
+      }
+    } catch (error) {
+      logger.error(`Tier promotion cron error: ${error}`)
+    }
+  })
+  scheduledJobs.push(tierPromotionJob)
 
   // Tmp file cleanup — every hour, delete files older than 24h
   const tmpCleanupJob = cron.schedule('0 * * * *', () => {

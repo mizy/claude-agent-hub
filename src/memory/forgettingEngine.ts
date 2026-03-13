@@ -34,6 +34,10 @@ const REASON_TO_CONFIG_KEY: Record<ReinforceReason, string> = {
  */
 export function calculateStrength(entry: MemoryEntry, now?: Date): number {
   const migrated = migrateMemoryEntry(entry)
+
+  // Permanent tier never decays
+  if (migrated.tier === 'permanent') return 100
+
   const currentTime = now ?? new Date()
 
   // Guard against missing/invalid fields after migration
@@ -45,7 +49,10 @@ export function calculateStrength(entry: MemoryEntry, now?: Date): number {
   const hoursSinceReinforce = (currentTime.getTime() - lastReinforced) / 3600000
   if (hoursSinceReinforce <= 0) return 100
 
-  const effectiveStability = migrated.stability / migrated.decayRate
+  let effectiveStability = migrated.stability / migrated.decayRate
+  // Hot tier decays twice as fast
+  if (migrated.tier === 'hot') effectiveStability /= 2
+
   const retention = Math.exp(-hoursSinceReinforce / effectiveStability)
   return Math.round(retention * 100)
 }
@@ -138,6 +145,10 @@ export async function cleanupFadingMemories(): Promise<{ archived: number; delet
 
   for (const raw of all) {
     const entry = migrateMemoryEntry(raw)
+
+    // Skip permanent tier — never cleaned up
+    if (entry.tier === 'permanent') continue
+
     const strength = calculateStrength(entry, now)
 
     if (strength < deleteThreshold) {

@@ -373,6 +373,26 @@ export function getDefaultConfig(): Config {
         enabled: true,
         candidateSize: 20,
       },
+      tiers: {
+        maxPermanent: 100,
+        maxLongterm: 1000,
+        maxHot: 200,
+        promotionIntervalHours: 1,
+      },
+      consolidation: {
+        intervalMs: 3600000,
+      },
+      atomicFacts: {
+        maxPerConversation: 10,
+      },
+      memScene: {
+        domains: {
+          fund: ['基金', '持仓', '收益', '净值', '基金代码'],
+          health: ['体态', '健康', '运动', '疼痛', '拉伸'],
+          work: ['flex', 'flow360', 'jira', 'PR', 'deploy'],
+          code: ['bug', '重构', '架构', '测试', '性能'],
+        },
+      },
     },
   }
 }

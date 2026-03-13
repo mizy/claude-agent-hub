@@ -33,6 +33,7 @@ export function migrateMemoryEntry(entry: MemoryEntry): MemoryEntry {
     reinforceCount: entry.reinforceCount ?? 0,
     decayRate: entry.decayRate ?? 1.0,
     associations: entry.associations ?? [],
+    tier: entry.tier ?? 'longterm',
   }
 }
 
@@ -44,6 +45,7 @@ export function needsMigration(entry: MemoryEntry): boolean {
     entry.strength === undefined ||
     entry.stability === undefined ||
     entry.decayRate === undefined ||
-    entry.associations === undefined
+    entry.associations === undefined ||
+    entry.tier === undefined
   )
 }

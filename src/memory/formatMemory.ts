@@ -3,7 +3,7 @@
  */
 
 import { contentSimilarity } from './textSimilarity.js'
-import type { MemoryCategory, MemoryEntry } from './types.js'
+import type { MemScene, MemoryCategory, MemoryEntry } from './types.js'
 
 const CATEGORY_HEADINGS: Record<MemoryCategory, string> = {
   pattern: '### 最佳实践',
@@ -35,12 +35,28 @@ function deduplicateMemories(memories: MemoryEntry[]): MemoryEntry[] {
 }
 
 /**
+ * Format MemScene snapshots as a user profile section (~200 chars).
+ */
+export function formatMemSceneSection(scenes: MemScene[]): string {
+  if (scenes.length === 0) return ''
+  const lines = scenes.map(s => `· ${s.summary}`)
+  return `[用户画像] 你了解的用户:\n${lines.join('\n')}`
+}
+
+/**
  * Group memories by category and format as markdown.
  * Empty categories are omitted.
  * Deduplicates similar content and applies per-entry and total length limits.
  */
-export function formatMemoriesForPrompt(memories: MemoryEntry[]): string {
-  if (memories.length === 0) return ''
+export function formatMemoriesForPrompt(memories: MemoryEntry[], memScenes?: MemScene[]): string {
+  const parts: string[] = []
+
+  // Layer 1: MemScene user profile snapshot
+  if (memScenes && memScenes.length > 0) {
+    parts.push(formatMemSceneSection(memScenes))
+  }
+
+  if (memories.length === 0) return parts.join('\n\n')
 
   // Filter out superseded memories, then deduplicate
   memories = memories.filter(m => !m.superseded)
@@ -77,7 +93,8 @@ export function formatMemoriesForPrompt(memories: MemoryEntry[]): string {
     if (totalLength >= MAX_TOTAL_LENGTH) break
   }
 
-  if (sections.length === 0) return ''
+  if (sections.length === 0) return parts.join('\n\n')
 
-  return sections.join('\n\n')
+  parts.push(sections.join('\n\n'))
+  return parts.join('\n\n')
 }

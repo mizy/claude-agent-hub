@@ -157,6 +157,7 @@ describe('backward compatibility', () => {
       reinforceCount: 2,
       decayRate: 0.7,
       associations: [{ targetId: 'other', weight: 0.5, type: 'keyword' as const }],
+      tier: 'longterm' as const,
     }
 
     expect(needsMigration(newEntry)).toBe(false)

@@ -64,7 +64,7 @@ export interface ChatOptions {
 
 /**
  * Handle a text message: enqueue per-chatId for serial processing, call AI backend.
- * If a previous AI call is in progress for this chatId, abort it (last-write-wins).
+ * New messages are queued and processed after the current one completes (no interruption).
  */
 export async function handleChat(
   chatId: string,
@@ -72,13 +72,6 @@ export async function handleChat(
   messenger: MessengerAdapter,
   options?: ChatOptions
 ): Promise<void> {
-  // Abort previous in-flight AI call for this chat (last-write-wins)
-  const prev = activeControllers.get(chatId)
-  if (prev) {
-    logger.info(`⚡ interrupting previous AI call [${chatId.slice(0, 8)}]`)
-    prev.abort()
-  }
-
   return enqueueChat(chatId, () =>
     handleChatInternal(chatId, text, messenger, options).catch(e => {
       const msg = getErrorMessage(e)

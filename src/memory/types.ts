@@ -4,6 +4,8 @@
 
 export type MemoryCategory = 'pattern' | 'lesson' | 'preference' | 'pitfall' | 'tool'
 
+export type MemoryTier = 'hot' | 'longterm' | 'permanent'
+
 export type AssociationType = 'keyword' | 'co-task' | 'co-project' | 'semantic' | 'temporal'
 
 export interface Association {
@@ -46,6 +48,12 @@ export interface MemoryEntry {
 
   // Structured tags for categorized retrieval
   tags?: string[]
+
+  // Tier field for memory layering
+  tier?: MemoryTier
+
+  // Emotional valence (optional, for emotion-aware scoring)
+  valence?: EmotionalValence
 
   // Association engine fields
   associations?: Association[]
@@ -100,4 +108,40 @@ export interface EpisodeIndexEntry {
   summary: string // truncated summary for quick lookup
   platform: EpisodePlatform
   valence?: EmotionalValence // carried to index for emotion-aware retrieval
+}
+
+// ============ Atomic Facts (EverMemOS-inspired) ============
+
+export interface AtomicFact {
+  id: string
+  fact: string
+  confidence: number // 0-1
+  validUntil?: string // ISO time, auto-skip when expired
+  domain: string // "fund" / "health" / "work" / "code"
+  source: 'chat' | 'task' | 'manual'
+  createdAt: string
+  accessCount: number
+  tier: MemoryTier
+}
+
+// ============ MemScene User Model Snapshot ============
+
+export interface MemScene {
+  domain: string
+  summary: string
+  factIds: string[]
+  memoryIds: string[]
+  episodeIds: string[]
+  updatedAt: string
+}
+
+// ============ Foresight Predictions ============
+
+export interface Foresight {
+  id: string
+  prediction: string
+  validUntil: string // ISO time
+  domain: string
+  confidence: number // 0-1
+  createdAt: string
 }

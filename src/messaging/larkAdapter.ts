@@ -252,7 +252,11 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
           config: {
             update_multi: true,
             streaming_mode: true,
-            streaming_config: { print_frequency_ms: { default: 50 }, print_step: { default: 1 } },
+            streaming_config: {
+              print_frequency_ms: { default: 50 },
+              print_step: { default: 2 },
+              print_strategy: 'delay',
+            },
           },
           body: {
             elements: [

@@ -29,6 +29,7 @@ let defaultLarkChatId: string | null = null
 
 // Persist default chatId so subprocesses can read it for push notifications
 const LARK_CHAT_ID_FILE = join(DATA_DIR, 'lark-chat-id')
+const LARK_BOT_NAME_FILE = join(DATA_DIR, 'lark-bot-name')
 
 function persistChatId(chatId: string): void {
   try {
@@ -44,6 +45,23 @@ function loadPersistedChatId(): string | null {
     return readFileSync(LARK_CHAT_ID_FILE, 'utf-8').trim() || null
   } catch (error) {
     logger.debug(`Failed to load persisted chatId: ${getErrorMessage(error)}`)
+    return null
+  }
+}
+
+function persistBotName(name: string): void {
+  try {
+    mkdirSync(DATA_DIR, { recursive: true })
+    writeFileSync(LARK_BOT_NAME_FILE, name, 'utf-8')
+  } catch {
+    logger.debug('Failed to persist lark bot name')
+  }
+}
+
+function loadPersistedBotName(): string | null {
+  try {
+    return readFileSync(LARK_BOT_NAME_FILE, 'utf-8').trim() || null
+  } catch {
     return null
   }
 }
@@ -77,16 +95,20 @@ export async function startLarkWsClient(): Promise<void> {
   const baseConfig = { appId, appSecret }
   larkClient = new Lark.Client(baseConfig)
 
-  // Fetch bot name
-  try {
-    const res = await larkClient.request({
-      method: 'GET',
-      url: '/open-apis/bot/v3/info/',
-    })
-    const botInfo = res as { bot?: { app_name?: string }; data?: { bot?: { app_name?: string } } }
-    larkBotName = botInfo?.bot?.app_name ?? botInfo?.data?.bot?.app_name ?? null
-  } catch (error) {
-    logger.warn(`Failed to fetch bot name: ${getErrorMessage(error)}`)
+  // Load cached bot name first; only fetch from API if not cached
+  larkBotName = loadPersistedBotName()
+  if (!larkBotName) {
+    try {
+      const res = await larkClient.request({
+        method: 'GET',
+        url: '/open-apis/bot/v3/info/',
+      })
+      const botInfo = res as { bot?: { app_name?: string }; data?: { bot?: { app_name?: string } } }
+      larkBotName = botInfo?.bot?.app_name ?? botInfo?.data?.bot?.app_name ?? null
+      if (larkBotName) persistBotName(larkBotName)
+    } catch (error) {
+      logger.warn(`Failed to fetch bot name: ${getErrorMessage(error)}`)
+    }
   }
 
   wsClient = new Lark.WSClient({

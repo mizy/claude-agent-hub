@@ -46,6 +46,12 @@ export const MEMORY_DIR = join(DATA_DIR, 'memory')
 /** 情景记忆目录 */
 export const EPISODES_DIR = join(DATA_DIR, 'episodes')
 
+/** 原子事实目录 */
+export const ATOMIC_FACTS_DIR = join(DATA_DIR, 'atomic-facts')
+
+/** MemScene 用户模型快照目录 */
+export const MEMSCENE_DIR = join(DATA_DIR, 'memscene')
+
 /** Prompt 版本目录 */
 export const PROMPT_VERSIONS_DIR = join(DATA_DIR, 'prompt-versions')
 

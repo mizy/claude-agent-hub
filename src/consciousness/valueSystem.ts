@@ -156,12 +156,52 @@ export function weakenValue(dimension: string, evidence: Evidence): void {
   writeSystem(system)
 }
 
-/** Get all dimension weights (sorted by weight descending) */
+/**
+ * Opposing dimension pairs — when both are high, they compete for attention.
+ * The stronger one suppresses the weaker slightly, simulating resource contention.
+ */
+const OPPOSING_PAIRS: Array<[string, string]> = [
+  ['stability', 'new_features'],     // 稳定 vs 冒险
+  ['code_quality', 'performance'],   // 质量 vs 速度
+  ['autonomy', 'ux_polish'],         // 自主进化 vs 用户体验
+]
+
+/** Suppress factor when opponent weight is high (0-1 scale) */
+const OPPOSITION_STRENGTH = 0.15
+
+/**
+ * Apply opposition suppression: when two opposing dimensions are both high,
+ * the weaker one gets slightly suppressed. This prevents the system from
+ * wanting everything at once and forces meaningful trade-offs.
+ */
+function applyOpposition(dims: Array<{ dimension: string; weight: number }>): Array<{ dimension: string; weight: number }> {
+  const weightMap = new Map(dims.map(d => [d.dimension, d.weight]))
+
+  for (const [a, b] of OPPOSING_PAIRS) {
+    const wa = weightMap.get(a) ?? 0.5
+    const wb = weightMap.get(b) ?? 0.5
+    // Only suppress when both are above 0.5 (both "active")
+    if (wa > 0.5 && wb > 0.5) {
+      const diff = wa - wb
+      if (diff > 0) {
+        // a is stronger, suppress b
+        weightMap.set(b, Math.max(MIN_WEIGHT, wb - Math.abs(diff) * OPPOSITION_STRENGTH))
+      } else if (diff < 0) {
+        // b is stronger, suppress a
+        weightMap.set(a, Math.max(MIN_WEIGHT, wa - Math.abs(diff) * OPPOSITION_STRENGTH))
+      }
+      // If equal, no suppression — true equilibrium
+    }
+  }
+
+  return dims.map(d => ({ dimension: d.dimension, weight: Math.round((weightMap.get(d.dimension) ?? d.weight) * 100) / 100 }))
+}
+
+/** Get all dimension weights (sorted by weight descending, with opposition applied) */
 export function getValueWeights(): Array<{ dimension: string; weight: number }> {
   const system = loadValueSystem()
-  return system.dimensions
-    .map(d => ({ dimension: d.dimension, weight: d.weight }))
-    .sort((a, b) => b.weight - a.weight)
+  const raw = system.dimensions.map(d => ({ dimension: d.dimension, weight: d.weight }))
+  return applyOpposition(raw).sort((a, b) => b.weight - a.weight)
 }
 
 /** Get top N value dimensions by weight */

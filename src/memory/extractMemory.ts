@@ -106,7 +106,6 @@ export async function extractMemoryFromTask(
     const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
-      mode: 'review',
       model: lightModel,
       disableMcp: true,
       timeoutMs: 180_000,

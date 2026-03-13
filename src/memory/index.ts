@@ -19,13 +19,17 @@
  */
 
 // Types
-export type { MemoryCategory, MemoryEntry, MemorySource, Association, AssociationType, Episode, EpisodeTone, EpisodePlatform, EpisodeIndexEntry } from './types.js'
+export type { MemoryCategory, MemoryEntry, MemorySource, Association, AssociationType, Episode, EpisodeTone, EpisodePlatform, EpisodeIndexEntry, MemScene, AtomicFact } from './types.js'
 
 // Management — CRUD and search
 export { addMemory, listMemories, removeMemory, searchMemories } from './manageMemory.js'
 
 // Retrieval — scored ranking
-export { retrieveRelevantMemories, retrieveAllMemoryContext } from './retrieveMemory.js'
+export { retrieveRelevantMemories, retrieveAllMemoryContext, retrieveAtomicFacts } from './retrieveMemory.js'
+
+// Atomic facts — extraction and store
+export { extractAtomicFacts } from './extractAtomicFacts.js'
+export { saveAtomicFact, getAtomicFact, deleteAtomicFact, getAllAtomicFacts, queryAtomicFacts } from '../store/AtomicFactStore.js'
 
 // Episodic memory — retrieval and injection
 export { retrieveEpisodes } from './retrieveEpisode.js'
@@ -73,6 +77,9 @@ export type { ConsolidationResult } from './consolidateMemories.js'
 // Query expansion — LLM-based synonym/related term expansion
 export { expandQueryForRetrieval, clearExpandCache } from './expandQuery.js'
 
+// Tier promotion — ranking-based promotion/demotion between memory tiers
+export { computePromotionScore, runTierPromotion } from './tierPromotion.js'
+
 // Entity index — HippoRAG-lite entity-anchored retrieval
 export {
   extractEntities,
@@ -81,3 +88,9 @@ export {
   queryEntityIndex,
   rebuildEntityIndex,
 } from './entityIndex.js'
+
+// MemScene — domain-based user model snapshots
+export { classifyDomain, updateMemScene, buildMemSceneSummary } from './memScene.js'
+
+// Formatting — MemScene section
+export { formatMemSceneSection } from './formatMemory.js'

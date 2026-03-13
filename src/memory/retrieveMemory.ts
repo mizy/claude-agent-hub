@@ -7,16 +7,19 @@
 
 import { extractKeywords } from '../analysis/index.js'
 import { getAllMemories, atomicUpdateMemory } from '../store/MemoryStore.js'
+import { getAllAtomicFacts } from '../store/AtomicFactStore.js'
 import { migrateMemoryEntry } from './migrateMemory.js'
 import { calculateStrength, reinforceMemory } from './forgettingEngine.js'
 import { spreadActivation } from './associationEngine.js'
-import { queryEntityIndex } from './entityIndex.js'
+import { queryEntityIndex, extractEntities } from './entityIndex.js'
 import { retrieveEpisodes } from './retrieveEpisode.js'
 import { shouldRetrieveEpisode, formatEpisodeContext } from './injectEpisode.js'
 import { formatMemoriesForPrompt } from './formatMemory.js'
+import { classifyDomain } from './memScene.js'
+import { getMemScene } from '../store/MemSceneStore.js'
 import { createLogger } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
-import type { MemoryEntry } from './types.js'
+import type { AtomicFact, MemScene, MemoryEntry } from './types.js'
 
 const logger = createLogger('memory')
 
@@ -368,6 +371,75 @@ export async function retrieveRelevantMemories(
 }
 
 /**
+ * Retrieve relevant atomic facts for a query.
+ *
+ * Uses entity extraction to match query entities against stored facts.
+ * Filters out expired (validUntil < now) and low-confidence (< 0.5) facts.
+ * Returns top 5 matching facts.
+ */
+export function retrieveAtomicFacts(query: string, maxResults = 5): AtomicFact[] {
+  const now = new Date()
+  const queryEntities = extractEntities(query)
+  const queryLower = query.toLowerCase()
+  // Also extract simple keywords for broader matching
+  const queryWords = queryLower.split(/[\s,.:;!?()[\]{}'"]+/).filter(w => w.length > 2)
+
+  const allFacts = getAllAtomicFacts()
+
+  const scored: Array<{ fact: AtomicFact; score: number }> = []
+
+  for (const fact of allFacts) {
+    // Filter expired
+    if (fact.validUntil && new Date(fact.validUntil) < now) continue
+    // Filter low confidence
+    if (fact.confidence < 0.5) continue
+
+    let score = 0
+    const factLower = fact.fact.toLowerCase()
+
+    // Entity match: check if query entities appear in fact text
+    for (const entity of queryEntities) {
+      if (factLower.includes(entity.toLowerCase())) {
+        score += 2.0
+      }
+    }
+
+    // Keyword match: check if query words appear in fact text
+    for (const word of queryWords) {
+      if (factLower.includes(word)) {
+        score += 0.5
+      }
+    }
+
+    // Domain keyword match from fact entities in query
+    const factEntities = extractEntities(fact.fact)
+    for (const fe of factEntities) {
+      if (queryLower.includes(fe.toLowerCase())) {
+        score += 1.5
+      }
+    }
+
+    if (score > 0) {
+      scored.push({ fact, score })
+    }
+  }
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxResults)
+    .map(s => s.fact)
+}
+
+/**
+ * Format atomic facts for prompt injection.
+ */
+function formatAtomicFactsContext(facts: AtomicFact[]): string {
+  if (facts.length === 0) return ''
+  const items = facts.map(f => `- ${f.fact}`).join('\n')
+  return `## 已知事实\n${items}`
+}
+
+/**
  * Retrieve all memory context (semantic + episodic) for a query.
  *
  * Returns formatted string ready for prompt injection.
@@ -383,9 +455,17 @@ export async function retrieveAllMemoryContext(
 ): Promise<string> {
   const config = await loadConfig()
 
-  // Retrieve semantic memories
+  // Retrieve MemScene snapshot (layer 1)
+  const matchedScenes: MemScene[] = []
+  const domain = await classifyDomain(query)
+  if (domain) {
+    const scene = getMemScene(domain)
+    if (scene) matchedScenes.push(scene)
+  }
+
+  // Retrieve semantic memories (with MemScene injected into format)
   const memories = await retrieveRelevantMemories(query, options)
-  const semanticContext = formatMemoriesForPrompt(memories)
+  const semanticContext = formatMemoriesForPrompt(memories, matchedScenes)
 
   // Retrieve episodic memories if enabled
   let episodicContext = ''
@@ -400,7 +480,11 @@ export async function retrieveAllMemoryContext(
     episodicContext = formatEpisodeContext(episodes)
   }
 
-  // Combine: episodic first, then semantic
-  const parts = [episodicContext, semanticContext].filter(Boolean)
+  // Retrieve atomic facts
+  const atomicFacts = retrieveAtomicFacts(query)
+  const atomicFactsContext = formatAtomicFactsContext(atomicFacts)
+
+  // Combine: episodic first, then atomic facts, then semantic
+  const parts = [episodicContext, atomicFactsContext, semanticContext].filter(Boolean)
   return parts.join('\n\n')
 }
