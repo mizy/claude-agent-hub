@@ -13,7 +13,7 @@ function escapeRegExp(s: string): string {
 let cachedBackendPattern: RegExp | null = null
 let cachedBackendList: string | null = null
 
-/** Parse backend override from message text (e.g. "/iflow question" or "/use opencode\nquestion") */
+/** Parse backend override from message text (e.g. "@iflow question", "/iflow question" or "/use opencode\nquestion") */
 export async function parseBackendOverride(
   text: string
 ): Promise<{ backend?: string; actualText: string }> {
@@ -29,7 +29,7 @@ export async function parseBackendOverride(
   // Reuse cached regex if backend list hasn't changed
   if (backendListKey !== cachedBackendList) {
     cachedBackendPattern = new RegExp(
-      `^/(?:backend:|use\\s+)?(${allBackends.map(escapeRegExp).join('|')})(?:\\s|\\n)`,
+      `^[@/](?:backend:|use\\s+)?(${allBackends.map(escapeRegExp).join('|')})(?:\\s|\\n)`,
       's'
     )
     cachedBackendList = backendListKey

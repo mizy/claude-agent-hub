@@ -40,8 +40,8 @@ const CORRECTION_KEYWORDS = /(?:不要|别|不是|错了|不对|wrong|don'?t|sto
 // Emphasis keywords
 const EMPHASIS_KEYWORDS = /(?:重要|关键|必须|一定|务必|critical|important|must|always|never)/i
 
-// /backend syntax detection
-const BACKEND_SWITCH_PATTERN = /^\/(?:backend:|use\s+)?(\w+)/i
+// @/backend syntax detection
+const BACKEND_SWITCH_PATTERN = /^[@/](?:backend:|use\s+)?(\w+)/i
 
 interface ChatBuffer {
   messages: ChatMessage[]

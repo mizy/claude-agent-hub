@@ -55,7 +55,12 @@ export async function buildFullPrompt(
   mode: PromptMode = 'full',
   onStatus?: (text: string) => void
 ): Promise<string> {
-  const clientPrefix = client ? buildClientPrompt(client, runtime, mode) + '\n\n' : ''
+  const clientPrefix = client
+    ? buildClientPrompt(client, runtime, mode, {
+        isNewSession: willStartNewSession,
+        userMessage: effectiveText,
+      }) + '\n\n'
+    : ''
 
   // Inject conversation context for new sessions (e.g. after daemon restart).
   // Claude Code session handles in-session context; we only need this on fresh start.
