@@ -104,6 +104,12 @@ export interface GrowthStats {
   journal: GrowthJournalSummary
 }
 
+// ============ Project Milestones ============
+
+export type { Milestone as ProjectMilestone } from '../milestones/generateMilestones.js'
+
+import type { Milestone } from '../milestones/generateMilestones.js'
+
 // ============ Overview ============
 
 export interface StatsOverview {
@@ -111,6 +117,7 @@ export interface StatsOverview {
   task: TaskStats
   lifecycle: LifecycleStats
   growth: GrowthStats
+  projectMilestones: Milestone[]
   generatedAt: string
 }
 

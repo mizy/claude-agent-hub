@@ -16,6 +16,7 @@ export type {
   LifecycleStats,
   GrowthStats,
   GrowthMilestone,
+  ProjectMilestone,
   StatsCache,
   HourDistribution,
   WeekdayDistribution,
@@ -28,6 +29,7 @@ import { collectTaskStats } from './collectTaskStats.js'
 import { collectLifecycleStats } from './collectLifecycleStats.js'
 import { collectGrowthStats } from './collectGrowthStats.js'
 import { readStatsCache, writeStatsCache } from './statsCache.js'
+import { loadMilestones } from '../milestones/generateMilestones.js'
 import { createLogger } from '../shared/logger.js'
 import type { StatsOverview } from './types.js'
 
@@ -49,11 +51,14 @@ export function getStatsOverview(force = false): StatsOverview {
 
   logger.debug('Computing fresh stats...')
 
+  const milestonesData = loadMilestones()
+
   const overview: StatsOverview = {
     chat: collectChatStats(),
     task: collectTaskStats(),
     lifecycle: collectLifecycleStats(),
     growth: collectGrowthStats(),
+    projectMilestones: milestonesData?.milestones ?? [],
     generatedAt: new Date().toISOString(),
   }
 

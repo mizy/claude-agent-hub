@@ -5,6 +5,7 @@
 import type { ClientContext } from '../messaging/handlers/types.js'
 import { CAH_KNOWLEDGE } from './cahKnowledge.js'
 import { loadSoul } from './loadSoul.js'
+import { getIdentityContext } from '../milestones/index.js'
 
 /** Current date/time string for chat context */
 function getCurrentTime(): string {
@@ -157,6 +158,12 @@ export function buildClientPrompt(
   // Only append default agent sections when SOUL.md is not provided
   if (!soul) {
     lines.push('', DEFAULT_AGENT)
+  }
+
+  // Identity context — self-awareness from milestones + statistics
+  const identity = getIdentityContext()
+  if (identity) {
+    lines.push('', `[我是谁]\n${identity}`)
   }
 
   // Built-in CAH knowledge — always available regardless of SOUL/non-SOUL

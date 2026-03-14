@@ -13,6 +13,15 @@ interface ChannelStats { platform: string; messageCount: number; percentage: num
 interface WeeklySuccessRate { week: string; total: number; succeeded: number; rate: number }
 interface GrowthMilestone { label: string; achievedAt: string; value: number }
 
+interface ProjectMilestone {
+  version: string
+  dateRange: { from: string; to: string }
+  title: string
+  description: string
+  keyChanges: string[]
+  commitCount: number
+}
+
 interface ChatStats {
   totalMessages: number; inbound: number; outbound: number; events: number; commands: number
   sessionCount: number; activeDays: number; activeWeeks: number; activeMonths: number
@@ -39,7 +48,8 @@ interface GrowthStats {
 }
 
 interface StatsOverview {
-  chat: ChatStats; task: TaskStats; lifecycle: LifecycleStats; growth: GrowthStats; generatedAt: string
+  chat: ChatStats; task: TaskStats; lifecycle: LifecycleStats; growth: GrowthStats
+  projectMilestones: ProjectMilestone[]; generatedAt: string
 }
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6']
@@ -205,7 +215,7 @@ export function StatisticsPage() {
     )
   }
 
-  const { chat, task, lifecycle, growth } = stats
+  const { chat, task, lifecycle, growth, projectMilestones } = stats
   const weeklyTrend = buildWeeklyTrend(task.weeklySuccessRates)
   const { grid: heatmap, maxVal: heatMax } = buildHeatmap(chat.hourDistribution, chat.weekdayDistribution)
   const channelData = chat.channelDistribution.map((item) => ({
@@ -356,37 +366,83 @@ export function StatisticsPage() {
           </div>
         </div>
 
-        {/* Growth Timeline */}
+        {/* Project Milestones Timeline */}
         <div className="stats-chart-card">
-          <h3>Growth Milestones</h3>
-          <div className="stats-timeline">
-            <div className="stats-timeline-item stats-timeline-birth">
-              <div className="stats-timeline-dot birth" />
-              <div className="stats-timeline-content">
-                <div className="stats-timeline-label">🎂 Born</div>
-                <div className="stats-timeline-date">{formatDate(growth.birthDate)}</div>
-              </div>
-            </div>
-            {growth.milestones.map((m, i) => (
-              <div key={i} className="stats-timeline-item">
-                <div className="stats-timeline-dot" />
-                <div className="stats-timeline-content">
-                  <div className="stats-timeline-label">{m.label}</div>
-                  <div className="stats-timeline-date">{formatDate(m.achievedAt)}</div>
-                </div>
-              </div>
-            ))}
+          <h3>Project Milestones</h3>
+          <div className="stats-milestone-timeline">
             {lifecycle.isRunning && (
-              <div className="stats-timeline-item stats-timeline-now">
-                <div className="stats-timeline-dot running" />
-                <div className="stats-timeline-content">
-                  <div className="stats-timeline-label">🟢 Running Now</div>
-                  <div className="stats-timeline-date">Uptime: {formatDuration(lifecycle.currentUptimeMs)}</div>
+              <div className="stats-ms-item">
+                <div className="stats-ms-marker">
+                  <div className="stats-ms-dot running" />
+                  <div className="stats-ms-line" />
+                </div>
+                <div className="stats-ms-card">
+                  <div className="stats-ms-header">
+                    <span className="stats-ms-version running">LIVE</span>
+                    <span className="stats-ms-date">Uptime: {formatDuration(lifecycle.currentUptimeMs)}</span>
+                  </div>
+                  <div className="stats-ms-title">🟢 Running Now</div>
                 </div>
               </div>
             )}
+            {[...projectMilestones].reverse().map((m, i) => (
+              <div key={i} className="stats-ms-item">
+                <div className="stats-ms-marker">
+                  <div className="stats-ms-dot" />
+                  <div className="stats-ms-line" />
+                </div>
+                <div className="stats-ms-card">
+                  <div className="stats-ms-header">
+                    <span className="stats-ms-version">{m.version}</span>
+                    <span className="stats-ms-date">
+                      {formatDate(m.dateRange.from)}{m.dateRange.from !== m.dateRange.to ? ` — ${formatDate(m.dateRange.to)}` : ''}
+                    </span>
+                    <span className="stats-ms-commits">{m.commitCount} commits</span>
+                  </div>
+                  <div className="stats-ms-title">{m.title}</div>
+                  <div className="stats-ms-desc">{m.description}</div>
+                  {m.keyChanges.length > 0 && (
+                    <div className="stats-ms-changes">
+                      {m.keyChanges.map((change, j) => (
+                        <span key={j} className="stats-ms-change-tag">{change}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div className="stats-ms-item">
+              <div className="stats-ms-marker">
+                <div className="stats-ms-dot birth" />
+              </div>
+              <div className="stats-ms-card">
+                <div className="stats-ms-header">
+                  <span className="stats-ms-version birth">BORN</span>
+                  <span className="stats-ms-date">{formatDate(growth.birthDate)}</span>
+                </div>
+                <div className="stats-ms-title">🎂 Project Created</div>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Growth Achievements */}
+        {growth.milestones.length > 0 && (
+          <div className="stats-chart-card">
+            <h3>Growth Achievements</h3>
+            <div className="stats-timeline">
+              {growth.milestones.map((m, i) => (
+                <div key={i} className="stats-timeline-item">
+                  <div className="stats-timeline-dot" />
+                  <div className="stats-timeline-content">
+                    <div className="stats-timeline-label">{m.label}</div>
+                    <div className="stats-timeline-date">{formatDate(m.achievedAt)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

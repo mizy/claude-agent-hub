@@ -24,6 +24,7 @@ import { detectSignals, tryAutoRepair } from '../selfevolve/index.js'
 import { runEvolutionCycle } from '../prompt-optimization/index.js'
 import { BUILTIN_AGENTS } from '../agents/builtinAgents.js'
 import { cleanupFadingMemories, consolidateMemories, rebuildAllAssociations, runTierPromotion } from '../memory/index.js'
+import { generateMilestones, loadMilestones } from '../milestones/index.js'
 import { loadConfig } from '../config/loadConfig.js'
 import { createLogger } from '../shared/logger.js'
 
@@ -238,6 +239,15 @@ export async function registerDaemonJobs(pollCronExpr: string): Promise<void> {
     }
   })
   scheduledJobs.push(tierPromotionJob)
+
+  // Milestone generation — run once on startup, incremental update
+  try {
+    const existing = loadMilestones()
+    const result = generateMilestones(existing?.lastCommitHash)
+    logger.info(`Milestones: ${result.milestones.length} total (last commit: ${result.lastCommitHash.slice(0, 7) || 'none'})`)
+  } catch (error) {
+    logger.warn(`Milestone generation failed: ${error}`)
+  }
 
   // Tmp file cleanup — every hour, delete files older than 24h
   const tmpCleanupJob = cron.schedule('0 * * * *', () => {
