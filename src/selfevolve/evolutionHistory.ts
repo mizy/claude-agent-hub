@@ -79,3 +79,24 @@ export function getLatestEvolution(): EvolutionRecord | null {
   const records = listEvolutions()
   return records[0] ?? null
 }
+
+/** Purge old evolution records, keeping only the most recent `keep` entries */
+export function purgeOldEvolutions(keep = 50): number {
+  const records = listEvolutions() // already sorted newest-first
+  if (records.length <= keep) return 0
+
+  const toDelete = records.slice(keep)
+  let deleted = 0
+  for (const record of toDelete) {
+    try {
+      getStore().deleteSync(record.id)
+      deleted++
+    } catch {
+      logger.warn(`Failed to delete evolution record: ${record.id}`)
+    }
+  }
+  if (deleted > 0) {
+    logger.info(`Purged ${deleted} old evolution records, kept ${keep}`)
+  }
+  return deleted
+}

@@ -126,7 +126,7 @@ describe('conversationLog', () => {
     expect(entry.dir).toBe('cmd')
     expect(entry.text).toBe('')
     expect(entry.promptLength).toBe(fullPrompt.length)
-    expect(entry.promptFile).toMatch(/logs\/prompts\/.*-claude-code\.txt$/)
+    expect(entry.promptFile).toMatch(/logs\/prompts\/\d{4}-\d{2}-\d{2}\.txt$/)
     expect(entry.command).toBe('claude --model opus --print <prompt:3847 chars>')
     expect(entry.backendType).toBe('claude-code')
     expect(entry.model).toBe('opus')
@@ -134,7 +134,7 @@ describe('conversationLog', () => {
 
     // Verify the prompt file contains the full prompt
     const promptContent = readFileSync(entry.promptFile as string, 'utf-8')
-    expect(promptContent).toBe(fullPrompt)
+    expect(promptContent).toContain(fullPrompt)
   })
 
   it('should build redacted command string', () => {

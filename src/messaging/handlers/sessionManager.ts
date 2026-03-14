@@ -338,15 +338,24 @@ export function incrementTurn(chatId: string, inputText: string, outputText: str
   schedulePersist()
 }
 
+const CHAT_QUEUE_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+
 /**
  * Enqueue a task for a chatId, ensuring serial execution per chat.
  * Returns the task promise (rejects if the task rejects).
  */
 export function enqueueChat(chatId: string, fn: () => Promise<void>): Promise<void> {
   const prev = chatQueues.get(chatId) ?? Promise.resolve()
-  const task = prev.then(fn)
-  // Swallow errors so next queued message isn't blocked
-  const tail = task.catch(() => {})
+  const task = prev.then(() => {
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('chat queue task timed out after 5 minutes')), CHAT_QUEUE_TIMEOUT_MS)
+    )
+    return Promise.race([fn(), timeout])
+  })
+  // Log errors but don't break the queue chain
+  const tail = task.catch(err => {
+    logger.error('[chat-queue]', chatId, 'message handler error:', getErrorMessage(err))
+  })
   chatQueues.set(chatId, tail)
   // Clean up queue entry when done
   tail.then(() => {

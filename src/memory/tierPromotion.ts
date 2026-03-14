@@ -112,15 +112,11 @@ export async function runTierPromotion(): Promise<PromotionResult> {
     if (idx !== -1) longterm.splice(idx, 1)
   }
 
-  // --- permanent overflow → demote lowest to longterm ---
+  // --- permanent overflow → log warning only, never demote permanent entries ---
+  // Permanent tier means "never forget". If over capacity (e.g. config reduced),
+  // just stop promoting more entries; vacancy calculation above already handles this.
   if (permanent.length > maxPermanent) {
-    permanent.sort((a, b) => a._score - b._score) // ascending, lowest first
-    const toRemove = permanent.splice(0, permanent.length - maxPermanent)
-    for (const entry of toRemove) {
-      atomicUpdateMemory(entry.id, () => ({ tier: 'longterm' as MemoryTier }))
-      demoted++
-      longterm.push(entry)
-    }
+    logger.warn(`Permanent tier over capacity: ${permanent.length}/${maxPermanent} — no demotion, adjust maxPermanent if needed`)
   }
 
   // --- longterm overflow → archive lowest (zero strength, forgettingEngine will clean up) ---

@@ -120,8 +120,9 @@ export async function startLarkWsClient(): Promise<void> {
   const client = larkClient
 
   const dispatcher = new Lark.EventDispatcher({}).register({
-    'im.message.receive_v1': async (data: LarkMessageEvent) => {
-      await processMessageEvent(data, client, adapter, larkBotName, onChatIdDiscovered)
+    'im.message.receive_v1': (data: LarkMessageEvent) => {
+      processMessageEvent(data, client, adapter, larkBotName, onChatIdDiscovered)
+        .catch(err => logger.error(`processMessageEvent failed: ${getErrorMessage(err)}`))
     },
   })
 

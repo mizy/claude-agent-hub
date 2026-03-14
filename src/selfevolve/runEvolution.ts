@@ -19,6 +19,7 @@ import {
   listEvolutions,
   recordEvolution,
   updateEvolution,
+  purgeOldEvolutions,
 } from './evolutionHistory.js'
 import type { EvolutionRecord, Improvement, FailurePattern, PerformancePattern } from './types.js'
 import type { SignalEvent } from './signalDetector.js'
@@ -210,6 +211,9 @@ export async function runEvolutionCycle(
     `Evolution cycle ${evolutionId} ${record.status}: ` +
       `${record.patterns.length} patterns, ${record.improvements.length} improvements`
   )
+
+  // Housekeeping: purge old evolution records to prevent unbounded growth
+  purgeOldEvolutions(50)
 
   return { evolutionId, record }
 }
