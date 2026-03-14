@@ -28,11 +28,13 @@ vi.mock('../../../store/paths.js', () => ({
 }))
 
 // Mock fs operations for buffer persistence
-vi.mock('fs', async (importOriginal) => {
+vi.mock('fs', async importOriginal => {
   const original = await importOriginal<typeof import('fs')>()
   return {
     ...original,
-    readFileSync: vi.fn(() => { throw new Error('no file') }),
+    readFileSync: vi.fn(() => {
+      throw new Error('no file')
+    }),
     writeFileSync: vi.fn(),
     mkdirSync: vi.fn(),
   }
@@ -51,8 +53,8 @@ describe('chatMemoryExtractor — trigger detection', () => {
     resetExtractConfigCache()
   })
 
-  it('@iflow 分析架构 → triggers immediate extraction (backend-switch)', async () => {
-    const result = triggerChatMemoryExtraction('chat-1', '@iflow 分析架构', 'AI response', 'lark')
+  it('/iflow 分析架构 → triggers immediate extraction (backend-switch)', async () => {
+    const result = triggerChatMemoryExtraction('chat-1', '/iflow 分析架构', 'AI response', 'lark')
 
     // Synchronous return: REMEMBER_KEYWORDS not matched, so false
     expect(result).toBe(false)
@@ -65,7 +67,7 @@ describe('chatMemoryExtractor — trigger detection', () => {
     // Check the messages passed to extraction include the user text
     const [messages, opts] = mockExtractChatMemory.mock.calls[0]!
     expect(messages).toEqual([
-      { role: 'user', text: '@iflow 分析架构' },
+      { role: 'user', text: '/iflow 分析架构' },
       { role: 'assistant', text: 'AI response' },
     ])
     expect(opts.chatId).toBe('chat-1')
@@ -85,7 +87,7 @@ describe('chatMemoryExtractor — trigger detection', () => {
       'chat-3',
       '记住，测试前先跑 typecheck 很重要',
       'I will remember',
-      'lark',
+      'lark'
     )
 
     // Synchronous: REMEMBER_KEYWORDS matched

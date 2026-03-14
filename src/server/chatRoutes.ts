@@ -21,7 +21,11 @@ import {
 } from '../messaging/handlers/sessionManager.js'
 
 // Re-export types for consumers that imported from chatRoutes
-export type { WebChatSession, WebChatMessage, WebSessionSummary } from '../messaging/handlers/sessionManager.js'
+export type {
+  WebChatSession,
+  WebChatMessage,
+  WebSessionSummary,
+} from '../messaging/handlers/sessionManager.js'
 
 const logger = createLogger('chat-routes')
 
@@ -111,8 +115,8 @@ export function registerChatRoutes(app: Express): void {
       return
     }
 
-    // Prepend @backend directive so parseBackendOverride picks it up
-    const routeText = backend ? `@${backend} ${message}` : message
+    // Prepend /backend directive so parseBackendOverride picks it up
+    const routeText = backend ? `/${backend} ${message}` : message
 
     // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream')

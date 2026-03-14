@@ -75,23 +75,23 @@ describe('parseBackendOverride', () => {
     parseBackendOverride = mod.parseBackendOverride
   })
 
-  it('@iflow 帮我分析这段代码 → iflow', async () => {
-    const result = await parseBackendOverride('@iflow 帮我分析这段代码')
+  it('/iflow 帮我分析这段代码 → iflow', async () => {
+    const result = await parseBackendOverride('/iflow 帮我分析这段代码')
     expect(result).toEqual({ backend: 'iflow', actualText: '帮我分析这段代码' })
   })
 
-  it('@opencode question → opencode', async () => {
-    const result = await parseBackendOverride('@opencode list current files')
+  it('/opencode question → opencode', async () => {
+    const result = await parseBackendOverride('/opencode list current files')
     expect(result).toEqual({ backend: 'opencode', actualText: 'list current files' })
   })
 
-  it('@claude-code 写个函数 → claude-code', async () => {
-    const result = await parseBackendOverride('@claude-code 写个函数')
+  it('/claude-code 写个函数 → claude-code', async () => {
+    const result = await parseBackendOverride('/claude-code 写个函数')
     expect(result).toEqual({ backend: 'claude-code', actualText: '写个函数' })
   })
 
-  it('@codebuddy 帮我看看 → codebuddy', async () => {
-    const result = await parseBackendOverride('@codebuddy 帮我看看')
+  it('/codebuddy 帮我看看 → codebuddy', async () => {
+    const result = await parseBackendOverride('/codebuddy 帮我看看')
     expect(result).toEqual({ backend: 'codebuddy', actualText: '帮我看看' })
   })
 
@@ -115,9 +115,9 @@ describe('parseBackendOverride', () => {
     expect(result).toEqual({ backend: undefined, actualText: '普通问题' })
   })
 
-  it('@unknown 测试 → no match for unsupported backend', async () => {
-    const result = await parseBackendOverride('@unknown 测试')
-    expect(result).toEqual({ backend: undefined, actualText: '@unknown 测试' })
+  it('/unknown 测试 → no match for unsupported backend', async () => {
+    const result = await parseBackendOverride('/unknown 测试')
+    expect(result).toEqual({ backend: undefined, actualText: '/unknown 测试' })
   })
 
   it('empty string → no backend override', async () => {
@@ -125,14 +125,14 @@ describe('parseBackendOverride', () => {
     expect(result).toEqual({ backend: undefined, actualText: '' })
   })
 
-  it('@iflow with no content → backend with empty actualText', async () => {
+  it('/iflow with no content → backend with empty actualText', async () => {
     // The regex requires whitespace/newline after backend name, so no match without trailing space
-    const result = await parseBackendOverride('@iflow')
-    expect(result).toEqual({ backend: undefined, actualText: '@iflow' })
+    const result = await parseBackendOverride('/iflow')
+    expect(result).toEqual({ backend: undefined, actualText: '/iflow' })
   })
 
-  it('@iflow with trailing space → backend with empty actualText', async () => {
-    const result = await parseBackendOverride('@iflow ')
+  it('/iflow with trailing space → backend with empty actualText', async () => {
+    const result = await parseBackendOverride('/iflow ')
     expect(result).toEqual({ backend: 'iflow', actualText: '' })
   })
 })
@@ -190,7 +190,7 @@ describe('parseInlineModel', () => {
 const mockSetSession = vi.fn()
 const mockGetSession = vi.fn()
 const mockClearSession = vi.fn()
-vi.mock('../sessionManager.js', async (importOriginal) => {
+vi.mock('../sessionManager.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../sessionManager.js')>()
   return {
     ...actual,
@@ -227,7 +227,7 @@ describe('chatHandler — backend override', () => {
   })
 
   it('should pass inline backend directive to invokeBackend', async () => {
-    await handleChat('chat-be-1', '@iflow 帮我分析这段代码', messenger, {
+    await handleChat('chat-be-1', '/iflow 帮我分析这段代码', messenger, {
       client: createClientContext(),
     })
 
@@ -236,7 +236,7 @@ describe('chatHandler — backend override', () => {
         backendType: 'iflow',
       })
     )
-    // Prompt should contain the actual text without the @iflow prefix
+    // Prompt should contain the actual text without the /iflow prefix
     expect(mockInvokeBackend).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: expect.stringContaining('帮我分析这段代码'),
@@ -257,7 +257,7 @@ describe('chatHandler — backend override', () => {
   })
 
   it('should include backend label in completion marker', async () => {
-    await handleChat('chat-be-3', '@iflow 测试', messenger, {
+    await handleChat('chat-be-3', '/iflow 测试', messenger, {
       client: createClientContext(),
     })
 
@@ -295,7 +295,7 @@ describe('chatHandler — backend override', () => {
   })
 
   it('should save backend type when updating session', async () => {
-    await handleChat('chat-be-6', '@iflow 测试', messenger, {
+    await handleChat('chat-be-6', '/iflow 测试', messenger, {
       client: createClientContext(),
     })
 
@@ -407,7 +407,7 @@ describe('chatHandler — backend override', () => {
   })
 
   it('should not set model for non-claude backend without explicit keyword', async () => {
-    await handleChat('chat-model-6', '@iflow 帮我分析', messenger, {
+    await handleChat('chat-model-6', '/iflow 帮我分析', messenger, {
       client: createClientContext(),
     })
 
@@ -419,9 +419,9 @@ describe('chatHandler — backend override', () => {
     )
   })
 
-  it('should coexist with @backend: @iflow + opus keyword', async () => {
-    // @iflow is parsed first as backend, then "opus 问题" is parsed as model keyword
-    await handleChat('chat-model-7', '@iflow opus 问题', messenger, {
+  it('should coexist with @backend: /iflow + opus keyword', async () => {
+    // /iflow is parsed first as backend, then "opus 问题" is parsed as model keyword
+    await handleChat('chat-model-7', '/iflow opus 问题', messenger, {
       client: createClientContext(),
     })
 

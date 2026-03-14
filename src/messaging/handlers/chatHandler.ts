@@ -189,6 +189,8 @@ function resolveSessionState(
     logger.info(`🔄 session backend changed, starting new session`)
     logConversationEvent('后端切换', `${previousBackend} → ${currentBackend}`)
     flushEpisode(chatId)
+    // Clear sessionId when backend changes - don't reuse old session with new backend
+    sessionId = undefined
   }
 
   // Auto-rotate session when turn count exceeds threshold to prevent CLI context bloat
@@ -285,7 +287,7 @@ async function handleChatInternal(
   // 6. Invoke backend
   // <think> tags streamed as-is for user feedback; stripped in final response by chatResponseProcessor
   try {
-    const effectiveSessionId = inlineBackend || ss.backendChanged ? undefined : ss.sessionId
+    const effectiveSessionId = inlineBackend ? undefined : ss.sessionId
     const [, result] = await Promise.all([
       stream.placeholderPromise,
       invokeBackend({

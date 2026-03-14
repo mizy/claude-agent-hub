@@ -7,7 +7,7 @@
  * - Keyword-triggered immediate extraction (记住, remember, etc.)
  * - Decision/preference keyword detection
  * - Long message detection
- * - @backend switch detection
+ * - /backend switch detection
  */
 
 import { join } from 'path'
@@ -28,7 +28,8 @@ const LONG_MESSAGE_THRESHOLD = 200
 const SAVE_DEBOUNCE_MS = 3_000
 
 // Keywords that signal user wants something remembered
-const REMEMBER_KEYWORDS = /(?:记住|以后|别忘了|下次注意|remember|don'?t forget|keep in mind|注意一下|记下来)/i
+const REMEMBER_KEYWORDS =
+  /(?:记住|以后|别忘了|下次注意|remember|don'?t forget|keep in mind|注意一下|记下来)/i
 
 // Decision and preference keywords
 const DECISION_KEYWORDS = /(?:决定|改成|换成|选|用了|切换到|migrate to|switch to|go with|prefer)/i
@@ -39,8 +40,8 @@ const CORRECTION_KEYWORDS = /(?:不要|别|不是|错了|不对|wrong|don'?t|sto
 // Emphasis keywords
 const EMPHASIS_KEYWORDS = /(?:重要|关键|必须|一定|务必|critical|important|must|always|never)/i
 
-// @backend syntax detection
-const BACKEND_SWITCH_PATTERN = /^[@/](?:backend:|use\s+)?(\w+)/i
+// /backend syntax detection
+const BACKEND_SWITCH_PATTERN = /^\/(?:backend:|use\s+)?(\w+)/i
 
 interface ChatBuffer {
   messages: ChatMessage[]
@@ -127,10 +128,18 @@ function detectContentTrigger(userText: string, extraKeywords?: string[]): strin
 
 /** TTL-cached config for extractEveryNTurns and extra keywords */
 const CONFIG_TTL_MS = 60_000 // refresh from config every 60s
-let cachedExtractConfig: { extractEveryNTurns: number; extraKeywords: string[]; cachedAt: number } | null = null
+let cachedExtractConfig: {
+  extractEveryNTurns: number
+  extraKeywords: string[]
+  cachedAt: number
+} | null = null
 
-async function getExtractConfig(): Promise<{ extractEveryNTurns: number; extraKeywords: string[] }> {
-  if (cachedExtractConfig && Date.now() - cachedExtractConfig.cachedAt < CONFIG_TTL_MS) return cachedExtractConfig
+async function getExtractConfig(): Promise<{
+  extractEveryNTurns: number
+  extraKeywords: string[]
+}> {
+  if (cachedExtractConfig && Date.now() - cachedExtractConfig.cachedAt < CONFIG_TTL_MS)
+    return cachedExtractConfig
   try {
     const config = await loadConfig()
     const cm = config.memory.chatMemory
@@ -140,7 +149,11 @@ async function getExtractConfig(): Promise<{ extractEveryNTurns: number; extraKe
       cachedAt: Date.now(),
     }
   } catch {
-    cachedExtractConfig = { extractEveryNTurns: DEFAULT_EXTRACT_EVERY_N_TURNS, extraKeywords: [], cachedAt: Date.now() }
+    cachedExtractConfig = {
+      extractEveryNTurns: DEFAULT_EXTRACT_EVERY_N_TURNS,
+      extraKeywords: [],
+      cachedAt: Date.now(),
+    }
   }
   return cachedExtractConfig
 }
@@ -160,7 +173,7 @@ export function triggerChatMemoryExtraction(
   chatId: string,
   userText: string,
   aiResponse: string,
-  platform?: string,
+  platform?: string
 ): boolean {
   let buffer = chatBuffers.get(chatId)
   if (!buffer) {
@@ -174,7 +187,10 @@ export function triggerChatMemoryExtraction(
 
   // Extract before trimming so early messages are not lost
   if (buffer.messages.length > MAX_MESSAGES_PER_CHAT * 2) {
-    const earlyMessages = buffer.messages.slice(0, buffer.messages.length - MAX_MESSAGES_PER_CHAT * 2)
+    const earlyMessages = buffer.messages.slice(
+      0,
+      buffer.messages.length - MAX_MESSAGES_PER_CHAT * 2
+    )
     if (earlyMessages.length >= 2) {
       extractChatMemory(earlyMessages, { chatId, platform }).catch(err => {
         logger.debug(`Pre-trim extraction failed: ${getErrorMessage(err)}`)
@@ -184,30 +200,32 @@ export function triggerChatMemoryExtraction(
   }
 
   // Async: load config and check triggers
-  getExtractConfig().then(({ extractEveryNTurns, extraKeywords }) => {
-    // Re-fetch buffer from Map — it may have been cleared between sync and async
-    const currentBuffer = chatBuffers.get(chatId)
-    if (!currentBuffer) return
+  getExtractConfig()
+    .then(({ extractEveryNTurns, extraKeywords }) => {
+      // Re-fetch buffer from Map — it may have been cleared between sync and async
+      const currentBuffer = chatBuffers.get(chatId)
+      if (!currentBuffer) return
 
-    const triggerReason = detectContentTrigger(userText, extraKeywords)
-    const periodicTrigger = currentBuffer.turnCount >= extractEveryNTurns
+      const triggerReason = detectContentTrigger(userText, extraKeywords)
+      const periodicTrigger = currentBuffer.turnCount >= extractEveryNTurns
 
-    if (triggerReason || periodicTrigger) {
-      const messagesToExtract = [...currentBuffer.messages]
-      currentBuffer.turnCount = 0
+      if (triggerReason || periodicTrigger) {
+        const messagesToExtract = [...currentBuffer.messages]
+        currentBuffer.turnCount = 0
 
-      // Fire-and-forget
-      extractChatMemory(messagesToExtract, { chatId, platform }).catch(err => {
-        logger.debug(`Chat memory extraction failed: ${getErrorMessage(err)}`)
-      })
+        // Fire-and-forget
+        extractChatMemory(messagesToExtract, { chatId, platform }).catch(err => {
+          logger.debug(`Chat memory extraction failed: ${getErrorMessage(err)}`)
+        })
 
-      if (triggerReason) {
-        logger.info(`关键词触发记忆提取: ${triggerReason} [${chatId.slice(0, 8)}]`)
+        if (triggerReason) {
+          logger.info(`关键词触发记忆提取: ${triggerReason} [${chatId.slice(0, 8)}]`)
+        }
       }
-    }
-  }).catch(err => {
-    logger.debug(`Extract config load failed: ${getErrorMessage(err)}`)
-  })
+    })
+    .catch(err => {
+      logger.debug(`Extract config load failed: ${getErrorMessage(err)}`)
+    })
 
   // Synchronous check for immediate keyword feedback to caller
   const keywordMatch = REMEMBER_KEYWORDS.test(userText)
