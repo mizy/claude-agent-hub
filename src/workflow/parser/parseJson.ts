@@ -199,12 +199,18 @@ export function validateJsonWorkflow(input: unknown): { valid: boolean; errors: 
   if (!Array.isArray(data.nodes)) {
     errors.push('Missing or invalid "nodes" array')
   } else {
-    // 验证每个节点
+    // 验证每个节点，缺失 name 时自动用 id 兜底
     for (let i = 0; i < data.nodes.length; i++) {
       const node = data.nodes[i] as Record<string, unknown>
       if (!node.id) errors.push(`Node at index ${i} missing "id"`)
       if (!node.type) errors.push(`Node at index ${i} missing "type"`)
-      if (!node.name) errors.push(`Node at index ${i} missing "name"`)
+      if (!node.name && node.id) {
+        // Auto-fix: use id as name fallback
+        node.name = node.id
+        warnings.push(`Node "${node.id}" missing "name", auto-filled with id`)
+      } else if (!node.name) {
+        errors.push(`Node at index ${i} missing "name"`)
+      }
 
       // 验证节点类型对应的配置
       const type = node.type as string

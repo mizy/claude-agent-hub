@@ -313,6 +313,12 @@ const DEFAULT_BACKENDS: Record<string, BackendConfig> = {
     enableAgentTeams: false,
     chat: { mcpServers: [], session: { timeoutMinutes: 60, maxSessions: 200, maxWebMessages: 200 } },
   },
+  qwen: {
+    type: 'qwen-code',
+    model: 'qwen-max',
+    enableAgentTeams: false,
+    chat: { mcpServers: [], session: { timeoutMinutes: 60, maxSessions: 200, maxWebMessages: 200 } },
+  },
 }
 
 /**

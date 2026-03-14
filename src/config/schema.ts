@@ -43,8 +43,8 @@ export const chatConfigSchema = z.object({
 })
 
 export const backendConfigSchema = z.object({
-  /** 后端类型: claude-code | opencode | iflow | codebuddy | cursor */
-  type: z.enum(['claude-code', 'opencode', 'iflow', 'codebuddy', 'cursor']).default('claude-code'),
+  /** 后端类型: claude-code | opencode | iflow | codebuddy | cursor | qwen-code */
+  type: z.enum(['claude-code', 'opencode', 'iflow', 'codebuddy', 'cursor', 'qwen-code']).default('claude-code'),
   /** 模型名（含义因后端而异） */
   model: z.string().default('opus'),
   /** 最大 token 数（部分后端支持） */
