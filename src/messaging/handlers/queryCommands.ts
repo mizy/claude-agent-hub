@@ -20,6 +20,7 @@ import {
   buildTaskLogsCard,
 } from '../buildLarkCard.js'
 import type { TaskListItem } from '../buildLarkCard.js'
+import { getLarkClient } from '../larkWsClient.js'
 import { statusEmoji } from './constants.js'
 import { withResolvedTask } from './resolveTaskId.js'
 import type { Task } from '../../types/task.js'
@@ -189,6 +190,7 @@ export async function handleGet(taskIdPrefix: string): Promise<CommandResult> {
 
     const instance = getTaskInstance(task.id)
     const workflow = getTaskWorkflow(task.id)
-    return { text: lines.join('\n'), larkCard: buildTaskDetailCard(task, instance, workflow) }
+    const larkCard = await buildTaskDetailCard(task, instance, workflow, getLarkClient())
+    return { text: lines.join('\n'), larkCard }
   })
 }

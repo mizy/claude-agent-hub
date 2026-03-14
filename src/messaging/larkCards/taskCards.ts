@@ -2,6 +2,7 @@
  * Task lifecycle cards — completed, failed, detail, logs, list
  */
 
+import type * as Lark from '@larksuiteoapi/node-sdk'
 import { statusEmoji } from '../handlers/constants.js'
 import { formatDuration } from '../../shared/formatTime.js'
 import type { WorkflowInstance, Workflow, WorkflowNode } from '../../workflow/types.js'
@@ -11,6 +12,7 @@ import {
   hrElement,
   noteElement,
   actionElement,
+  imgElement,
   button,
   taskDetailAction,
   taskLogsAction,
@@ -23,6 +25,7 @@ import {
   listPageAction,
 } from './cardElements.js'
 import type { LarkCard, LarkCardElement, LarkCardButton } from './cardElements.js'
+import { uploadWorkflowGraphToLark } from './uploadWorkflowGraph.js'
 
 // ── Shared types ──
 
@@ -269,11 +272,12 @@ export function buildTaskListCard(
   return buildCard(`📋 任务列表 (${counts.total})`, 'blue', elements)
 }
 
-export function buildTaskDetailCard(
+export async function buildTaskDetailCard(
   task: TaskDetailInput,
   instance?: WorkflowInstance | null,
-  workflow?: Workflow | null
-): LarkCard {
+  workflow?: Workflow | null,
+  larkClient?: Lark.Client | null
+): Promise<LarkCard> {
   const elements: LarkCardElement[] = []
 
   const createdAt = new Date(task.createdAt).toLocaleString('zh-CN')
@@ -302,6 +306,19 @@ export function buildTaskDetailCard(
   }
 
   elements.push(mdElement(lines.join('\n')))
+
+  // Workflow graph image
+  if (instance && workflow && larkClient) {
+    try {
+      const imageKey = await uploadWorkflowGraphToLark(larkClient, workflow, instance)
+      if (imageKey) {
+        elements.push(hrElement())
+        elements.push(imgElement(imageKey, 'Workflow 拓扑图'))
+      }
+    } catch {
+      // silently skip graph rendering on failure
+    }
+  }
 
   // Node timeline
   if (instance && workflow) {

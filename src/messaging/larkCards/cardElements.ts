@@ -34,6 +34,7 @@ export type LarkCardElement =
   | { tag: 'hr' }
   | { tag: 'note'; elements: Array<{ tag: 'plain_text'; content: string }> }
   | { tag: 'action'; actions: LarkCardButton[] }
+  | { tag: 'img'; img_key: string; alt: { tag: 'plain_text'; content: string } }
 
 export interface LarkCardButton {
   tag: 'button'
@@ -67,6 +68,10 @@ export function noteElement(text: string): LarkCardElement {
 
 export function actionElement(buttons: LarkCardButton[]): LarkCardElement {
   return { tag: 'action', actions: buttons }
+}
+
+export function imgElement(imgKey: string, alt = 'workflow graph'): LarkCardElement {
+  return { tag: 'img', img_key: imgKey, alt: { tag: 'plain_text', content: alt } }
 }
 
 export function button(
