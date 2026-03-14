@@ -197,7 +197,7 @@ export async function processSuccessResult(
   const configModel = config.backends[backendName]?.model
   const displayModel = model ?? configModel
   const modelLabel = displayModel ? ` (${displayModel})` : ''
-  const finalText = displayText + `\n\r\n⏱️ ${elapsedSec}s | ${backendName}${modelLabel}`
+  const finalText = displayText + `\n\n---\n⏱️ ${elapsedSec}s | ${backendName}${modelLabel}`
 
   await stopStreaming()
   await sendFinalResponse(chatId, finalText, maxLen, placeholderId, messenger, cardKitInfo)

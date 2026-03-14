@@ -74,7 +74,7 @@ export function createStreamHandler(
       isFirstChunk = false
       lastEditAt = now
       lastEditLength = accumulated.length
-      scheduleEdit(accumulated + ' ⏳', placeholderId)
+      scheduleEdit(accumulated, placeholderId)
       return
     }
 
@@ -91,8 +91,8 @@ export function createStreamHandler(
       lastEditLength = accumulated.length
       const preview =
         accumulated.length > maxLen
-          ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中) ⏳'
-          : accumulated + ' ⏳'
+          ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
+          : accumulated
       scheduleEdit(preview, placeholderId)
     }
   }
@@ -173,11 +173,9 @@ export async function createCardStreamHandler(
 
   function formatContent(): string {
     // CardKit typewriter requires old text to be a PREFIX of new text.
-    // Indicator must go at the start, never the end — a suffix breaks prefix matching.
-    const prefix = '⏳ '
     return accumulated.length > maxLen
-      ? prefix + accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
-      : prefix + accumulated
+      ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
+      : accumulated
   }
 
   const onChunk = (chunk: string) => {

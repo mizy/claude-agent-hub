@@ -23,11 +23,9 @@ export function createCliAdapter(format: CliOutputFormat = 'text'): CliAdapterRe
   let streamedLength = 0
   let capturedResponse = ''
 
-  // Strip streaming indicators appended by streamingHandler
+  // Strip streaming overflow indicator appended by streamingHandler
   function stripIndicator(text: string): string {
-    return text
-      .replace(/\n\n\.\.\. \(输出中\) ⏳$/, '')
-      .replace(/ ⏳$/, '')
+    return text.replace(/\n\n\.\.\. \(输出中\)$/, '')
   }
 
   const messenger: MessengerAdapter = {
