@@ -158,7 +158,6 @@ export async function extractEpisode(params: ExtractEpisodeParams): Promise<Epis
     const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
-      mode: 'review',
       model: lightModel,
       disableMcp: true,
       timeoutMs: 30_000,

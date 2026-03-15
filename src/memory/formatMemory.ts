@@ -3,6 +3,7 @@
  */
 
 import { contentSimilarity } from './textSimilarity.js'
+import { getAtomicFact } from '../store/AtomicFactStore.js'
 import type { MemScene, MemoryCategory, MemoryEntry } from './types.js'
 
 const CATEGORY_HEADINGS: Record<MemoryCategory, string> = {
@@ -35,12 +36,39 @@ function deduplicateMemories(memories: MemoryEntry[]): MemoryEntry[] {
 }
 
 /**
- * Format MemScene snapshots as a user profile section (~200 chars).
+ * Format MemScene snapshots in layered format:
+ * Layer1: domain overview (~200 chars)
+ * Layer2: atomic facts from linked factIds (~500 chars)
  */
 export function formatMemSceneSection(scenes: MemScene[]): string {
   if (scenes.length === 0) return ''
-  const lines = scenes.map(s => `· ${s.summary}`)
-  return `[用户画像] 你了解的用户:\n${lines.join('\n')}`
+
+  // Layer1: compact domain summaries
+  const domainParts = scenes.map(s => {
+    const counts: string[] = []
+    if (s.factIds.length > 0) counts.push(`${s.factIds.length}条事实`)
+    if (s.memoryIds.length > 0) counts.push(`${s.memoryIds.length}条记忆`)
+    return `${s.domain}(${counts.join(',')})`
+  })
+  const layer1 = `[用户快照] ${domainParts.join(' ')}`
+
+  // Layer2: collect atomic facts from all scenes
+  const factTexts: string[] = []
+  let factLen = 0
+  const FACT_BUDGET = 500
+  for (const s of scenes) {
+    for (const fid of s.factIds) {
+      if (factLen >= FACT_BUDGET) break
+      const af = getAtomicFact(fid)
+      if (!af) continue
+      const text = af.fact.length > 80 ? af.fact.slice(0, 77) + '...' : af.fact
+      factTexts.push(text)
+      factLen += text.length + 2
+    }
+  }
+
+  if (factTexts.length === 0) return layer1
+  return `${layer1}\n[原子事实] ${factTexts.join('; ')}`
 }
 
 /**
@@ -82,7 +110,8 @@ export function formatMemoriesForPrompt(memories: MemoryEntry[], memScenes?: Mem
     const heading = CATEGORY_HEADINGS[cat]
     const items: string[] = []
     for (const e of entries) {
-      const item = `- ${truncateContent(e.content, MAX_ENTRY_LENGTH)}`
+      const suffix = e.confidence < 0.5 ? ' (模糊)' : ''
+      const item = `- ${truncateContent(e.content, MAX_ENTRY_LENGTH)}${suffix}`
       if (totalLength + item.length > MAX_TOTAL_LENGTH) break
       items.push(item)
       totalLength += item.length

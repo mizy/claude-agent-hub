@@ -76,7 +76,8 @@ function parseExtractions(text: string): RawExtraction[] {
     const parsed = JSON.parse(jsonMatch[0])
     if (!Array.isArray(parsed)) return []
     return parsed
-  } catch {
+  } catch (e) {
+    logger.debug(`Failed to parse chat memory JSON: ${getErrorMessage(e)}, raw: ${jsonMatch?.[0]?.slice(0, 200) ?? 'no match'}`)
     return []
   }
 }
@@ -109,7 +110,6 @@ export async function extractChatMemory(
     const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
-      mode: 'review',
       model: lightModel,
       disableMcp: true,
       timeoutMs: 30_000,

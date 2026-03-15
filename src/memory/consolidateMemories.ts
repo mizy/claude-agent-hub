@@ -205,7 +205,6 @@ export async function consolidateMemories(): Promise<ConsolidationResult> {
     const lightModel = await resolveLightModel()
     const llmResult = await invokeBackend({
       prompt,
-      mode: 'review',
       model: lightModel,
       disableMcp: true,
       timeoutMs: 60_000,

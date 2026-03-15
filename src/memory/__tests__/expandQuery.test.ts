@@ -31,7 +31,6 @@ describe('expandQueryForRetrieval', () => {
     expect(mockInvokeBackend).toHaveBeenCalledOnce()
     expect(mockInvokeBackend).toHaveBeenCalledWith(
       expect.objectContaining({
-        mode: 'review',
         model: 'claude-haiku-4-5-20251001',
         disableMcp: true,
       }),

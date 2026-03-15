@@ -69,8 +69,8 @@ function parseExtractions(text: string): RawExtraction[] {
     const parsed = JSON.parse(jsonMatch[0])
     if (!Array.isArray(parsed)) return []
     return parsed
-  } catch {
-    logger.warn('Failed to parse memory extraction JSON')
+  } catch (e) {
+    logger.warn(`Failed to parse memory extraction JSON: ${getErrorMessage(e)}, raw: ${jsonMatch[0].slice(0, 200)}`)
     return []
   }
 }

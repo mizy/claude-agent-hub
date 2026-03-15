@@ -55,7 +55,7 @@ interface PromotionResult {
  */
 export async function runTierPromotion(): Promise<PromotionResult> {
   const config = await loadConfig()
-  const { maxPermanent, maxLongterm, maxHot } = config.memory.tiers
+  const { maxPermanent, maxLongterm } = config.memory.tiers
   const now = new Date()
 
   const allRaw = getAllMemories()
@@ -75,7 +75,7 @@ export async function runTierPromotion(): Promise<PromotionResult> {
   }
 
   let promoted = 0
-  let demoted = 0
+  const demoted = 0
   let archived = 0
 
   // --- hot → longterm promotion ---

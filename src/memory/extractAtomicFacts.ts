@@ -38,9 +38,19 @@ const BACKTICK_RE = /`([^`]{2,60})`/g
 // CLI command patterns
 const CLI_RE = /\b((?:npm|pnpm|git|cah|gh|curl|docker)\s+[a-z][\w\-]*(?:\s+[\w\-./]+)*)/g
 
+// User preference patterns: 我喜欢/我用/我习惯/我偏好/I like/I use/I prefer + entity
+const PREFERENCE_RE = /(?:我喜欢|我用|我习惯|我偏好|I\s+like|I\s+use|I\s+prefer)\s*(.{2,40}?)(?:[，。,.\n;；]|$)/gi
+// Convention patterns: require colon separator for generic keywords to reduce false positives
+// "约定/规范/convention/禁止" + optional colon; "必须/不要/always/never/must" + mandatory colon
+const CONVENTION_RE = /(?:(?:约定|规范|convention|禁止)\s*[:：]?\s*|(?:必须|不要|always|never|must)\s*[:：]\s*)(.{2,60})(?:[。.\n;；]|$)/gi
+// Relationship patterns: 我的(同事|老板|朋友|团队) + name/description
+const RELATION_RE = /我的?\s*(?:同事|老板|朋友|团队|boss|colleague|teammate)\s*(.{2,30}?)(?:[，。,.\n;；]|$)/gi
+
 // Keyword patterns that indicate a fact worth extracting
-const FACT_KEYWORDS_ZH = ['持有', '使用', '偏好', '地址', '路径', '安装', '配置', '设置', '选择']
-const FACT_KEYWORDS_EN = ['using', 'prefer', 'located at', 'installed', 'configured', 'set to', 'chose']
+const FACT_KEYWORDS_ZH = ['持有', '使用', '偏好', '地址', '路径', '安装', '配置', '设置', '选择',
+  '喜欢', '习惯', '约定', '规范', '禁止', '必须', '不要', '同事', '老板', '朋友', '团队']
+const FACT_KEYWORDS_EN = ['using', 'prefer', 'located at', 'installed', 'configured', 'set to', 'chose',
+  'like', 'always', 'never', 'must', 'convention', 'colleague', 'boss', 'teammate']
 
 /** Split text into sentences (rough, handles both zh and en) */
 function splitSentences(text: string): string[] {
@@ -88,6 +98,30 @@ function extractEntities(text: string): ExtractedEntity[] {
     // CLI commands
     for (const match of sentence.matchAll(CLI_RE)) {
       entities.push({ entity: match[1]!, domain: 'code', context: sentence.trim() })
+    }
+
+    // User preferences
+    for (const match of sentence.matchAll(PREFERENCE_RE)) {
+      const pref = match[1]!.trim()
+      if (pref.length >= 2) {
+        entities.push({ entity: pref, domain: 'preference', context: sentence.trim() })
+      }
+    }
+
+    // Conventions / rules
+    for (const match of sentence.matchAll(CONVENTION_RE)) {
+      const conv = match[1]!.trim()
+      if (conv.length >= 2) {
+        entities.push({ entity: conv, domain: 'convention', context: sentence.trim() })
+      }
+    }
+
+    // Relationships
+    for (const match of sentence.matchAll(RELATION_RE)) {
+      const rel = match[1]!.trim()
+      if (rel.length >= 2) {
+        entities.push({ entity: rel, domain: 'social', context: sentence.trim() })
+      }
     }
   }
 
