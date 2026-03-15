@@ -29,6 +29,7 @@ vi.mock('../evolutionHistory.js', () => ({
   recordEvolution: vi.fn(),
   updateEvolution: vi.fn(),
   listEvolutions: vi.fn().mockReturnValue([]),
+  purgeOldEvolutions: vi.fn().mockReturnValue(0),
 }))
 vi.mock('../../prompt-optimization/evolutionSelection.js', () => ({
   refreshSuccessPatterns: vi.fn().mockReturnValue(0),

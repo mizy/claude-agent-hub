@@ -24,7 +24,7 @@ import type { Workflow, WorkflowInstance } from '../src/workflow/types.js'
 // Mock invokeBackend for all tests in this file
 vi.mock('../src/backend/index.js', () => ({
   invokeBackend: vi.fn(),
-  buildPrompt: (prompt: string) => prompt,
+  buildPrompt: (prompt: string) => ({ systemPrompt: '', userPrompt: prompt }),
 }))
 
 // Import after mock setup

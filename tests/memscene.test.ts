@@ -177,8 +177,8 @@ describe('formatMemSceneSection', () => {
       },
     ]
     const result = formatMemSceneSection(scenes)
-    expect(result).toContain('[用户画像]')
-    expect(result).toContain('[fund] 3条事实、2条记忆')
+    expect(result).toContain('[用户快照]')
+    expect(result).toContain('fund()')
   })
 })
 
@@ -197,7 +197,7 @@ describe('formatMemoriesForPrompt with MemScene', () => {
     const memories: MemoryEntry[] = [makeMemory('m1', '测试记忆内容')]
 
     const result = formatMemoriesForPrompt(memories, scenes)
-    const memScenePos = result.indexOf('[用户画像]')
+    const memScenePos = result.indexOf('[用户快照]')
     const semanticPos = result.indexOf('### 偏好设置')
     expect(memScenePos).toBeGreaterThanOrEqual(0)
     expect(semanticPos).toBeGreaterThan(memScenePos)

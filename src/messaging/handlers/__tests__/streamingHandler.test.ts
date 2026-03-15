@@ -176,7 +176,7 @@ describe('createStreamHandler', () => {
     const { onChunk } = createStreamHandler('c1', placeholderRef, 4096, messenger, bench)
     onChunk!('thinking...')
     await new Promise(r => setTimeout(r, 10))
-    expect(messenger.editMessage).toHaveBeenCalledWith('c1', 'ph-1', 'thinking... ⏳')
+    expect(messenger.editMessage).toHaveBeenCalledWith('c1', 'ph-1', 'thinking...')
   })
 
   it('should not edit when no placeholder', () => {

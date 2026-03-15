@@ -6,8 +6,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock extractChatMemory to track calls without actually invoking AI
 const mockExtractChatMemory = vi.fn().mockResolvedValue(undefined)
+const mockExtractAtomicFacts = vi.fn().mockResolvedValue([])
+const mockSaveAtomicFact = vi.fn()
 vi.mock('../../../memory/index.js', () => ({
   extractChatMemory: (...args: unknown[]) => mockExtractChatMemory(...args),
+  extractAtomicFacts: (...args: unknown[]) => mockExtractAtomicFacts(...args),
+  saveAtomicFact: (...args: unknown[]) => mockSaveAtomicFact(...args),
 }))
 
 // Mock loadConfig
@@ -117,7 +121,7 @@ describe('chatMemoryExtractor — trigger detection', () => {
     expect(mockExtractChatMemory).not.toHaveBeenCalled()
   })
 
-  it('periodic trigger fires after N turns (default 5)', async () => {
+  it('periodic trigger fires after N turns (default 5) — uses atomic fact extraction', async () => {
     const chatId = 'chat-periodic'
 
     // Send 4 normal turns — should not trigger
@@ -126,16 +130,16 @@ describe('chatMemoryExtractor — trigger detection', () => {
     }
     await new Promise(r => setTimeout(r, 50))
     expect(mockExtractChatMemory).not.toHaveBeenCalled()
+    expect(mockExtractAtomicFacts).not.toHaveBeenCalled()
 
-    // 5th turn should trigger periodic extraction
+    // 5th turn should trigger periodic extraction (rule-based atomic facts, not LLM)
     triggerChatMemoryExtraction(chatId, 'message 4', 'reply 4', 'lark')
     await vi.waitFor(() => {
-      expect(mockExtractChatMemory).toHaveBeenCalledTimes(1)
+      expect(mockExtractAtomicFacts).toHaveBeenCalledTimes(1)
     })
 
-    // Buffer should contain all 5 turns (10 messages)
-    const [messages] = mockExtractChatMemory.mock.calls[0]!
-    expect(messages).toHaveLength(10)
+    // Periodic trigger uses extractAtomicFacts (0 LLM), not extractChatMemory
+    expect(mockExtractChatMemory).not.toHaveBeenCalled()
   })
 
   it('correction keywords trigger extraction', async () => {

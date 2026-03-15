@@ -182,8 +182,8 @@ describe('runTierPromotion', () => {
     expect(mockAtomicUpdate).toHaveBeenCalledWith('lt1', expect.any(Function))
   })
 
-  it('should demote lowest-scoring permanent when over capacity', async () => {
-    // 4 permanent entries, capacity is 3
+  it('should NOT demote permanent entries when over capacity (permanent = never forget)', async () => {
+    // 4 permanent entries, capacity is 3 — should only warn, not demote
     const entries = [
       makeEntry({ id: 'p1', tier: 'permanent', accessCount: 10, importance: 9, lastAccessedAt: new Date().toISOString() }),
       makeEntry({ id: 'p2', tier: 'permanent', accessCount: 8, importance: 8, lastAccessedAt: new Date().toISOString() }),
@@ -195,9 +195,9 @@ describe('runTierPromotion', () => {
     const { runTierPromotion } = await import('../src/memory/tierPromotion.js')
     const result = await runTierPromotion()
 
-    expect(result.demoted).toBe(1)
-    // p4 has lowest score, should be demoted
-    expect(mockAtomicUpdate).toHaveBeenCalledWith('p4', expect.any(Function))
+    expect(result.demoted).toBe(0)
+    // No atomicUpdate calls for demotion
+    expect(mockAtomicUpdate).not.toHaveBeenCalled()
   })
 
   it('should archive lowest-scoring longterm when over capacity', async () => {

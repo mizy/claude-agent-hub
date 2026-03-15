@@ -76,7 +76,7 @@ describe('buildClientPrompt', () => {
   describe('channel resolution', () => {
     it('resolves Lark channel', () => {
       const result = buildClientPrompt(makeClient({ platform: '飞书 (Lark)' }))
-      expect(result).toContain('[渠道格式: 飞书]')
+      expect(result).toContain('[渠道: 飞书]')
     })
 
     it('resolves CLI channel', () => {
