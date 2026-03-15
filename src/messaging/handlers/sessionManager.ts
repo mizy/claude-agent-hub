@@ -16,7 +16,6 @@ import { generateSessionEndInsight } from '../../consciousness/generateSummary.j
 import { addActiveThought } from '../../consciousness/activeThoughts.js'
 import {
   loadWebSession,
-  saveWebSession,
   createWebSessionFile,
   deleteWebSessionFile,
   appendWebMessage as appendWebMessageFile,

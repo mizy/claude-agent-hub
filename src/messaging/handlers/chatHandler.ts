@@ -275,7 +275,7 @@ async function handleChatInternal(
   // Serializing these is acceptable — placeholder creation (~100-300ms) overlaps with prior steps.
   await stream.placeholderPromise
 
-  const prompt = await buildFullPrompt(
+  const { systemPrompt, prompt } = await buildFullPrompt(
     chatId, effectiveText, ss.willStartNewSession, options?.client, options?.images, config,
     { backend: backendName, model: model ?? config.backends[backendName]?.model },
     options?.files, 'full',
@@ -291,7 +291,7 @@ async function handleChatInternal(
     const [, result] = await Promise.all([
       stream.placeholderPromise,
       invokeBackend({
-        prompt, stream: true, skipPermissions: true,
+        prompt, systemPrompt, stream: true, skipPermissions: true,
         sessionId: effectiveSessionId, onChunk: stream.onChunk, onToolUse: stream.onToolUse,
         disableMcp: chatMcp.length === 0,
         mcpServers: chatMcp.length > 0 ? chatMcp : undefined,

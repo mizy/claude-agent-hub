@@ -12,7 +12,7 @@
 
 import { join } from 'path'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
-import { extractChatMemory } from '../../memory/index.js'
+import { extractChatMemory, extractAtomicFacts, saveAtomicFact } from '../../memory/index.js'
 import type { ChatMessage } from '../../memory/index.js'
 import { DATA_DIR } from '../../store/paths.js'
 import { createLogger } from '../../shared/logger.js'
@@ -207,20 +207,29 @@ export function triggerChatMemoryExtraction(
       if (!currentBuffer) return
 
       const triggerReason = detectContentTrigger(userText, extraKeywords)
+
       const periodicTrigger = currentBuffer.turnCount >= extractEveryNTurns
 
-      if (triggerReason || periodicTrigger) {
+      if (triggerReason) {
+        // Keyword trigger: use LLM extraction for high-quality pattern/lesson/preference capture
         const messagesToExtract = [...currentBuffer.messages]
         currentBuffer.turnCount = 0
-
-        // Fire-and-forget
         extractChatMemory(messagesToExtract, { chatId, platform }).catch(err => {
           logger.debug(`Chat memory extraction failed: ${getErrorMessage(err)}`)
         })
-
-        if (triggerReason) {
-          logger.info(`关键词触发记忆提取: ${triggerReason} [${chatId.slice(0, 8)}]`)
-        }
+        logger.info(`关键词触发记忆提取: ${triggerReason} [${chatId.slice(0, 8)}]`)
+      } else if (periodicTrigger) {
+        // Periodic: use rule-based atomic fact extraction (0 LLM)
+        currentBuffer.turnCount = 0
+        const allText = currentBuffer.messages.map(m => m.text).join('\n')
+        extractAtomicFacts(allText, 'chat').then(facts => {
+          if (facts.length > 0) {
+            for (const fact of facts) saveAtomicFact(fact)
+            logger.debug(`周期提取: saved ${facts.length} atomic facts [${chatId.slice(0, 8)}]`)
+          }
+        }).catch(err => {
+          logger.debug(`Periodic atomic extraction failed: ${getErrorMessage(err)}`)
+        })
       }
     })
     .catch(err => {

@@ -50,22 +50,23 @@ async function repairStaleDaemon(): Promise<string | null> {
       logger.warn('Max wait exceeded, proceeding with restart despite running tasks')
     }
 
-    logger.info('Stale code detected inside daemon, spawning fresh daemon and exiting...')
-    const binPath = resolveBinPath()
-    const child = spawn(process.execPath, [binPath, 'start', '-D'], {
-      detached: true,
-      stdio: 'ignore',
-      env: (() => {
-        const env = { ...process.env }
-        delete env.CLAUDECODE
-        delete env.CLAUDE_CODE_ENTRYPOINT
-        return env
-      })(),
-    })
-    child.unref()
-    // Wait for running tasks, then exit to hand off to fresh process.
+    logger.info('Stale code detected inside daemon, will restart after running tasks finish...')
+    // Wait for running tasks first, THEN spawn fresh daemon and exit.
+    // Spawning before exit would fail because the old daemon still holds the pid lock.
     waitForRunningTasks().then(() => {
-      logger.info('Stale daemon exiting to hand off to fresh process')
+      const binPath = resolveBinPath()
+      const child = spawn(process.execPath, [binPath, 'start', '-D'], {
+        detached: true,
+        stdio: 'ignore',
+        env: (() => {
+          const env = { ...process.env }
+          delete env.CLAUDECODE
+          delete env.CLAUDE_CODE_ENTRYPOINT
+          return env
+        })(),
+      })
+      child.unref()
+      logger.info('Stale daemon exiting, fresh daemon spawned')
       process.exit(0)
     })
     return 'Stale daemon auto-restarting: waiting for running tasks, then will exit'
