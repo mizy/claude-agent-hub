@@ -11,7 +11,7 @@
 import { readFileSync, writeFileSync, mkdirSync, statSync, openSync, readSync, closeSync } from 'fs'
 import { join, dirname } from 'path'
 import { randomUUID } from 'crypto'
-import { DATA_DIR } from '../store/paths.js'
+import { DATA_DIR, CONVERSATION_LOG_FILE_PATH } from '../store/paths.js'
 import { getAllTasks } from '../store/TaskStore.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
@@ -19,7 +19,7 @@ import type { ConversationEntry } from '../store/conversationLog.js'
 
 const logger = createLogger('consciousness:intentMining')
 
-const CONVERSATION_LOG_PATH = join(DATA_DIR, 'conversation.jsonl')
+const CONVERSATION_LOG_PATH = CONVERSATION_LOG_FILE_PATH
 const INTENT_SIGNALS_PATH = join(DATA_DIR, 'consciousness', 'intent-signals.json')
 const MAX_SIGNALS = 50
 const LOOKBACK_DAYS = 30

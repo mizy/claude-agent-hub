@@ -16,13 +16,13 @@ import {
   closeSync,
   statSync,
 } from 'fs'
-import { DATA_DIR } from './paths.js'
+import { LOGS_DIR, CONVERSATION_LOG_FILE_PATH, PROMPTS_LOG_DIR } from './paths.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 
 const logger = createLogger('conv-log')
 
-const CONVERSATION_LOG_PATH = join(DATA_DIR, 'conversation.jsonl')
+const CONVERSATION_LOG_PATH = CONVERSATION_LOG_FILE_PATH
 
 export interface ConversationEntry {
   /** ISO 8601 时间戳 */
@@ -113,7 +113,7 @@ let initialized = false
 
 function ensureDir(): void {
   if (initialized) return
-  mkdirSync(DATA_DIR, { recursive: true })
+  mkdirSync(LOGS_DIR, { recursive: true })
   initialized = true
 }
 
@@ -258,7 +258,7 @@ export function logConversationEvent(event: string, details?: string, chatId?: s
 
 // ── CLI command logging ──
 
-const PROMPTS_DIR = join(DATA_DIR, 'logs', 'prompts')
+const PROMPTS_DIR = PROMPTS_LOG_DIR
 let promptsDirInit = false
 
 /** Log a CLI backend command invocation. Full prompt saved to separate file. */

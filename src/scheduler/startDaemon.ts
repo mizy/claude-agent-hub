@@ -61,23 +61,25 @@ async function spawnDetached(): Promise<void> {
     process.exit(1)
   }
 
-  const { DATA_DIR } = await import('../store/paths.js')
+  const { LOGS_DIR, DAEMON_LOG_FILE, DAEMON_ERR_LOG_FILE } = await import('../store/paths.js')
+  const { migrateLogPaths } = await import('../store/migrateLogPaths.js')
   const { mkdirSync, openSync, existsSync, renameSync } = await import('fs')
-  const { join } = await import('path')
 
-  // 确保数据目录存在
-  mkdirSync(DATA_DIR, { recursive: true })
-  mkdirSync(join(DATA_DIR, 'logs'), { recursive: true })
+  // Migrate legacy log paths before anything else
+  migrateLogPaths()
+
+  // Ensure logs directory exists
+  mkdirSync(LOGS_DIR, { recursive: true })
 
   // Log rotation: rename existing logs to .old before creating new ones
-  const logFile = join(DATA_DIR, 'daemon.log')
-  const errFile = join(DATA_DIR, 'daemon.err.log')
-  if (existsSync(logFile)) {
-    renameSync(logFile, logFile + '.old')
+  if (existsSync(DAEMON_LOG_FILE)) {
+    renameSync(DAEMON_LOG_FILE, DAEMON_LOG_FILE + '.old')
   }
-  if (existsSync(errFile)) {
-    renameSync(errFile, errFile + '.old')
+  if (existsSync(DAEMON_ERR_LOG_FILE)) {
+    renameSync(DAEMON_ERR_LOG_FILE, DAEMON_ERR_LOG_FILE + '.old')
   }
+  const logFile = DAEMON_LOG_FILE
+  const errFile = DAEMON_ERR_LOG_FILE
   const logFd = openSync(logFile, 'w')
   const errFd = openSync(errFile, 'w')
 
@@ -163,6 +165,10 @@ async function runDaemon(): Promise<void> {
 
   // Warn if dist/ is older than src/ — likely forgot to rebuild
   warnIfStaleBuild()
+
+  // Migrate legacy log paths before any log writes
+  const { migrateLogPaths } = await import('../store/migrateLogPaths.js')
+  migrateLogPaths()
 
   bootstrapRuntime()
 

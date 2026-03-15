@@ -5,8 +5,8 @@
  */
 
 import { join } from 'path'
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
-import { DATA_DIR } from '../store/paths.js'
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs'
+import { PIDS_DIR } from '../store/paths.js'
 import { createLogger } from '../shared/logger.js'
 
 const logger = createLogger('pid-lock')
@@ -14,7 +14,7 @@ const logger = createLogger('pid-lock')
 export type ServiceName = 'daemon' | 'dashboard'
 
 function pidFilePath(service: ServiceName): string {
-  return join(DATA_DIR, `${service}.pid`)
+  return join(PIDS_DIR, `${service}.pid`)
 }
 
 export interface PidLockInfo {
@@ -89,6 +89,7 @@ export function acquirePidLock(
 
   const file = pidFilePath(service)
   try {
+    mkdirSync(PIDS_DIR, { recursive: true })
     writeFileSync(file, JSON.stringify(lockInfo, null, 2), 'utf-8')
     logger.info(`PID lock acquired: ${file}`)
     return { success: true }

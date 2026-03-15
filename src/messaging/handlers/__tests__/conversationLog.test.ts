@@ -45,7 +45,7 @@ describe('conversationLog', () => {
       images: ['/tmp/lark-img-001.png'],
     })
 
-    const logPath = join(dataDir, 'conversation.jsonl')
+    const logPath = join(dataDir, 'logs', 'conversation.jsonl')
     const entry = parseLastLine(logPath)
 
     expect(entry.images).toEqual(['/tmp/lark-img-001.png'])
@@ -62,7 +62,7 @@ describe('conversationLog', () => {
       text: 'hello',
     })
 
-    const logPath = join(dataDir, 'conversation.jsonl')
+    const logPath = join(dataDir, 'logs', 'conversation.jsonl')
     const entry = parseLastLine(logPath)
 
     expect(entry.images).toBeUndefined()
@@ -79,7 +79,7 @@ describe('conversationLog', () => {
       images: ['/tmp/img-1.png', '/tmp/img-2.png'],
     })
 
-    const logPath = join(dataDir, 'conversation.jsonl')
+    const logPath = join(dataDir, 'logs', 'conversation.jsonl')
     const entry = parseLastLine(logPath)
 
     expect(entry.images).toEqual(['/tmp/img-1.png', '/tmp/img-2.png'])
@@ -88,7 +88,7 @@ describe('conversationLog', () => {
   it('should log conversation event', () => {
     logConversationEvent('新会话开始', 'chatId: abcd1234', 'chat-evt')
 
-    const logPath = join(dataDir, 'conversation.jsonl')
+    const logPath = join(dataDir, 'logs', 'conversation.jsonl')
     const entry = parseLastLine(logPath)
 
     expect(entry.dir).toBe('event')
@@ -100,7 +100,7 @@ describe('conversationLog', () => {
   it('should log conversation event without details', () => {
     logConversationEvent('后端切换')
 
-    const logPath = join(dataDir, 'conversation.jsonl')
+    const logPath = join(dataDir, 'logs', 'conversation.jsonl')
     const entry = parseLastLine(logPath)
 
     expect(entry.dir).toBe('event')
@@ -120,7 +120,7 @@ describe('conversationLog', () => {
       cwd: '/home/user/project',
     })
 
-    const logPath = join(dataDir, 'conversation.jsonl')
+    const logPath = join(dataDir, 'logs', 'conversation.jsonl')
     const entry = parseLastLine(logPath)
 
     expect(entry.dir).toBe('cmd')

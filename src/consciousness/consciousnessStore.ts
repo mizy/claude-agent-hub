@@ -5,7 +5,7 @@
  * 复用 conversationLog.ts 的 append + tail-read 模式
  */
 
-import { join } from 'path'
+import { dirname } from 'path'
 import {
   appendFileSync,
   mkdirSync,
@@ -17,14 +17,14 @@ import {
   writeFileSync,
   renameSync,
 } from 'fs'
-import { DATA_DIR } from '../store/paths.js'
+import { CONSCIOUSNESS_LOG_PATH } from '../store/paths.js'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import type { ConsciousnessEntry } from './types.js'
 
 const logger = createLogger('consciousness')
 
-const CONSCIOUSNESS_FILE = join(DATA_DIR, 'consciousness.jsonl')
+const CONSCIOUSNESS_FILE = CONSCIOUSNESS_LOG_PATH
 const MAX_ENTRIES = 500
 // Trim when file exceeds ~200KB (average ~200 bytes/entry * 1000 entries)
 const TRIM_SIZE_THRESHOLD = 200 * 1024
@@ -35,7 +35,7 @@ const TRIM_CHECK_INTERVAL = 50
 
 function ensureDir(): void {
   if (initialized) return
-  mkdirSync(DATA_DIR, { recursive: true })
+  mkdirSync(dirname(CONSCIOUSNESS_FILE), { recursive: true })
   initialized = true
 }
 

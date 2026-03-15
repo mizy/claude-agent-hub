@@ -6,14 +6,13 @@
  */
 
 import { readFileSync } from 'fs'
-import { join } from 'path'
-import { DATA_DIR } from '../store/paths.js'
+import { LIFECYCLE_LOG_FILE_PATH } from '../store/paths.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import { createLogger } from '../shared/logger.js'
 import type { LifecycleStats } from './types.js'
 
 const logger = createLogger('stats-lifecycle')
-const LIFECYCLE_LOG_PATH = join(DATA_DIR, 'lifecycle.jsonl')
+const LIFECYCLE_LOG_PATH = LIFECYCLE_LOG_FILE_PATH
 
 interface LifecycleEvent {
   type: 'start' | 'stop'

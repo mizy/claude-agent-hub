@@ -5,15 +5,14 @@
  */
 
 import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
-import { DATA_DIR, GROWTH_JOURNAL_PATH } from '../store/paths.js'
+import { CONVERSATION_LOG_FILE_PATH, GROWTH_JOURNAL_PATH } from '../store/paths.js'
 import { getAllMemories } from '../store/MemoryStore.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import { createLogger } from '../shared/logger.js'
 import type { GrowthStats, GrowthMilestone, GrowthJournalSummary } from './types.js'
 
 const logger = createLogger('stats-growth')
-const CONVERSATION_LOG_PATH = join(DATA_DIR, 'conversation.jsonl')
+const CONVERSATION_LOG_PATH = CONVERSATION_LOG_FILE_PATH
 
 // Milestone thresholds for message count
 const MESSAGE_MILESTONES = [1, 10, 50, 100, 500, 1000, 2000, 5000, 10000, 50000]

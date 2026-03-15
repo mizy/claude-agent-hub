@@ -6,11 +6,11 @@
  */
 
 import { appendFileSync, mkdirSync } from 'fs'
-import { join, dirname } from 'path'
-import { DATA_DIR } from '../store/paths.js'
+import { dirname } from 'path'
+import { LIFECYCLE_LOG_FILE_PATH } from '../store/paths.js'
 import { createRequire } from 'module'
 
-const LIFECYCLE_LOG_PATH = join(DATA_DIR, 'lifecycle.jsonl')
+const LIFECYCLE_LOG_PATH = LIFECYCLE_LOG_FILE_PATH
 
 interface LifecycleStartEvent {
   type: 'start'

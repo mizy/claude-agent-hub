@@ -98,7 +98,7 @@ async function spawnDashboardDetached(options: { port: string; host: string }) {
   const { spawn } = await import('child_process')
   const { mkdirSync, openSync } = await import('fs')
   const { join } = await import('path')
-  const { DATA_DIR } = await import('../../store/paths.js')
+  const { LOGS_DIR, DASHBOARD_LOG_FILE } = await import('../../store/paths.js')
   const chalk = (await import('chalk')).default
 
   // 检查是否已运行
@@ -109,9 +109,9 @@ async function spawnDashboardDetached(options: { port: string; host: string }) {
     return
   }
 
-  mkdirSync(DATA_DIR, { recursive: true })
+  mkdirSync(LOGS_DIR, { recursive: true })
 
-  const logFile = join(DATA_DIR, 'dashboard.log')
+  const logFile = DASHBOARD_LOG_FILE
   const logFd = openSync(logFile, 'a')
   const errFd = openSync(logFile, 'a')
 

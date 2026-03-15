@@ -58,11 +58,42 @@ export const PROMPT_VERSIONS_DIR = join(DATA_DIR, 'prompt-versions')
 /** 自我模型文件 */
 export const SELF_MODEL_PATH = join(DATA_DIR, 'self-model.json')
 
-/** 每日反思日志（ReflectionEntry） */
-export const REFLECTIONS_LOG_PATH = join(DATA_DIR, 'reflections.jsonl')
+// ============ 日志目录（统一归入 logs/） ============
 
-/** 意识流日志（ConsciousnessEntry） — 保留兼容别名 */
-export const CONSCIOUSNESS_LOG_PATH = join(DATA_DIR, 'consciousness.jsonl')
+/** 日志根目录 */
+export const LOGS_DIR = join(DATA_DIR, 'logs')
+
+/** PID 文件目录 */
+export const PIDS_DIR = join(DATA_DIR, 'pids')
+
+/** Daemon 主日志 */
+export const DAEMON_LOG_FILE = join(LOGS_DIR, 'daemon.log')
+
+/** Daemon 错误日志 */
+export const DAEMON_ERR_LOG_FILE = join(LOGS_DIR, 'daemon.err.log')
+
+/** Dashboard 日志 */
+export const DASHBOARD_LOG_FILE = join(LOGS_DIR, 'dashboard.log')
+
+/** 队列运行器日志文件 */
+export const RUNNER_LOG_FILE = join(LOGS_DIR, 'runner.log')
+
+/** 全局 IM 对话日志 */
+export const CONVERSATION_LOG_FILE_PATH = join(LOGS_DIR, 'conversation.jsonl')
+
+/** 生命周期日志 */
+export const LIFECYCLE_LOG_FILE_PATH = join(LOGS_DIR, 'lifecycle.jsonl')
+
+/** Prompt 全文日志目录 */
+export const PROMPTS_LOG_DIR = join(LOGS_DIR, 'prompts')
+
+// ============ 意识系统（统一归入 consciousness/） ============
+
+/** 每日反思日志（ReflectionEntry） */
+export const REFLECTIONS_LOG_PATH = join(DATA_DIR, 'consciousness', 'reflections.jsonl')
+
+/** 意识流日志（ConsciousnessEntry） */
+export const CONSCIOUSNESS_LOG_PATH = join(DATA_DIR, 'consciousness', 'consciousness.jsonl')
 
 /** 成长日志（GrowthJournalEntry） */
 export const GROWTH_JOURNAL_PATH = join(DATA_DIR, 'consciousness', 'growth-journal.jsonl')
@@ -80,9 +111,6 @@ export const QUEUE_FILE = join(DATA_DIR, 'queue.json')
 
 /** 队列运行器锁文件 */
 export const RUNNER_LOCK_FILE = join(DATA_DIR, 'runner.lock')
-
-/** 队列运行器日志文件 */
-export const RUNNER_LOG_FILE = join(DATA_DIR, 'runner.log')
 
 // ============ 文件名常量（聚合导出） ============
 

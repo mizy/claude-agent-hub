@@ -45,7 +45,8 @@ describe('getRegisteredBackends', () => {
     expect(backends).toContain('iflow')
     expect(backends).toContain('codebuddy')
     expect(backends).toContain('cursor')
-    expect(backends).toHaveLength(5)
+    expect(backends).toContain('qwen-code')
+    expect(backends).toHaveLength(6)
   })
 })
 

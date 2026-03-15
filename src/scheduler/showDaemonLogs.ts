@@ -2,11 +2,10 @@
  * 查看守护进程日志
  */
 
-import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { spawn } from 'child_process'
 import chalk from 'chalk'
-import { DATA_DIR } from '../store/paths.js'
+import { DAEMON_LOG_FILE, DAEMON_ERR_LOG_FILE } from '../store/paths.js'
 
 export interface ShowLogsOptions {
   follow?: boolean
@@ -15,7 +14,7 @@ export interface ShowLogsOptions {
 }
 
 export async function showDaemonLogs(options: ShowLogsOptions): Promise<void> {
-  const logFile = options.error ? join(DATA_DIR, 'daemon.err.log') : join(DATA_DIR, 'daemon.log')
+  const logFile = options.error ? DAEMON_ERR_LOG_FILE : DAEMON_LOG_FILE
 
   if (!existsSync(logFile)) {
     console.log(chalk.yellow(`日志文件不存在: ${logFile}`))

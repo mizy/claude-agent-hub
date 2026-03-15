@@ -25,10 +25,11 @@ export async function renderWorkflowGraphViaPlaywright(
     const { chromium } = await import('playwright-core')
 
     browser = await chromium.launch({ headless: true })
-    const page = await browser.newPage()
+    const context = await browser.newContext({ deviceScaleFactor: 2 })
+    const page = await context.newPage()
 
     // Set viewport wide enough for the workflow canvas
-    await page.setViewportSize({ width: 1200, height: 800 })
+    await page.setViewportSize({ width: 1400, height: 900 })
 
     const url = `http://localhost:${port}/#/tasks?id=${taskId}`
     await page.goto(url, { waitUntil: 'networkidle', timeout: RENDER_TIMEOUT_MS })
@@ -38,10 +39,15 @@ export async function renderWorkflowGraphViaPlaywright(
     await page.waitForSelector(canvasSelector, { timeout: RENDER_TIMEOUT_MS })
 
     // Give MMEditor time to finish layout (dagre + node rendering)
-    await page.waitForTimeout(800)
+    // Wait for canvas to be stable (no reflows)
+    await page.waitForFunction(
+      `document.querySelector('.ve-editor')?.offsetHeight > 0`,
+      { timeout: RENDER_TIMEOUT_MS }
+    )
+    await page.waitForTimeout(1200)
 
     const canvas = page.locator(canvasSelector)
-    const buffer = await canvas.screenshot({ type: 'png' })
+    const buffer = await canvas.screenshot({ type: 'png', scale: 'device' })
 
     logger.debug(`Workflow graph screenshot captured for task ${taskId}`)
     return Buffer.from(buffer)

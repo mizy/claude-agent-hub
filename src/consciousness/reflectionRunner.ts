@@ -5,8 +5,7 @@
  */
 
 import { readFileSync, statSync, openSync, readSync, closeSync } from 'fs'
-import { join } from 'path'
-import { DATA_DIR } from '../store/paths.js'
+import { CONVERSATION_LOG_FILE_PATH } from '../store/paths.js'
 import { getAllTasks } from '../store/TaskStore.js'
 import { invokeBackend, resolveLightModel } from '../backend/index.js'
 import { createLogger } from '../shared/logger.js'
@@ -38,7 +37,7 @@ function collectDayStats(): DayStats {
   let messageCount = 0
   let lastMessageTs = 0
   try {
-    const logPath = join(DATA_DIR, 'conversation.jsonl')
+    const logPath = CONVERSATION_LOG_FILE_PATH
     const MAX_READ_BYTES = 1024 * 1024 // 1MB
     const fileSize = statSync(logPath).size
     let raw: string

@@ -6,15 +6,14 @@
  */
 
 import { readFileSync } from 'fs'
-import { join } from 'path'
-import { DATA_DIR } from '../store/paths.js'
+import { CONVERSATION_LOG_FILE_PATH } from '../store/paths.js'
 import { getErrorMessage } from '../shared/assertError.js'
 import { createLogger } from '../shared/logger.js'
 import type { ConversationEntry } from '../store/conversationLog.js'
 import type { ChatStats, HourDistribution, WeekdayDistribution, ChannelStats } from './types.js'
 
 const logger = createLogger('stats-chat')
-const CONVERSATION_LOG_PATH = join(DATA_DIR, 'conversation.jsonl')
+const CONVERSATION_LOG_PATH = CONVERSATION_LOG_FILE_PATH
 
 /** Parse all entries from conversation.jsonl */
 function parseAllEntries(): ConversationEntry[] {
