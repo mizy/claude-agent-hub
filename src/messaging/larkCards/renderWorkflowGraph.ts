@@ -67,7 +67,22 @@ export async function renderWorkflowGraph(
   if (workflow.nodes.length <= 2) return null
 
   try {
-    const { createCanvas } = await import('@napi-rs/canvas')
+    const { createCanvas, GlobalFonts } = await import('@napi-rs/canvas')
+
+    // Register Chinese font for CJK text rendering
+    if (!GlobalFonts.has('CJK')) {
+      const fontPaths = [
+        '/System/Library/Fonts/PingFang.ttc',                    // macOS
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', // Linux (Debian/Ubuntu)
+        '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',     // Linux (Arch/Fedora)
+      ]
+      for (const fp of fontPaths) {
+        try {
+          GlobalFonts.registerFromPath(fp, 'CJK')
+          break
+        } catch { /* try next */ }
+      }
+    }
 
     // Build adjacency from edges
     const adj = new Map<string, string[]>()
@@ -231,7 +246,7 @@ export async function renderWorkflowGraph(
 
       // Text
       ctx.fillStyle = '#ffffff'
-      ctx.font = '13px sans-serif'
+      ctx.font = GlobalFonts.has('CJK') ? '13px CJK' : '13px sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
 

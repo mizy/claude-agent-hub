@@ -310,7 +310,7 @@ export async function buildTaskDetailCard(
   // Workflow graph image
   if (instance && workflow && larkClient) {
     try {
-      const imageKey = await uploadWorkflowGraphToLark(larkClient, workflow, instance)
+      const imageKey = await uploadWorkflowGraphToLark(larkClient, workflow, instance, task.id)
       if (imageKey) {
         elements.push(hrElement())
         elements.push(imgElement(imageKey, 'Workflow 拓扑图'))
