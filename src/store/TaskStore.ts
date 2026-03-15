@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { format } from 'date-fns'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { Task, TaskStatus } from '../types/task.js'
 import {
   DATA_DIR,
@@ -225,8 +226,8 @@ export function updateTask(taskId: string, updates: Partial<Task>): void {
           level: updates.status === 'failed' ? 'error' : 'info',
         })
       })
-      .catch(() => {
-        // 忽略日志写入失败
+      .catch((err) => {
+        logger.debug(`Failed to write task log for ${taskId}: ${getErrorMessage(err)}`)
       })
   }
 

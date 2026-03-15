@@ -77,6 +77,8 @@ export {
   getTopThoughts,
   formatActiveThoughts,
 } from './activeThoughts.js'
+// Foresight — rule-based prediction from recurring themes
+export { generateForesight } from './foresight.js'
 // InnerState — lightweight real-time state for session awareness
 export type { InnerState, ActiveSession, RecentEvent, MoodState } from './innerState.js'
 export {

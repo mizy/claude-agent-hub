@@ -83,7 +83,6 @@ ${conversationText}`
     const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
-      mode: 'review',
       model: lightModel,
       disableMcp: true,
       timeoutMs: 30_000,
@@ -151,7 +150,6 @@ ${historySection}`
     const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
-      mode: 'review',
       model: lightModel,
       disableMcp: true,
       timeoutMs: 30_000,
@@ -222,7 +220,6 @@ ${conversationText}`
     const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
-      mode: 'review',
       model: lightModel,
       disableMcp: true,
       timeoutMs: 30_000,

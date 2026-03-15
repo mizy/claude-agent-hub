@@ -169,6 +169,11 @@ export function canExecuteNode(
   // 获取所有入边
   const inEdges = workflow.edges.filter(e => e.to === nodeId)
 
+  // Non-start nodes with no incoming edges are never executable.
+  // This prevents orphaned nodes (e.g. an "end" node with no edge leading to it)
+  // from being auto-ready via vacuously-true empty-array .every() check.
+  if (inEdges.length === 0) return false
+
   // 检查是否有入边来自活跃循环节点
   // 如果循环仍在执行中（activeLoops 中存在），不应该走出循环
   for (const edge of inEdges) {

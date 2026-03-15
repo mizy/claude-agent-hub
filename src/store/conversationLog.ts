@@ -11,7 +11,6 @@ import {
   appendFileSync,
   mkdirSync,
   readFileSync,
-  writeFileSync,
   openSync,
   readSync,
   closeSync,

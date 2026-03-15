@@ -50,7 +50,6 @@ export async function runWeeklyNarrative(): Promise<void> {
     const lightModel = await resolveLightModel()
     const result = await invokeBackend({
       prompt,
-      mode: 'review',
       model: lightModel,
       disableMcp: true,
       timeoutMs: 180_000,
