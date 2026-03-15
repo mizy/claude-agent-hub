@@ -144,4 +144,13 @@ describe('conversationLog', () => {
 
     expect(result).toBe(`claude --model opus --print <prompt:${prompt.length} chars>`)
   })
+
+  it('should redact systemPrompt in command string', () => {
+    const prompt = 'hello'
+    const systemPrompt = 'You are an AI assistant with a long system prompt'
+    const args = ['--model', 'opus', '--append-system-prompt', systemPrompt, prompt]
+    const result = buildRedactedCommand('claude', args, prompt, systemPrompt)
+
+    expect(result).toBe(`claude --model opus --append-system-prompt <system-prompt:${systemPrompt.length} chars> <prompt:${prompt.length} chars>`)
+  })
 })

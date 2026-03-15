@@ -75,7 +75,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
         : prompt
       logCliCommand({
         backend: 'claude-code',
-        command: buildRedactedCommand('claude', args, prompt),
+        command: buildRedactedCommand('claude', args, prompt, systemPrompt),
         prompt: loggedPrompt,
         sessionId,
         model,

@@ -306,9 +306,11 @@ export function logCliCommand(entry: {
   })
 }
 
-/** Build a redacted CLI command string (replace prompt with length placeholder) */
-export function buildRedactedCommand(binary: string, args: string[], prompt: string): string {
-  return [binary, ...args.map(a => (a === prompt ? `<prompt:${prompt.length} chars>` : a))].join(
-    ' '
-  )
+/** Build a redacted CLI command string (replace prompt/systemPrompt with length placeholders) */
+export function buildRedactedCommand(binary: string, args: string[], prompt: string, systemPrompt?: string): string {
+  return [binary, ...args.map(a => {
+    if (a === prompt) return `<prompt:${prompt.length} chars>`
+    if (systemPrompt && a === systemPrompt) return `<system-prompt:${systemPrompt.length} chars>`
+    return a
+  })].join(' ')
 }
