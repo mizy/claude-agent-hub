@@ -42,7 +42,8 @@ export function createIflowBackend(): BackendAdapter {
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
       const {
-        prompt,
+        prompt: rawPrompt,
+        systemPrompt,
         cwd = process.cwd(),
         stream = false,
         skipPermissions = true,
@@ -53,13 +54,19 @@ export function createIflowBackend(): BackendAdapter {
         signal,
       } = options
 
+      // Fallback: prepend systemPrompt (iflow doesn't support --append-system-prompt)
+      const prompt = systemPrompt ? `${systemPrompt}\n\n${rawPrompt}` : rawPrompt
       const args = buildArgs(prompt, model, sessionId, skipPermissions)
       const startTime = Date.now()
+
+      const loggedPrompt = systemPrompt
+        ? `[SYSTEM PROMPT]\n${systemPrompt}\n\n[USER PROMPT]\n${rawPrompt}`
+        : prompt
 
       logCliCommand({
         backend: 'iflow',
         command: buildRedactedCommand('iflow', args, prompt),
-        prompt,
+        prompt: loggedPrompt,
         sessionId,
         model,
         cwd,

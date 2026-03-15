@@ -37,7 +37,8 @@ export function createCodebuddyBackend(): BackendAdapter {
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
       const {
-        prompt,
+        prompt: rawPrompt,
+        systemPrompt,
         cwd = process.cwd(),
         stream = false,
         skipPermissions = true,
@@ -50,15 +51,19 @@ export function createCodebuddyBackend(): BackendAdapter {
         signal,
       } = options
 
-      const args = buildArgs(prompt, skipPermissions, disableMcp, mcpServers, sessionId, stream, model)
+      const prompt = rawPrompt
+      const args = buildArgs(prompt, systemPrompt, skipPermissions, disableMcp, mcpServers, sessionId, stream, model)
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
       const binary = await resolveBinary()
 
+      const loggedPrompt = systemPrompt
+        ? `[SYSTEM PROMPT]\n${systemPrompt}\n\n[USER PROMPT]\n${prompt}`
+        : prompt
       logCliCommand({
         backend: 'codebuddy',
         command: buildRedactedCommand(binary, args, prompt),
-        prompt,
+        prompt: loggedPrompt,
         sessionId,
         model,
         cwd,
@@ -155,6 +160,7 @@ async function resolveBinary(): Promise<string> {
 
 function buildArgs(
   prompt: string,
+  systemPrompt: string | undefined,
   skipPermissions: boolean,
   disableMcp: boolean,
   mcpServers?: string[],
@@ -192,6 +198,11 @@ function buildArgs(
       const mcpConfig = buildMcpConfigJson(mcpServers)
       if (mcpConfig) args.push('--mcp-config', mcpConfig)
     }
+  }
+
+  // System prompt via --append-system-prompt (CodeBuddy CLI is Claude Code compatible)
+  if (systemPrompt) {
+    args.push('--append-system-prompt', systemPrompt)
   }
 
   args.push(prompt)

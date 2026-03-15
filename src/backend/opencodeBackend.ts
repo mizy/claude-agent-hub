@@ -37,7 +37,8 @@ export function createOpencodeBackend(): BackendAdapter {
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
       const {
-        prompt,
+        prompt: rawPrompt,
+        systemPrompt,
         cwd = process.cwd(),
         stream = false,
         timeoutMs = 30 * 60 * 1000,
@@ -49,6 +50,8 @@ export function createOpencodeBackend(): BackendAdapter {
         signal,
       } = options
 
+      // Fallback: prepend systemPrompt (opencode doesn't support --append-system-prompt)
+      const prompt = systemPrompt ? `${systemPrompt}\n\n${rawPrompt}` : rawPrompt
       const args = buildOpencodeArgs({
         prompt,
         cwd,
@@ -60,10 +63,13 @@ export function createOpencodeBackend(): BackendAdapter {
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
+      const loggedPrompt = systemPrompt
+        ? `[SYSTEM PROMPT]\n${systemPrompt}\n\n[USER PROMPT]\n${rawPrompt}`
+        : prompt
       logCliCommand({
         backend: 'opencode',
         command: buildRedactedCommand('opencode', args, prompt),
-        prompt,
+        prompt: loggedPrompt,
         sessionId,
         model,
         cwd,

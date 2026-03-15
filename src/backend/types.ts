@@ -12,6 +12,8 @@ import type { TraceContext } from '../types/trace.js'
 
 export interface InvokeOptions {
   prompt: string
+  /** System-level context injected via --append-system-prompt (claude-code) or prepended (other backends) */
+  systemPrompt?: string
   mode?: 'plan' | 'execute' | 'review'
   agent?: AgentConfig
   cwd?: string

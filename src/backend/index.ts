@@ -35,7 +35,7 @@ export {
 
 export { resolveBackendConfig } from './backendConfig.js'
 
-export { buildPrompt } from './promptBuilder.js'
+export { buildPrompt, type BuiltPrompt } from './promptBuilder.js'
 
 import { resolveBackend } from './resolveBackend.js'
 import { resolveBackendConfig } from './backendConfig.js'
@@ -73,16 +73,20 @@ export async function invokeBackend(
     }
   }
 
-  // 组装完整 prompt（agent system prompt + mode 指令 + 用户 prompt）
-  const fullPrompt = buildPrompt(options.prompt, options.agent, options.mode)
+  // 组装 prompt：agent/mode → systemPrompt，用户内容 → userPrompt
+  const built = buildPrompt(options.prompt, options.agent, options.mode)
+  // Merge: caller's systemPrompt (e.g. clientPrefix+consciousness) + agent/mode systemPrompt
+  const mergedSystemPrompt = [options.systemPrompt, built.systemPrompt].filter(Boolean).join('\n\n')
+  const userPrompt = built.userPrompt
+  const totalLength = mergedSystemPrompt.length + userPrompt.length
   const slots = getSlotInfo()
 
   logger.info(
-    `[${options.mode ?? 'default'}] 调用 ${backend.displayName} (${fullPrompt.length} chars)` +
+    `[${options.mode ?? 'default'}] 调用 ${backend.displayName} (${totalLength} chars, sys:${mergedSystemPrompt.length})` +
       `${options.sessionId ? ` [复用会话 ${options.sessionId.slice(0, 8)}]` : ''}` +
       ` [slots: ${slots.active}/${slots.max}]`
   )
-  logger.debug(`Prompt prepared: ${fullPrompt.length} chars`)
+  logger.debug(`Prompt prepared: sys=${mergedSystemPrompt.length} user=${userPrompt.length} chars`)
 
   // Check if already aborted before waiting for a slot
   if (options.signal?.aborted) {
@@ -117,7 +121,7 @@ export async function invokeBackend(
         'task.id': traceCtx.taskId,
         'llm.backend': backend.name,
         'llm.model': resolvedModel,
-        'llm.prompt_length': fullPrompt.length,
+        'llm.prompt_length': totalLength,
         'llm.slot_wait_ms': slotWaitMs,
       })
     : undefined
@@ -126,7 +130,12 @@ export async function invokeBackend(
   }
 
   try {
-    const result = await backend.invoke({ ...options, prompt: fullPrompt, model: resolvedModel })
+    const result = await backend.invoke({
+      ...options,
+      prompt: userPrompt,
+      systemPrompt: mergedSystemPrompt || undefined,
+      model: resolvedModel,
+    })
     releaseSlot()
     // Attach slot wait time to result
     if (result.ok) {

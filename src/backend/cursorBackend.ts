@@ -43,7 +43,8 @@ export function createCursorBackend(): BackendAdapter {
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
       const {
-        prompt,
+        prompt: rawPrompt,
+        systemPrompt,
         cwd = process.cwd(),
         stream = false,
         skipPermissions = true,
@@ -54,14 +55,20 @@ export function createCursorBackend(): BackendAdapter {
         signal,
       } = options
 
+      // Fallback: prepend systemPrompt (cursor doesn't support --append-system-prompt)
+      const prompt = systemPrompt ? `${systemPrompt}\n\n${rawPrompt}` : rawPrompt
       const args = buildArgs(prompt, skipPermissions, sessionId, stream, model)
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
+      const loggedPrompt = systemPrompt
+        ? `[SYSTEM PROMPT]\n${systemPrompt}\n\n[USER PROMPT]\n${rawPrompt}`
+        : prompt
+
       logCliCommand({
         backend: 'cursor',
         command: buildRedactedCommand('cursor', ['agent', ...args], prompt),
-        prompt,
+        prompt: loggedPrompt,
         sessionId,
         model,
         cwd,

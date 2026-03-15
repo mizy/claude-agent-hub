@@ -38,6 +38,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
       const {
         prompt,
+        systemPrompt,
         cwd = process.cwd(),
         stream = false,
         skipPermissions = true,
@@ -55,6 +56,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
 
       const args = buildArgs({
         prompt,
+        systemPrompt,
         skipPermissions,
         disableMcp,
         mcpServers,
@@ -67,10 +69,14 @@ export function createClaudeCodeBackend(): BackendAdapter {
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
+      // Log full prompt (system + user) for debugging
+      const loggedPrompt = systemPrompt
+        ? `[SYSTEM PROMPT]\n${systemPrompt}\n\n[USER PROMPT]\n${prompt}`
+        : prompt
       logCliCommand({
         backend: 'claude-code',
         command: buildRedactedCommand('claude', args, prompt),
-        prompt,
+        prompt: loggedPrompt,
         sessionId,
         model,
         cwd,
@@ -164,6 +170,7 @@ export function createClaudeCodeBackend(): BackendAdapter {
 
 interface ClaudeBuildArgsOptions {
   prompt: string
+  systemPrompt?: string
   skipPermissions: boolean
   disableMcp: boolean
   mcpServers?: string[]
@@ -177,6 +184,7 @@ interface ClaudeBuildArgsOptions {
 function buildArgs(options: ClaudeBuildArgsOptions): string[] {
   const {
     prompt,
+    systemPrompt,
     skipPermissions,
     disableMcp,
     mcpServers,
@@ -222,6 +230,11 @@ function buildArgs(options: ClaudeBuildArgsOptions): string[] {
       const mcpConfig = buildMcpConfigJson(mcpServers)
       if (mcpConfig) args.push('--mcp-config', mcpConfig)
     }
+  }
+
+  // System prompt via --append-system-prompt (avoids polluting user prompt)
+  if (systemPrompt) {
+    args.push('--append-system-prompt', systemPrompt)
   }
 
   const fileSpecs = (attachments ?? []).filter(isClaudeFileSpec)
