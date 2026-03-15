@@ -46,6 +46,7 @@ interface ActiveStreamCtx {
   messenger: MessengerAdapter
   getPlaceholderId: () => string | null
   getAccumulated: () => string
+  cardKitInfo?: { cardId: string; elementId: string; getSequence: () => number }
 }
 const activeStreams = new Map<string, ActiveStreamCtx>()
 
@@ -127,11 +128,29 @@ export async function destroyChatHandler(): Promise<void> {
       const content = partial
         ? `${partial}\n\n⚠️ 进程已中断，请重新发送消息`
         : '⚠️ 进程已中断，请重新发送消息'
-      shutdownEdits.push(
-        ctx.messenger.editMessage(chatId, placeholderId, content)
-          .then(() => {})
-          .catch(e => logger.debug(`shutdown edit failed [${chatId.slice(0, 8)}]: ${e}`))
-      )
+      const ck = ctx.cardKitInfo
+      if (ck && ctx.messenger.updateCardElement) {
+        // CardKit path: update card element then close streaming mode
+        shutdownEdits.push(
+          ctx.messenger.updateCardElement(ck.cardId, ck.elementId, content, ck.getSequence())
+            .then(ok => {
+              if (ok) return ctx.messenger.closeStreamingCard?.(ck.cardId, content, ck.getSequence()).catch(() => {})
+              // Fallback: delete card + reply
+              return ctx.messenger.deleteMessage?.(chatId, placeholderId)
+                .then(() => ctx.messenger.reply(chatId, content))
+                .catch(() => {})
+            })
+            .then(() => {})
+            .catch(e => logger.debug(`shutdown card update failed [${chatId.slice(0, 8)}]: ${e}`))
+        )
+      } else {
+        // Legacy path: editMessage
+        shutdownEdits.push(
+          ctx.messenger.editMessage(chatId, placeholderId, content)
+            .then(() => {})
+            .catch(e => logger.debug(`shutdown edit failed [${chatId.slice(0, 8)}]: ${e}`))
+        )
+      }
     }
   }
   // Wait briefly for edits to land, then abort
@@ -268,7 +287,7 @@ async function handleChatInternal(
   const streamOpts: StreamHandlerOptions | undefined =
     platform === 'Web' ? { throttleMs: 150, minDelta: 10 } : undefined
   const stream = setupStreamingAndPlaceholder(chatId, hasImages, hasFiles, maxLen, messenger, bench, signal, streamOpts, platform)
-  activeStreams.set(chatId, { messenger, getPlaceholderId: stream.getPlaceholderId, getAccumulated: stream.getAccumulated })
+  activeStreams.set(chatId, { messenger, getPlaceholderId: stream.getPlaceholderId, getAccumulated: stream.getAccumulated, get cardKitInfo() { return stream.cardKitInfo } })
   bench.parallelStart = Date.now()
 
   // Await placeholder creation before building prompt so phase status updates (🔍📝💭) are visible.
