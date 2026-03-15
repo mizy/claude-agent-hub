@@ -3,7 +3,7 @@
  *
  * 覆盖:
  * - formatTime: formatDuration, parseInterval, intervalToCron
- * - generateId: generateId, generateShortId, isValidUUID, shortenId, matchesShortId
+ * - generateId: generateId, generateShortId
  * - nodeStatus: 状态判断辅助函数
  * - task types: parseTaskPriority, parseTaskStatus
  */
@@ -143,16 +143,13 @@ describe('formatTime utilities', () => {
 import {
   generateId,
   generateShortId,
-  isValidUUID,
-  shortenId,
-  matchesShortId,
 } from '../src/shared/generateId.js'
 
 describe('generateId utilities', () => {
   describe('generateId()', () => {
     it('should return a valid UUID', () => {
       const id = generateId()
-      expect(isValidUUID(id)).toBe(true)
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
     })
 
     it('should generate unique IDs', () => {
@@ -173,44 +170,6 @@ describe('generateId utilities', () => {
     })
   })
 
-  describe('isValidUUID()', () => {
-    it('should validate correct UUIDs', () => {
-      expect(isValidUUID('550e8400-e29b-41d4-a716-446655440000')).toBe(true)
-      expect(isValidUUID('00000000-0000-0000-0000-000000000000')).toBe(true)
-    })
-
-    it('should reject invalid UUIDs', () => {
-      expect(isValidUUID('not-a-uuid')).toBe(false)
-      expect(isValidUUID('')).toBe(false)
-      expect(isValidUUID('550e8400')).toBe(false)
-      expect(isValidUUID('550e8400-e29b-41d4-a716-44665544000g')).toBe(false) // 'g' invalid
-    })
-  })
-
-  describe('shortenId()', () => {
-    it('should shorten to 8 chars by default', () => {
-      expect(shortenId('550e8400-e29b-41d4-a716-446655440000')).toBe('550e8400')
-    })
-
-    it('should support custom length', () => {
-      expect(shortenId('550e8400-e29b-41d4', 4)).toBe('550e')
-    })
-  })
-
-  describe('matchesShortId()', () => {
-    it('should match prefix', () => {
-      expect(matchesShortId('550e8400-e29b-41d4-a716-446655440000', '550e8400')).toBe(true)
-      expect(matchesShortId('550e8400-e29b-41d4-a716-446655440000', '550e')).toBe(true)
-    })
-
-    it('should be case-insensitive', () => {
-      expect(matchesShortId('550e8400-e29b-41d4', '550E84')).toBe(true)
-    })
-
-    it('should reject non-matching prefix', () => {
-      expect(matchesShortId('550e8400-e29b-41d4', 'abcdef')).toBe(false)
-    })
-  })
 })
 
 // ============ nodeStatus helpers ============

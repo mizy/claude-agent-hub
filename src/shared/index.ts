@@ -4,10 +4,10 @@
  * 底层工具函数，无业务逻辑依赖
  *
  * 能力分组：
- * - Result<T,E>: 函数式错误处理（ok/err/unwrap/map/flatMap/fromPromise/all）
+ * - Result<T,E>: 函数式错误处理（ok/err/fromPromise）
  * - AppError: 统一错误类型（assertNever/printError/printWarning）
  * - Logger: 日志系统（createLogger/setLogLevel/setLogMode/logError/flushLogs）
- * - ID: 生成与匹配（generateId/generateShortId/isValidUUID/shortenId/matchesShortId）
+ * - ID: 生成（generateId/generateShortId）
  * - 错误守卫: isError/getErrorMessage/getErrorStack/getErrorCause/ensureError
  * - 错误转换: toInvokeError
  * - 文本: truncateText
@@ -20,16 +20,7 @@ export {
   type Result,
   ok,
   err,
-  isOk,
-  isErr,
-  unwrap,
-  unwrapOr,
-  map,
-  mapErr,
-  flatMap,
   fromPromise,
-  fromThrowable,
-  all,
 } from './result.js'
 
 // 错误类型
@@ -70,9 +61,6 @@ export {
 export {
   generateId,
   generateShortId,
-  isValidUUID,
-  shortenId,
-  matchesShortId,
 } from './generateId.js'
 
 // Backend 错误转换
