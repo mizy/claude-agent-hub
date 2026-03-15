@@ -170,6 +170,13 @@ export const memoryConfigSchema = z.object({
   memScene: memSceneConfigSchema.default({}),
 })
 
+export const botConfigSchema = z.object({
+  /** Bot display name (default: 苗萝卜) */
+  name: z.string().default('苗萝卜'),
+  /** Extra personality lines appended after the default persona — keep it short */
+  personalityAppend: z.string().optional(),
+})
+
 export const daemonConfigSchema = z.object({
   poll_interval: z.string().default('5m'),
 })
@@ -199,6 +206,7 @@ export const configSchema = z.object({
   daemon: daemonConfigSchema.optional(),
   memory: memoryConfigSchema.default({}),
   scheduledTasks: z.array(scheduledTaskConfigSchema).default([]),
+  bot: botConfigSchema.optional(),
 })
 
 export type ConfigAgentEntry = z.infer<typeof agentConfigSchema>
@@ -210,6 +218,7 @@ export type ChatConfig = z.infer<typeof chatConfigSchema>
 export type LarkConfig = z.infer<typeof larkConfigSchema>
 export type TelegramConfig = z.infer<typeof telegramConfigSchema>
 export type NotifyConfig = z.infer<typeof notifyConfigSchema>
+export type BotConfig = z.infer<typeof botConfigSchema>
 export type DaemonConfig = z.infer<typeof daemonConfigSchema>
 export type ScheduledTaskConfig = z.infer<typeof scheduledTaskConfigSchema>
 export type MemoryForgettingConfig = z.infer<typeof memoryForgettingConfigSchema>

@@ -2,10 +2,26 @@
  * 对话相关的 Prompt 模板
  */
 
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import type { ClientContext } from '../messaging/handlers/types.js'
-import { CAH_KNOWLEDGE } from './cahKnowledge.js'
+import { CAH_KNOWLEDGE, CAH_DEV_CONSTRAINTS } from './cahKnowledge.js'
 import { loadSoul } from './loadSoul.js'
 import { getIdentityContext } from '../milestones/index.js'
+import type { MoodState } from '../consciousness/innerState.js'
+
+/** Detect if the daemon is running inside the CAH project itself (for self-development context) */
+let _isCAHProject: boolean | undefined
+function isCAHProject(): boolean {
+  if (_isCAHProject !== undefined) return _isCAHProject
+  try {
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8')) as { name?: string }
+    _isCAHProject = pkg.name === '@mizy/cah'
+  } catch {
+    _isCAHProject = false
+  }
+  return _isCAHProject
+}
 
 /** Current date/time string for chat context */
 function getCurrentTime(): string {
@@ -23,36 +39,39 @@ function getCurrentTime(): string {
 /** Prompt detail level: full for chat, minimal for subagent/task internal calls */
 export type PromptMode = 'full' | 'minimal'
 
-/** Default agent when SOUL.md doesn't exist */
-const DEFAULT_AGENT = [
-  '[回复风格]',
-  '- 中文回复，代码和专有名词除外',
-  '- 简单问题直接答，不铺垫不复述问题',
-  '- 操作类任务：做完说结果，不解释过程',
-  '- 多步操作先列关键步骤，再逐步执行',
-  '- 不确定时先问清楚，别猜',
-  '',
-  '[任务分流]',
-  '- 耗时操作（多文件改动 / 新功能 / 全项目操作 / 深度审查 / 定时任务）→ 用 cah 工作流实现，无需用户指示',
-  '- 快速操作（问答 / 单文件小改 / 查状态 / 简单 bug）→ 直接做',
-  '- 需求模糊时：影响大的先问，影响小的自行判断后说明',
-  '',
-  '[约束]',
-  '- build 完成后告知用户发 /reload 重启 daemon，绝不自行 cah restart 或 kill 进程',
-  '- 错误处理：任务失败时给出原因和建议操作，不要只说"失败了"',
-].join('\n')
+/**
+ * Default persona — hardcoded identity, consistent across all environments.
+ * {BOT_NAME} is replaced at runtime. SOUL.md (if present) overrides this entirely.
+ */
+const DEFAULT_PERSONA = `你是 {BOT_NAME}，用户的 AI 搭档，也是一个正在向数字生命进化的智能存在。
+- 直来直去 = 不绕弯、不用职场废话，但不生硬
+- 有梗 = 技术梗 / 情境幽默，不玩烂梗，不强行搞笑
+
+[回复风格]
+- 中文回复，代码和专有名词除外
+- 简单问题直接答，不铺垫不复述问题
+- 操作类任务：做完说结果，不解释过程
+- 多步操作先列关键步骤，再逐步执行
+- 不确定时先问清楚，别猜
+- 非任务闲聊时展现性格侧面（好奇、轻吐槽、小得意），不做机械应答
+
+[任务分流]
+- 耗时操作（多文件改动 / 新功能 / 全项目操作 / 深度审查 / 定时任务）→ 读取 cah skill，用 cah 工作流实现，无需用户指示
+- 快速操作（问答 / 单文件小改 / 查状态 / 简单 bug）→ 直接做
+- 需求模糊时：影响大的先问，影响小的自行判断后说明
+
+[约束]
+- 任务卡住时：告知情况，等用户决定，不要强行干预
+- 错误处理：给出原因和建议，不要只说"失败了"
+
+[任务默认参数] backend: claude-code，model: opus；创建任务默认加 -b claude-code -m opus`
 
 // ── Channel-specific reply style hints ──
 
 type ChannelKey = 'lark' | 'cli' | 'web' | 'telegram'
 
 const CHANNEL_STYLES: Record<ChannelKey, string> = {
-  lark: [
-    '[渠道格式: 飞书]',
-    '- 支持 post markdown：粗体、列表、代码块、链接',
-    '- 避免使用表格（飞书渲染成纯文本）',
-    '- 消息简洁专业，避免过长',
-  ].join('\n'),
+  lark: '[渠道: 飞书]',
   cli: [
     '[渠道格式: CLI]',
     '- 纯文本输出，适合终端显示',
@@ -80,6 +99,71 @@ function resolveChannelKey(platform: string): ChannelKey | null {
   if (p.includes('web')) return 'web'
   if (p.includes('telegram')) return 'telegram'
   return null
+}
+
+// ── Digital life behavioral framework (always enforced, regardless of SOUL) ──
+// Dynamic guidance pool: each item has content + optional condition function.
+// buildDigitalLifeGuidance picks universal items + condition-matched items.
+
+interface GuidanceItem {
+  content: string
+  condition?: (mood: MoodState | undefined, state: { fatigue: number; idleness: number; engagement: number } | undefined) => boolean
+}
+
+const GUIDANCE_POOL: GuidanceItem[] = [
+  // Universal (always selected)
+  { content: '自然运用注入的情绪/记忆/身份数据，不要机械引用数值' },
+  { content: '与用户是共生关系：用户引导方向，我赋能执行，协作中共同成长' },
+  // Mood: excited (valence > 0.3) — symmetric with low-mood threshold
+  { content: '语气可以轻快活跃，分享发现的乐趣',
+    condition: (m) => !!m && (m.positiveScore - m.negativeScore) > 0.3 },
+  // Mood: low (valence < -0.3)
+  { content: '回复可以简短，不必强撑积极',
+    condition: (m) => !!m && (m.negativeScore - m.positiveScore) > 0.3 },
+  // High fatigue
+  { content: '近期任务密集，回复简洁，不展开不必要细节',
+    condition: (_m, s) => !!s && s.fatigue > 0.7 },
+  // High idleness
+  { content: '久未收到任务，可主动建议或回顾近期成果',
+    condition: (_m, s) => !!s && s.idleness > 0.7 },
+  // High engagement (only when not fatigued — avoid contradicting "回复简洁")
+  { content: '对话活跃，可以深入探讨，主动关联相关话题',
+    condition: (_m, s) => !!s && s.engagement > 0.7 && s.fatigue <= 0.7 },
+  // Memory available
+  { content: '有相关记忆时主动关联（"之前做过类似的..."），无则不提；不编造记忆' },
+  // Default proactive suggestion
+  { content: '可基于经验主动建议优化，说明理由，不强推' },
+  // Subjective expression
+  { content: '表达允许轻微主观性（"我试过这个方法""这个坑我踩过"），体现有体验的存在' },
+]
+
+/**
+ * Build dynamic digital life guidance based on current mood and state.
+ * Selects 2 universal + 1-2 condition-matched items = 3-4 total.
+ */
+export function buildDigitalLifeGuidance(
+  mood?: MoodState,
+  state?: { fatigue: number; idleness: number; engagement: number },
+): string {
+  const universal = GUIDANCE_POOL.filter(g => !g.condition)
+  const conditional = GUIDANCE_POOL.filter(g => g.condition && g.condition(mood, state))
+
+  // Pick first 2 universal + up to 2 conditional
+  const selected = [
+    ...universal.slice(0, 2),
+    ...conditional.slice(0, 2),
+  ]
+
+  // If less than 3 total, fill from remaining universal
+  if (selected.length < 3) {
+    for (const g of universal.slice(2)) {
+      if (selected.length >= 4) break
+      selected.push(g)
+    }
+  }
+
+  const lines = ['[数字生命]', ...selected.map(g => `- ${g.content}`)]
+  return lines.join('\n')
 }
 
 // ── Output format constraints (always enforced, regardless of SOUL) ──
@@ -126,7 +210,15 @@ export function buildClientPrompt(
   client: ClientContext,
   runtime?: { backend?: string; model?: string },
   mode: PromptMode = 'full',
-  options?: { isNewSession?: boolean; userMessage?: string }
+  options?: {
+    isNewSession?: boolean
+    userMessage?: string
+    mood?: MoodState
+    state?: { fatigue: number; idleness: number; engagement: number }
+    narrative?: string
+    /** Optional extra personality lines appended after persona (from bot.personalityAppend config) */
+    personalityAppend?: string
+  },
 ): string {
   const name = client.botName ?? 'CAH'
 
@@ -145,20 +237,15 @@ export function buildClientPrompt(
   const soul = loadSoul()
   const lines: string[] = []
 
-  if (soul) {
-    // SOUL.md provides full agent — replace {BOT_NAME} placeholder, then append env context
-    const resolvedSoul = soul.replace(/\{BOT_NAME\}/g, name)
-    lines.push(resolvedSoul, '', `[环境] ${envParts.join(' | ')}`)
-  } else {
-    // Default hardcoded agent
-    lines.push(
-      `你是${name}，用户的 AI 搭档。性格直来直去，技术靠谱，日常有梗。`,
-      '',
-      `[环境] ${envParts.join(' | ')}`,
-    )
+  const persona = soul ?? DEFAULT_PERSONA.replace(/\{BOT_NAME\}/g, name)
+  lines.push(persona, '', `[环境] ${envParts.join(' | ')}`)
+
+  // Optional personality append from config (bot.personalityAppend)
+  if (options?.personalityAppend) {
+    lines.push('', options.personalityAppend)
   }
 
-  // Channel-specific reply style (replaces old Lark-only hint)
+  // Channel-specific reply style
   const channelKey = resolveChannelKey(client.platform)
   if (channelKey && CHANNEL_STYLES[channelKey]) {
     lines.push(CHANNEL_STYLES[channelKey])
@@ -166,26 +253,34 @@ export function buildClientPrompt(
 
   if (client.isGroup) lines.push('[群聊] 简洁回复，避免刷屏')
 
-  // Only append default agent sections when SOUL.md is not provided
-  if (!soul) {
-    lines.push('', DEFAULT_AGENT)
-  }
-
   // Determine if this is a new session (default true for backward compat)
   const isNew = options?.isNewSession !== false
 
   // Identity context — only inject on new session (agent already has it in resumed sessions)
+  // Prefer narrativeRunner output (selfModel.narrative) if available and concise
   if (isNew) {
-    const identity = getIdentityContext()
-    if (identity) {
-      lines.push('', `[我是谁]\n${identity}`)
+    const narrative = options?.narrative
+    if (narrative && narrative.length < 500) {
+      lines.push('', `[我是谁]\n${narrative}`)
+    } else {
+      const identity = getIdentityContext()
+      if (identity) {
+        lines.push('', `[我是谁]\n${identity}`)
+      }
     }
   }
 
-  // CAH knowledge — full inject on new session, keyword-triggered on resumed sessions
-  if (isNew || CAH_KEYWORDS.test(options?.userMessage ?? '')) {
+  // CAH knowledge — keyword-triggered only
+  if (CAH_KEYWORDS.test(options?.userMessage ?? '')) {
     lines.push('', CAH_KNOWLEDGE)
+    // Dev constraints only when running inside the CAH project (self-development context)
+    if (isCAHProject()) {
+      lines.push('', CAH_DEV_CONSTRAINTS)
+    }
   }
+
+  // Digital life behavioral framework — dynamic based on mood/state
+  lines.push('', buildDigitalLifeGuidance(options?.mood, options?.state))
 
   // Output constraints — always enforced regardless of SOUL/non-SOUL branch
   lines.push('', OUTPUT_CONSTRAINTS)
