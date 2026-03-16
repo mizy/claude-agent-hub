@@ -12,6 +12,9 @@
 import chalk from 'chalk'
 import { spawn } from 'child_process'
 import { existsSync, statSync } from 'fs'
+import { createLogger } from '../shared/logger.js'
+
+const logger = createLogger('daemon')
 import { join } from 'path'
 import { getStore } from '../store/index.js'
 import { loadConfig } from '../config/loadConfig.js'
@@ -264,7 +267,7 @@ async function runDaemon(): Promise<void> {
     stopSleepPrevention()
     stopAllJobs()
     flushInnerState()
-    destroyChatHandler().catch(() => {})
+    destroyChatHandler().catch(e => logger.debug(`destroyChatHandler sync cleanup: ${e}`))
     stopTelegramClient()
     releasePidLock()
   }
@@ -284,7 +287,7 @@ async function runDaemon(): Promise<void> {
     stopSleepPrevention()
     stopAllJobs()
     flushInnerState()
-    await destroyChatHandler().catch(() => {})
+    await destroyChatHandler().catch(e => logger.debug(`destroyChatHandler graceful: ${e}`))
     stopTelegramClient()
     releasePidLock()
     try {

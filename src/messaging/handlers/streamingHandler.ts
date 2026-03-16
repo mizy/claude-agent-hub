@@ -299,7 +299,7 @@ export async function sendFinalResponse(
     // CardKit completely failed — delete the card message and fall through to send a fresh reply
     logger.warn('CardKit final update retry failed, falling back to fresh reply')
     if (placeholderId && messenger.deleteMessage) {
-      await messenger.deleteMessage(chatId, placeholderId).catch(() => {})
+      await messenger.deleteMessage(chatId, placeholderId).catch(e => logger.debug(`delete placeholder after CardKit failure: ${getErrorMessage(e)}`))
     }
     // Fall through to legacy send path below (placeholderId = null to force new message)
     placeholderId = null

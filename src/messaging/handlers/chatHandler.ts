@@ -16,7 +16,7 @@ import {
   getBackendOverride,
 } from './sessionManager.js'
 import { clearChatMemoryBuffers } from './chatMemoryExtractor.js'
-import { flushEpisode, destroyEpisodeTrackers } from './episodeExtractor.js'
+import { flushEpisode, flushAllEpisodes, destroyEpisodeTrackers } from './episodeExtractor.js'
 import { destroyGroupBuffer } from '../larkGroupBuffer.js'
 import { createBenchmark } from './chatBenchmark.js'
 import { recordEvent, registerSession, deregisterSession, updateSessionTopic, clearActiveSessions, flushInnerState } from '../../consciousness/index.js'
@@ -163,6 +163,7 @@ export async function destroyChatHandler(): Promise<void> {
   activeControllers.clear()
   clearChatMemoryBuffers()
   await destroyGroupBuffer()
+  await flushAllEpisodes()
   destroyEpisodeTrackers()
   destroySessions()
   // Clear stale activeSessions from InnerState so next startup doesn't load expired sessions

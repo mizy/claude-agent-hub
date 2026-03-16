@@ -210,6 +210,25 @@ export function clearEpisodeTracker(chatId: string): void {
 }
 
 /**
+ * Flush all pending episodes (best-effort, with timeout).
+ * Call before destroyEpisodeTrackers on graceful shutdown to avoid data loss.
+ */
+export async function flushAllEpisodes(timeoutMs = 8000): Promise<void> {
+  const pending: Promise<void>[] = []
+  for (const [chatId, tracker] of trackers) {
+    if (tracker.extracted || tracker.messages.length < 4) continue
+    clearTimer(tracker)
+    pending.push(doExtract(chatId, tracker, 'shutdown-flush'))
+  }
+  if (pending.length === 0) return
+  logger.info(`Flushing ${pending.length} pending episode(s) before shutdown`)
+  await Promise.race([
+    Promise.allSettled(pending),
+    new Promise(r => setTimeout(r, timeoutMs)),
+  ])
+}
+
+/**
  * Cleanup all trackers (on daemon shutdown).
  */
 export function destroyEpisodeTrackers(): void {
