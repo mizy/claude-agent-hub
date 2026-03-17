@@ -38,9 +38,11 @@ function buildMentionPrefix(mentions?: MentionTarget[]): string {
   ).join(' ') + ' '
 }
 
+
 export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
   // Cache: once streaming element update fails with 300309, skip directly to card.update
   let streamingElementDisabled = false
+
 
   /** Full card update — fallback when cardElement.content is unavailable */
   async function updateCardFull(cardId: string, elementId: string, content: string, sequence: number): Promise<boolean> {
@@ -261,6 +263,11 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
           body: {
             elements: [
               { tag: 'markdown', content: initialContent, element_id: elementId },
+              {
+                tag: 'markdown', content: ' ',
+                icon: { tag: 'custom_icon', img_key: 'img_v3_02vb_496bec09-4b43-4773-ad6b-0cdd103cd2bg', size: '16px 16px' },
+                element_id: 'loading_icon',
+              },
             ],
           },
         })
@@ -269,11 +276,11 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
           'createStreamingCard'
         )
         const cardId = createRes?.data?.card_id
+        logger.info(`→ createStreamingCard: card_id=${cardId ?? 'MISSING'} code=${(createRes as { code?: number })?.code}`)
         if (!cardId) {
-          logger.error('→ createStreamingCard: no card_id in response')
+          logger.error(`→ createStreamingCard: no card_id in response, full res: ${JSON.stringify(createRes)}`)
           return null
         }
-
         const sendRes = await withLarkRetry(
           () => larkClient.im.v1.message.create({
             params: { receive_id_type: 'chat_id' },
@@ -322,6 +329,7 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
 
     async closeStreamingCard(cardId: string, summary: string, sequence: number) {
       try {
+        // Mark streaming done — stops typewriter + native dots animation, shows summary in notification
         const truncated = summary.replace(/\n/g, ' ').trim().slice(0, 47) + (summary.length > 47 ? '...' : '')
         const settings = JSON.stringify({
           config: { streaming_mode: false, summary: { content: truncated } },
@@ -331,8 +339,21 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
             data: { settings, sequence, uuid: `c_${cardId}_${sequence}` },
             path: { card_id: cardId },
           }),
-          'closeStreamingCard'
+          'closeStreamingCard:settings'
         )
+        // Full card update to remove loading_icon element
+        const finalCardJson = JSON.stringify({
+          schema: '2.0',
+          config: { update_multi: true },
+          body: { elements: [{ tag: 'markdown', content: summary, element_id: 'streaming_content' }] },
+        })
+        await withLarkRetry(
+          () => larkClient.cardkit.v1.card.update({
+            data: { card: { type: 'card_json', data: finalCardJson }, sequence: sequence + 1, uuid: `c_${cardId}_${sequence + 1}` },
+            path: { card_id: cardId },
+          }),
+          'closeStreamingCard:update'
+        ).catch(e => logger.debug(`closeStreamingCard:update failed: ${getErrorMessage(e)}`))
         return true
       } catch (error) {
         logger.debug(`→ closeStreamingCard failed: ${getErrorMessage(error)}`)

@@ -177,7 +177,7 @@
   max-height: 600px; overflow-y: auto;
 }
 .stats-ms-item {
-  display: flex; gap: 16px; min-height: 0;
+  display: flex; gap: 16px; flex-shrink: 0;
 }
 .stats-ms-marker {
   display: flex; flex-direction: column; align-items: center; flex-shrink: 0;

@@ -46,6 +46,7 @@ import { registerSelfCommand } from './commands/self.js'
 import { registerScheduleCommand } from './commands/schedule.js'
 import { registerChatCommand } from './commands/chat.js'
 import { registerStatsCommand } from './commands/stats.js'
+import { registerLarkCommand } from './commands/lark.js'
 import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask, getAllTasks, listTasks } from '../task/queryTask.js'
@@ -124,6 +125,7 @@ const KNOWN_COMMANDS = [
   'self',
   'schedule',
   'chat',
+  'lark',
 ]
 
 bootstrapRuntime()
@@ -326,6 +328,7 @@ registerSelfCommand(program)
 registerScheduleCommand(program)
 registerChatCommand(program)
 registerStatsCommand(program)
+registerLarkCommand(program)
 
 // cah list - 查看任务列表的快捷命令
 program

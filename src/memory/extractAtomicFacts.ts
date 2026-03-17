@@ -36,7 +36,7 @@ const API_PATH_RE = /\/api\/[^\s,)]+/g
 const BACKTICK_RE = /`([^`]{2,60})`/g
 
 // CLI command patterns
-const CLI_RE = /\b((?:npm|pnpm|git|cah|gh|curl|docker)\s+[a-z][\w\-]*(?:\s+[\w\-./]+)*)/g
+const CLI_RE = /\b((?:npm|pnpm|git|cah|gh|curl|docker)\s+[a-z][\w-]*(?:\s+[\w-./]+)*)/g
 
 // User preference patterns: 我喜欢/我用/我习惯/我偏好/I like/I use/I prefer + entity
 const PREFERENCE_RE = /(?:我喜欢|我用|我习惯|我偏好|I\s+like|I\s+use|I\s+prefer)\s*(.{2,40}?)(?:[，。,.\n;；]|$)/gi

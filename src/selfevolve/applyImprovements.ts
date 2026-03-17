@@ -14,6 +14,7 @@ import { getActiveVersion } from '../store/PromptVersionStore.js'
 import { getTask } from '../store/TaskStore.js'
 import { getTaskWorkflow, getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { Improvement, ApplyResult } from './types.js'
 
 const logger = createLogger('selfevolve')
@@ -35,7 +36,7 @@ export async function applyImprovements(improvements: Improvement[]): Promise<Ap
       const result = await applySingle(improvement)
       results.push(result)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
+      const msg = getErrorMessage(e)
       logger.warn(`Failed to apply improvement ${improvement.id}: ${msg}`)
       results.push({
         improvementId: improvement.id,

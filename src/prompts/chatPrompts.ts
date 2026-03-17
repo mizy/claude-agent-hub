@@ -11,16 +11,16 @@ import { getIdentityContext } from '../milestones/index.js'
 import type { MoodState } from '../consciousness/innerState.js'
 
 /** Detect if the daemon is running inside the CAH project itself (for self-development context) */
-let _isCAHProject: boolean | undefined
+let cachedIsCAHProject: boolean | undefined
 function isCAHProject(): boolean {
-  if (_isCAHProject !== undefined) return _isCAHProject
+  if (cachedIsCAHProject !== undefined) return cachedIsCAHProject
   try {
     const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8')) as { name?: string }
-    _isCAHProject = pkg.name === '@mizy/cah'
+    cachedIsCAHProject = pkg.name === '@mizy/cah'
   } catch {
-    _isCAHProject = false
+    cachedIsCAHProject = false
   }
-  return _isCAHProject
+  return cachedIsCAHProject
 }
 
 /** Current date/time string for chat context */

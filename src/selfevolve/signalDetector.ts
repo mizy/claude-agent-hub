@@ -18,6 +18,7 @@ import { getTasksByStatus } from '../store/TaskStore.js'
 import { getTaskInstance } from '../store/TaskWorkflowStore.js'
 import { getLatestEvolution } from './evolutionHistory.js'
 import { createLogger } from '../shared/logger.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { DATA_DIR, TASKS_DIR, FILE_NAMES } from '../store/paths.js'
 import { getPidLock, isProcessRunning } from '../scheduler/pidLock.js'
 import type { Task } from '../types/task.js'
@@ -75,7 +76,7 @@ function saveCooldowns(data: CooldownData): void {
     mkdirSync(DATA_DIR, { recursive: true })
     writeFileSync(COOLDOWN_FILE, JSON.stringify(data, null, 2))
   } catch (err) {
-    logger.debug(`Failed to save cooldowns: ${err}`)
+    logger.debug(`Failed to save cooldowns: ${getErrorMessage(err)}`)
   }
 }
 

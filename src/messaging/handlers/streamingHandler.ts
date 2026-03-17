@@ -14,6 +14,9 @@ const STREAM_THROTTLE_MS = 1000
 const STREAM_MIN_DELTA = 80 // chars — ~1s throttle accumulates more content per update
 const DEFAULT_MAX_LENGTH = 4096
 
+/** Loading indicator appended to streaming content — removed in final response */
+const STREAMING_INDICATOR = '\n\n···'
+
 export interface StreamHandlerOptions {
   throttleMs?: number
   minDelta?: number
@@ -74,7 +77,7 @@ export function createStreamHandler(
       isFirstChunk = false
       lastEditAt = now
       lastEditLength = accumulated.length
-      scheduleEdit(accumulated, placeholderId)
+      scheduleEdit(accumulated + STREAMING_INDICATOR, placeholderId)
       return
     }
 
@@ -93,7 +96,7 @@ export function createStreamHandler(
         accumulated.length > maxLen
           ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
           : accumulated
-      scheduleEdit(preview, placeholderId)
+      scheduleEdit(preview + STREAMING_INDICATOR, placeholderId)
     }
   }
 
@@ -171,11 +174,12 @@ export async function createCardStreamHandler(
       })
   }
 
-  function formatContent(): string {
+  function formatContent(withIndicator = true): string {
     // CardKit typewriter requires old text to be a PREFIX of new text.
+    const suffix = withIndicator ? STREAMING_INDICATOR : ''
     return accumulated.length > maxLen
       ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
-      : accumulated
+      : accumulated + suffix
   }
 
   const onChunk = (chunk: string) => {

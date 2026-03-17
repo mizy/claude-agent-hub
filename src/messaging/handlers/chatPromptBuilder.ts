@@ -5,7 +5,7 @@
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
-import { buildClientPrompt, wrapMemoryContext, wrapHistoryContext, type PromptMode } from '../../prompts/chatPrompts.js'
+import { buildClientPrompt, wrapMemoryContext, type PromptMode } from '../../prompts/chatPrompts.js'
 import { getRecentConversations } from '../../store/conversationLog.js'
 import { saveChatSummary, loadChatSummary } from '../../store/chatSummaryStore.js'
 import { generateChatContextSummary } from '../../consciousness/generateSummary.js'

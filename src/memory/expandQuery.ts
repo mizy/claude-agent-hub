@@ -55,7 +55,7 @@ Example: query "workflow 节点执行失败" → ["workflow","节点","node","�
 
     const backendCall = invokeBackend({
       prompt,
-      model: 'claude-haiku-4-5-20251001',
+      model: 'haiku',
       disableMcp: true,
       timeoutMs: backendTimeoutMs,
     })

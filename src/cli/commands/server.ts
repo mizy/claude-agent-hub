@@ -97,7 +97,6 @@ export function registerDashboardCommand(program: Command) {
 async function spawnDashboardDetached(options: { port: string; host: string }) {
   const { spawn } = await import('child_process')
   const { mkdirSync, openSync } = await import('fs')
-  const { join } = await import('path')
   const { LOGS_DIR, DASHBOARD_LOG_FILE } = await import('../../store/paths.js')
   const chalk = (await import('chalk')).default
 

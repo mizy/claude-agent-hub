@@ -43,7 +43,6 @@ async function restartDashboard(binPath: string): Promise<void> {
   try {
     const { spawn } = await import('child_process')
     const { mkdirSync, openSync } = await import('fs')
-    const { join } = await import('path')
     const { LOGS_DIR, DASHBOARD_LOG_FILE } = await import('../store/paths.js')
 
     mkdirSync(LOGS_DIR, { recursive: true })

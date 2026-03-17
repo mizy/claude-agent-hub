@@ -8,6 +8,7 @@
 import { join } from 'path'
 import { readFileSync, statSync } from 'fs'
 import { DATA_DIR } from '../store/paths.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import { logger } from '../shared/logger.js'
 
 const SOUL_FILE = join(DATA_DIR, 'SOUL.md')
@@ -46,7 +47,7 @@ export function loadSoul(): string | null {
     return content
   } catch (err: unknown) {
     if (err && typeof err === 'object' && 'code' in err && err.code !== 'ENOENT') {
-      logger.warn(`Failed to read SOUL.md: ${String(err)}`)
+      logger.warn(`Failed to read SOUL.md: ${getErrorMessage(err)}`)
     }
     cached = { content: null, mtime: 0, checkedAt: now }
     return null

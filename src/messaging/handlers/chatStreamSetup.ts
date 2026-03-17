@@ -42,6 +42,7 @@ export function setupStreamingAndPlaceholder(
   const placeholderText = hasImages ? '🖼️ 已收到图片，分析中...' : hasFiles ? '📎 已收到文件，分析中...' : '🤔 思考中...'
   const isLark = platform?.includes('Lark') || platform?.includes('飞书')
   const useCardKit = isLark && !!messenger.createStreamingCard && !!messenger.updateCardElement
+  logger.info(`stream setup: platform=${platform} isLark=${isLark} useCardKit=${useCardKit}`)
 
   if (useCardKit) {
     return setupCardKitStream(chatId, placeholderText, maxLen, messenger, bench, signal)

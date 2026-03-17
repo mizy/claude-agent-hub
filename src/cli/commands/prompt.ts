@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { getAllVersions, getPromptVersion } from '../../store/PromptVersionStore.js'
 import {
   rollbackVersion,
@@ -214,7 +215,7 @@ export function registerPromptCommands(program: Command) {
         console.log(`  最小样本:  ${test.minSamples}`)
         console.log()
       } catch (e) {
-        error(`创建 A/B 测试失败: ${e instanceof Error ? e.message : String(e)}`)
+        error(`创建 A/B 测试失败: ${getErrorMessage(e)}`)
       }
     })
 

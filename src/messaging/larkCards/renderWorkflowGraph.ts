@@ -5,7 +5,7 @@
  * Node colors by status: done=green, failed=red, running=blue, pending=grey, skipped=yellow.
  */
 
-import type { Workflow, WorkflowInstance, NodeStatus } from '../../types/workflow.js'
+import type { Workflow, WorkflowInstance } from '../../types/workflow.js'
 import { createLogger } from '../../shared/logger.js'
 
 const logger = createLogger('render-workflow-graph')
@@ -67,10 +67,10 @@ export async function renderWorkflowGraph(
   if (workflow.nodes.length <= 2) return null
 
   try {
-    const { createCanvas, GlobalFonts } = await import('@napi-rs/canvas')
+    const { createCanvas, GlobalFonts: globalFonts } = await import('@napi-rs/canvas')
 
     // Register Chinese font for CJK text rendering
-    if (!GlobalFonts.has('CJK')) {
+    if (!globalFonts.has('CJK')) {
       const fontPaths = [
         '/System/Library/Fonts/PingFang.ttc',                    // macOS
         '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', // Linux (Debian/Ubuntu)
@@ -78,7 +78,7 @@ export async function renderWorkflowGraph(
       ]
       for (const fp of fontPaths) {
         try {
-          GlobalFonts.registerFromPath(fp, 'CJK')
+          globalFonts.registerFromPath(fp, 'CJK')
           break
         } catch { /* try next */ }
       }
@@ -246,7 +246,7 @@ export async function renderWorkflowGraph(
 
       // Text
       ctx.fillStyle = '#ffffff'
-      ctx.font = GlobalFonts.has('CJK') ? '13px CJK' : '13px sans-serif'
+      ctx.font = globalFonts.has('CJK') ? '13px CJK' : '13px sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
 
