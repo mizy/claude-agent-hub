@@ -196,3 +196,12 @@ export {
   traceToOTLP,
   exportTraceToOTLP,
 } from './exportOTLP.js'
+
+// IterationStore - 迭代记录存储
+export {
+  saveIteration,
+  listIterations,
+  getIteration,
+  buildIterationRecord,
+  type IterationRecord,
+} from './IterationStore.js'

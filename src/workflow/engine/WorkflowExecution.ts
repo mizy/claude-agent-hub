@@ -10,7 +10,9 @@ import {
   incrementLoopCount,
   resetNodeState,
   saveInstance,
+  updateInstanceVariables,
 } from '../../store/WorkflowStore.js'
+import { saveIteration, buildIterationRecord } from '../../store/IterationStore.js'
 import {
   markNodeDone,
   markNodeFailed,
@@ -101,8 +103,14 @@ export async function getNextNodes(
         // 增加循环计数
         incrementLoopCount(instanceId, edge.id)
 
+        // Snapshot iteration outputs before reset clears them
+        snapshotIteration(instanceId, edge.to, currentNodeId, workflow)
+
         // 重置目标节点及其下游节点（到当前节点之前）
         resetLoopPath(instanceId, edge.to, currentNodeId, workflow)
+
+        // Record loop start time for the new iteration
+        updateInstanceVariables(instanceId, { _loopStartedAt: new Date().toISOString() })
 
         logger.debug(`Loop edge ${edge.id}: count ${currentLoops + 1}/${maxLoops}`)
         loopBackFollowed = true
@@ -402,7 +410,9 @@ export async function handleNodeResult(
             return []
           }
           incrementLoopCount(instanceId, fallbackEdge.id)
+          snapshotIteration(instanceId, fallbackEdge.to, nodeId, workflow)
           resetLoopPath(instanceId, fallbackEdge.to, nodeId, workflow)
+          updateInstanceVariables(instanceId, { _loopStartedAt: new Date().toISOString() })
         }
 
         return [fallbackEdge.to]
@@ -571,6 +581,58 @@ function isTopologicalLoopBack(edge: WorkflowEdge, workflow: Workflow): boolean 
   }
 
   return false
+}
+
+/**
+ * Snapshot current loop iteration outputs before resetLoopPath clears them.
+ * Collects all node IDs in the loop path and saves their outputs as an IterationRecord.
+ */
+function snapshotIteration(
+  instanceId: string,
+  startNodeId: string,
+  stopBeforeNodeId: string,
+  workflow: Workflow
+): void {
+  const instance = getInstance(instanceId)
+  if (!instance) return
+
+  const taskId = instance.variables.taskId
+  if (typeof taskId !== 'string') return
+
+  // Collect all node IDs in the loop path (same BFS as resetLoopPath)
+  const loopNodeIds: string[] = []
+  const visited = new Set<string>()
+  const queue = [startNodeId]
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!
+    if (nodeId === stopBeforeNodeId) continue
+    if (visited.has(nodeId)) continue
+    visited.add(nodeId)
+    loopNodeIds.push(nodeId)
+    for (const edge of workflow.edges) {
+      if (edge.from === nodeId && edge.maxLoops === undefined) {
+        queue.push(edge.to)
+      }
+    }
+  }
+  // Also include the trigger node itself
+  loopNodeIds.push(stopBeforeNodeId)
+
+  // Only snapshot if there are actual outputs to save
+  const hasOutputs = loopNodeIds.some(id => id in instance.outputs)
+  if (!hasOutputs) return
+
+  const record = buildIterationRecord(taskId, instance.outputs, loopNodeIds)
+
+  // Use _loopStartedAt if available, fallback to instance.startedAt for first iteration
+  const loopStartedAt = instance.variables._loopStartedAt ?? instance.startedAt
+  if (typeof loopStartedAt === 'string') {
+    record.startedAt = loopStartedAt
+    record.durationMs = new Date(record.completedAt).getTime() - new Date(loopStartedAt).getTime()
+  }
+
+  saveIteration(taskId, record)
+  logger.debug(`Saved iteration ${record.iterationNumber} for task ${taskId}`)
 }
 
 /**

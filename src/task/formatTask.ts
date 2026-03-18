@@ -19,6 +19,8 @@ import {
   getInstancePath,
 } from '../store/TaskWorkflowStore.js'
 import { getLogPath, getOutputPath } from '../store/TaskLogStore.js'
+import { listIterations } from '../store/IterationStore.js'
+import { formatDuration } from '../shared/formatTime.js'
 import type { Task } from '../types/task.js'
 
 // ============ Progress ============
@@ -365,6 +367,24 @@ export async function getTaskDetail(id: string, options: GetTaskDetailOptions = 
     const outputPath = getOutputPath(task.id)
     if (existsSync(outputPath)) {
       console.log(`  ${chalk.gray('Output:')} ${chalk.green(outputPath)}`)
+    }
+  }
+
+  // Iteration records (for scheduled/looping tasks)
+  const iterations = listIterations(task.id)
+  if (iterations.length > 0) {
+    console.log('')
+    console.log(chalk.bold('Recent Iterations:'))
+    const recent = iterations.slice(-5)
+    for (const iter of recent) {
+      const num = `#${String(iter.iterationNumber).padStart(3, '0')}`
+      const time = iter.startedAt.replace('T', ' ').slice(0, 16)
+      const duration = iter.durationMs > 0 ? formatDuration(iter.durationMs) : '-'
+      const statusIcon = iter.status === 'completed' ? chalk.green('✅') : chalk.red('❌')
+      console.log(`  ${num} | ${time} | ${duration} | ${statusIcon} ${iter.status}`)
+    }
+    if (iterations.length > 5) {
+      console.log(chalk.gray(`  ... ${iterations.length - 5} more (use 'cah task iterations ${task.id}' to see all)`))
     }
   }
 

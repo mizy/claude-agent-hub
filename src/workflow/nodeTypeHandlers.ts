@@ -221,7 +221,7 @@ export async function executeNodeByType(
     }
 
     case 'lark-notify': {
-      return executeLarkNotifyNode(node, instance)
+      return executeLarkNotifyNode(node, instance, workflow)
     }
 
     default:
@@ -426,7 +426,8 @@ async function executeTaskNode(
  */
 async function executeLarkNotifyNode(
   node: WorkflowNode,
-  instance: WorkflowInstance
+  instance: WorkflowInstance,
+  workflow: Workflow
 ): Promise<{ success: boolean; output?: unknown; error?: string }> {
   // Allow missing larkNotify config — use defaults (auto-detect content & chatId)
   const config = node.larkNotify ?? {}
@@ -445,16 +446,28 @@ async function executeLarkNotifyNode(
       text = config.content
     }
   } else {
-    // 取最近完成节点的输出
-    const doneNodes = Object.entries(instance.nodeStates || {})
-      .filter(([, s]) => s.status === 'done' && s.completedAt)
-      .sort((a, b) => new Date(b[1].completedAt!).getTime() - new Date(a[1].completedAt!).getTime())
-    const latest = doneNodes[0]
-    if (latest) {
-      const latestNodeId = latest[0]
-      const nodeOutput = instance.outputs?.[latestNodeId] as Record<string, unknown> | undefined
-      text = nodeOutput?._raw as string | undefined
+    // 汇总所有已完成 task 节点的输出（按完成时间排序）
+    const nodeMap = new Map(workflow.nodes.map(n => [n.id, n]))
+    const doneTaskNodes = Object.entries(instance.nodeStates || {})
+      .filter(([id, s]) => {
+        if (s.status !== 'done' || !s.completedAt) return false
+        const wfNode = nodeMap.get(id)
+        return wfNode?.type === 'task'
+      })
+      .sort((a, b) => new Date(a[1].completedAt!).getTime() - new Date(b[1].completedAt!).getTime())
+
+    const sections: string[] = []
+    for (const [nodeId] of doneTaskNodes) {
+      const wfNode = nodeMap.get(nodeId)
+      const nodeOutput = instance.outputs?.[nodeId] as Record<string, unknown> | undefined
+      const raw = nodeOutput?._raw as string | undefined
+      if (!raw) continue
+      const label = wfNode?.name || nodeId
+      // Truncate individual sections to keep total manageable
+      const content = raw.length > 1500 ? raw.slice(0, 1500) + '\n...(truncated)' : raw
+      sections.push(`**${label}**\n${content}`)
     }
+    text = sections.length > 0 ? sections.join('\n\n---\n\n') : undefined
   }
 
   if (!text) {

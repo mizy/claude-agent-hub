@@ -51,6 +51,7 @@ import { runTask } from '../task/runTask.js'
 import { executeTask } from '../task/executeTask.js'
 import { pollPendingTask, getAllTasks, listTasks } from '../task/queryTask.js'
 import { getTaskFolder, getLogPath } from '../task/index.js'
+import { handleIterationsAction } from './commands/taskIterations.js'
 import { withProcessTracking } from '../task/processTracking.js'
 import { existsSync } from 'fs'
 import { spawn } from 'child_process'
@@ -388,6 +389,17 @@ program
       error(`Failed to tail logs: ${err.message}`)
     })
   })
+
+// cah iterations <id> - 查看迭代记录的快捷命令
+program
+  .command('iterations')
+  .alias('iter')
+  .description('查看定时任务迭代记录 (cah task iterations 的快捷方式)')
+  .argument('<id>', '任务 ID')
+  .option('--last <n>', '只显示最近 N 条记录')
+  .option('--detail <n>', '显示第 N 次迭代的详细输出')
+  .option('--json', '以 JSON 格式输出')
+  .action(handleIterationsAction)
 
 /**
  * 检测并自动恢复孤立任务

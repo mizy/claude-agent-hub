@@ -120,10 +120,10 @@ function startIdleTimer(chatId: string, tracker: ConversationTracker): void {
     if (!enabled || tracker.timerGen !== gen) return
     tracker.timer = setTimeout(() => {
       if (!tracker.extracted) {
-        doExtract(chatId, tracker, 'idle-timeout').catch(() => {})
+        doExtract(chatId, tracker, 'idle-timeout').catch(e => logger.debug(`idle-timeout extract failed: ${getErrorMessage(e)}`))
       }
     }, idleTimeoutMs)
-  }).catch(() => {})
+  }).catch(e => logger.debug(`getEpisodicConfig failed in startIdleTimer: ${getErrorMessage(e)}`))
 }
 
 /**
@@ -161,9 +161,9 @@ export function trackEpisodeTurn(
   // Check explicit end patterns (only if enough turns)
   getEpisodicConfig().then(({ enabled, minTurnsForExplicitEnd }) => {
     if (enabled && tracker.turnCount >= minTurnsForExplicitEnd && END_PATTERNS.test(userText.trim())) {
-      doExtract(chatId, tracker, 'explicit-end').catch(() => {})
+      doExtract(chatId, tracker, 'explicit-end').catch(e => logger.debug(`explicit-end extract failed: ${getErrorMessage(e)}`))
     }
-  }).catch(() => {})
+  }).catch(e => logger.debug(`getEpisodicConfig failed in trackEpisodeTurn: ${getErrorMessage(e)}`))
 }
 
 /**
@@ -177,9 +177,9 @@ export function triggerEpisodeOnTaskCreation(chatId: string): void {
   clearTimer(tracker)
   getEpisodicConfig().then(({ enabled }) => {
     if (enabled) {
-      doExtract(chatId, tracker, 'task-creation').catch(() => {})
+      doExtract(chatId, tracker, 'task-creation').catch(e => logger.debug(`task-creation extract failed: ${getErrorMessage(e)}`))
     }
-  }).catch(() => {})
+  }).catch(e => logger.debug(`getEpisodicConfig failed in triggerEpisodeOnTaskCreation: ${getErrorMessage(e)}`))
 }
 
 /**
@@ -192,9 +192,9 @@ export function flushEpisode(chatId: string): void {
   clearTimer(tracker)
   getEpisodicConfig().then(({ enabled }) => {
     if (enabled) {
-      doExtract(chatId, tracker, 'session-clear').catch(() => {})
+      doExtract(chatId, tracker, 'session-clear').catch(e => logger.debug(`session-clear extract failed: ${getErrorMessage(e)}`))
     }
-  }).catch(() => {})
+  }).catch(e => logger.debug(`getEpisodicConfig failed in flushEpisode: ${getErrorMessage(e)}`))
 }
 
 /**

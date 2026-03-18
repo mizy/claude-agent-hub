@@ -15,6 +15,7 @@ import { registerTaskListCommands } from './taskList.js'
 import { registerTaskLogsCommands } from './taskLogs.js'
 import { registerTaskLifecycleCommands } from './taskLifecycle.js'
 import { registerTraceCommand } from './trace.js'
+import { registerTaskIterationsCommands } from './taskIterations.js'
 
 export function registerTaskCommands(program: Command) {
   const task = program.command('task').description('任务管理命令').enablePositionalOptions()
@@ -23,6 +24,8 @@ export function registerTaskCommands(program: Command) {
   registerTaskListCommands(task)
   registerTaskLogsCommands(task)
   registerTaskLifecycleCommands(task)
+
+  registerTaskIterationsCommands(task)
 
   // 注册 trace 子命令
   registerTraceCommand(task)
