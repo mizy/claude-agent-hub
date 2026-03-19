@@ -182,6 +182,9 @@ interface SessionState {
   willStartNewSession: boolean
 }
 
+/** First-byte timeout for chat (60s) — detects network stalls without killing long tasks */
+const CHAT_FIRST_BYTE_TIMEOUT_MS = 60 * 1000
+
 /** Max turns before auto-rotating session to avoid bloated CLI context */
 const SESSION_MAX_TURNS = 30
 
@@ -316,6 +319,7 @@ async function handleChatInternal(
         disableMcp: chatMcp.length === 0,
         mcpServers: chatMcp.length > 0 ? chatMcp : undefined,
         model, backendType: ss.backendOverride, signal,
+        firstByteTimeoutMs: CHAT_FIRST_BYTE_TIMEOUT_MS,  // Detect network stalls
       }),
     ])
     bench.backendDone = Date.now()

@@ -457,7 +457,7 @@ export async function retrieveAllMemoryContext(
 
   // Retrieve MemScene snapshot (layer 1)
   const matchedScenes: MemScene[] = []
-  const domain = await classifyDomain(query)
+  const domain = classifyDomain(query, config)
   if (domain) {
     const scene = getMemScene(domain)
     if (scene) matchedScenes.push(scene)

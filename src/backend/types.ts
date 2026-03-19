@@ -23,6 +23,8 @@ export interface InvokeOptions {
   skipPermissions?: boolean
   /** 超时毫秒数，默认 30 分钟 */
   timeoutMs?: number
+  /** 首字节超时毫秒数（无输出则报错），默认 60 秒，设为 0 禁用 */
+  firstByteTimeoutMs?: number
   /** 流式输出回调 */
   onChunk?: (chunk: string) => void
   /** 工具调用开始时回调（用于重置流式显示，只显示最新一轮 assistant 文本） */

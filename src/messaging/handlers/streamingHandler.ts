@@ -15,7 +15,7 @@ const STREAM_MIN_DELTA = 80 // chars — ~1s throttle accumulates more content p
 const DEFAULT_MAX_LENGTH = 4096
 
 /** Loading indicator appended to streaming content — removed in final response */
-const STREAMING_INDICATOR = '\n\n···'
+const STREAMING_INDICATOR = ''
 
 export interface StreamHandlerOptions {
   throttleMs?: number

@@ -15,8 +15,7 @@ import type { MemScene } from './types.js'
  * Classify text into a domain using keyword dictionary from config.
  * Returns the domain with the most keyword hits, or null if no match.
  */
-export async function classifyDomain(text: string): Promise<string | null> {
-  const config = await loadConfig()
+export function classifyDomain(text: string, config: { memory: { memScene: { domains: Record<string, string[]> } } }): string | null {
   const domains = config.memory.memScene.domains
   const lower = text.toLowerCase()
 

@@ -330,9 +330,9 @@ export function createLarkAdapter(larkClient: Lark.Client): MessengerAdapter {
     async closeStreamingCard(cardId: string, summary: string, sequence: number) {
       try {
         // Mark streaming done — stops typewriter + native dots animation, shows summary in notification
-        const truncated = summary.replace(/\n/g, ' ').trim().slice(0, 47) + (summary.length > 47 ? '...' : '')
+        const summaryContent = summary.replace(/\n/g, ' ').trim()
         const settings = JSON.stringify({
-          config: { streaming_mode: false, summary: { content: truncated } },
+          config: { streaming_mode: false, summary: { content: summaryContent } },
         })
         await withLarkRetry(
           () => larkClient.cardkit.v1.card.settings({
