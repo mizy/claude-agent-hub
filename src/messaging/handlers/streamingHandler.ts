@@ -94,7 +94,7 @@ export function createStreamHandler(
       lastEditLength = accumulated.length
       const preview =
         accumulated.length > maxLen
-          ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
+          ? accumulated.slice(0, maxLen)
           : accumulated
       scheduleEdit(preview + STREAMING_INDICATOR, placeholderId)
     }
@@ -178,7 +178,7 @@ export async function createCardStreamHandler(
     // CardKit typewriter requires old text to be a PREFIX of new text.
     const suffix = withIndicator ? STREAMING_INDICATOR : ''
     return accumulated.length > maxLen
-      ? accumulated.slice(0, maxLen - 20) + '\n\n... (输出中)'
+      ? accumulated.slice(0, maxLen)
       : accumulated + suffix
   }
 

@@ -23,10 +23,6 @@ export function createCliAdapter(format: CliOutputFormat = 'text'): CliAdapterRe
   let streamedLength = 0
   let capturedResponse = ''
 
-  // Strip streaming overflow indicator appended by streamingHandler
-  function stripIndicator(text: string): string {
-    return text.replace(/\n\n\.\.\. \(输出中\)$/, '')
-  }
 
   const messenger: MessengerAdapter = {
     async reply(_chatId, text) {
@@ -52,23 +48,21 @@ export function createCliAdapter(format: CliOutputFormat = 'text'): CliAdapterRe
     },
 
     async editMessage(_chatId, _messageId, text) {
-      const clean = stripIndicator(text)
-
       if (format === 'text') {
-        const delta = clean.slice(streamedLength)
+        const delta = text.slice(streamedLength)
         if (delta) {
           process.stdout.write(delta)
-          streamedLength = clean.length
+          streamedLength = text.length
         }
       } else if (format === 'stream-json') {
-        const delta = clean.slice(streamedLength)
+        const delta = text.slice(streamedLength)
         if (delta) {
           process.stdout.write(JSON.stringify({ type: 'content_block_delta', delta }) + '\n')
-          streamedLength = clean.length
+          streamedLength = text.length
         }
       }
       // json mode: silent, just capture
-      capturedResponse = clean
+      capturedResponse = text
       return true
     },
 
