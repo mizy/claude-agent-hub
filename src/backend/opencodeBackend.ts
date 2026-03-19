@@ -18,6 +18,7 @@ import { stripAnsi } from '../shared/logger.js'
 import { collectStream } from './collectStream.js'
 import { createClaudeCompatStreamProcessor } from './claudeCompatHelpers.js'
 import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
+import { writeOpencodeSystemPrompt } from './systemPromptWriter.js'
 
 const logger = createLogger('opencode')
 
@@ -50,10 +51,13 @@ export function createOpencodeBackend(): BackendAdapter {
         signal,
       } = options
 
-      // Fallback: prepend systemPrompt (opencode doesn't support --append-system-prompt)
-      const prompt = systemPrompt ? `${systemPrompt}\n\n${rawPrompt}` : rawPrompt
+      // 写入全局 system prompt 配置文件
+      if (systemPrompt) {
+        writeOpencodeSystemPrompt(systemPrompt)
+      }
+
       const args = buildOpencodeArgs({
-        prompt,
+        prompt: rawPrompt,
         cwd,
         model,
         sessionId,
@@ -63,12 +67,10 @@ export function createOpencodeBackend(): BackendAdapter {
       const startTime = Date.now()
       const perf = { spawn: 0, firstStdout: 0, firstDelta: 0 }
 
-      const loggedPrompt = systemPrompt
-        ? `[SYSTEM PROMPT]\n${systemPrompt}\n\n[USER PROMPT]\n${rawPrompt}`
-        : prompt
+      const loggedPrompt = rawPrompt
       logCliCommand({
         backend: 'opencode',
-        command: buildRedactedCommand('opencode', args, prompt),
+        command: buildRedactedCommand('opencode', args, rawPrompt),
         prompt: loggedPrompt,
         sessionId,
         model,
@@ -157,7 +159,7 @@ export function createOpencodeBackend(): BackendAdapter {
         )
 
         return ok({
-          prompt,
+          prompt: rawPrompt,
           response: parsed.response,
           durationMs,
           sessionId: parsed.sessionId,

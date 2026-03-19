@@ -6,7 +6,6 @@
  * and generates summary strings for prompt injection.
  */
 
-import { loadConfig } from '../config/loadConfig.js'
 import { getMemScene, saveMemScene } from '../store/MemSceneStore.js'
 import { getMemory } from '../store/MemoryStore.js'
 import type { MemScene } from './types.js'

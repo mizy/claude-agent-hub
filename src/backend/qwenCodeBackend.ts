@@ -16,6 +16,7 @@ import type { BackendAdapter, InvokeOptions, InvokeResult, InvokeError } from '.
 import { collectStderr } from './processHelpers.js'
 import { collectStream } from './collectStream.js'
 import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
+import { writeQwenSystemPrompt } from './systemPromptWriter.js'
 
 const logger = createLogger('qwen-code')
 
@@ -35,7 +36,8 @@ export function createQwenCodeBackend(): BackendAdapter {
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
       const {
-        prompt,
+        prompt: rawPrompt,
+        systemPrompt,
         cwd = process.cwd(),
         stream = false,
         skipPermissions = true,
@@ -46,13 +48,18 @@ export function createQwenCodeBackend(): BackendAdapter {
         signal,
       } = options
 
-      const args = buildArgs(prompt, model, sessionId, skipPermissions)
+      // 写入全局 system prompt 配置文件
+      if (systemPrompt) {
+        writeQwenSystemPrompt(systemPrompt)
+      }
+
+      const args = buildArgs(rawPrompt, model, sessionId, skipPermissions)
       const startTime = Date.now()
 
       logCliCommand({
         backend: 'qwen-code',
-        command: buildRedactedCommand('qwen', args, prompt),
-        prompt,
+        command: buildRedactedCommand('qwen', args, rawPrompt),
+        prompt: rawPrompt,
         sessionId,
         model,
         cwd,
@@ -93,7 +100,7 @@ export function createQwenCodeBackend(): BackendAdapter {
         logger.info(`完成 (${(durationMs / 1000).toFixed(1)}s)`)
 
         return ok({
-          prompt,
+          prompt: rawPrompt,
           response: parsed.response,
           durationMs,
           sessionId: parsed.sessionId,

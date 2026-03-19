@@ -23,6 +23,7 @@ import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js
 import { DATA_DIR } from '../store/paths.js'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
+import { writeIflowSystemPrompt } from './systemPromptWriter.js'
 
 const logger = createLogger('iflow')
 
@@ -54,18 +55,19 @@ export function createIflowBackend(): BackendAdapter {
         signal,
       } = options
 
-      // Fallback: prepend systemPrompt (iflow doesn't support --append-system-prompt)
-      const prompt = systemPrompt ? `${systemPrompt}\n\n${rawPrompt}` : rawPrompt
-      const args = buildArgs(prompt, model, sessionId, skipPermissions)
+      // 写入全局 system prompt 配置文件
+      if (systemPrompt) {
+        writeIflowSystemPrompt(systemPrompt)
+      }
+
+      const args = buildArgs(rawPrompt, model, sessionId, skipPermissions)
       const startTime = Date.now()
 
-      const loggedPrompt = systemPrompt
-        ? `[SYSTEM PROMPT]\n${systemPrompt}\n\n[USER PROMPT]\n${rawPrompt}`
-        : prompt
+      const loggedPrompt = rawPrompt
 
       logCliCommand({
         backend: 'iflow',
-        command: buildRedactedCommand('iflow', args, prompt),
+        command: buildRedactedCommand('iflow', args, rawPrompt),
         prompt: loggedPrompt,
         sessionId,
         model,
@@ -116,7 +118,7 @@ export function createIflowBackend(): BackendAdapter {
         logger.info(`完成 (${(durationMs / 1000).toFixed(1)}s)`)
 
         return ok({
-          prompt,
+          prompt: rawPrompt,
           response: parsed.response,
           durationMs,
           sessionId: parsed.sessionId,
