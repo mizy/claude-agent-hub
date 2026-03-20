@@ -9,17 +9,13 @@ import { buildClientPrompt, wrapMemoryContext, type PromptMode } from '../../pro
 import { getRecentConversations } from '../../store/conversationLog.js'
 import { saveChatSummary, loadChatSummary } from '../../store/chatSummaryStore.js'
 import { generateChatContextSummary } from '../../consciousness/generateSummary.js'
-import { retrieveAllMemoryContext, retrieveRelevantMemories } from '../../memory/index.js'
-import { extractEntities as extractMemoryEntities } from '../../memory/entityIndex.js'
+import { retrieveAllMemoryContext } from '../../memory/index.js'
 import { loadSelfModel, loadInnerState } from '../../consciousness/index.js'
 import { buildConsciousnessBlock } from './buildConsciousnessBlock.js'
 import { isClaudeModelBackend, selectModel } from './selectModel.js'
 import { getModelOverride } from './sessionManager.js'
 import { buildFileInlineSection } from './chatInputParser.js'
 import type { ClientContext } from './types.js'
-
-/** Resume memory retrieval budget (chars) */
-const RESUME_MEMORY_BUDGET = 500
 
 const logger = createLogger('chat-prompt-builder')
 
@@ -151,31 +147,8 @@ export async function buildFullPrompt(
       logger.debug(`memory retrieval failed: ${getErrorMessage(e)}`)
       return null
     })
-  } else if (mode === 'full' && !willStartNewSession && effectiveText) {
-    // 4.2 Resume: entity-triggered memory retrieval — lightweight, no LLM
-    try {
-      const queryEntities = extractMemoryEntities(effectiveText)
-      if (queryEntities.length > 0) {
-        logger.debug(`resume: detected ${queryEntities.length} entities in query, triggering memory retrieval [${chatId.slice(0, 8)}]`)
-        memoryPromise = retrieveRelevantMemories(effectiveText, {
-          maxResults: 3,
-        }).then(memories => {
-          if (!memories.length) return null
-          // Format with budget limit
-          const lines = memories.map(m => `- ${m.content}`).join('\n')
-          const result = `[相关记忆]\n${lines}`
-          return result.length > RESUME_MEMORY_BUDGET
-            ? result.slice(0, RESUME_MEMORY_BUDGET) + '\n…'
-            : result
-        }).catch(e => {
-          logger.debug(`resume memory retrieval failed: ${getErrorMessage(e)}`)
-          return null
-        })
-      }
-    } catch (e) {
-      logger.debug(`resume entity extraction failed: ${getErrorMessage(e)}`)
-    }
   }
+  // Resume path: no memory injection — CLI already has full session context via --resume
 
   if (summaryPromise) {
     onStatus?.('📝 构建对话上下文...')

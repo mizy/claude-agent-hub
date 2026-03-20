@@ -311,16 +311,13 @@ async function handleChatInternal(
   }
 
   // 5. Resolve model
+  // On resume, CLI ignores --model (uses session's original model), so only resolve for new sessions.
+  // Exception: explicit inline model (@opus) is always honored — it forces a new session via inlineBackend.
   const hasImages = !!options?.images?.length
   const hasFiles = !!options?.files?.length
-  const model = resolveModel(
-    effectiveText,
-    hasImages,
-    inlineModel,
-    chatId,
-    ss.backendOverride,
-    config
-  )
+  const model = ss.willStartNewSession
+    ? resolveModel(effectiveText, hasImages, inlineModel, chatId, ss.backendOverride, config)
+    : inlineModel ?? undefined
   const backendName = ss.backendOverride ?? config.defaultBackend ?? 'claude-code'
   const chatMcp = config.backends[config.defaultBackend]?.chat?.mcpServers ?? []
 
