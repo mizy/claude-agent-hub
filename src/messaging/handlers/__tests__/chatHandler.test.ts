@@ -10,6 +10,7 @@ const mockInvokeBackend = vi.fn()
 vi.mock('../../../backend/index.js', () => ({
   invokeBackend: (...args: unknown[]) => mockInvokeBackend(...args),
   isPersistentProcessAlive: () => true,
+  usesPersistentProcess: (type?: string) => type === 'claude-code' || type === 'codebuddy',
 }))
 
 // Mock conversation log

@@ -37,7 +37,23 @@ export { resolveBackendConfig } from './backendConfig.js'
 
 export { buildPrompt, type BuiltPrompt } from './promptBuilder.js'
 
-export { shutdownPersistentProcess, shutdownAllPersistentProcesses, getPersistentProcessCount, isPersistentProcessAlive } from './persistentClaudeInvoke.js'
+export {
+  shutdownPersistentProcess,
+  shutdownAllPersistentProcesses,
+  getPersistentProcessCount,
+  isPersistentProcessAlive,
+} from './persistentClaudeInvoke.js'
+
+/** Backends that use persistent process pools (claude CLI --persistent mode) */
+const PERSISTENT_BACKEND_TYPES = new Set(['claude-code', 'codebuddy'])
+
+/**
+ * Check if a backend type supports persistent process mode.
+ * Only claude-code and codebuddy support persistent; opencode/iflow are always one-shot.
+ */
+export function usesPersistentProcess(backendType?: string): boolean {
+  return PERSISTENT_BACKEND_TYPES.has(backendType ?? '')
+}
 
 import { resolveBackend } from './resolveBackend.js'
 import { resolveBackendConfig } from './backendConfig.js'

@@ -3,7 +3,11 @@
  * Routes text messages to AI backend with session management, streaming, and image detection
  */
 
-import { invokeBackend, isPersistentProcessAlive } from '../../backend/index.js'
+import {
+  invokeBackend,
+  isPersistentProcessAlive,
+  usesPersistentProcess,
+} from '../../backend/index.js'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
@@ -19,7 +23,14 @@ import { clearChatMemoryBuffers } from './chatMemoryExtractor.js'
 import { flushEpisode, flushAllEpisodes, destroyEpisodeTrackers } from './episodeExtractor.js'
 import { destroyGroupBuffer } from '../larkGroupBuffer.js'
 import { createBenchmark } from './chatBenchmark.js'
-import { recordEvent, registerSession, deregisterSession, updateSessionTopic, clearActiveSessions, flushInnerState } from '../../consciousness/index.js'
+import {
+  recordEvent,
+  registerSession,
+  deregisterSession,
+  updateSessionTopic,
+  clearActiveSessions,
+  flushInnerState,
+} from '../../consciousness/index.js'
 import type { MessengerAdapter, ClientContext } from './types.js'
 import type { StreamHandlerOptions } from './streamingHandler.js'
 
@@ -31,7 +42,12 @@ export { parseBackendOverride } from './parseBackendOverride.js'
 // Import from split modules
 import { parseMessageInput } from './chatInputParser.js'
 import { buildFullPrompt, resolveModel } from './chatPromptBuilder.js'
-import { processSuccessResult, notifyInterrupted, sendErrorToUser, recordBackendPreference } from './chatResponseProcessor.js'
+import {
+  processSuccessResult,
+  notifyInterrupted,
+  sendErrorToUser,
+  recordBackendPreference,
+} from './chatResponseProcessor.js'
 import { setupStreamingAndPlaceholder } from './chatStreamSetup.js'
 
 const logger = createLogger('chat-handler')
@@ -92,7 +108,9 @@ export function clearChatSession(chatId: string): boolean {
   try {
     deregisterSession(chatId)
     recordEvent('session_end', '会话主动清除')
-  } catch (e) { logger.debug(`consciousness cleanup failed: ${getErrorMessage(e)}`) }
+  } catch (e) {
+    logger.debug(`consciousness cleanup failed: ${getErrorMessage(e)}`)
+  }
   return clearSession(chatId)
 }
 
@@ -132,11 +150,16 @@ export async function destroyChatHandler(): Promise<void> {
       if (ck && ctx.messenger.updateCardElement) {
         // CardKit path: update card element then close streaming mode
         shutdownEdits.push(
-          ctx.messenger.updateCardElement(ck.cardId, ck.elementId, content, ck.getSequence())
+          ctx.messenger
+            .updateCardElement(ck.cardId, ck.elementId, content, ck.getSequence())
             .then(ok => {
-              if (ok) return ctx.messenger.closeStreamingCard?.(ck.cardId, content, ck.getSequence()).catch(() => {})
+              if (ok)
+                return ctx.messenger
+                  .closeStreamingCard?.(ck.cardId, content, ck.getSequence())
+                  .catch(() => {})
               // Fallback: delete card + reply
-              return ctx.messenger.deleteMessage?.(chatId, placeholderId)
+              return ctx.messenger
+                .deleteMessage?.(chatId, placeholderId)
                 .then(() => ctx.messenger.reply(chatId, content))
                 .catch(() => {})
             })
@@ -146,7 +169,8 @@ export async function destroyChatHandler(): Promise<void> {
       } else {
         // Legacy path: editMessage
         shutdownEdits.push(
-          ctx.messenger.editMessage(chatId, placeholderId, content)
+          ctx.messenger
+            .editMessage(chatId, placeholderId, content)
             .then(() => {})
             .catch(e => logger.debug(`shutdown edit failed [${chatId.slice(0, 8)}]: ${e}`))
         )
@@ -170,7 +194,9 @@ export async function destroyChatHandler(): Promise<void> {
   try {
     clearActiveSessions()
     flushInnerState()
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 // ── Session state resolution ──
@@ -191,6 +217,7 @@ const SESSION_MAX_TURNS = 30
 function resolveSessionState(
   chatId: string,
   inlineBackend: string | undefined,
+  defaultBackendName: string
 ): SessionState {
   const session = getSession(chatId)
   let sessionId = session?.sessionId
@@ -205,8 +232,8 @@ function resolveSessionState(
     )
   }
 
-  const currentBackend = backendOverride ?? 'default'
-  const previousBackend = session?.sessionBackendType ?? 'default'
+  const currentBackend = backendOverride ?? defaultBackendName
+  const previousBackend = session?.sessionBackendType ?? defaultBackendName
   const backendChanged = !!(sessionId && previousBackend !== currentBackend)
   if (backendChanged) {
     logger.info(`🔄 session backend changed, starting new session`)
@@ -217,7 +244,12 @@ function resolveSessionState(
   }
 
   // Auto-rotate session when turn count exceeds threshold to prevent CLI context bloat
-  const turnRotation = !!(sessionId && !backendChanged && session && session.turnCount >= SESSION_MAX_TURNS)
+  const turnRotation = !!(
+    sessionId &&
+    !backendChanged &&
+    session &&
+    session.turnCount >= SESSION_MAX_TURNS
+  )
   if (turnRotation) {
     logger.info(`🔄 session auto-rotated after ${session.turnCount} turns [${chatId.slice(0, 8)}]`)
     logConversationEvent('会话自动轮换', `${session.turnCount} turns, 清理上下文`)
@@ -228,7 +260,13 @@ function resolveSessionState(
 
   // Persistent process died (crash/daemon restart) but session store still has sessionId.
   // Force new session so chatPromptBuilder injects history summary + recent messages.
-  if (sessionId && !isPersistentProcessAlive(process.cwd())) {
+  // Only applies to backends that use persistent processes (claude-code, codebuddy).
+  // For other backends (opencode, iflow), there is no persistent process — skip this check.
+  if (
+    sessionId &&
+    usesPersistentProcess(currentBackend) &&
+    !isPersistentProcessAlive(process.cwd())
+  ) {
     logger.info(`🔄 persistent process dead, forcing new session [${chatId.slice(0, 8)}]`)
     logConversationEvent('持久进程重建', '注入历史上下文')
     clearSession(chatId)
@@ -261,11 +299,14 @@ async function handleChatInternal(
     return
   }
 
-  // 2. Resolve session context
-  const ss = resolveSessionState(chatId, inlineBackend)
+  // 2. Load config early to determine default backend for session resolution
+  const config = await loadConfig()
+
+  // 3. Resolve session context
+  const ss = resolveSessionState(chatId, inlineBackend, config.defaultBackend)
   if (inlineBackend && effectiveText) recordBackendPreference(chatId, inlineBackend, effectiveText)
 
-  // 3. Log user message + consciousness events
+  // 4. Log user message + consciousness events
   logConversation({
     ts: new Date().toISOString(),
     dir: 'in',
@@ -284,23 +325,46 @@ async function handleChatInternal(
     }
     updateSessionTopic(chatId, effectiveText || '')
     recordEvent('msg_in', effectiveText?.slice(0, 50) || '[非文本消息]')
-  } catch (e) { logger.debug(`consciousness event recording failed: ${getErrorMessage(e)}`) }
+  } catch (e) {
+    logger.debug(`consciousness event recording failed: ${getErrorMessage(e)}`)
+  }
 
-  // 4. Resolve config + model
-  const config = await loadConfig()
+  // 5. Resolve model
   const hasImages = !!options?.images?.length
   const hasFiles = !!options?.files?.length
   const model = resolveModel(
-    effectiveText, hasImages, inlineModel, chatId, ss.backendOverride, config
+    effectiveText,
+    hasImages,
+    inlineModel,
+    chatId,
+    ss.backendOverride,
+    config
   )
   const backendName = ss.backendOverride ?? config.defaultBackend ?? 'claude-code'
   const chatMcp = config.backends[config.defaultBackend]?.chat?.mcpServers ?? []
 
-  // 5. Setup streaming + placeholder — start before prompt build so placeholder appears sooner
+  // 6. Setup streaming + placeholder — start before prompt build so placeholder appears sooner
   const streamOpts: StreamHandlerOptions | undefined =
     platform === 'Web' ? { throttleMs: 150, minDelta: 10 } : undefined
-  const stream = setupStreamingAndPlaceholder(chatId, hasImages, hasFiles, maxLen, messenger, bench, signal, streamOpts, platform)
-  activeStreams.set(chatId, { messenger, getPlaceholderId: stream.getPlaceholderId, getAccumulated: stream.getAccumulated, get cardKitInfo() { return stream.cardKitInfo } })
+  const stream = setupStreamingAndPlaceholder(
+    chatId,
+    hasImages,
+    hasFiles,
+    maxLen,
+    messenger,
+    bench,
+    signal,
+    streamOpts,
+    platform
+  )
+  activeStreams.set(chatId, {
+    messenger,
+    getPlaceholderId: stream.getPlaceholderId,
+    getAccumulated: stream.getAccumulated,
+    get cardKitInfo() {
+      return stream.cardKitInfo
+    },
+  })
   bench.parallelStart = Date.now()
 
   // Await placeholder creation before building prompt so phase status updates (🔍📝💭) are visible.
@@ -308,28 +372,42 @@ async function handleChatInternal(
   await stream.placeholderPromise
 
   const { systemPrompt, prompt } = await buildFullPrompt(
-    chatId, effectiveText, ss.willStartNewSession, options?.client, options?.images, config,
+    chatId,
+    effectiveText,
+    ss.willStartNewSession,
+    options?.client,
+    options?.images,
+    config,
     { backend: backendName, model: model ?? config.backends[backendName]?.model },
-    options?.files, 'full',
-    ss.willStartNewSession ? (text) => stream.updateStatus(text) : undefined
+    options?.files,
+    'full',
+    ss.willStartNewSession ? text => stream.updateStatus(text) : undefined
   )
   bench.promptReady = Date.now()
   if (ss.willStartNewSession) stream.updateStatus('💭 等待 AI 响应...')
 
-  // 6. Invoke backend
+  // 7. Invoke backend
   // <think> tags streamed as-is for user feedback; stripped in final response by chatResponseProcessor
   try {
     const effectiveSessionId = inlineBackend ? undefined : ss.sessionId
     const [, result] = await Promise.all([
       stream.placeholderPromise,
       invokeBackend({
-        prompt, systemPrompt, stream: true, skipPermissions: true,
-        sessionId: effectiveSessionId, onChunk: stream.onChunk, onToolUse: stream.onToolUse,
+        prompt,
+        systemPrompt,
+        stream: true,
+        skipPermissions: true,
+        sessionId: effectiveSessionId,
+        onChunk: stream.onChunk,
+        onToolUse: stream.onToolUse,
         disableMcp: chatMcp.length === 0,
         mcpServers: chatMcp.length > 0 ? chatMcp : undefined,
-        model, backendType: ss.backendOverride, signal,
-        firstByteTimeoutMs: CHAT_FIRST_BYTE_TIMEOUT_MS,  // Detect network stalls
-        persistent: true,  // Reuse persistent Claude process for chat sessions
+        model,
+        backendType: ss.backendOverride,
+        signal,
+        firstByteTimeoutMs: CHAT_FIRST_BYTE_TIMEOUT_MS, // Detect network stalls
+        persistent: true, // Reuse persistent Claude process for chat sessions
+        attachments: [...(options?.images ?? []), ...(options?.files ?? [])],
       }),
     ])
     bench.backendDone = Date.now()
@@ -339,33 +417,70 @@ async function handleChatInternal(
     if (!result.ok) {
       if (result.error.type === 'cancelled') {
         await stream.stopStreaming()
-        await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger, stream.getAccumulated(), stream.cardKitInfo)
+        await notifyInterrupted(
+          chatId,
+          stream.getPlaceholderId(),
+          messenger,
+          stream.getAccumulated(),
+          stream.cardKitInfo
+        )
         return
       }
       const errMsg = result.error.message.toLowerCase()
       if (errMsg.includes('session') || errMsg.includes('conversation not found')) {
         clearSession(chatId)
         logger.info(`session invalidated, cleared [${chatId.slice(0, 8)}]: ${result.error.message}`)
-        await sendErrorToUser(chatId, stream.getPlaceholderId(), messenger, '会话已失效，已自动清理 — 请重新发送消息')
+        await sendErrorToUser(
+          chatId,
+          stream.getPlaceholderId(),
+          messenger,
+          '会话已失效，已自动清理 — 请重新发送消息'
+        )
         return
       }
-      await sendErrorToUser(chatId, stream.getPlaceholderId(), messenger, `AI 调用失败: ${result.error.message}`)
+      await sendErrorToUser(
+        chatId,
+        stream.getPlaceholderId(),
+        messenger,
+        `AI 调用失败: ${result.error.message}`
+      )
       return
     }
 
-    // 7. Process success
+    // 8. Process success
     await processSuccessResult(
-      { chatId, text, effectiveText, platform, sessionId: ss.sessionId,
-        backendOverride: ss.backendOverride, model, config, bench, userImages: options?.images },
+      {
+        chatId,
+        text,
+        effectiveText,
+        platform,
+        sessionId: ss.sessionId,
+        backendOverride: ss.backendOverride,
+        model,
+        config,
+        bench,
+        userImages: options?.images,
+      },
       result.value,
-      stream.stopStreaming, stream.getPlaceholderId(), maxLen, messenger, stream.cardKitInfo
+      stream.stopStreaming,
+      stream.getPlaceholderId(),
+      maxLen,
+      messenger,
+      stream.cardKitInfo
     )
   } catch (error) {
     if (activeControllers.get(chatId) === abortController) activeControllers.delete(chatId)
     activeStreams.delete(chatId)
     if (signal.aborted) {
       await stream.stopStreaming()
-      await notifyInterrupted(chatId, stream.getPlaceholderId(), messenger, stream.getAccumulated(), stream.cardKitInfo, '🛑 已中断')
+      await notifyInterrupted(
+        chatId,
+        stream.getPlaceholderId(),
+        messenger,
+        stream.getAccumulated(),
+        stream.cardKitInfo,
+        '🛑 已中断'
+      )
       return
     }
     const msg = getErrorMessage(error)
