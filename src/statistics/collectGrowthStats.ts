@@ -121,6 +121,28 @@ function collectJournalSummary(): GrowthJournalSummary {
   }
 }
 
+/** Get first git commit timestamp as project genesis date */
+function getGenesisDate(): string {
+  try {
+    const { execSync } = require('child_process') as typeof import('child_process')
+    // Use rev-list to find root commit hash, then format its date — O(1) vs git log --reverse which traverses all commits
+    const rootHash = execSync('git rev-list --max-parents=0 HEAD', {
+      cwd: process.cwd(),
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    }).trim().split('\n')[0]
+    if (!rootHash) return ''
+    const date = execSync(`git log -1 --format="%aI" ${rootHash}`, {
+      cwd: process.cwd(),
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    }).trim().replace(/^"|"$/g, '')
+    return date || ''
+  } catch {
+    return ''
+  }
+}
+
 /** @entry Collect growth trajectory statistics */
 export function collectGrowthStats(): GrowthStats {
   const { birthDate, activeDates, milestones } = scanConversationLog()
@@ -132,6 +154,7 @@ export function collectGrowthStats(): GrowthStats {
 
   return {
     birthDate: birthDate || now.toISOString(),
+    genesisDate: getGenesisDate(),
     ageDays,
     activeDays: activeDates.size,
     milestones,

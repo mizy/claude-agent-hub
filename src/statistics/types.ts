@@ -97,6 +97,7 @@ export interface GrowthJournalSummary {
 
 export interface GrowthStats {
   birthDate: string // first message timestamp
+  genesisDate: string // first git commit timestamp (project inception, before messaging capability)
   ageDays: number
   activeDays: number
   milestones: GrowthMilestone[]

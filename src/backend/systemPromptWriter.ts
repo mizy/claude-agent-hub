@@ -11,12 +11,20 @@
  */
 
 import { mkdirSync, writeFileSync, existsSync, unlinkSync } from 'fs'
+import { createHash } from 'crypto'
 import { join } from 'path'
 import { homedir } from 'os'
 import { createLogger } from '../shared/logger.js'
 import { getErrorMessage } from '../shared/assertError.js'
 
 const logger = createLogger('system-prompt-writer')
+
+/** Content hash cache per file path — skip write if content unchanged */
+const contentHashCache = new Map<string, string>()
+
+function hashContent(content: string): string {
+  return createHash('md5').update(content).digest('hex')
+}
 
 /** CLI 配置目录路径 */
 const CONFIG_PATHS = {
@@ -58,10 +66,15 @@ export function writeOpencodeSystemPrompt(systemPrompt: string): void {
     ensureDir(dir)
 
     if (systemPrompt) {
+      // Skip write if content unchanged (system prompt is now static, rarely changes)
+      const hash = hashContent(systemPrompt)
+      if (contentHashCache.get(file) === hash) return
       writeFileSync(file, systemPrompt, 'utf-8')
+      contentHashCache.set(file, hash)
       logger.debug(`Wrote opencode system prompt to ${file}`)
     } else {
       // 清空时删除文件
+      contentHashCache.delete(file)
       if (existsSync(file)) {
         unlinkSync(file)
         logger.debug(`Removed opencode system prompt file ${file}`)
@@ -85,9 +98,13 @@ export function writeIflowSystemPrompt(systemPrompt: string): void {
     ensureDir(dir)
 
     if (systemPrompt) {
+      const hash = hashContent(systemPrompt)
+      if (contentHashCache.get(file) === hash) return
       writeFileSync(file, systemPrompt, 'utf-8')
+      contentHashCache.set(file, hash)
       logger.debug(`Wrote iflow system prompt to ${file}`)
     } else {
+      contentHashCache.delete(file)
       if (existsSync(file)) {
         unlinkSync(file)
         logger.debug(`Removed iflow system prompt file ${file}`)
@@ -111,9 +128,13 @@ export function writeQwenSystemPrompt(systemPrompt: string): void {
     ensureDir(dir)
 
     if (systemPrompt) {
+      const hash = hashContent(systemPrompt)
+      if (contentHashCache.get(file) === hash) return
       writeFileSync(file, systemPrompt, 'utf-8')
+      contentHashCache.set(file, hash)
       logger.debug(`Wrote qwen system prompt to ${file}`)
     } else {
+      contentHashCache.delete(file)
       if (existsSync(file)) {
         unlinkSync(file)
         logger.debug(`Removed qwen system prompt file ${file}`)

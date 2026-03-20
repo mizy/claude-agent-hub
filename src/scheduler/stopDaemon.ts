@@ -5,6 +5,7 @@ import { getStore } from '../store/index.js'
 import { TASKS_DIR, RUNNER_LOCK_FILE } from '../store/paths.js'
 import { getPidLock, releasePidLock, isProcessRunning, isServiceRunning } from './pidLock.js'
 import { releaseRunnerLock } from '../task/spawnTask.js'
+import { shutdownAllPersistentProcesses } from '../backend/persistentClaudeInvoke.js'
 import { createLogger } from '../shared/logger.js'
 import { ensureError } from '../shared/assertError.js'
 
@@ -108,6 +109,14 @@ function killDashboard(): boolean {
 export async function stopDaemon(_options: StopOptions): Promise<StopResult> {
   const store = getStore()
   const result: StopResult = { dashboardWasRunning: false }
+
+  // 0. Shutdown all persistent backend processes gracefully
+  try {
+    await shutdownAllPersistentProcesses()
+  } catch (error) {
+    const err = ensureError(error)
+    logger.warn(`Failed to shutdown persistent processes: ${err.message}`)
+  }
 
   // 1. Stop daemon main process
   const lock = getPidLock()

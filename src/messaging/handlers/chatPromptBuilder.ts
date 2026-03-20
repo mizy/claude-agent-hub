@@ -74,7 +74,7 @@ export async function buildFullPrompt(
     } catch { /* ignore — non-critical */ }
   }
 
-  const clientSystemPrompt = client
+  const clientPrompt = client
     ? buildClientPrompt(client, runtime, mode, {
         isNewSession: willStartNewSession,
         userMessage: effectiveText,
@@ -83,7 +83,7 @@ export async function buildFullPrompt(
         narrative: promptNarrative,
         personalityAppend: config.bot?.personalityAppend,
       })
-    : ''
+    : { systemPrompt: '', dynamicContext: '' }
 
   // Inject conversation context for new sessions (e.g. after daemon restart).
   // Claude Code session handles in-session context; we only need this on fresh start.
@@ -211,20 +211,24 @@ export async function buildFullPrompt(
   }
 
   // ── Consciousness injection (delegated to buildConsciousnessBlock) ──
+  // Consciousness is dynamic (mood, events, thoughts change per-turn) → user prompt
   const consciousnessTotal = mode === 'full'
     ? buildConsciousnessBlock({ chatId, willStartNewSession, cachedInnerState, lastInjectedAt })
     : ''
 
-  // System prompt: persona + consciousness (static/session-level context)
-  const systemParts = [clientSystemPrompt, consciousnessTotal].filter(Boolean)
-  const systemPrompt = systemParts.join('\n\n')
+  // System prompt: static persona + safety (stable across turns)
+  const systemPrompt = clientPrompt.systemPrompt
 
-  // User prompt: memory + history + user message + images + files
+  // User prompt: dynamic context + consciousness + memory + history + user message + images + files
+  // Dynamic parts (time, mood guidance, consciousness) are injected per-turn in user prompt
+  const dynamicParts = [clientPrompt.dynamicContext, consciousnessTotal].filter(Boolean)
+  const dynamicBlock = dynamicParts.length > 0 ? dynamicParts.join('\n\n') + '\n\n' : ''
+
   let historyBlock = ''
   if (historySummary) historyBlock += `## 历史对话摘要\n${historySummary}\n\n`
   if (historyRaw) historyBlock += `## 最近对话\n${historyRaw}\n\n`
   let prompt =
-    wrapMemoryContext(memoryRaw) + historyBlock + effectiveText
+    dynamicBlock + wrapMemoryContext(memoryRaw) + historyBlock + effectiveText
   if (images?.length) {
     const imagePart = images
       .map(p => `[用户发送了图片，请使用 Read 工具查看后回复，路径→${p}←]`)

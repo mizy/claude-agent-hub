@@ -19,7 +19,7 @@ export {
 } from './taskPrompts.js'
 
 export { buildClientPrompt } from './chatPrompts.js'
-export type { PromptMode } from './chatPrompts.js'
+export type { PromptMode, ClientPromptResult } from './chatPrompts.js'
 
 export { buildMemoryExtractionPrompt } from './memoryPrompts.js'
 export type { TaskSummary } from './memoryPrompts.js'

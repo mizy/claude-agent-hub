@@ -291,6 +291,12 @@ async function runDaemon(): Promise<void> {
     stopTelegramClient()
     releasePidLock()
     try {
+      const { shutdownAllPersistentProcesses } = await import('../backend/persistentClaudeInvoke.js')
+      await shutdownAllPersistentProcesses()
+    } catch {
+      // Best-effort
+    }
+    try {
       await stopLarkWsClient()
     } catch {
       // Best-effort

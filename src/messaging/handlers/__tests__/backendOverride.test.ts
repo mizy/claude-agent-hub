@@ -14,6 +14,7 @@ vi.mock('../../../backend/resolveBackend.js', () => ({
 const mockInvokeBackend = vi.fn()
 vi.mock('../../../backend/index.js', () => ({
   invokeBackend: (...args: unknown[]) => mockInvokeBackend(...args),
+  isPersistentProcessAlive: () => true, // Assume persistent process alive in tests to preserve session reuse behavior
 }))
 
 // Mock conversation log
@@ -24,7 +25,7 @@ vi.mock('../conversationLog.js', () => ({
 
 // Mock prompts
 vi.mock('../../../prompts/chatPrompts.js', () => ({
-  buildClientPrompt: vi.fn(() => '[client context]'),
+  buildClientPrompt: vi.fn(() => ({ systemPrompt: '[client context]', dynamicContext: '' })),
   wrapMemoryContext: (s: string) => s || '',
   wrapHistoryContext: (s: string) => s || '',
 }))

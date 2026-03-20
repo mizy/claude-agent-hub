@@ -40,6 +40,7 @@ import { emitWorkflowStarted, emitWorkflowCompleted } from './taskNotifications.
 import { loggedErrors } from './loggedErrors.js'
 import { redirectConsoleToTaskLog } from './redirectConsole.js'
 import { loadConfig } from '../config/loadConfig.js'
+import { shutdownPersistentProcess } from '../backend/persistentClaudeInvoke.js'
 
 export { ResumeConflictError } from './prepareExecution.js'
 
@@ -287,6 +288,13 @@ export async function executeTask(
     throw error
   } finally {
     // Always clean up resources regardless of success or failure
+
+    // Shutdown any persistent Claude process for this task
+    try {
+      await shutdownPersistentProcess(task.id)
+    } catch {
+      // Best-effort: persistent process cleanup should not block
+    }
 
     // Close any agent-browser session left open by the task
     try {

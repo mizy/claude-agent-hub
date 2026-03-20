@@ -43,7 +43,7 @@ interface LifecycleStats {
 }
 
 interface GrowthStats {
-  birthDate: string; ageDays: number; activeDays: number
+  birthDate: string; genesisDate: string; ageDays: number; activeDays: number
   milestones: GrowthMilestone[]; totalMemories: number
 }
 
@@ -385,44 +385,81 @@ export function StatisticsPage() {
                 </div>
               </div>
             )}
-            {[...projectMilestones].reverse().map((m, i) => (
-              <div key={i} className="stats-ms-item">
-                <div className="stats-ms-marker">
-                  <div className="stats-ms-dot" />
-                  <div className="stats-ms-line" />
-                </div>
-                <div className="stats-ms-card">
-                  <div className="stats-ms-header">
-                    <span className="stats-ms-version">{m.version}</span>
-                    <span className="stats-ms-date">
-                      {formatDate(m.dateRange.from)}{m.dateRange.from !== m.dateRange.to ? ` — ${formatDate(m.dateRange.to)}` : ''}
-                    </span>
-                    <span className="stats-ms-commits">{m.commitCount} commits</span>
-                  </div>
-                  <div className="stats-ms-title">{m.title}</div>
-                  <div className="stats-ms-desc">{m.description}</div>
-                  {m.keyChanges.length > 0 && (
-                    <div className="stats-ms-changes">
-                      {m.keyChanges.map((change, j) => (
-                        <span key={j} className="stats-ms-change-tag">{change}</span>
-                      ))}
+            {(() => {
+              // Build unified timeline: version milestones + BORN + GENESIS, sorted by date desc
+              type TimelineItem = { type: 'version'; data: ProjectMilestone; sortDate: string }
+                | { type: 'born'; sortDate: string }
+                | { type: 'genesis'; sortDate: string }
+              const items: TimelineItem[] = projectMilestones.map(m => ({
+                type: 'version' as const, data: m, sortDate: m.dateRange.to,
+              }))
+              if (growth.birthDate) items.push({ type: 'born', sortDate: growth.birthDate })
+              if (growth.genesisDate) items.push({ type: 'genesis', sortDate: growth.genesisDate })
+              items.sort((a, b) => b.sortDate.localeCompare(a.sortDate))
+              return items.map((item, i) => {
+                if (item.type === 'version') {
+                  const m = item.data
+                  return (
+                    <div key={i} className="stats-ms-item">
+                      <div className="stats-ms-marker">
+                        <div className="stats-ms-dot" />
+                        <div className="stats-ms-line" />
+                      </div>
+                      <div className="stats-ms-card">
+                        <div className="stats-ms-header">
+                          <span className="stats-ms-version">{m.version}</span>
+                          <span className="stats-ms-date">
+                            {formatDate(m.dateRange.from)}{m.dateRange.from !== m.dateRange.to ? ` — ${formatDate(m.dateRange.to)}` : ''}
+                          </span>
+                          <span className="stats-ms-commits">{m.commitCount} commits</span>
+                        </div>
+                        <div className="stats-ms-title">{m.title}</div>
+                        <div className="stats-ms-desc">{m.description}</div>
+                        {m.keyChanges.length > 0 && (
+                          <div className="stats-ms-changes">
+                            {m.keyChanges.map((change, j) => (
+                              <span key={j} className="stats-ms-change-tag">{change}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            <div className="stats-ms-item">
-              <div className="stats-ms-marker">
-                <div className="stats-ms-dot birth" />
-              </div>
-              <div className="stats-ms-card">
-                <div className="stats-ms-header">
-                  <span className="stats-ms-version birth">BORN</span>
-                  <span className="stats-ms-date">{formatDate(growth.birthDate)}</span>
-                </div>
-                <div className="stats-ms-title">🎂 Project Created</div>
-              </div>
-            </div>
+                  )
+                }
+                if (item.type === 'born') {
+                  return (
+                    <div key={i} className="stats-ms-item">
+                      <div className="stats-ms-marker">
+                        <div className="stats-ms-dot birth" />
+                        <div className="stats-ms-line" />
+                      </div>
+                      <div className="stats-ms-card">
+                        <div className="stats-ms-header">
+                          <span className="stats-ms-version birth">BORN</span>
+                          <span className="stats-ms-date">{formatDate(growth.birthDate)}</span>
+                        </div>
+                        <div className="stats-ms-title">🎂 First Message — Digital Life Begins</div>
+                      </div>
+                    </div>
+                  )
+                }
+                // genesis
+                return (
+                  <div key={i} className="stats-ms-item">
+                    <div className="stats-ms-marker">
+                      <div className="stats-ms-dot" style={{ background: 'var(--color-text-muted, #555)', opacity: 0.5 }} />
+                    </div>
+                    <div className="stats-ms-card" style={{ opacity: 0.6 }}>
+                      <div className="stats-ms-header">
+                        <span className="stats-ms-version" style={{ background: '#333', color: '#888' }}>GENESIS</span>
+                        <span className="stats-ms-date">{formatDate(growth.genesisDate)}</span>
+                      </div>
+                      <div className="stats-ms-title">🧬 Project Created — Incubation Period</div>
+                    </div>
+                  </div>
+                )
+              })
+            })()}
           </div>
         </div>
 

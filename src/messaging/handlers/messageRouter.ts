@@ -9,7 +9,7 @@ import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
 import { parseApprovalCommand, handleApproval } from './approvalHandler.js'
 import { handleCommand } from './commandHandler.js'
-import { handleChat, clearChatSession, getChatSessionInfo, toggleBenchmark } from './chatHandler.js'
+import { handleChat, clearChatSession, getChatSessionInfo, toggleBenchmark, cancelActiveChat } from './chatHandler.js'
 import { flushChatMemory } from './chatMemoryExtractor.js'
 import { setModelOverride, getModelOverride, setBackendOverride, getBackendOverride } from './sessionManager.js'
 import { triggerEpisodeOnTaskCreation } from './episodeExtractor.js'
@@ -142,6 +142,10 @@ export async function routeMessage(options: RouteMessageOptions): Promise<void> 
 
     // Task management commands (prefer card when adapter supports it)
     if (TASK_COMMANDS.has(parsed.cmd)) {
+      // /stop cancels any active streaming in this chat first
+      if (parsed.cmd === '/stop') {
+        cancelActiveChat(chatId)
+      }
       try {
         const cmdResult = await handleCommand(parsed.cmd, parsed.args)
         logger.debug(`handleCommand result for ${parsed.cmd}: ${JSON.stringify(cmdResult).slice(0, 200)}`)

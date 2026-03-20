@@ -37,16 +37,29 @@ export interface PostResponseContext {
   userImages?: string[]
 }
 
-/** Notify user that their request was interrupted by a newer message */
+/** Notify user that their request was interrupted */
 export async function notifyInterrupted(
   chatId: string,
   placeholderId: string | null,
   messenger: MessengerAdapter,
-  partialContent?: string
+  partialContent?: string,
+  cardKitInfo?: { cardId: string; elementId: string; getSequence: () => number },
+  suffix = '已中断，处理新消息...',
 ): Promise<void> {
-  if (placeholderId) {
-    const suffix = '已中断，处理新消息...'
-    const content = partialContent ? `${partialContent}\n\n${suffix}` : suffix
+  const content = partialContent ? `${partialContent}\n\n${suffix}` : suffix
+  if (cardKitInfo && messenger.updateCardElement) {
+    const ok = await messenger.updateCardElement(
+      cardKitInfo.cardId, cardKitInfo.elementId, content, cardKitInfo.getSequence(),
+    ).catch(() => false)
+    if (ok) {
+      await messenger.closeStreamingCard?.(
+        cardKitInfo.cardId, content, cardKitInfo.getSequence(),
+      ).catch(e => logger.debug(`closeStreamingCard failed: ${e}`))
+    } else if (placeholderId) {
+      await messenger.editMessage(chatId, placeholderId, content)
+        .catch(e => logger.debug(`Edit placeholder fallback failed: ${e}`))
+    }
+  } else if (placeholderId) {
     await messenger
       .editMessage(chatId, placeholderId, content)
       .catch(e => logger.debug(`Edit placeholder failed: ${e}`))
