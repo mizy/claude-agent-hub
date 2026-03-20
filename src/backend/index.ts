@@ -37,8 +37,6 @@ export { resolveBackendConfig } from './backendConfig.js'
 
 export { buildPrompt, type BuiltPrompt } from './promptBuilder.js'
 
-export { shutdownPersistentProcess, shutdownAllPersistentProcesses, getPersistentProcessCount, isPersistentProcessAlive } from './persistentClaudeInvoke.js'
-
 import { resolveBackend } from './resolveBackend.js'
 import { resolveBackendConfig } from './backendConfig.js'
 import { acquireSlot, releaseSlot, getSlotInfo } from './concurrency.js'
@@ -90,39 +88,31 @@ export async function invokeBackend(
   )
   logger.debug(`Prompt prepared: sys=${mergedSystemPrompt.length} user=${userPrompt.length} chars`)
 
-  // Persistent mode manages its own slot lifecycle entirely within persistentClaudeInvoke.ts:
-  // - acquireSlot() on first process start (invokePersistent)
-  // - releaseSlot() on shutdown (shutdownPersistentProcess) or unexpected exit (registerPoolExitListener)
-  // Skip slot management here to avoid per-invoke slot contention for reused processes.
-  const isPersistent = !!options.persistent
-  let slotWaitMs = 0
+  // Check if already aborted before waiting for a slot
+  if (options.signal?.aborted) {
+    return {
+      ok: false,
+      error: { type: 'cancelled', message: 'Aborted before slot acquisition' },
+    } as Result<InvokeResult, InvokeError>
+  }
 
-  if (!isPersistent) {
-    // Check if already aborted before waiting for a slot
-    if (options.signal?.aborted) {
+  const slotStart = Date.now()
+  let slotWaitMs = 0
+  try {
+    await acquireSlot(options.signal)
+  } catch (e) {
+    // AbortError from signal — slot was never acquired, no need to release
+    if (e instanceof DOMException && e.name === 'AbortError') {
       return {
         ok: false,
-        error: { type: 'cancelled', message: 'Aborted before slot acquisition' },
+        error: { type: 'cancelled', message: 'Aborted during slot wait' },
       } as Result<InvokeResult, InvokeError>
     }
-
-    const slotStart = Date.now()
-    try {
-      await acquireSlot(options.signal)
-    } catch (e) {
-      // AbortError from signal — slot was never acquired, no need to release
-      if (e instanceof DOMException && e.name === 'AbortError') {
-        return {
-          ok: false,
-          error: { type: 'cancelled', message: 'Aborted during slot wait' },
-        } as Result<InvokeResult, InvokeError>
-      }
-      throw e
-    }
-    slotWaitMs = Date.now() - slotStart
-    if (slotWaitMs > 50) {
-      logger.info(`Slot wait: ${slotWaitMs}ms`)
-    }
+    throw e
+  }
+  slotWaitMs = Date.now() - slotStart
+  if (slotWaitMs > 50) {
+    logger.info(`Slot wait: ${slotWaitMs}ms`)
   }
 
   // Create LLM span if trace context is provided
@@ -147,7 +137,7 @@ export async function invokeBackend(
       systemPrompt: mergedSystemPrompt || undefined,
       model: resolvedModel,
     })
-    if (!isPersistent) releaseSlot()
+    releaseSlot()
     // Attach slot wait time to result
     if (result.ok) {
       result.value.slotWaitMs = slotWaitMs
@@ -176,7 +166,7 @@ export async function invokeBackend(
 
     return result
   } catch (error) {
-    if (!isPersistent) releaseSlot()
+    releaseSlot()
 
     // End LLM span with error
     if (llmSpan && traceCtx) {

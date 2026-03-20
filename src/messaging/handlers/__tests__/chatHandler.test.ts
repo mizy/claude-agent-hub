@@ -9,7 +9,6 @@ import type { MessengerAdapter, ClientContext } from '../types.js'
 const mockInvokeBackend = vi.fn()
 vi.mock('../../../backend/index.js', () => ({
   invokeBackend: (...args: unknown[]) => mockInvokeBackend(...args),
-  isPersistentProcessAlive: () => true,
 }))
 
 // Mock conversation log

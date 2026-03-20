@@ -3,7 +3,7 @@
  * Routes text messages to AI backend with session management, streaming, and image detection
  */
 
-import { invokeBackend, isPersistentProcessAlive } from '../../backend/index.js'
+import { invokeBackend } from '../../backend/index.js'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
@@ -226,15 +226,6 @@ function resolveSessionState(
     sessionId = undefined
   }
 
-  // Persistent process died (crash/daemon restart) but session store still has sessionId.
-  // Force new session so chatPromptBuilder injects history summary + recent messages.
-  if (sessionId && !isPersistentProcessAlive(process.cwd())) {
-    logger.info(`🔄 persistent process dead, forcing new session [${chatId.slice(0, 8)}]`)
-    logConversationEvent('持久进程重建', '注入历史上下文')
-    clearSession(chatId)
-    sessionId = undefined
-  }
-
   const willStartNewSession = !sessionId || backendChanged
   return { sessionId, backendOverride, backendChanged, willStartNewSession }
 }
@@ -329,7 +320,6 @@ async function handleChatInternal(
         mcpServers: chatMcp.length > 0 ? chatMcp : undefined,
         model, backendType: ss.backendOverride, signal,
         firstByteTimeoutMs: CHAT_FIRST_BYTE_TIMEOUT_MS,  // Detect network stalls
-        persistent: true,  // Reuse persistent Claude process for chat sessions
       }),
     ])
     bench.backendDone = Date.now()

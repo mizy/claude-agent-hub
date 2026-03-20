@@ -45,10 +45,6 @@ export interface InvokeOptions {
   traceCtx?: TraceContext
   /** Abort signal for cancelling the invocation */
   signal?: AbortSignal
-  /** Use persistent process mode (reuse long-running CLI process across invocations) */
-  persistent?: boolean
-  /** CLI binary for persistent mode (default: 'claude') — e.g. 'codebuddy', 'cbc' */
-  persistentBinary?: string
 }
 
 export interface InvokeBenchmarkTiming {

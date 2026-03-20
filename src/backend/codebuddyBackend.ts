@@ -18,7 +18,6 @@ import { parseClaudeCompatOutput } from './parseClaudeCompatOutput.js'
 import { collectStream } from './collectStream.js'
 import { buildMcpConfigJson, createClaudeCompatStreamProcessor } from './claudeCompatHelpers.js'
 import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
-import { invokePersistent } from './persistentClaudeInvoke.js'
 
 const logger = createLogger('codebuddy')
 
@@ -37,12 +36,6 @@ export function createCodebuddyBackend(): BackendAdapter {
     },
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
-      // Persistent mode: delegate to persistent process manager with codebuddy binary
-      if (options.persistent) {
-        const binary = await resolveBinary()
-        return invokePersistent({ ...options, persistentBinary: binary })
-      }
-
       const {
         prompt: rawPrompt,
         systemPrompt,
