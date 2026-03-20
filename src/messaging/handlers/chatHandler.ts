@@ -3,7 +3,7 @@
  * Routes text messages to AI backend with session management, streaming, and image detection
  */
 
-import { invokeBackend, usesPersistentProcess } from '../../backend/index.js'
+import { invokeBackend } from '../../backend/index.js'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'

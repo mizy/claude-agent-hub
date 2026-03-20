@@ -14,7 +14,6 @@ vi.mock('../../../backend/resolveBackend.js', () => ({
 const mockInvokeBackend = vi.fn()
 vi.mock('../../../backend/index.js', () => ({
   invokeBackend: (...args: unknown[]) => mockInvokeBackend(...args),
-  usesPersistentProcess: (type?: string) => type === 'claude-code' || type === 'codebuddy',
 }))
 
 // Mock conversation log
