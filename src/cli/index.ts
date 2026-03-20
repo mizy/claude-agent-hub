@@ -390,6 +390,48 @@ program
     })
   })
 
+// cah migrate-conv - 拆分全局 conversation.jsonl 到 chat-sessions
+program
+  .command('migrate-conv')
+  .description('拆分全局 conversation.jsonl 到 chat-sessions/{chatId}/')
+  .option('--dry-run', '仅预览，不实际写入或删除')
+  .action(async (options) => {
+    const { migrateConversationLog } = await import('../store/migrateConversationLog.js')
+    const report = await migrateConversationLog({ dryRun: options.dryRun })
+
+    if (report.error) {
+      error(report.error)
+      if (report.failedGroups.length > 0) {
+        for (const g of report.failedGroups) {
+          console.log(chalk.red(`  ✗ ${g}`))
+        }
+      }
+      if (report.groups.length === 0) return
+    }
+
+    console.log()
+    info(`${options.dryRun ? '[DRY RUN] ' : ''}Migration report:`)
+    console.log(`  Source entries: ${report.totalSource}`)
+    console.log(`  Malformed skipped: ${report.malformedSkipped}`)
+    console.log(`  Groups: ${report.groups.length}`)
+    console.log(`  Total written: ${report.totalWritten}`)
+    console.log()
+
+    // Sort groups by count desc
+    const sorted = [...report.groups].sort((a, b) => b.count - a.count)
+    for (const g of sorted) {
+      const dedup = g.deduped > 0 ? ` (deduped: ${g.deduped})` : ''
+      const existing = g.existingCount > 0 ? ` (existing: ${g.existingCount})` : ''
+      console.log(`  ${g.groupId}: ${g.count} entries → ${g.finalCount} final${dedup}${existing}`)
+      console.log(chalk.gray(`    ${g.timeRange.earliest} ~ ${g.timeRange.latest}`))
+    }
+
+    console.log()
+    if (report.success) {
+      success(options.dryRun ? 'Dry run complete. No files modified.' : 'Migration complete! Global conversation.jsonl deleted.')
+    }
+  })
+
 // cah iterations <id> - 查看迭代记录的快捷命令
 program
   .command('iterations')
