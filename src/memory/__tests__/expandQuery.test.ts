@@ -31,9 +31,9 @@ describe('expandQueryForRetrieval', () => {
     expect(mockInvokeBackend).toHaveBeenCalledOnce()
     expect(mockInvokeBackend).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'haiku',
         disableMcp: true,
-      }),
+      })
     )
   })
 
@@ -66,7 +66,7 @@ describe('expandQueryForRetrieval', () => {
       () =>
         new Promise(resolve => {
           setTimeout(() => resolve({ ok: true, value: { response: '["a"]' } }), 15000)
-        }),
+        })
     )
 
     const promise = expandQueryForRetrieval('slow query')
