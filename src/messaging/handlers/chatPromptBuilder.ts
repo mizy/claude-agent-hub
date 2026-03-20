@@ -21,9 +21,6 @@ import type { ClientContext } from './types.js'
 /** Resume memory retrieval budget (chars) */
 const RESUME_MEMORY_BUDGET = 500
 
-/** Gap messages threshold: if gap exceeds this, regenerate summary incrementally */
-const GAP_REGEN_THRESHOLD = 10
-
 const logger = createLogger('chat-prompt-builder')
 
 /** Track last consciousness injection time per chatId for incremental resume injection */
@@ -88,7 +85,7 @@ export async function buildFullPrompt(
   // Inject conversation context for new sessions (e.g. after daemon restart).
   // Claude Code session handles in-session context; we only need this on fresh start.
   // Strategy: recent 8 messages verbatim + LLM summary of older history (cached per chatId).
-  const RECENT_RAW_COUNT = 8
+  const RECENT_RAW_COUNT = 10
   const OLDER_HISTORY_COUNT = 30
   let historySummary = ''
   let historyRaw = ''
@@ -107,31 +104,22 @@ export async function buildFullPrompt(
         const summaryTime = new Date(cached.updatedAt).getTime()
         const gapMessages = allRecent.filter(e => new Date(e.ts).getTime() > summaryTime)
 
-        if (gapMessages.length > GAP_REGEN_THRESHOLD) {
-          // Too many gap messages: regenerate summary incrementally (old summary + gap → new summary)
-          const msgs = gapMessages.map(e => ({
-            role: (e.dir === 'in' ? 'user' : 'assistant') as 'user' | 'assistant',
-            text: e.text,
-          }))
-          summaryPromise = generateChatContextSummary(msgs, cached.summary).catch(e => {
-            logger.debug(`incremental summary regen failed: ${getErrorMessage(e)}`)
-            return null
-          })
-          // Still show last few raw messages while summary generates
-          historyRaw = gapMessages.slice(-RECENT_RAW_COUNT)
+        // Always inject cached summary + all gap messages — no LLM re-generation on session restart
+        historySummary = cached.summary
+        // Ensure at least RECENT_RAW_COUNT raw messages: gap messages + pre-summary backfill
+        const rawMessages = gapMessages.length >= RECENT_RAW_COUNT
+          ? gapMessages
+          : (() => {
+              const preSummary = allRecent.filter(e => new Date(e.ts).getTime() <= summaryTime)
+              const backfillCount = RECENT_RAW_COUNT - gapMessages.length
+              return [...preSummary.slice(-backfillCount), ...gapMessages]
+            })()
+        if (rawMessages.length > 0) {
+          historyRaw = rawMessages
             .map(e => `[${e.dir === 'in' ? '用户' : 'AI'}] ${e.text}`)
             .join('\n')
-          logger.debug(`regenerating summary: ${gapMessages.length} gap messages exceed threshold [${chatId.slice(0, 8)}]`)
-        } else {
-          // Cache hit with manageable gap: inject summary + gap messages
-          historySummary = cached.summary
-          if (gapMessages.length > 0) {
-            historyRaw = gapMessages
-              .map(e => `[${e.dir === 'in' ? '用户' : 'AI'}] ${e.text}`)
-              .join('\n')
-          }
-          logger.debug(`injected cached summary (${cached.summary.length} chars) + ${gapMessages.length} gap messages [${chatId.slice(0, 8)}]`)
         }
+        logger.debug(`injected cached summary (${cached.summary.length} chars) + ${gapMessages.length} gap messages [${chatId.slice(0, 8)}]`)
       } else {
         // No cache: inject last 8 raw + generate summary for older messages
         const recentRaw = allRecent.slice(-RECENT_RAW_COUNT)

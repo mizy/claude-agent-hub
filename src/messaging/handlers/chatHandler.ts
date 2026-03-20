@@ -3,11 +3,7 @@
  * Routes text messages to AI backend with session management, streaming, and image detection
  */
 
-import {
-  invokeBackend,
-  isPersistentProcessAlive,
-  usesPersistentProcess,
-} from '../../backend/index.js'
+import { invokeBackend, usesPersistentProcess } from '../../backend/index.js'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
@@ -258,21 +254,6 @@ function resolveSessionState(
     sessionId = undefined
   }
 
-  // Persistent process died (crash/daemon restart) but session store still has sessionId.
-  // Force new session so chatPromptBuilder injects history summary + recent messages.
-  // Only applies to backends that use persistent processes (claude-code, codebuddy).
-  // For other backends (opencode, iflow), there is no persistent process — skip this check.
-  if (
-    sessionId &&
-    usesPersistentProcess(currentBackend) &&
-    !isPersistentProcessAlive(process.cwd())
-  ) {
-    logger.info(`🔄 persistent process dead, forcing new session [${chatId.slice(0, 8)}]`)
-    logConversationEvent('持久进程重建', '注入历史上下文')
-    clearSession(chatId)
-    sessionId = undefined
-  }
-
   const willStartNewSession = !sessionId || backendChanged
   return { sessionId, backendOverride, backendChanged, willStartNewSession }
 }
@@ -406,7 +387,6 @@ async function handleChatInternal(
         backendType: ss.backendOverride,
         signal,
         firstByteTimeoutMs: CHAT_FIRST_BYTE_TIMEOUT_MS, // Detect network stalls
-        persistent: true, // Reuse persistent Claude process for chat sessions
         attachments: [...(options?.images ?? []), ...(options?.files ?? [])],
       }),
     ])

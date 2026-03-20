@@ -44,4 +44,4 @@ pnpm run clean          # 清理 dist
 
 - 文件/函数: 动词+名词，类: PascalCase，`@entry` 标记入口
 - 单文件 ≤ 500 行，代码注释英文，CLI 输出中文
-- rebuild 后由用户手动 `cah restart` 或 `/reload` 重启 daemon（**任务/Agent 内部严禁执行 `cah restart`/`cah stop`/`kill`，否则会终止正在运行的 daemon**；stale_daemon 检测机制会在安全时机自动重启）
+- 函数< 100 行，参数< 5 个 

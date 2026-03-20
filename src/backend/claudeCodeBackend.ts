@@ -16,8 +16,6 @@ import { collectStream } from './collectStream.js'
 import { buildMcpConfigJson, createClaudeCompatStreamProcessor } from './claudeCompatHelpers.js'
 import { collectStderr, probeCliVersion } from './processHelpers.js'
 import { logCliCommand, buildRedactedCommand } from '../store/conversationLog.js'
-import { invokePersistent } from './persistentClaudeInvoke.js'
-import { normalizeClaudeEffort } from './PersistentProcess.js'
 
 const logger = createLogger('claude-code')
 
@@ -38,11 +36,6 @@ export function createClaudeCodeBackend(): BackendAdapter {
     },
 
     async invoke(options: InvokeOptions): Promise<Result<InvokeResult, InvokeError>> {
-      // Persistent mode: delegate to persistent process manager
-      if (options.persistent) {
-        return invokePersistent(options)
-      }
-
       const {
         prompt,
         systemPrompt,
@@ -256,6 +249,13 @@ function buildArgs(options: ClaudeBuildArgsOptions): string[] {
 function isClaudeFileSpec(value: string): boolean {
   // Claude CLI expects --file in file_id:relative_path format, not local absolute paths.
   return value.includes(':')
+}
+
+function normalizeClaudeEffort(variant: string): 'low' | 'medium' | 'high' {
+  const normalized = variant.trim().toLowerCase()
+  if (normalized === 'minimal' || normalized === 'low') return 'low'
+  if (normalized === 'max' || normalized === 'high') return 'high'
+  return 'medium'
 }
 
 async function streamOutput(
