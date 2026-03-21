@@ -199,9 +199,14 @@ function evictIfNeeded(): void {
 
 // ── Public API ──
 
+/** Max estimated tokens to preserve sessionId on restart.
+ *  Below this threshold, --resume adds negligible TTFT overhead (~0s).
+ *  Above it, compact context causes 4-5s extra latency (tested: 111K tokens → +4.5s). */
+const RESUME_TOKEN_THRESHOLD = 20_000
+
 /** Load sessions from disk. Call on daemon startup to restore chat continuity.
- *  Clears sessionId so next message starts a fresh CLI session — avoids loading
- *  bloated compact context. Our own history summary + memory provides enough context. */
+ *  Small sessions (< 20K estimated tokens) keep sessionId for --resume continuity.
+ *  Large sessions clear sessionId to avoid bloated compact context TTFT penalty. */
 export function loadSessions(): void {
   const data = readJson<Record<string, ChatSession>>(SESSIONS_FILE)
   if (!data) return
@@ -209,25 +214,28 @@ export function loadSessions(): void {
   const now = Date.now()
   const timeoutMs = getTimeoutMs()
   let restored = 0
+  let resumed = 0
   for (const [chatId, session] of Object.entries(data)) {
     if (now - session.lastActiveAt > timeoutMs) continue
     // Backward compat: old sessions lack turnCount/estimatedTokens
     session.turnCount ??= 0
     session.estimatedTokens ??= 0
-    // Clear sessionId — always start fresh CLI session after restart.
-    // Claude CLI --resume loads full compact context (often MB-sized),
-    // which causes massive TTFT for simple messages.
-    // Our history summary + memory retrieval provides sufficient context.
-    session.sessionId = ''
-    session.turnCount = 0
-    session.estimatedTokens = 0
+    // Keep sessionId for small sessions (--resume adds ~0s overhead).
+    // Clear for large sessions to avoid TTFT penalty from bloated compact context.
+    if (session.estimatedTokens > RESUME_TOKEN_THRESHOLD || !session.sessionId) {
+      session.sessionId = ''
+      session.turnCount = 0
+      session.estimatedTokens = 0
+    } else {
+      resumed++
+    }
     sessions.set(chatId, session)
     restored++
   }
   if (restored > 0) {
     evictIfNeeded()
     ensureCleanupTimer()
-    logger.info(`Restored ${restored} chat session(s) from disk (sessionIds cleared for fresh start)`)
+    logger.info(`Restored ${restored} session(s), ${resumed} with resume, ${restored - resumed} fresh`)
   }
 }
 
