@@ -29,12 +29,6 @@ vi.mock('../../../prompts/chatPrompts.js', () => ({
   wrapHistoryContext: (s: string) => s || '',
 }))
 
-// Mock query expansion to prevent extra invokeBackend calls
-vi.mock('../../../memory/expandQuery.js', () => ({
-  expandQueryForRetrieval: vi.fn(async (q: string) => [q]),
-  clearExpandCache: vi.fn(),
-}))
-
 // Mock config
 vi.mock('../../../config/loadConfig.js', () => ({
   loadConfig: vi.fn(async () => ({

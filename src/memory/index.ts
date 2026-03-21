@@ -14,7 +14,6 @@
  * - 关联引擎: buildAssociations / spreadActivation / updateAssociationStrength
  *   associativeRetrieve / rebuildAllAssociations
  * - 整合引擎: consolidateMemories / shouldConsolidate（A-MEM 去重合并）
- * - 查询扩展: expandQueryForRetrieval / clearExpandCache
  * - 实体索引: extractEntities / indexMemoryEntities / removeFromEntityIndex / queryEntityIndex / rebuildEntityIndex（HippoRAG-lite）
  */
 
@@ -73,9 +72,6 @@ export {
 // Consolidation engine — A-MEM inspired dedup and merge
 export { consolidateMemories, shouldConsolidate } from './consolidateMemories.js'
 export type { ConsolidationResult } from './consolidateMemories.js'
-
-// Query expansion — LLM-based synonym/related term expansion
-export { expandQueryForRetrieval, clearExpandCache } from './expandQuery.js'
 
 // Tier promotion — ranking-based promotion/demotion between memory tiers
 export { computePromotionScore, runTierPromotion } from './tierPromotion.js'

@@ -43,7 +43,9 @@ export function createOpencodeBackend(): BackendAdapter {
         cwd = process.cwd(),
         stream = false,
         timeoutMs = 30 * 60 * 1000,
+        firstByteTimeoutMs = 60 * 1000,
         onChunk,
+        onToolUse,
         model,
         sessionId,
         attachments,
@@ -103,7 +105,7 @@ export function createOpencodeBackend(): BackendAdapter {
           collectStderr(subprocess, s => {
             stderrOutput = s
           })
-          const streamResult = await streamOutput(subprocess, onChunk, startTime, perf)
+          const streamResult = await streamOutput(subprocess, onChunk, startTime, perf, firstByteTimeoutMs, onToolUse, signal)
           rawOutput = streamResult.rawOutput
           mcpImagePaths = streamResult.extractedImagePaths
         } else {
@@ -243,7 +245,10 @@ async function streamOutput(
   subprocess: ResultPromise,
   onChunk?: (chunk: string) => void,
   startTime?: number,
-  perf?: { spawn: number; firstStdout: number; firstDelta: number }
+  perf?: { spawn: number; firstStdout: number; firstDelta: number },
+  firstByteTimeoutMs?: number,
+  onToolUse?: () => void,
+  signal?: AbortSignal
 ): Promise<{ rawOutput: string; extractedImagePaths: string[] }> {
   const extractedImagePaths: string[] = []
   const mcpToolUseIds = new Set<string>()
@@ -254,6 +259,7 @@ async function streamOutput(
     perf,
     startTime,
     fallbackWrite: (text) => process.stdout.write(chalk.dim(text)),
+    onToolUse,
   })
 
   const rawOutput = await collectStream(subprocess, {
@@ -261,6 +267,8 @@ async function streamOutput(
     perf,
     startTime,
     processLine,
+    firstByteTimeoutMs,
+    signal,
   })
 
   return { rawOutput, extractedImagePaths }

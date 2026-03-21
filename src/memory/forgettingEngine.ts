@@ -129,18 +129,21 @@ function computeDecayRate(confidence: number, reinforceCount: number, category: 
 }
 
 /**
- * Clean up fading memories — archive weak ones, delete very weak ones.
- * Returns count of archived and deleted entries.
+ * Clean up fading memories — delete weak ones directly.
+ * Previously had a two-stage archive→delete flow, but archived entries
+ * kept their original stability/lastReinforcedAt, so calculateStrength()
+ * would compute values above deleteThreshold — creating zombie memories
+ * that never got deleted. Simplified to single-stage delete.
+ * Returns count of deleted entries.
  */
 export async function cleanupFadingMemories(): Promise<{ archived: number; deleted: number }> {
   const config = await loadConfig()
-  const { archiveThreshold, deleteThreshold, enabled } = config.memory.forgetting
+  const { archiveThreshold, enabled } = config.memory.forgetting
 
   if (!enabled) return { archived: 0, deleted: 0 }
 
   const all = getAllMemories()
   const now = new Date()
-  let archived = 0
   let deleted = 0
 
   for (const raw of all) {
@@ -149,24 +152,16 @@ export async function cleanupFadingMemories(): Promise<{ archived: number; delet
     // Skip permanent tier — never cleaned up
     if (entry.tier === 'permanent') continue
 
+    // Delete if strength below archive threshold or already archived (strength=0)
     const strength = calculateStrength(entry, now)
-
-    if (strength < deleteThreshold) {
+    if (strength < archiveThreshold || entry.strength === 0) {
       removeFromEntityIndex(entry.id)
       deleteMemoryFromStore(entry.id)
       deleted++
-    } else if (strength < archiveThreshold) {
-      // Archive by setting strength to 0 and marking category
-      // We keep the entry but it won't appear in normal retrieval
-      updateMemory(entry.id, {
-        strength: 0,
-        updatedAt: now.toISOString(),
-      })
-      archived++
     }
   }
 
-  return { archived, deleted }
+  return { archived: 0, deleted }
 }
 
 /**

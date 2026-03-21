@@ -145,8 +145,8 @@ export async function extractMemoryFromTask(
         ? DEFAULT_STABILITY / 2
         : DEFAULT_STABILITY * (importance / 7)
 
-      // Contradiction resolution: check if new memory conflicts with existing ones
-      const supersededIds = await resolveContradictions(item.content, item.keywords)
+      // Contradiction resolution: check if new memory overlaps with existing ones
+      const supersededIds = resolveContradictions(item.content, item.keywords)
 
       const entry = addMemory(item.content, item.category as MemoryCategory, {
         type: 'task',
