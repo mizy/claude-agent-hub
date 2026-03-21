@@ -19,6 +19,8 @@ import { classifyDomain } from './memScene.js'
 import { getMemScene } from '../store/MemSceneStore.js'
 import { createLogger } from '../shared/logger.js'
 import { loadConfig } from '../config/loadConfig.js'
+import { invokeBackend, resolveLightModel } from '../backend/index.js'
+import { getErrorMessage } from '../shared/assertError.js'
 import type { AtomicFact, MemScene, MemoryEntry } from './types.js'
 
 const logger = createLogger('memory')
@@ -151,8 +153,9 @@ function tfidfSimilarity(
 /**
  * TF-IDF rerank: score candidates by content similarity to query.
  * Returns id→score map (0-10). Pure local computation, no LLM.
+ * Used as fallback when LLM rerank fails.
  */
-function rerankMemories(
+function rerankByTfIdf(
   query: string,
   candidates: Array<{ entry: MemoryEntry; score: number }>,
 ): Map<string, number> {
@@ -185,6 +188,70 @@ function rerankMemories(
 }
 
 /**
+ * LLM rerank: use Haiku to score candidates by semantic relevance.
+ * Returns id→score map (0-10). Falls back to TF-IDF on failure.
+ */
+async function rerankByLlm(
+  query: string,
+  candidates: Array<{ entry: MemoryEntry; score: number }>,
+): Promise<Map<string, number>> {
+  const prompt = `Score each memory's relevance to the query (0-10). Return ONLY a JSON array of scores in the same order.
+
+Query: ${query}
+
+Memories:
+${candidates.map((c, i) => `[${i}] [${c.entry.category}] ${c.entry.content.slice(0, 200)}`).join('\n')}
+
+Return JSON array like [8, 3, 7, ...] — one score per memory, same order. Only JSON, no other text.`
+
+  try {
+    const lightModel = await resolveLightModel()
+    const result = await invokeBackend({
+      prompt,
+      model: lightModel,
+      disableMcp: true,
+      timeoutMs: 10_000,
+    })
+
+    if (!result.ok) {
+      logger.debug(`LLM rerank failed: ${result.error.message}, falling back to TF-IDF`)
+      return rerankByTfIdf(query, candidates)
+    }
+
+    const jsonMatch = result.value.response.match(/\[[\s\S]*?\]/)
+    if (!jsonMatch) {
+      logger.debug('LLM rerank returned no JSON, falling back to TF-IDF')
+      return rerankByTfIdf(query, candidates)
+    }
+
+    const scores: number[] = JSON.parse(jsonMatch[0])
+    if (!Array.isArray(scores) || scores.length !== candidates.length) {
+      logger.debug('LLM rerank returned wrong array length, falling back to TF-IDF')
+      return rerankByTfIdf(query, candidates)
+    }
+
+    const scoreMap = new Map<string, number>()
+    for (let i = 0; i < candidates.length; i++) {
+      scoreMap.set(candidates[i]!.entry.id, Math.max(0, Math.min(10, scores[i] ?? 0)))
+    }
+    return scoreMap
+  } catch (error) {
+    logger.debug(`LLM rerank error: ${getErrorMessage(error)}, falling back to TF-IDF`)
+    return rerankByTfIdf(query, candidates)
+  }
+}
+
+/**
+ * Rerank candidates — LLM-first with TF-IDF fallback.
+ */
+async function rerankMemories(
+  query: string,
+  candidates: Array<{ entry: MemoryEntry; score: number }>,
+): Promise<Map<string, number>> {
+  return rerankByLlm(query, candidates)
+}
+
+/**
  * Retrieve memories most relevant to a query.
  *
  * Scoring: keyword overlap + strength factor + project path bonus + confidence.
@@ -205,8 +272,10 @@ export async function retrieveRelevantMemories(
   const now = new Date()
   const all = getAllMemories().map(migrateMemoryEntry)
 
-  // Filter out superseded and very weak memories (strength < 10 = effectively forgotten)
-  const active = all.filter(entry => !entry.superseded && calculateStrength(entry, now) >= 10)
+  // Filter out superseded and very weak memories (below archive threshold = effectively forgotten)
+  const config = await loadConfig()
+  const archiveThreshold = config.memory.forgetting.archiveThreshold
+  const active = all.filter(entry => !entry.superseded && calculateStrength(entry, now) >= archiveThreshold)
 
   // HippoRAG-lite: entity-based retrieval boost
   const entityHits = queryEntityIndex(query)
@@ -271,7 +340,6 @@ export async function retrieveRelevantMemories(
   // When tags filter is active: exclude entries that have tags but none match
   // (entries without tags are kept for backward compatibility)
   const hasTagFilter = filterTags && filterTags.length > 0
-  const config = await loadConfig()
   const rerankConfig = config.memory.rerank
   const candidateSize = rerankConfig.enabled ? rerankConfig.candidateSize : maxResults
 
@@ -287,7 +355,7 @@ export async function retrieveRelevantMemories(
   // TF-IDF re-rank when enabled and candidates exceed maxResults
   let directResults: MemoryEntry[]
   if (rerankConfig.enabled && candidateSize > maxResults && rankedCandidates.length > maxResults) {
-    const tfidfScores = rerankMemories(query, rankedCandidates)
+    const tfidfScores = await rerankMemories(query, rankedCandidates)
     // Normalize original scores to 0-10
     const maxOrigScore = rankedCandidates[0]?.score ?? 1
     const minOrigScore = rankedCandidates[rankedCandidates.length - 1]?.score ?? 0

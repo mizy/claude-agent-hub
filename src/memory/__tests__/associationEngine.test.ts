@@ -67,9 +67,9 @@ describe('buildAssociations', () => {
     expect(coTaskAssoc!.weight).toBe(0.5)
   })
 
-  it('creates temporal associations for entries created within 24h', async () => {
+  it('creates temporal associations for entries created within 1h', async () => {
     const now = new Date()
-    const twoHoursAgo = new Date(now.getTime() - 2 * 3600000)
+    const thirtyMinAgo = new Date(now.getTime() - 30 * 60000)
     const twoDaysAgo = new Date(now.getTime() - 48 * 3600000)
 
     // Use different taskIds to isolate temporal from co-task associations
@@ -78,7 +78,7 @@ describe('buildAssociations', () => {
     const srcC: MemorySource = { type: 'task', taskId: 'temporal-c' }
 
     const entry = makeEntry('a', ['deploy'], { createdAt: now.toISOString(), source: srcA })
-    const recent = makeEntry('b', ['config'], { createdAt: twoHoursAgo.toISOString(), source: srcB })
+    const recent = makeEntry('b', ['config'], { createdAt: thirtyMinAgo.toISOString(), source: srcB })
     const old = makeEntry('c', ['docker'], { createdAt: twoDaysAgo.toISOString(), source: srcC })
 
     const assocs = await buildAssociations(entry, [entry, recent, old])

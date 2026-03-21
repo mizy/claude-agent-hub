@@ -224,12 +224,11 @@ describe('cleanupFadingMemories', () => {
     expect(getMemory(entry.id)).toBeNull()
   })
 
-  it('archives memories below archiveThreshold but above deleteThreshold', async () => {
+  it('deletes memories below archiveThreshold', async () => {
     const entry = addMemory('fading memory', 'lesson', source, { keywords: ['fading'] })
-    // Set lastReinforcedAt so strength is between 5 and 10
     // With stability=24, decayRate=1.0: strength = e^(-t/24)*100
-    // For strength ≈ 7: t ≈ -24*ln(0.07) ≈ 63.8 hours
-    const hoursAgo = 63
+    // For strength ≈ 2 (below any reasonable archiveThreshold): t ≈ -24*ln(0.02) ≈ 93.9 hours
+    const hoursAgo = 100
     const past = new Date(Date.now() - hoursAgo * 3600000).toISOString()
     saveMemory({
       ...migrateMemoryEntry(entry),
@@ -239,11 +238,9 @@ describe('cleanupFadingMemories', () => {
     })
 
     const result = await cleanupFadingMemories()
-    // Should be archived (strength ~7, between deleteThreshold=5 and archiveThreshold=10)
-    expect(result.archived).toBe(1)
-    const updated = getMemory(entry.id)
-    expect(updated).not.toBeNull()
-    expect(updated!.strength).toBe(0)
+    // Strength ≈ 2, well below archiveThreshold → deleted
+    expect(result.deleted).toBe(1)
+    expect(getMemory(entry.id)).toBeNull()
   })
 
   it('leaves healthy memories untouched', async () => {

@@ -54,15 +54,15 @@ function buildCoTaskAssociations(entry: MemoryEntry, allEntries: MemoryEntry[]):
 
 function buildTemporalAssociations(entry: MemoryEntry, allEntries: MemoryEntry[]): Association[] {
   const entryTime = new Date(entry.createdAt).getTime()
-  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000
+  const ONE_HOUR = 60 * 60 * 1000
   const associations: Association[] = []
   for (const other of allEntries) {
     if (other.id === entry.id) continue
     const timeDiff = Math.abs(new Date(other.createdAt).getTime() - entryTime)
-    if (timeDiff <= TWENTY_FOUR_HOURS) {
-      // Weight decreases linearly with time distance
-      const weight = 0.3 * (1 - timeDiff / TWENTY_FOUR_HOURS)
-      if (weight > 0.05) {
+    if (timeDiff <= ONE_HOUR) {
+      // Weight decreases linearly with time distance (1h window)
+      const weight = 0.3 * (1 - timeDiff / ONE_HOUR)
+      if (weight > 0.1) {
         associations.push({ targetId: other.id, weight, type: 'temporal' })
       }
     }
@@ -96,7 +96,14 @@ export async function buildAssociations(
   const coTask = buildCoTaskAssociations(entry, allEntries)
   const temporal = buildTemporalAssociations(entry, allEntries)
 
-  return mergeAssociations([...keyword, ...coTask, ...temporal])
+  const merged = mergeAssociations([...keyword, ...coTask, ...temporal])
+  // Cap associations per entry to prevent bloat (keep strongest)
+  const MAX_ASSOCIATIONS = 20
+  if (merged.length > MAX_ASSOCIATIONS) {
+    merged.sort((a, b) => b.weight - a.weight)
+    return merged.slice(0, MAX_ASSOCIATIONS)
+  }
+  return merged
 }
 
 // ── Activation spreading ──

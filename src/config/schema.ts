@@ -90,7 +90,7 @@ export const memoryForgettingConfigSchema = z.object({
   initialStability: z.number().default(24),
   manualStability: z.number().default(168),
   maxStability: z.number().default(8760),
-  archiveThreshold: z.number().default(10),
+  archiveThreshold: z.number().default(25),
   deleteThreshold: z.number().default(5),
   cleanupIntervalHours: z.number().default(1),
 })

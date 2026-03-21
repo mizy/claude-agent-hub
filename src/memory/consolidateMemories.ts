@@ -22,8 +22,8 @@ const logger = createLogger('memory-consolidate')
 
 // Min similarity to consider a pair for consolidation
 const SIMILARITY_THRESHOLD = 0.6
-// Max pairs to send to LLM in one batch
-const MAX_PAIRS_PER_BATCH = 5
+// Max pairs to send to LLM in one batch (increased from 5 for batch processing)
+const MAX_PAIRS_PER_BATCH = 15
 // Min new memories to trigger consolidation
 const MIN_NEW_MEMORIES_TO_TRIGGER = 3
 
@@ -182,66 +182,107 @@ export interface ConsolidationResult {
 }
 
 /**
+ * Process a batch of similar pairs via LLM and apply decisions.
+ * Returns partial result counts.
+ */
+async function processPairBatch(
+  batch: SimilarPair[],
+  deletedIds: Set<string>,
+): Promise<{ merged: number; deleted: number; kept: number; processed: number }> {
+  const stats = { merged: 0, deleted: 0, kept: 0, processed: 0 }
+  if (batch.length === 0) return stats
+
+  const prompt = buildConsolidationPrompt(batch)
+  const lightModel = await resolveLightModel()
+  const llmResult = await invokeBackend({
+    prompt,
+    model: lightModel,
+    disableMcp: true,
+    timeoutMs: 60_000,
+  })
+
+  if (!llmResult.ok) {
+    logger.warn(`Consolidation LLM call failed: ${llmResult.error.message}`)
+    return stats
+  }
+
+  const decisions = parseDecisions(llmResult.value.response)
+
+  for (const decision of decisions) {
+    const pair = batch[decision.pairIndex]
+    if (!pair) continue
+    if (deletedIds.has(pair.a.id) || deletedIds.has(pair.b.id)) continue
+
+    const applied = applyDecision(pair, decision)
+    stats.merged += applied.merged
+    stats.deleted += applied.deleted
+    if (decision.decision === 'keep') stats.kept++
+    stats.processed++
+
+    if (applied.deleted > 0) {
+      if (decision.decision === 'supersede_b' || decision.decision === 'merge') {
+        deletedIds.add(decision.decision === 'supersede_b' ? pair.a.id : pair.b.id)
+      } else if (decision.decision === 'supersede_a') {
+        deletedIds.add(pair.b.id)
+      }
+    }
+  }
+
+  return stats
+}
+
+/**
  * Main consolidation entry point.
- * Scans all memories for similar pairs, asks LLM to decide, applies decisions.
+ * Groups memories by category, finds similar pairs within each group,
+ * and processes in batches of MAX_PAIRS_PER_BATCH.
  */
 export async function consolidateMemories(): Promise<ConsolidationResult> {
   const result: ConsolidationResult = { pairsFound: 0, pairsProcessed: 0, merged: 0, deleted: 0, kept: 0 }
 
   try {
     const all = getAllMemories().map(migrateMemoryEntry)
-    const pairs = findSimilarPairs(all)
-    result.pairsFound = pairs.length
 
-    if (pairs.length === 0) {
+    // Group by category for focused comparison (same-category pairs are more likely duplicates)
+    const byCategory = new Map<string, MemoryEntry[]>()
+    for (const entry of all) {
+      const cat = entry.category || 'unknown'
+      const group = byCategory.get(cat) ?? []
+      group.push(entry)
+      byCategory.set(cat, group)
+    }
+
+    // Collect similar pairs from each category group
+    const allPairs: SimilarPair[] = []
+    for (const [, group] of byCategory) {
+      if (group.length < 2) continue
+      allPairs.push(...findSimilarPairs(group))
+    }
+
+    // Sort all pairs by similarity (most similar first)
+    allPairs.sort((x, y) => y.similarity - x.similarity)
+    result.pairsFound = allPairs.length
+
+    if (allPairs.length === 0) {
       logger.info('No similar memory pairs found for consolidation')
       return result
     }
 
-    // Take top N pairs for this batch
-    const batch = pairs.slice(0, MAX_PAIRS_PER_BATCH)
-    const prompt = buildConsolidationPrompt(batch)
-
-    const lightModel = await resolveLightModel()
-    const llmResult = await invokeBackend({
-      prompt,
-      model: lightModel,
-      disableMcp: true,
-      timeoutMs: 60_000,
-    })
-
-    if (!llmResult.ok) {
-      logger.warn(`Consolidation LLM call failed: ${llmResult.error.message}`)
-      return result
-    }
-
-    const decisions = parseDecisions(llmResult.value.response)
-
-    // Track deleted IDs to avoid double-processing
+    // Process in batches
     const deletedIds = new Set<string>()
+    for (let offset = 0; offset < allPairs.length; offset += MAX_PAIRS_PER_BATCH) {
+      // Filter out pairs where either entry was already deleted
+      const batch = allPairs
+        .slice(offset, offset + MAX_PAIRS_PER_BATCH)
+        .filter(p => !deletedIds.has(p.a.id) && !deletedIds.has(p.b.id))
 
-    for (const decision of decisions) {
-      const pair = batch[decision.pairIndex]
-      if (!pair) continue
-      if (deletedIds.has(pair.a.id) || deletedIds.has(pair.b.id)) continue
-
-      const applied = applyDecision(pair, decision)
-      result.merged += applied.merged
-      result.deleted += applied.deleted
-      if (decision.decision === 'keep') result.kept++
-      result.pairsProcessed++
-
-      if (applied.deleted > 0) {
-        if (decision.decision === 'supersede_b' || decision.decision === 'merge') {
-          // For merge: B was deleted. For supersede_b: A was deleted
-          deletedIds.add(decision.decision === 'supersede_b' ? pair.a.id : pair.b.id)
-        } else if (decision.decision === 'supersede_a') {
-          deletedIds.add(pair.b.id)
-        }
-      }
+      const stats = await processPairBatch(batch, deletedIds)
+      result.merged += stats.merged
+      result.deleted += stats.deleted
+      result.kept += stats.kept
+      result.pairsProcessed += stats.processed
     }
 
-    logger.info(`Consolidation complete: ${result.pairsProcessed} pairs processed, ${result.merged} merged, ${result.deleted} deleted, ${result.kept} kept`)
+    logger.info(`Consolidation complete: ${result.pairsProcessed} pairs processed, ${result.merged} merged, ${result.deleted} deleted, ${result.kept} kept (from ${result.pairsFound} total pairs)`)
     return result
   } catch (error) {
     logger.warn(`Memory consolidation failed: ${getErrorMessage(error)}`)
