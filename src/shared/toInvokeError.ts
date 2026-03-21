@@ -4,7 +4,7 @@
  * Handles execa-style error objects (timedOut, isCanceled, exitCode, stderr)
  */
 
-import type { InvokeError } from '../backend/types.js'
+import type { InvokeError } from '../types/invoke.js'
 
 export function toInvokeError(error: unknown, backendName: string): InvokeError {
   if (error && typeof error === 'object') {

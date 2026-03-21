@@ -21,6 +21,7 @@ import {
   formatReportForMarkdown,
 } from '../../report/ExecutionReport.js'
 import { success, error, info, warn } from '../output.js'
+import { getErrorMessage } from '../../shared/assertError.js'
 import { AppError } from '../../shared/error.js'
 import { formatDuration } from '../../shared/formatTime.js'
 
@@ -166,7 +167,7 @@ export function registerTaskLogsCommands(task: Command) {
           stdio: 'inherit',
         })
         head.on('error', err => {
-          error(`Failed to read logs: ${err.message}`)
+          error(`Failed to read logs: ${getErrorMessage(err)}`)
         })
       } else {
         const tailArgs = ['-n', options.tail]
@@ -180,7 +181,7 @@ export function registerTaskLogsCommands(task: Command) {
         })
 
         tail.on('error', err => {
-          error(`Failed to tail logs: ${err.message}`)
+          error(`Failed to tail logs: ${getErrorMessage(err)}`)
         })
       }
     })

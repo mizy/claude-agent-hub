@@ -134,7 +134,7 @@ export function cancelActiveChat(chatId: string): void {
  */
 export async function destroyChatHandler(): Promise<void> {
   // Send "进程已中断" to all active streaming chats before aborting
-  const shutdownEdits: Promise<void>[] = []
+  const shutdownEdits: Promise<unknown>[] = []
   for (const [chatId, ctx] of activeStreams) {
     const placeholderId = ctx.getPlaceholderId()
     if (placeholderId) {
@@ -159,7 +159,6 @@ export async function destroyChatHandler(): Promise<void> {
                 .then(() => ctx.messenger.reply(chatId, content))
                 .catch(() => {})
             })
-            .then(() => {})
             .catch(e => logger.debug(`shutdown card update failed [${chatId.slice(0, 8)}]: ${e}`))
         )
       } else {
@@ -167,7 +166,6 @@ export async function destroyChatHandler(): Promise<void> {
         shutdownEdits.push(
           ctx.messenger
             .editMessage(chatId, placeholderId, content)
-            .then(() => {})
             .catch(e => logger.debug(`shutdown edit failed [${chatId.slice(0, 8)}]: ${e}`))
         )
       }

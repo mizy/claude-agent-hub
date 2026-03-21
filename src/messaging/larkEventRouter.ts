@@ -145,19 +145,22 @@ function wrapWithReplyQuote(adapter: MessengerAdapter, messageId: string, sender
   }
 }
 
-export async function handleLarkMessage(
-  chatId: string,
-  text: string,
-  isGroup: boolean,
-  hasMention: boolean,
-  adapter: MessengerAdapter,
-  botName: string | null,
-  onChatIdDiscovered: (chatId: string) => void,
-  images?: string[],
-  originalMessageId?: string,
-  files?: string[],
+export interface LarkMessageOptions {
+  chatId: string
+  text: string
+  isGroup: boolean
+  hasMention: boolean
+  adapter: MessengerAdapter
+  botName: string | null
+  onChatIdDiscovered: (chatId: string) => void
+  images?: string[]
+  originalMessageId?: string
+  files?: string[]
   senderOpenId?: string
-): Promise<void> {
+}
+
+export async function handleLarkMessage(opts: LarkMessageOptions): Promise<void> {
+  const { chatId, text, isGroup, hasMention, adapter, botName, onChatIdDiscovered, images, files, originalMessageId, senderOpenId } = opts
   if (isGroup && !hasMention) return
 
   if (!isGroup) {
@@ -412,7 +415,11 @@ export async function processMessageEvent(
     mention: boolean,
     imgs?: string[],
     files?: string[]
-  ) => handleLarkMessage(cId, txt, grp, mention, adapter, botName, onChatIdDiscovered, imgs, messageId, files, senderOpenId)
+  ) => handleLarkMessage({
+    chatId: cId, text: txt, isGroup: grp, hasMention: mention,
+    adapter, botName, onChatIdDiscovered,
+    images: imgs, originalMessageId: messageId, files, senderOpenId,
+  })
 
   const handleMsg = isGroup && hasMention
     ? (cId: string, txt: string, _grp: boolean, _mention: boolean, imgs?: string[], files?: string[]) => {

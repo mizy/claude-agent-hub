@@ -107,10 +107,16 @@ export type {
   TraceContext,
 } from './trace.js'
 
+// Invoke error types
+export type { InvokeError } from './invoke.js'
+
 // Episode types (episodic memory)
 export type {
   Episode,
   EpisodeIndexEntry,
   EpisodeTone,
   EpisodePlatform,
-} from '../memory/types.js'
+  EmotionalValence,
+  EmotionalPolarity,
+  EmotionalTrigger,
+} from './episode.js'

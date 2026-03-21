@@ -1,3 +1,5 @@
+import { getErrorMessage, getErrorStack } from './assertError.js'
+
 /**
  * 统一日志系统
  *
@@ -365,8 +367,8 @@ export function logError(
   error: Error | string,
   context?: ErrorContext
 ): void {
-  const errorMessage = error instanceof Error ? error.message : error
-  const errorStack = error instanceof Error ? error.stack : undefined
+  const errorMessage = getErrorMessage(error)
+  const errorStack = getErrorStack(error)
 
   // 构建完整的错误信息
   const fullMessage = `${message}: ${errorMessage}`

@@ -147,7 +147,8 @@ async function stopDashboard(): Promise<void> {
     console.log(chalk.green(`✓ 已停止 Dashboard (PID: ${lock.pid})`))
   } catch (error) {
     if (
-      error instanceof Error &&
+      typeof error === 'object' &&
+      error !== null &&
       'code' in error &&
       (error as NodeJS.ErrnoException).code === 'ESRCH'
     ) {

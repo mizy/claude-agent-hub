@@ -7,6 +7,7 @@
 import type { Result } from '../shared/result.js'
 import type { AgentConfig } from '../types/agent.js'
 import type { TraceContext } from '../types/trace.js'
+import type { InvokeError } from '../types/invoke.js'
 
 // ============ Invoke Types ============
 
@@ -78,10 +79,7 @@ export interface InvokeResult {
   mcpImagePaths?: string[]
 }
 
-export type InvokeError =
-  | { type: 'timeout'; message: string }
-  | { type: 'process'; message: string; exitCode?: number }
-  | { type: 'cancelled'; message: string }
+export type { InvokeError } from '../types/invoke.js'
 
 // ============ Backend Adapter ============
 

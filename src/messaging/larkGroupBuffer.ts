@@ -33,19 +33,19 @@ interface PendingGroupChat {
 
 const pendingGroupBuffer = new Map<string, PendingGroupChat>()
 
-export type HandleLarkMessageFn = (
-  chatId: string,
-  text: string,
-  isGroup: boolean,
-  hasMention: boolean,
-  adapter: MessengerAdapter,
-  botName: string | null,
-  onChatIdDiscovered: (chatId: string) => void,
-  images?: string[],
-  originalMessageId?: string,
-  files?: string[],
+export type HandleLarkMessageFn = (opts: {
+  chatId: string
+  text: string
+  isGroup: boolean
+  hasMention: boolean
+  adapter: MessengerAdapter
+  botName: string | null
+  onChatIdDiscovered: (chatId: string) => void
+  images?: string[]
+  originalMessageId?: string
+  files?: string[]
   senderOpenId?: string
-) => Promise<void>
+}) => Promise<void>
 
 /** Handle message fn reference — set via setHandleLarkMessage */
 let handleLarkMessageFn: HandleLarkMessageFn | null = null
@@ -148,14 +148,14 @@ async function flushGroupBuffer(chatId: string): Promise<void> {
   }
 
   try {
-    await handleLarkMessageFn(
-      chatId, combinedText, true, true,
+    await handleLarkMessageFn({
+      chatId, text: combinedText, isGroup: true, hasMention: true,
       adapter, botName, onChatIdDiscovered,
-      allImages.length > 0 ? allImages : undefined,
-      last.messageId,
-      allFiles.length > 0 ? allFiles : undefined,
-      last.senderOpenId
-    )
+      images: allImages.length > 0 ? allImages : undefined,
+      originalMessageId: last.messageId,
+      files: allFiles.length > 0 ? allFiles : undefined,
+      senderOpenId: last.senderOpenId,
+    })
   } finally {
     // Clean up downloaded tmp files after consumption
     for (const f of [...allImages, ...allFiles]) {

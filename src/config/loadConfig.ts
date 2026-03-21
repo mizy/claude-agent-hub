@@ -259,7 +259,7 @@ function startWatching(configPath: string): void {
   })
 
   watcher.on('error', error => {
-    logger.error(`Config watcher error: ${error.message}`)
+    logger.error(`Config watcher error: ${getErrorMessage(error)}`)
   })
 
   configWatchers.push(watcher)
