@@ -200,9 +200,10 @@ function evictIfNeeded(): void {
 // ── Public API ──
 
 /** Max estimated tokens to preserve sessionId on restart.
- *  Below this threshold, --resume adds negligible TTFT overhead (~0s).
- *  Above it, compact context causes 4-5s extra latency (tested: 111K tokens → +4.5s). */
-const RESUME_TOKEN_THRESHOLD = 20_000
+ *  Tested: 11K tokens → +0s, 111K tokens → +4.5s TTFT.
+ *  100K covers most normal conversations (~50+ turns); only very long
+ *  sessions lose resume continuity after restart. */
+const RESUME_TOKEN_THRESHOLD = 100_000
 
 /** Load sessions from disk. Call on daemon startup to restore chat continuity.
  *  Small sessions (< 20K estimated tokens) keep sessionId for --resume continuity.
