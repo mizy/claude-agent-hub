@@ -8,7 +8,9 @@ import { tmpdir } from 'os'
 import { loadConfig } from '../../config/loadConfig.js'
 import { createLogger } from '../../shared/logger.js'
 import { getErrorMessage } from '../../shared/assertError.js'
-import { logConversation } from '../../store/conversationLog.js'
+import { logConversation, getRecentConversations } from '../../store/conversationLog.js'
+import { loadChatSummary, saveChatSummary } from '../../store/chatSummaryStore.js'
+import { generateChatContextSummary } from '../../consciousness/generateSummary.js'
 import { addMemory } from '../../memory/index.js'
 import { sendFinalResponse } from './streamingHandler.js'
 import { sendDetectedImages } from './imageExtractor.js'
@@ -16,7 +18,7 @@ import { extractMediaTags, processMediaTags } from './mediaTagExtractor.js'
 import { stripThinkTags } from './stripThinkTags.js'
 import { triggerChatMemoryExtraction } from './chatMemoryExtractor.js'
 import { trackEpisodeTurn } from './episodeExtractor.js'
-import { setSession, incrementTurn } from './sessionManager.js'
+import { setSession, incrementTurn, getSession } from './sessionManager.js'
 import { recordEvent } from '../../consciousness/index.js'
 import { createBenchmark, formatBenchmark, isBenchmarkEnabled } from './chatBenchmark.js'
 
@@ -131,6 +133,24 @@ export function recordBackendPreference(chatId: string, backend: string, text: s
   }
 }
 
+/** Update rolling conversation summary every N turns in the background */
+const SUMMARY_UPDATE_INTERVAL = 10
+
+async function updateRollingSummary(chatId: string): Promise<void> {
+  const allRecent = getRecentConversations(chatId, 50).filter(e => e.dir === 'in' || e.dir === 'out')
+  if (allRecent.length < 4) return
+  const existing = loadChatSummary(chatId)
+  const msgs = allRecent.map(e => ({
+    role: (e.dir === 'in' ? 'user' : 'assistant') as 'user' | 'assistant',
+    text: e.text,
+  }))
+  const summary = await generateChatContextSummary(msgs, existing?.summary ?? undefined)
+  if (summary) {
+    saveChatSummary(chatId, summary)
+    logger.debug(`rolling summary updated [${chatId.slice(0, 8)}]`)
+  }
+}
+
 /** Handle successful backend result: log, update session, send response, side-effects */
 export async function processSuccessResult(
   ctx: PostResponseContext,
@@ -183,6 +203,13 @@ export async function processSuccessResult(
     setSession(chatId, newSessionId, backendOverride)
   }
   incrementTurn(chatId, text, response)
+  // Rolling summary: update every N turns in background (no await — non-blocking)
+  const session = getSession(chatId)
+  if (session && session.turnCount % SUMMARY_UPDATE_INTERVAL === 0) {
+    updateRollingSummary(chatId).catch(e => {
+      logger.debug(`rolling summary update failed: ${getErrorMessage(e)}`)
+    })
+  }
   try {
     recordEvent('msg_out', `回复: ${response.slice(0, 50)}`)
   } catch {

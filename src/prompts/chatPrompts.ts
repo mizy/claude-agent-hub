@@ -167,8 +167,6 @@ const SAFETY_MINIMAL = [
 // the same session can be lightweight.
 
 /** Keywords that trigger CAH knowledge injection in resumed sessions */
-const CAH_KEYWORDS = /cah|task|任务|daemon|workflow|工作流|backend|agent|后端|定时|cron|schedule/i
-
 /**
  * 构建客户端环境上下文 prompt
  * 注入自我意识 + 人设（SOUL.md 优先） + 平台格式约束
@@ -176,7 +174,6 @@ const CAH_KEYWORDS = /cah|task|任务|daemon|workflow|工作流|backend|agent|�
  * @param mode 'full' (default) = agent + env + format constraints;
  *             'minimal' = env info only, no agent/SOUL/format hints
  * @param options.isNewSession  true = first turn of a new session (inject all context)
- * @param options.userMessage   current user message (for keyword-based injection in resumed sessions)
  */
 /** Result of buildClientPrompt: static system prompt + dynamic per-turn context */
 export interface ClientPromptResult {
@@ -192,7 +189,6 @@ export function buildClientPrompt(
   mode: PromptMode = 'full',
   options?: {
     isNewSession?: boolean
-    userMessage?: string
     mood?: MoodState
     state?: { fatigue: number; idleness: number; engagement: number }
     narrative?: string
@@ -244,26 +240,27 @@ export function buildClientPrompt(
   const isNew = options?.isNewSession !== false
 
   // Identity context — only inject on new session (agent already has it in resumed sessions)
-  // Prefer narrativeRunner output (selfModel.narrative) if available and concise
+  // Merge narrative (self-perception) + identity stats (experience data) for complete self-awareness
   if (isNew) {
+    const identityParts: string[] = []
     const narrative = options?.narrative
     if (narrative && narrative.length < 500) {
-      lines.push('', `[我是谁]\n${narrative}`)
-    } else {
-      const identity = getIdentityContext()
-      if (identity) {
-        lines.push('', `[我是谁]\n${identity}`)
-      }
+      identityParts.push(narrative)
+    }
+    const identity = getIdentityContext()
+    if (identity) {
+      identityParts.push(identity)
+    }
+    if (identityParts.length > 0) {
+      lines.push('', `[我是谁]\n${identityParts.join('\n')}`)
     }
   }
 
-  // CAH knowledge — keyword-triggered only
-  if (CAH_KEYWORDS.test(options?.userMessage ?? '')) {
-    lines.push('', CAH_KNOWLEDGE)
-    // Dev constraints only when running inside the CAH project (self-development context)
-    if (isCAHProject()) {
-      lines.push('', CAH_DEV_CONSTRAINTS)
-    }
+  // CAH knowledge — always included in system prompt
+  lines.push('', CAH_KNOWLEDGE)
+  // Dev constraints only when running inside the CAH project (self-development context)
+  if (isCAHProject()) {
+    lines.push('', CAH_DEV_CONSTRAINTS)
   }
 
   // Dynamic: current state (mood/fatigue/engagement) — AI infers behavior from context

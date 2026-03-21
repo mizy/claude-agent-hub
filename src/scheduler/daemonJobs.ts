@@ -204,8 +204,8 @@ export async function registerDaemonJobs(pollCronExpr: string): Promise<void> {
   })
   scheduledJobs.push(memoryCleanupJob)
 
-  // Memory consolidation — daily at 3:00 AM
-  const memoryConsolidationJob = cron.schedule('0 3 * * *', async () => {
+  // Memory consolidation — daily at 1:00 PM
+  const memoryConsolidationJob = cron.schedule('0 13 * * *', async () => {
     try {
       const result = await consolidateMemories()
       logger.info(`Memory consolidation: merged=${result.merged}, kept=${result.kept}`)
@@ -215,8 +215,8 @@ export async function registerDaemonJobs(pollCronExpr: string): Promise<void> {
   })
   scheduledJobs.push(memoryConsolidationJob)
 
-  // Association graph rebuild — weekly on Sunday at 4:00 AM
-  const associationRebuildJob = cron.schedule('0 4 * * 0', async () => {
+  // Association graph rebuild — weekly on Sunday at 1:00 PM
+  const associationRebuildJob = cron.schedule('0 13 * * 0', async () => {
     try {
       const result = await rebuildAllAssociations()
       logger.info(`Association rebuild: total=${result.total}, newLinks=${result.newLinks}`)

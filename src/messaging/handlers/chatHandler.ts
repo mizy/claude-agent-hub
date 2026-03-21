@@ -343,10 +343,7 @@ async function handleChatInternal(
   })
   bench.parallelStart = Date.now()
 
-  // Await placeholder creation before building prompt so phase status updates (🔍📝💭) are visible.
-  // Serializing these is acceptable — placeholder creation (~100-300ms) overlaps with prior steps.
-  await stream.placeholderPromise
-
+  // Build prompt in parallel with placeholder creation — updateStatus buffers until placeholder is ready
   const { systemPrompt, prompt } = await buildFullPrompt(
     chatId,
     effectiveText,

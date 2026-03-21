@@ -14,8 +14,22 @@ const memoryStore = new FileStore<MemoryEntry>({
   ext: '.json',
 })
 
+const MEMORY_CACHE_TTL_MS = 30_000
+let memoryCached: MemoryEntry[] | null = null
+let memoryCacheTs = 0
+
+function invalidateMemoryCache(): void {
+  memoryCached = null
+}
+
 export function getAllMemories(): MemoryEntry[] {
-  return memoryStore.getAllSync()
+  const now = Date.now()
+  if (memoryCached !== null && now - memoryCacheTs < MEMORY_CACHE_TTL_MS) {
+    return memoryCached
+  }
+  memoryCached = memoryStore.getAllSync()
+  memoryCacheTs = now
+  return memoryCached
 }
 
 export function getMemory(id: string): MemoryEntry | null {
@@ -23,14 +37,17 @@ export function getMemory(id: string): MemoryEntry | null {
 }
 
 export function saveMemory(entry: MemoryEntry): void {
+  invalidateMemoryCache()
   memoryStore.setSync(entry.id, entry)
 }
 
 export function deleteMemory(id: string): boolean {
+  invalidateMemoryCache()
   return memoryStore.deleteSync(id)
 }
 
 export function updateMemory(id: string, updates: Partial<MemoryEntry>): boolean {
+  invalidateMemoryCache()
   return memoryStore.updateSync(id, updates)
 }
 
@@ -44,5 +61,6 @@ export function atomicUpdateMemory(id: string, updater: (current: MemoryEntry) =
   const current = memoryStore.getSync(id)
   if (current === null) return false
   const updates = updater(current)
+  invalidateMemoryCache()
   return memoryStore.updateSync(id, updates)
 }

@@ -45,3 +45,4 @@ pnpm run clean          # 清理 dist
 - 文件/函数: 动词+名词，类: PascalCase，`@entry` 标记入口
 - 单文件 ≤ 500 行，代码注释英文，CLI 输出中文
 - 函数< 100 行，参数< 5 个 
+- 提交commit时需要带上当前提交commit的AI agent名号

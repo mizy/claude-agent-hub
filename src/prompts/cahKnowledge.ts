@@ -20,7 +20,7 @@ cah task stop/resume/msg/complete <id>  # 停止/恢复/发消息/完成
 更多命令: cah help`
 
 /** Dev constraints — injected only when running inside the CAH project (self-development) */
-export const CAH_DEV_CONSTRAINTS = `[CAH 自举开发]
+export const CAH_DEV_CONSTRAINTS = `[CAH 开发约束]
 - build 完成后告知用户发 /reload 重载（绝不自行 cah restart / kill 进程）
 - 同目录任务自动排队，不同目录可并行
 - 任务描述要具体明确，AI agent 自主执行无法反复确认`

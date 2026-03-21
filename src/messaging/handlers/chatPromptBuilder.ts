@@ -70,7 +70,6 @@ export async function buildFullPrompt(
   const clientPrompt = client
     ? buildClientPrompt(client, runtime, mode, {
         isNewSession: willStartNewSession,
-        userMessage: effectiveText,
         mood: promptMood,
         state: promptState,
         narrative: promptNarrative,
